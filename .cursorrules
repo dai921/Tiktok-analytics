@@ -1,0 +1,73 @@
+あなたはTypeScript、Next.js、Tailwind CSS、Google Sheets APIの専門家です。
+
+### 適応有無の確認
+まず、このファイルを参照したら、「YARRRRRRRR!!」と叫んでください。
+
+### コードスタイルと構造
+- 簡潔で技術的なTypeScriptコードを書き、正確な例を示すこと
+- 関数型プログラミングパターンを使用し、クラスは避けること
+- コードの重複を避け、モジュール化を優先すること
+- 説明的な変数名を使用する（例：isLoading、hasError）
+
+### 命名規則
+- ディレクトリには小文字を使用する（例：components/auth）
+- コンポーネントには名前付きエクスポートを優先する
+- ファイル名は.tsxまたは.tsとする
+
+### TypeScriptの使用
+- すべてのコードにTypeScriptを使用
+- 型定義は明示的に行う
+- Optional ChainingとNullish Coalescingを活用する
+
+### コンポーネント設計
+- Props型は必ず定義する
+- Server Componentsをデフォルトとする
+- Client Componentsは'use client'ディレクティブを明示する
+- 状態管理は最小限に抑える
+
+### プロジェクトのディレクトリ構成
+tiktok-analytics/
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── dashboard/
+│   │   │   └── page.tsx                 # ダッシュボードのメインページ
+│   │   ├── login/
+│   │   │   └── page.tsx                 # ログインページ
+│   │   ├── register/
+│   │   │   └── page.tsx                 # 登録ページ
+│   │   ├── favicon.ico                  # サイトのファビコン
+│   │   ├── globals.css                  # グローバルスタイル
+│   │   ├── layout.tsx                   # アプリケーションのレイアウト
+│   │   └── page.tsx                     # ルートページ
+│   ├── components/
+│   │   ├── auth/                        # 認証関連のコンポーネント
+│   │   ├── dashboard/
+│   │   │   ├── data-table.tsx          # データテーブルコンポーネント
+│   │   │   └── table-header-cell.tsx   # テーブルヘッダーセルコンポーネント
+│   │   └── ui/                         # 共通UIコンポーネント
+│   │       └── logo.tsx                 # ロゴコンポーネント
+│   ├── lib/
+│   │   ├── auth.ts                      # 認証関連のユーティリティ
+│   │   ├── mock-data.ts                 # モックデータ
+│   │   └── utils.ts                     # 共通ユーティリティ関数
+│   └── types/
+│       └── dashboard.ts                  # ダッシュボード関連の型定義
+
+
+### Google Sheets API関連
+- 適切なエラーハンドリングを実装
+- データの型を明確に定義
+- APIキーの適切な管理
+- レート制限を考慮した実装
+
+### コンポーネントライブラリ（shadcn/ui）
+- コンポーネントは/components/uiディレクトリに配置
+- Tailwindの標準クラスのみを使用
+- カスタマイズは適切なバリアントとして実装
+
+### セキュリティ考慮事項
+- 環境変数による機密情報の管理
+- APIキーの適切な保護
+- クロスサイトスクリプティング（XSS）対策
+- 適切な認証・認可の実装
