@@ -1,24 +1,28 @@
 'use client'
 
-import React from 'react'
-import { Logo } from '@/components/ui/logo'
+import React, { useState, useRef } from 'react'
 import { mockData } from '@/lib/mock-data'
 import { DataTable } from '@/components/dashboard/data-table'
+import { Header } from "@/components/header"
 
 const Dashboard = () => {
+  const [hasFilters, setHasFilters] = useState(false)
+  const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-screen-2xl mx-auto px-4 py-2 flex items-center justify-between">
-          <Logo className="w-48" />
-          <button className="inline-flex items-center px-2.5 py-1.5 text-xs border rounded hover:bg-gray-50 text-gray-600">
-            ログアウト
-          </button>
-        </div>
-      </header>
-
+      <Header 
+        hasFilters={hasFilters} 
+        onClearFilters={() => {
+          tableRef.current?.clearAllFilters()
+        }} 
+      />
       <main className="max-w-screen-2xl mx-auto px-4 py-4">
-        <DataTable initialData={mockData} />
+        <DataTable 
+          ref={tableRef}
+          initialData={mockData} 
+          onFilterChange={setHasFilters}
+        />
       </main>
     </div>
   )

@@ -8,6 +8,7 @@ interface TableHeaderCellProps {
   type?: 'text' | 'number' | 'date'
   align?: 'left' | 'right'
   onFilterAction: (value: any) => void
+  style?: React.CSSProperties
 }
 
 // 幅を設定する関数を定義
@@ -16,7 +17,7 @@ const getColumnWidth = (title: ReactNode) => {
   return 'w-[120px] min-w-[120px]'
 }
 
-export function TableHeaderCell({ title, type = 'text', align = 'left', onFilterAction }: TableHeaderCellProps) {
+export function TableHeaderCell({ title, type = 'text', align = 'left', onFilterAction, style }: TableHeaderCellProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filterValue, setFilterValue] = useState('')
   const [filterType, setFilterType] = useState<'greater' | 'less' | 'equal'>('equal')

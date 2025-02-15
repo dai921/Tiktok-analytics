@@ -1,5 +1,5 @@
 export interface VideoData {
-  id: number
+  id: string
   thumbnail: string
   date: string
   views: number
@@ -17,7 +17,7 @@ export interface VideoData {
 
 export const mockData: VideoData[] = [
   {
-    id: 1,
+    id: "1",
     thumbnail: '/dummy1.jpg',
     date: '2024-03-20',
     views: 1000,
@@ -33,7 +33,7 @@ export const mockData: VideoData[] = [
     transcript: 'こんにちは！今日は私のスキンケアルーティン...',
   },
   {
-    id: 2,
+    id: "2",
     thumbnail: '/dummy2.jpg',
     date: '2024-03-21',
     views: 2000,
