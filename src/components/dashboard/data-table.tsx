@@ -1,18 +1,44 @@
 'use client'
 
-import { useState, forwardRef, useImperativeHandle } from 'react'
-import type { VideoData, FilterValue } from '@/types/dashboard'
+import { useState, forwardRef, useImperativeHandle, useEffect } from 'react'
+import type { VideoData, FilterValue, Column } from '@/types/dashboard'
 import { TableHeaderCell } from './table-header-cell'
+import Image from 'next/image'
+import { TextPopup } from '@/components/ui/text-popup'
 
 interface DataTableProps {
   initialData: VideoData[]
   onFilterChange: (hasFilters: boolean) => void
+  isLoading?: boolean  // ローディング状態を追加
+}
+
+// フィルタ可能なカラムを定義
+const FILTERABLE_COLUMNS = [
+  'views',
+  'viewsIncrease',
+  'likes',
+  'comments',
+  'category',
+  'accountName',
+  'hashtags',
+] as const
+
+type FilterableColumn = typeof FILTERABLE_COLUMNS[number]
+
+// カラム定義で使用
+const isFilterable = (key: string): key is FilterableColumn => {
+  return FILTERABLE_COLUMNS.includes(key as FilterableColumn)
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ initialData, onFilterChange }, ref) => {
+  ({ initialData, onFilterChange, isLoading = false }, ref) => {
     const [filteredData, setFilteredData] = useState(initialData)
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
+    const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
+
+    useEffect(() => {
+      setFilteredData(initialData)
+    }, [initialData])
 
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
@@ -24,139 +50,283 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       onFilterChange(false)
     }
 
-    const handleFilter = (field: string) => (filterValue: any) => {
-      if (filterValue.clear) {
+    const handleFilter = (field: string) => (filterValue: FilterValue) => {
+      console.log('Filtering:', field, filterValue);  // デバッグログ
+
+      if ('clear' in filterValue) {
+        console.log('Clearing filter');  // デバッグログ
         setHasActiveFilters(false)
         setFilteredData(initialData)
         onFilterChange(false)
         return
       }
 
-      if (filterValue.value || filterValue.sort) {
+      if ('sort' in filterValue) {
+        console.log('Sorting:', filterValue.sort);  // デバッグログ
         setHasActiveFilters(true)
         onFilterChange(true)
-        let result = [...initialData]
+        const result = [...initialData].sort((a, b) => {
+          const aValue = a[field as keyof VideoData]
+          const bValue = b[field as keyof VideoData]
+          
+          // 数値の場合は数値比較
+          if (typeof aValue === 'number' && typeof bValue === 'number') {
+            return filterValue.sort === 'asc' ? aValue - bValue : bValue - aValue
+          }
+          
+          // 文字列の場合は文字列比較
+          const aStr = String(aValue)
+          const bStr = String(bValue)
+          return filterValue.sort === 'asc' 
+            ? aStr.localeCompare(bStr)
+            : bStr.localeCompare(aStr)
+        })
+        setFilteredData(result)
+        return
+      }
 
-        // ソート処理
-        if (filterValue.sort) {
-          result.sort((a: any, b: any) => {
-            const aValue = a[field]
-            const bValue = b[field]
-            return filterValue.sort === 'asc' 
-              ? (aValue > bValue ? 1 : -1)
-              : (aValue < bValue ? 1 : -1)
-          })
-        }
-
-        // フィルター処理
-        if (filterValue.value) {
-          result = result.filter((item: any) => {
-            const itemValue = item[field]
+      if ('value' in filterValue && filterValue.value) {
+        console.log('Filtering by value:', filterValue.value);  // デバッグログ
+        setHasActiveFilters(true)
+        onFilterChange(true)
+        const result = initialData.filter(item => {
+          const itemValue = item[field as keyof VideoData]
+          const searchValue = filterValue.value.toLowerCase()
+          
+          // 数値フィールドの場合
+          if (typeof itemValue === 'number') {
+            const numValue = Number(searchValue)
+            if (isNaN(numValue)) return false
             
             switch (filterValue.type) {
-              case 'greater':
-                return Number(itemValue) >= Number(filterValue.value)
-              case 'less':
-                return Number(itemValue) <= Number(filterValue.value)
-              case 'equal':
-                // 数値の場合は厳密な比較、文字列の場合は部分一致
-                return typeof itemValue === 'number'
-                  ? itemValue === Number(filterValue.value)
-                  : String(itemValue).toLowerCase().includes(filterValue.value.toLowerCase())
-              default:
-                return true
+              case 'greater': return itemValue >= numValue
+              case 'less': return itemValue <= numValue
+              case 'equal': return itemValue === numValue
+              default: return false
             }
-          })
-        }
-
+          }
+          
+          // 文字列フィールドの場合
+          const strValue = String(itemValue).toLowerCase()
+          return strValue.includes(searchValue)
+        })
         setFilteredData(result)
-      } else {
-        setHasActiveFilters(false)
-        onFilterChange(false)
       }
     }
+
+    const columns: Column[] = [
+      {
+        accessorKey: 'thumbnail',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="サムネイル"
+            align="left"
+          />
+        ),
+      },
+      {
+        accessorKey: 'createdAt',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="投稿日"
+            type="date"
+            onFilter={(value) => handleFilter('createdAt')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'views',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="再生数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('views')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'viewsIncrease',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="再生増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('viewsIncrease')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'category',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="ジャンル"
+            onFilter={(value) => handleFilter('category')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'url',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="URL"
+            onFilter={(value: FilterValue) => handleFilter('url')(value)}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[60px] min-w-[60px]">
+            <button 
+              onClick={() => setSelectedText({ title: 'URL', content: row.url })}
+              className="text-left w-full"
+            >
+              <a 
+                href={row.url}
+                className="text-sky-600 hover:underline line-clamp-2 text-xs"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+              >
+                {row.url}
+              </a>
+            </button>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'accountName',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウント名"
+            onFilter={(value) => handleFilter('accountName')(value)}
+          />
+        ),
+        cell: ({ row }) => (
+          <span className="truncate" style={{ maxWidth: '120px' }}>
+            {row.accountName}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'likes',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="いいね"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('likes')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'comments',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="コメント数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('comments')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'hashtags',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="ハッシュタグ"
+            onFilter={(value: FilterValue) => handleFilter('hashtags')(value)}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[60px] min-w-[60px]">
+            <button 
+              onClick={() => setSelectedText({ 
+                title: 'ハッシュタグ', 
+                content: row.hashtags.join(', ') 
+              })}
+              className="text-left w-full"
+            >
+              <span className="line-clamp-2 text-xs">
+                {row.hashtags.join(', ')}
+              </span>
+            </button>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'audioTitle',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="BGM"
+            onFilter={(value) => handleFilter('audioTitle')(value)}
+          />
+        ),
+      },
+      {
+        accessorKey: 'description',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="文字起こし"
+            onFilter={(value) => handleFilter('description')(value)}
+          />
+        ),
+      },
+    ]
 
     return (
       <div className="relative">
         <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          {isLoading && (
+            <div className="absolute inset-0 bg-white/50 z-[9999] flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500" />
+            </div>
+          )}
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-2 font-normal text-gray-600 sticky left-0 z-10 bg-gray-50" style={{ minWidth: '120px' }}>サムネイル</th>
-                <TableHeaderCell 
-                  title="投稿日" 
-                  type="date"
-                  onFilterAction={handleFilter('date')}
-                  style={{ minWidth: '100px' }}
-                />
-                <TableHeaderCell 
-                  title="再生数"
-                  type="number"
-                  align="right" 
-                  onFilterAction={handleFilter('views')}
-                  style={{ minWidth: '100px' }}
-                />
-                <TableHeaderCell 
-                  title="再生増加数"
-                  type="number"
-                  align="right"
-                  onFilterAction={handleFilter('viewsIncrease')}
-                  style={{ minWidth: '100px' }}
-                />
-                <TableHeaderCell 
-                  title="ジャンル"
-                  onFilterAction={handleFilter('genre')}
-                  style={{ minWidth: '100px' }}
-                />
-                <th className="px-3 py-2 font-normal text-gray-600" style={{ minWidth: '120px' }}>URL</th>
-                <th className="px-3 py-2 font-normal text-gray-600" style={{ minWidth: '120px' }}>アカウント名</th>
-                <TableHeaderCell 
-                  title="いいね"
-                  type="number"
-                  align="right"
-                  onFilterAction={handleFilter('likes')}
-                  style={{ minWidth: '100px' }}
-                />
-                <TableHeaderCell 
-                  title="コメント数"
-                  type="number"
-                  align="right"
-                  onFilterAction={handleFilter('comments')}
-                  style={{ minWidth: '100px' }}
-                />
-                <th className="px-3 py-2 font-normal text-gray-600" style={{ minWidth: '120px' }}>ハッシュタグ</th>
-                <th className="px-3 py-2 font-normal text-gray-600" style={{ minWidth: '120px' }}>BGM</th>
-                <th className="px-3 py-2 font-normal text-gray-600" style={{ minWidth: '120px' }}>文字起こし</th>
+                {columns.map((column) => (
+                  <th 
+                    key={column.accessorKey} 
+                    className="px-3 py-2 font-normal text-gray-600 bg-gray-50 sticky top-0"
+                    style={{ 
+                      minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px'
+                    }}
+                  >
+                    {column.header({ column })}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {filteredData.map((row) => (
                 <tr key={row.id} className="border-b hover:bg-gray-50">
-                  <td className="sticky left-0 z-10 bg-white px-3 py-2" style={{ minWidth: '120px' }}>
-                    <div className="w-[120px] h-[67px] bg-gray-100 rounded-sm object-cover"></div>
-                  </td>
-                  <td className="px-3 py-2" style={{ minWidth: '100px' }}>{row.date}</td>
-                  <td className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>{row.views.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-green-600 text-right" style={{ minWidth: '100px' }}>{row.viewsIncrease}</td>
-                  <td className="px-3 py-2" style={{ minWidth: '100px' }}>{row.genre}</td>
-                  <td className="px-3 py-2" style={{ minWidth: '120px' }}>
-                    <a href={row.url} className="text-sky-600 hover:underline truncate block" target="_blank" rel="noopener noreferrer">
-                      {row.url}
-                    </a>
-                  </td>
-                  <td className="px-3 py-2 truncate" style={{ minWidth: '120px' }}>{row.accountName}</td>
-                  <td className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>{row.likes.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-right" style={{ minWidth: '100px' }}>{row.comments.toLocaleString()}</td>
-                  <td className="px-3 py-2 truncate" style={{ minWidth: '120px' }}>{row.hashtags.join(', ')}</td>
-                  <td className="px-3 py-2 truncate" style={{ minWidth: '120px' }}>{row.bgm}</td>
-                  <td className="px-3 py-2" style={{ minWidth: '120px' }}>
-                    <span className="line-clamp-2">{row.transcript}</span>
-                  </td>
+                  {columns.map((column) => (
+                    <td 
+                      key={column.accessorKey} 
+                      className="px-3 py-2 bg-white"
+                      style={{ minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px' }}
+                    >
+                      {column.cell 
+                        ? column.cell({ row }) 
+                        : typeof row[column.accessorKey] === 'object'
+                          ? JSON.stringify(row[column.accessorKey])
+                          : String(row[column.accessorKey])
+                      }
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        
+        {selectedText && (
+          <TextPopup
+            isOpen={!!selectedText}
+            onClose={() => setSelectedText(null)}
+            title={selectedText.title}
+            content={selectedText.content}
+          />
+        )}
       </div>
     )
   }

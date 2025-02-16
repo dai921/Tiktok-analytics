@@ -1,26 +1,41 @@
-export type FilterValue = {
-  type: 'all' | 'genre' | 'date'
-  value: string
-  dateRange?: {
-    start: string
-    end: string
-  }
-}
+import React from 'react'
+
+export type FilterValue = 
+  | {
+      type: 'greater' | 'less' | 'equal'
+      value: string
+    }
+  | { sort: 'asc' | 'desc' }
+  | { clear: true }
 
 export interface VideoData {
   id: string
-  date: string
-  views: number
-  viewsPrev: number
-  viewsIncrease: number
-  genre: string
   url: string
   accountName: string
+  videoId: string
+  thumbnail: string
+  authorName: string
+  description: string
   likes: number
+  views: number
   comments: number
+  shares: number
+  saves: number
+  createdAt: string
   hashtags: string[]
-  bgm: string
-  transcript: string
+  duration: number
+  isViral: boolean
+  prevFetchDate: string
+  currentFetchDate: string
+  prevViews: number
+  viewsIncrease: number
+  prevLikes: number
+  likesIncrease: number
+  product: string
+  category: string
+  audioId: string
+  audioTitle: string
+  artist: string
 }
 
 export interface FilterPopoverProps {
@@ -34,5 +49,19 @@ export interface TableHeaderCellProps {
   title: string
   type?: 'text' | 'number' | 'date'
   align?: 'left' | 'right'
-  onFilter: (value: FilterValue) => void
+  onFilter?: (value: FilterValue) => void
+  style?: React.CSSProperties
+}
+
+export interface PaginatedResponse {
+  data: VideoData[];
+  total: number;
+  currentPage: number;
+  totalPages: number;
+}
+
+export interface Column {
+  accessorKey: keyof VideoData
+  header: ({ column }: { column: Column }) => React.ReactElement
+  cell?: ({ row }: { row: VideoData }) => React.ReactElement | null
 } 
