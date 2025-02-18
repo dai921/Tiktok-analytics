@@ -32,26 +32,48 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
   try {
     const url = new URL(process.env.NEXT_PUBLIC_GAS_URL || '')
     
-    // GETパラメータではなく、POSTボディとしてパラメータを送信
+    // フィルターパラメータの変換を修正
     const params = {
       page,
-      filters: filters ? Object.entries(filters).reduce((acc, [key, filter]) => ({
-        ...acc,
-        [COLUMN_MAP[key]]: {
-          ...filter,
-          field: COLUMN_MAP[key]
+      filters: filters ? Object.entries(filters).reduce((acc, [key, filter]) => {
+        const japaneseField = COLUMN_MAP[key]
+        if (!japaneseField) {
+          console.error(`No mapping found for field: ${key}`)
+          return acc
         }
-      }), {}) : undefined
+        return {
+          ...acc,
+          [japaneseField]: {
+            field: japaneseField,  // 日本語のフィールド名
+            type: filter.type,
+            value: filter.value
+          }
+        }
+      }, {}) : undefined
     }
 
-    console.log('Requesting with params:', params)
+    // より詳細なデバッグログ
+    console.log('=== Detailed Request Debug ===');
+    console.log('Original filters:', {
+      filters,
+      type: filters ? Object.values(filters)[0]?.type : 'none',
+      value: filters ? Object.values(filters)[0]?.value : 'none',
+      field: filters ? Object.keys(filters)[0] : 'none'
+    });
+    console.log('Converted params:', {
+      raw: params,
+      filterKeys: params.filters ? Object.keys(params.filters) : [],
+      filterValues: params.filters ? Object.values(params.filters) : [],
+      firstFilter: params.filters ? Object.values(params.filters)[0] : null
+    });
+    console.log('URL:', url.toString());
 
     const response = await fetch(url.toString(), {
-      method: 'POST',  // GETからPOSTに変更
+      method: 'POST',
       headers: {
-        'Content-Type': 'text/plain',  // application/jsonではなくtext/plainを使用
+        'Content-Type': 'text/plain',
       },
-      body: JSON.stringify(params),  // パラメータをボディに含める
+      body: JSON.stringify(params),
     })
     
     if (!response.ok) {
@@ -59,20 +81,19 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     }
     
     const text = await response.text()
-    console.log('Raw response:', text)
+    console.log('=== Response Debug ===');
+    console.log('Raw response:', text);
     
     try {
       const result = JSON.parse(text)
-      if (!result.success) {
-        throw new Error('Failed to fetch data from GAS')
-      }
+      console.log('Parsed response:', result);
       return result
     } catch (error) {
-      console.error('Failed to parse response:', error)
+      console.error('Parse error:', error);
       throw error
     }
   } catch (error) {
-    console.error('Error fetching sheet data:', error)
+    console.error('Network error:', error);
     return {
       data: [],
       total: 0,

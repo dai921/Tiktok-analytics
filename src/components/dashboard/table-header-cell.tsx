@@ -84,13 +84,13 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
     switch (type) {
       case 'number':
         onFilter({
-          type: filterType === 'gte' ? 'gte' : 'lte',
+          type: filterType === 'equal' ? 'equal' : 'greater',
           value
         });
         break;
       case 'date':
         onFilter({
-          type: filterType === 'after' ? 'after' : 'before',
+          type: filterType === 'equal' ? 'equal' : 'greater',
           value
         });
         break;

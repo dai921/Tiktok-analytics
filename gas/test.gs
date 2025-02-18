@@ -1,68 +1,129 @@
-function testExtractThumbnailId() {
-  console.log('=== Testing Thumbnail ID Extraction with Actual Data ===');
-  
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
-  const range = sheet.getRange('A1:Z31');  // ヘッダー行 + 30件のデータ
-  const values = range.getValues();
-  const formulas = range.getFormulas();
-  
-  // ヘッダー行からサムネイル列のインデックスを取得
-  const headers = values[0];
-  const thumbnailIndex = headers.findIndex(header => header === 'カバー画像');
-  
-  if (thumbnailIndex === -1) {
-    console.error('❌ Thumbnail column not found');
-    return;
-  }
+function testFilterRequest() {
+  console.log('=== Testing Filter Request ===');
 
-  console.log(`Found thumbnail column at index ${thumbnailIndex}`);
-  
-  // 各行のテスト（ヘッダー行をスキップ）
-  values.slice(1).forEach((row, index) => {
-    const rowNumber = index + 2;  // 実際の行番号（ヘッダー行 + 1 + インデックス）
-    const formula = formulas[index + 1][thumbnailIndex];  // formulasの対応する位置
-    const thumbnailId = extractThumbnailId(formula);
-    
-    console.log(`\nRow ${rowNumber}:`);
-    console.log({
-      formula: formula || '(empty)',
-      extracted: thumbnailId || '(no ID found)',
-      status: thumbnailId ? '✅ Valid ID' : '❌ No ID',
-      url: thumbnailId ? `https://lh3.googleusercontent.com/d/${thumbnailId}` : 'N/A'
-    });
-  });
-}
-
-function testHandleRequest() {
-  console.log('=== Testing API Response with First 30 Rows ===');
-  
-  const mockRequest = {
+  // 再生数が100000以上のケース
+  const viewsFilter = {
     postData: {
       contents: JSON.stringify({
         page: 1,
-        limit: 30
+        filters: {
+          '再生数': {
+            field: '再生数',
+            type: 'greater',
+            value: '100000'
+          }
+        }
       })
     }
   };
 
-  const response = doPost(mockRequest);
-  const responseData = JSON.parse(response.getContent());
-  
-  console.log('Response Overview:', {
-    success: responseData.success ? '✅' : '❌',
-    totalRows: responseData.total,
-    returnedRows: responseData.data.length,
-    hasData: responseData.data.length > 0 ? '✅' : '❌'
+  console.log('\nTesting views filter:');
+  console.log('Request:', viewsFilter.postData.contents);
+  const viewsResponse = doPost(viewsFilter);
+  const viewsResult = JSON.parse(viewsResponse.getContent());
+  console.log('Response:', {
+    success: viewsResult.success,
+    totalRows: viewsResult.total,
+    returnedRows: viewsResult.data.length,
+    firstRow: viewsResult.data[0]
   });
 
-  if (responseData.data.length > 0) {
-    console.log('\nThumbnail Check for First 30 Rows:');
-    responseData.data.forEach((row, index) => {
-      console.log(`\nRow ${index + 1}:`, {
-        id: row.id,
-        hasValidThumbnail: row.thumbnail ? '✅' : '❌',
-        thumbnailUrl: row.thumbnail?.url || 'No URL'
+  // 日付フィルターのケース
+  const dateFilter = {
+    postData: {
+      contents: JSON.stringify({
+        page: 1,
+        filters: {
+          '作成日時': {
+            field: '作成日時',
+            type: 'after',
+            value: '2024-01-01'
+          }
+        }
+      })
+    }
+  };
+
+  console.log('\nTesting date filter:');
+  console.log('Request:', dateFilter.postData.contents);
+  const dateResponse = doPost(dateFilter);
+  const dateResult = JSON.parse(dateResponse.getContent());
+  console.log('Response:', {
+    success: dateResult.success,
+    totalRows: dateResult.total,
+    returnedRows: dateResult.data.length,
+    firstRow: dateResult.data[0]
+  });
+
+  // カテゴリフィルターのケース
+  const categoryFilter = {
+    postData: {
+      contents: JSON.stringify({
+        page: 1,
+        filters: {
+          'カテゴリ': {
+            field: 'カテゴリ',
+            type: 'equal',
+            value: '美容'  // 実際のカテゴリ値に合わせて変更
+          }
+        }
+      })
+    }
+  };
+
+  console.log('\nTesting category filter:');
+  console.log('Request:', categoryFilter.postData.contents);
+  const categoryResponse = doPost(categoryFilter);
+  const categoryResult = JSON.parse(categoryResponse.getContent());
+  console.log('Response:', {
+    success: categoryResult.success,
+    totalRows: categoryResult.total,
+    returnedRows: categoryResult.data.length,
+    firstRow: categoryResult.data[0]
+  });
+}
+
+function testMillionViewsFilter() {
+  console.log('=== Testing Million Views Filter ===');
+
+  const millionViewsFilter = {
+    postData: {
+      contents: JSON.stringify({
+        page: 1,
+        filters: {
+          '再生数': {
+            field: '再生数',
+            type: 'greater',
+            value: '1000000'  // 100万以上
+          }
+        }
+      })
+    }
+  };
+
+  console.log('Request:', millionViewsFilter.postData.contents);
+  const response = doPost(millionViewsFilter);
+  const result = JSON.parse(response.getContent());
+
+  console.log('\nResponse Overview:', {
+    success: result.success ? '✅' : '❌',
+    totalRows: result.total,
+    returnedRows: result.data.length
+  });
+
+  if (result.data.length > 0) {
+    console.log('\nFiltered Videos:');
+    result.data.forEach((row, index) => {
+      console.log(`\nVideo ${index + 1}:`, {
+        accountName: row.accountName,
+        views: row.views.toLocaleString() + '回',
+        viewsIncrease: row.viewsIncrease.toLocaleString() + '回',
+        createdAt: row.createdAt,
+        category: row.category,
+        url: row.url
       });
     });
+  } else {
+    console.log('❌ No videos found with over 1 million views');
   }
 } 
