@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, ReactNode, useRef, useEffect } from 'react'
-import type { FilterValue } from '@/types/dashboard'
+import type { FilterValue, FilterType } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 
 interface TableHeaderCellProps {
-  title: ReactNode
+  title: string
   type?: 'text' | 'number' | 'date'
-  align?: 'left' | 'right'
+  align?: 'left' | 'right' | 'center'
   onFilter?: (value: FilterValue) => void
   style?: React.CSSProperties
 }
@@ -18,15 +18,38 @@ const getColumnWidth = (title: ReactNode) => {
   return 'w-[120px] min-w-[120px]'
 }
 
+// 選択肢を動的に生成
+const getFilterOptions = (type: 'text' | 'number' | 'date') => {
+  switch (type) {
+    case 'number':
+      return [
+        { value: 'equal' as const, label: '等しい' },
+        { value: 'gte' as const, label: '以上' },
+        { value: 'lte' as const, label: '以下' }
+      ]
+    case 'date':
+      return [
+        { value: 'equal' as const, label: '等しい' },
+        { value: 'after' as const, label: '以降' },
+        { value: 'before' as const, label: '以前' }
+      ]
+    default:
+      return [
+        { value: 'equal' as const, label: '等しい' }
+      ]
+  }
+}
+
 export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter, style }: TableHeaderCellProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filterValue, setFilterValue] = useState('')
-  const [filterType, setFilterType] = useState<'greater' | 'less' | 'equal'>('equal')
+  const [filterType, setFilterType] = useState<FilterType>('equal')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-  const alignmentClass = align === 'right' ? 'text-right' : 'text-left'
+  const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
 
   const [position, setPosition] = useState({ top: 0, left: 0 })
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (isFilterOpen && buttonRef.current) {
@@ -38,19 +61,46 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
     }
   }, [isFilterOpen])
 
-  const handleFilter = (value: string) => {
-    console.log('TableHeaderCell handleFilter:', value); // デバッグログ
-    setFilterValue(value)
-    if (value && onFilter) {
-      // 数値型の場合は数値に変換
-      const processedValue = type === 'number' ? value : value
-      onFilter({ 
-        type: filterType, 
-        value: processedValue 
-      })
-      setIsFilterOpen(false)
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isFilterOpen && 
+          popupRef.current && 
+          buttonRef.current && 
+          !popupRef.current.contains(event.target as Node) &&
+          !buttonRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false)
+      }
     }
-  }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isFilterOpen])
+
+  const handleFilter = (value: string, filterType: FilterType) => {
+    if (!onFilter) return;
+    
+    switch (type) {
+      case 'number':
+        onFilter({
+          type: filterType === 'gte' ? 'gte' : 'lte',
+          value
+        });
+        break;
+      case 'date':
+        onFilter({
+          type: filterType === 'after' ? 'after' : 'before',
+          value
+        });
+        break;
+      default:
+        onFilter({
+          type: 'equal',
+          value
+        });
+    }
+  };
 
   const handleSort = () => {
     console.log('TableHeaderCell handleSort'); // デバッグログ
@@ -87,7 +137,7 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
             onChange={(e) => setFilterValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                handleFilter(filterValue)
+                handleFilter(filterValue, filterType)
               }
             }}
             placeholder="フィルター..."
@@ -102,7 +152,7 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
             onChange={(e) => setFilterValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                handleFilter(filterValue)
+                handleFilter(filterValue, filterType)
               }
             }}
             placeholder="フィルター..."
@@ -137,6 +187,7 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
       {isFilterOpen && (
         <Portal>
           <div 
+            ref={popupRef}
             className="fixed bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
             style={{ top: position.top, left: position.left }}
           >
@@ -144,17 +195,19 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
               <div className="flex items-center gap-2 mb-2">
                 <select 
                   value={filterType}
-                  onChange={(e) => setFilterType(e.target.value as 'greater' | 'less' | 'equal')}
+                  onChange={(e) => setFilterType(e.target.value as FilterType)}
                   className="px-2 py-1 border rounded text-xs"
                 >
-                  <option value="equal">等しい</option>
-                  <option value="greater">以降</option>
-                  <option value="less">以前</option>
+                  {getFilterOptions(type).map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 {renderFilterInput()}
               </div>
               <button
-                onClick={() => handleFilter(filterValue)}
+                onClick={() => handleFilter(filterValue, filterType)}
                 className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
               >
                 フィルターを適用
