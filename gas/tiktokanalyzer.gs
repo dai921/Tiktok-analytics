@@ -66,60 +66,52 @@ const FIELD_TYPES = {
 };
 
 function handleFilteredData(sheet, filters, page, limit) {
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-
-  const filteredRows = data.slice(1).filter(row => 
+  // インデックスシートを取得
+  const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス');
+  if (!indexSheet) {
+    createIndex(); // インデックスが存在しない場合は作成
+  }
+  
+  const indexRange = indexSheet.getDataRange();
+  const indexData = indexRange.getValues();
+  const indexHeaders = indexData[0];
+  
+  // インデックスを使用してフィルタリング
+  const filteredRows = indexData.slice(1).filter(row => 
     Object.entries(filters).every(([field, filter]) => {
-      const colIndex = headers.indexOf(filter.field);
-      const value = row[colIndex];
-      const rowValue = typeof value === 'string' ? value.trim() : value;
-      const filterValue = filter.value;
-      
-      // 日付フィールドの場合
-      if (FIELD_TYPES.DATE_FIELDS.includes(field)) {
-        const rowDate = new Date(rowValue);
-        const filterDate = new Date(filterValue);
-        
-        switch (filter.type) {
-          case 'after':  // 以降
-            return rowDate >= filterDate;
-          case 'before': // 以前
-            return rowDate <= filterDate;
-          default:
-            return rowDate.toDateString() === filterDate.toDateString();
-        }
+      const colIndex = indexHeaders.indexOf(COLUMN_MAP[field] || field);
+      if (colIndex === -1) {
+        // インデックスにない場合は元のシートで検索
+        const mainHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const mainColIndex = mainHeaders.indexOf(filter.field);
+        const mainRow = sheet.getRange(row[1], mainColIndex + 1, 1, 1).getValue();
+        return evaluateFilter(mainRow, filter);
       }
       
-      // 数値フィールドの場合
-      if (FIELD_TYPES.NUMBER_FIELDS.includes(field)) {
-        const numValue = Number(rowValue);
-        const numFilter = Number(filterValue);
-        
-        switch (filter.type) {
-          case 'gte':   // 以上
-            return numValue >= numFilter;
-          case 'lte':   // 以下
-            return numValue <= numFilter;
-          default:
-            return numValue === numFilter;
-        }
-      }
-      
-      // その他のフィールド（文字列等）の場合
-      return String(rowValue).toLowerCase() === String(filterValue).toLowerCase();
+      return evaluateFilter(row[colIndex], filter);
     })
   );
 
-  // ソート処理
-  const sortFilter = Object.entries(filters).find(([_, filter]) => filter.type === 'sort');
-  if (sortFilter) {
-    const [field, filter] = sortFilter;
-    const colIndex = headers.indexOf(field);
+  // 高速化されたソート処理
+  const sortFilters = Object.entries(filters).filter(([_, filter]) => filter.type === 'sort');
+  if (sortFilters.length > 0) {
     filteredRows.sort((a, b) => {
-      const aVal = a[colIndex];
-      const bVal = b[colIndex];
-      return filter.value === 'asc' ? aVal - bVal : bVal - aVal;
+      for (const [field, filter] of sortFilters) {
+        const colIndex = indexHeaders.indexOf(COLUMN_MAP[field] || field);
+        if (colIndex === -1) continue;
+        
+        const aVal = a[colIndex];
+        const bVal = b[colIndex];
+        
+        if (aVal === bVal) continue;
+        
+        const comparison = filter.value === 'asc' ? 
+          (typeof aVal === 'string' ? aVal.localeCompare(bVal) : aVal - bVal) :
+          (typeof aVal === 'string' ? bVal.localeCompare(aVal) : bVal - aVal);
+        
+        if (comparison !== 0) return comparison;
+      }
+      return 0;
     });
   }
 
@@ -141,6 +133,40 @@ function handleFilteredData(sheet, filters, page, limit) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
+// フィルター評価のヘルパー関数
+function evaluateFilter(value, filter) {
+  const rowValue = typeof value === 'string' ? value.trim() : value;
+  const filterValue = filter.value;
+  
+  // 日付フィールドの場合
+  if (filter.fieldType === 'date') {
+    const rowDate = new Date(rowValue);
+    const filterDate = new Date(filterValue);
+    
+    switch (filter.type) {
+      case 'after':  return rowDate >= filterDate;
+      case 'before': return rowDate <= filterDate;
+      default:       return rowDate.toDateString() === filterDate.toDateString();
+    }
+  }
+  
+  // 数値フィールドの場合
+  if (typeof rowValue === 'number' || !isNaN(Number(rowValue))) {
+    const numValue = Number(rowValue);
+    const numFilter = Number(filterValue);
+    
+    switch (filter.type) {
+      case 'gte':    return numValue >= numFilter;
+      case 'lte':    return numValue <= numFilter;
+      case 'greater': return numValue > numFilter;
+      case 'less':    return numValue < numFilter;
+      default:        return numValue === numFilter;
+    }
+  }
+  
+  // 文字列の場合
+  return String(rowValue).toLowerCase() === String(filterValue).toLowerCase();
+}
 function formatRows(data, formulas) {
   return data.map((row, index) => ({
     id: String(row[2]),
