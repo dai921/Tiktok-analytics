@@ -1,55 +1,254 @@
-function doGet(e) {
-  const page = parseInt(e.parameter.page) || 1;
-  const limit = 50;
+function doPost(e) {
+  const params = JSON.parse(e.postData.contents);
+  const page = parseInt(params.page) || 1;
+  const limit = params.limit || 50;
   
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
-  const totalRows = sheet.getLastRow() - 1;  // ヘッダーを除く
   
-  // 必要な範囲のみ取得
-  const startRow = ((page - 1) * limit) + 2;  // ヘッダー行 + offset
-  const numRows = Math.min(limit, totalRows - ((page - 1) * limit));
-  
-  // 必要な範囲のデータのみを取得
-  const data = sheet.getRange(startRow, 1, numRows, 26).getValues();
-  
-  const rows = data.map(row => ({
-    id: row[2],
-    url: row[0],
-    accountName: row[1],
-    videoId: row[2],
-    thumbnail: row[3],
-    authorName: row[4],
-    description: row[5],
-    likes: row[6],
-    views: row[7],
-    comments: row[8],
-    shares: row[9],
-    saves: row[10],
-    createdAt: row[11],
-    hashtags: row[12].split(','),
-    duration: row[13],
-    isViral: row[14] === 'TRUE',
-    prevFetchDate: row[15],
-    currentFetchDate: row[16],
-    prevViews: row[17],
-    viewsIncrease: row[18],
-    prevLikes: row[19],
-    likesIncrease: row[20],
-    product: row[21],
-    category: row[22],
-    audioId: row[23],
-    audioTitle: row[24],
-    artist: row[25]
-  }));
+  try {
+    if (params.filters) {
+      return handleFilteredData(sheet, params.filters, page, limit);
+    }
+    
+    return handleInitialData(sheet, page, limit);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      data: [],
+      total: 0,
+      currentPage: 1,
+      totalPages: 1,
+      success: false,
+      error: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
 
+function handleInitialData(sheet, page, limit) {
+  const startRow = ((page - 1) * limit) + 2;  // ヘッダー行をスキップ
+  const numRows = Math.min(limit, sheet.getLastRow() - startRow + 1);
+  
+  const range = sheet.getRange(startRow, 1, numRows, 26);
+  const data = range.getValues();
+  const formulas = range.getFormulas();
+  
+  const rows = formatRows(data, formulas);
+  
   return ContentService.createTextOutput(JSON.stringify({
     data: rows,
-    total: totalRows,
+    total: sheet.getLastRow() - 1,
     currentPage: page,
-    totalPages: Math.ceil(totalRows / limit),
+    totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
     success: true
-  }))
-  .setMimeType(ContentService.MimeType.JSON);
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// フィールドの種類を定義
+const FIELD_TYPES = {
+  // 日付フィールド
+  DATE_FIELDS: [
+    'createdAt',
+    'prevFetchDate',
+    'currentFetchDate'
+  ],
+  // 数値フィールド
+  NUMBER_FIELDS: [
+    'views',
+    'likes',
+    'comments',
+    'shares',
+    'saves',
+    'duration',
+    'prevViews',
+    'viewsIncrease',
+    'prevLikes',
+    'likesIncrease'
+  ]
+};
+
+function handleFilteredData(sheet, filters, page, limit) {
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+
+  const filteredRows = data.slice(1).filter(row => 
+    Object.entries(filters).every(([field, filter]) => {
+      const colIndex = headers.indexOf(filter.field);
+      const value = row[colIndex];
+      const rowValue = typeof value === 'string' ? value.trim() : value;
+      const filterValue = filter.value;
+      
+      // 日付フィールドの場合
+      if (FIELD_TYPES.DATE_FIELDS.includes(field)) {
+        const rowDate = new Date(rowValue);
+        const filterDate = new Date(filterValue);
+        
+        switch (filter.type) {
+          case 'after':  // 以降
+            return rowDate >= filterDate;
+          case 'before': // 以前
+            return rowDate <= filterDate;
+          default:
+            return rowDate.toDateString() === filterDate.toDateString();
+        }
+      }
+      
+      // 数値フィールドの場合
+      if (FIELD_TYPES.NUMBER_FIELDS.includes(field)) {
+        const numValue = Number(rowValue);
+        const numFilter = Number(filterValue);
+        
+        switch (filter.type) {
+          case 'gte':   // 以上
+            return numValue >= numFilter;
+          case 'lte':   // 以下
+            return numValue <= numFilter;
+          default:
+            return numValue === numFilter;
+        }
+      }
+      
+      // その他のフィールド（文字列等）の場合
+      return String(rowValue).toLowerCase() === String(filterValue).toLowerCase();
+    })
+  );
+
+  // ソート処理
+  const sortFilter = Object.entries(filters).find(([_, filter]) => filter.type === 'sort');
+  if (sortFilter) {
+    const [field, filter] = sortFilter;
+    const colIndex = headers.indexOf(field);
+    filteredRows.sort((a, b) => {
+      const aVal = a[colIndex];
+      const bVal = b[colIndex];
+      return filter.value === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+  }
+
+  const startIndex = (page - 1) * limit;
+  const paginatedRows = filteredRows.slice(startIndex, startIndex + limit);
+  
+  // 数式の取得
+  const formulas = paginatedRows.map(row => {
+    const rowIndex = data.findIndex(r => r[2] === row[2]); // videoIdで行を特定
+    return sheet.getRange(rowIndex + 1, 1, 1, headers.length).getFormulas()[0];
+  });
+
+  return ContentService.createTextOutput(JSON.stringify({
+    data: formatRows(paginatedRows, formulas),
+    total: filteredRows.length,
+    currentPage: page,
+    totalPages: Math.ceil(filteredRows.length / limit),
+    success: true
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function formatRows(data, formulas) {
+  return data.map((row, index) => ({
+    id: String(row[2]),
+    url: String(row[0]),
+    accountName: String(row[1]),
+    videoId: String(row[2]),
+    thumbnail: extractThumbnailId(formulas[index][3]) ? {
+      valueType: 'IMAGE',
+      url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(formulas[index][3])}`
+    } : null,
+    authorName: String(row[4]),
+    description: String(row[5]),
+    likes: Number(row[6]),
+    views: Number(row[7]),
+    comments: Number(row[8]),
+    shares: Number(row[9]),
+    saves: Number(row[10]),
+    createdAt: formatDate(row[11]),
+    hashtags: String(row[12]).split(',').map(tag => tag.trim()),
+    duration: Number(row[13]),
+    isViral: row[14] === 'TRUE',
+    prevFetchDate: formatDate(row[15]),
+    currentFetchDate: formatDate(row[16]),
+    prevViews: Number(row[17]),
+    viewsIncrease: Number(row[18]),
+    prevLikes: Number(row[19]),
+    likesIncrease: Number(row[20]),
+    product: String(row[21]),
+    category: String(row[22]),
+    audioId: String(row[23]),
+    audioTitle: String(row[24]),
+    artist: String(row[25])
+  }));
+}
+
+// 日付フォーマット用のヘルパー関数
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;  // 無効な日付の場合は元の文字列を返す
+  
+  const year = date.getFullYear().toString().slice(-2);  // YY
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');  // MM
+  const day = date.getDate().toString().padStart(2, '0');  // DD
+  
+  return `${year}/${month}/${day}`;
+}
+
+function extractThumbnailId(formula) {
+  if (!formula) return null;
+  
+  const urlMatch = formula.match(/IMAGE\("([^"]+)"/);
+  if (!urlMatch) return null;
+  
+  const url = urlMatch[1];
+  
+  const patterns = [
+    /[?&]id=([^&]+)/,                 // uc?export=view形式
+    /\/file\/d\/([^/]+)\/view/,       // file/d形式
+    /\/d\/([^/]+)(?:\/|$)/            // 直接d/形式
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+}
+
+// カラム名のマッピングを定義
+const COLUMN_MAP = {
+  'views': '再生数',
+  'likes': 'いいね数',
+  'comments': 'コメント数',
+  'accountName': 'アカウント名',
+  'category': 'カテゴリ',
+  'hashtags': 'ハッシュタグ',
+  'description': '説明',
+  'audioTitle': '音声タイトル',
+  'url': 'URL',
+  'videoId': '動画ID',
+  'thumbnail': 'カバー画像',
+  'authorName': '作成者表示名',
+  'shares': '共有数',
+  'saves': '保存数',
+  'createdAt': '作成日時',
+  'duration': '動画時間(秒)',
+  'isViral': '10万再生以上',
+  'prevFetchDate': '前回取得日',
+  'currentFetchDate': '今回取得日',
+  'prevViews': '前回再生数',
+  'viewsIncrease': '再生数伸び',
+  'prevLikes': '前回いいね数',
+  'likesIncrease': 'いいね数伸び',
+  'product': '商材',
+  'audioId': '音声ID',
+  'artist': 'アーティスト'
+};
+
+function findMatchingRows(sheet, filters, page, limit) {
+  // シート上でフィルタを適用して該当行を見つける
+  // 例：views >= 1000 なら、その条件に合う行を探す
+  const startRow = (page - 1) * limit + 2;  // ヘッダー行を考慮
+  return sheet.getRange(startRow, 1, limit, 26);
 }
 
 // 定期的にデータを更新（例：1時間ごと）
@@ -137,4 +336,40 @@ function updateIndex() {
       .everyDays(1)
       .create();
   }
+}
+
+function getThumbnailUrl(fileId) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    // 既に適切な権限が設定されているので、URLのみ返す
+    return `https://lh3.googleusercontent.com/d/${fileId}`;  // より信頼性の高いURLフォーマット
+  } catch (error) {
+    console.error('Error getting thumbnail URL:', error);
+    return null;
+  }
+}
+
+// よく検索される列のインデックスを作成
+function createSearchIndex() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス');
+  // ... インデックス作成のロジック
+}
+
+// フィルタ条件に一致する行数をカウント
+function countMatchingRows(sheet, filters) {
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  return data.slice(1).filter(row => 
+    Object.entries(filters).every(([field, filter]) => {
+      const colIndex = headers.indexOf(field);
+      const value = row[colIndex];
+      
+      switch (filter.type) {
+        case 'greater': return Number(value) >= Number(filter.value);
+        case 'less': return Number(value) <= Number(filter.value);
+        case 'equal': return value === filter.value;
+        default: return String(value).toLowerCase().includes(String(filter.value).toLowerCase());
+      }
+    })
+  ).length;
 }

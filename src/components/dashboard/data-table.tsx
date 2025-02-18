@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, forwardRef, useImperativeHandle, useEffect } from 'react'
-import type { VideoData, FilterValue, Column } from '@/types/dashboard'
+import { useState, forwardRef, useImperativeHandle, useEffect, ReactElement } from 'react'
+import type { VideoData, FilterValue, Column, FilterQuery } from '@/types/dashboard'
 import { TableHeaderCell } from './table-header-cell'
 import Image from 'next/image'
 import { TextPopup } from '@/components/ui/text-popup'
+import { COLUMN_MAP } from '@/lib/sheets'
 
 interface DataTableProps {
   initialData: VideoData[]
-  onFilterChange: (hasFilters: boolean) => void
-  isLoading?: boolean  // ローディング状態を追加
+  onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void
+  isLoading: boolean
 }
 
 // フィルタ可能なカラムを定義
@@ -30,15 +31,30 @@ const isFilterable = (key: string): key is FilterableColumn => {
   return FILTERABLE_COLUMNS.includes(key as FilterableColumn)
 }
 
+const NoThumbnail = () => (
+  <div className="w-[120px] h-[67px] relative bg-gray-100 rounded flex items-center justify-center">
+    <svg 
+      className="w-8 h-8 text-gray-400" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M10 8l6 4-6 4V8z" />
+    </svg>
+  </div>
+)
+
+// 数値フォーマット関数を追加
+const formatNumber = (num: number): ReactElement => {
+  return <span>{new Intl.NumberFormat('ja-JP').format(num)}</span>
+}
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ initialData, onFilterChange, isLoading = false }, ref) => {
-    const [filteredData, setFilteredData] = useState(initialData)
+  ({ initialData = [], onFilterChange, isLoading = false }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
-
-    useEffect(() => {
-      setFilteredData(initialData)
-    }, [initialData])
 
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
@@ -46,72 +62,36 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     const handleClearAllFilters = () => {
       setHasActiveFilters(false)
-      setFilteredData(initialData)
       onFilterChange(false)
     }
 
     const handleFilter = (field: string) => (filterValue: FilterValue) => {
-      console.log('Filtering:', field, filterValue);  // デバッグログ
-
       if ('clear' in filterValue) {
-        console.log('Clearing filter');  // デバッグログ
-        setHasActiveFilters(false)
-        setFilteredData(initialData)
         onFilterChange(false)
         return
       }
 
       if ('sort' in filterValue) {
-        console.log('Sorting:', filterValue.sort);  // デバッグログ
-        setHasActiveFilters(true)
-        onFilterChange(true)
-        const result = [...initialData].sort((a, b) => {
-          const aValue = a[field as keyof VideoData]
-          const bValue = b[field as keyof VideoData]
-          
-          // 数値の場合は数値比較
-          if (typeof aValue === 'number' && typeof bValue === 'number') {
-            return filterValue.sort === 'asc' ? aValue - bValue : bValue - aValue
-          }
-          
-          // 文字列の場合は文字列比較
-          const aStr = String(aValue)
-          const bStr = String(bValue)
-          return filterValue.sort === 'asc' 
-            ? aStr.localeCompare(bStr)
-            : bStr.localeCompare(aStr)
+        onFilterChange(true, {
+          field: COLUMN_MAP[field],
+          type: 'sort',
+          value: filterValue.sort
         })
-        setFilteredData(result)
         return
       }
 
-      if ('value' in filterValue && filterValue.value) {
-        console.log('Filtering by value:', filterValue.value);  // デバッグログ
-        setHasActiveFilters(true)
-        onFilterChange(true)
-        const result = initialData.filter(item => {
-          const itemValue = item[field as keyof VideoData]
-          const searchValue = filterValue.value.toLowerCase()
-          
-          // 数値フィールドの場合
-          if (typeof itemValue === 'number') {
-            const numValue = Number(searchValue)
-            if (isNaN(numValue)) return false
-            
-            switch (filterValue.type) {
-              case 'greater': return itemValue >= numValue
-              case 'less': return itemValue <= numValue
-              case 'equal': return itemValue === numValue
-              default: return false
-            }
-          }
-          
-          // 文字列フィールドの場合
-          const strValue = String(itemValue).toLowerCase()
-          return strValue.includes(searchValue)
-        })
-        setFilteredData(result)
-      }
+      // フィルタータイプの変換を追加
+      const convertedType = filterValue.type === 'gte' ? 'greater' :
+                           filterValue.type === 'lte' ? 'less' :
+                           filterValue.type === 'after' ? 'greater' :
+                           filterValue.type === 'before' ? 'less' :
+                           'equal'
+
+      onFilterChange(true, {
+        field: COLUMN_MAP[field],
+        type: convertedType,
+        value: filterValue.value
+      })
     }
 
     const columns: Column[] = [
@@ -123,12 +103,44 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="left"
           />
         ),
+        cell: ({ row }) => {
+          if (!row.thumbnail?.url) {
+            return <NoThumbnail />
+          }
+
+          return (
+            <div className="w-[120px] h-[67px] relative bg-gray-100 rounded" data-thumbnail-container={row.id}>
+              <Image
+                src={row.thumbnail.url}
+                alt="サムネイル"
+                fill
+                sizes="120px"
+                className="object-cover rounded"
+                unoptimized
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  const container = target.parentElement;
+                  if (container) {
+                    container.innerHTML = `
+                      <div class="w-[120px] h-[67px] relative bg-gray-100 rounded flex items-center justify-center">
+                        <svg class="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M10 8l6 4-6 4V8z" />
+                        </svg>
+                      </div>
+                    `;
+                  }
+                }}
+              />
+            </div>
+          )
+        }
       },
       {
         accessorKey: 'createdAt',
         header: ({ column }) => (
           <TableHeaderCell
-            title="投稿日"
+            title={COLUMN_MAP['createdAt']}
             type="date"
             onFilter={(value) => handleFilter('createdAt')(value)}
           />
@@ -140,10 +152,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="再生数"
             type="number"
-            align="right"
             onFilter={(value) => handleFilter('views')(value)}
           />
         ),
+        cell: ({ row }) => formatNumber(row.views)
       },
       {
         accessorKey: 'viewsIncrease',
@@ -210,12 +222,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         accessorKey: 'likes',
         header: ({ column }) => (
           <TableHeaderCell
-            title="いいね"
+            title="いいね数"
             type="number"
-            align="right"
             onFilter={(value) => handleFilter('likes')(value)}
           />
         ),
+        cell: ({ row }) => formatNumber(row.likes)
       },
       {
         accessorKey: 'comments',
@@ -233,7 +245,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="ハッシュタグ"
-            onFilter={(value: FilterValue) => handleFilter('hashtags')(value)}
+            type="text"
+            onFilter={(value) => handleFilter('hashtags')(value)}
           />
         ),
         cell: ({ row }) => (
@@ -297,7 +310,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((row) => (
+              {initialData.map((row) => (
                 <tr key={row.id} className="border-b hover:bg-gray-50">
                   {columns.map((column) => (
                     <td 
