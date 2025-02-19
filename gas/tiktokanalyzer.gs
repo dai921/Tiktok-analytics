@@ -98,7 +98,7 @@ function handleFilteredData(sheet, filters, page, limit) {
       return { data: [], total: 0, currentPage: page, totalPages: 0, success: true };
     }
 
-    // 1. 全データを一括取得（シートアクセスは2回のみ）
+    // 1. 全データを一括取得
     const allValues = sheet.getDataRange().getValues();
     const allFormulas = sheet.getDataRange().getFormulas();
     
@@ -106,63 +106,66 @@ function handleFilteredData(sheet, filters, page, limit) {
     let dataRows = allValues.slice(1);
     let formulaRows = allFormulas.slice(1);
 
-    // 2. フィルタリング（メモリ上で完結）
-    const filteredIndices = [];
-    dataRows = dataRows.filter((row, index) => {
-      const matches = Object.entries(filters).every(([field, filter]) => {
-        const colIndex = headers.indexOf(filter.field);
-        if (colIndex === -1) return false;
+    console.log('Debug - Filters:', JSON.stringify(filters));
+    console.log('Debug - Headers:', headers);
+
+    // 2. フィルタリング（ソート以外）
+    const filterEntries = Object.entries(filters).filter(([_, filter]) => filter.type !== 'sort');
+    dataRows = dataRows.filter((row) => {
+      return filterEntries.every(([fieldName, filter]) => {
+        const colIndex = headers.indexOf(fieldName);
+        if (colIndex === -1) return true;
 
         const value = row[colIndex];
-        const rowValue = typeof value === 'string' ? value.trim() : value;
         
         // 数値フィールドの場合
-        if (FIELD_TYPES.NUMBER_FIELDS.includes(filter.field)) {
-          const numValue = Number(rowValue);
+        if (FIELD_TYPES.NUMBER_FIELDS.includes(fieldName)) {
+          const numValue = Number(value);
           const numFilter = Number(filter.value);
           
           switch (filter.type) {
-            case FILTER_TYPES.GREATER: return numValue >= numFilter;
-            case FILTER_TYPES.LESS: return numValue <= numFilter;
-            case FILTER_TYPES.EQUAL: return numValue === numFilter;
-            default: return false;
+            case 'greater': return numValue >= numFilter;
+            case 'less': return numValue <= numFilter;
+            case 'equal': return numValue === numFilter;
+            default: return true;
           }
         }
         
-        // その他のフィールド
-        return String(rowValue).toLowerCase() === String(filter.value).toLowerCase();
-      });
-
-      if (matches) {
-        filteredIndices.push(index);
         return true;
-      }
-      return false;
+      });
     });
 
-    // フィルタ結果に対応する数式を取得
-    formulaRows = filteredIndices.map(index => allFormulas[index + 1]);
+    // 3. ソート処理（最後に1つだけ適用）
+    const sortFilters = Object.entries(filters).filter(([_, filter]) => filter.type === 'sort');
+    if (sortFilters.length > 0) {
+      // 最後に追加されたソートフィルターのみを使用
+      const [sortField, filter] = sortFilters[sortFilters.length - 1];
+      const colIndex = headers.indexOf(sortField);
+      
+      if (colIndex !== -1) {
+        const indices = Array.from({ length: dataRows.length }, (_, i) => i);
+        
+        indices.sort((a, b) => {
+          const aValue = dataRows[a][colIndex];
+          const bValue = dataRows[b][colIndex];
+          
+          if (FIELD_TYPES.NUMBER_FIELDS.includes(sortField)) {
+            const aNum = Number(aValue) || 0;
+            const bNum = Number(bValue) || 0;
+            return filter.value === 'asc' ? aNum - bNum : bNum - aNum;
+          }
+          
+          return filter.value === 'asc'
+            ? String(aValue).localeCompare(String(bValue))
+            : String(bValue).localeCompare(String(aValue));
+        });
 
-    // 3. ソート処理（メモリ上で完結）
-    const sortFilter = Object.entries(filters).find(([_, filter]) => filter.type === 'sort');
-    if (sortFilter) {
-      const [field, filter] = sortFilter;
-      const colIndex = headers.indexOf(field);
-      const sortPairs = dataRows.map((row, index) => ({
-        data: row,
-        formula: formulaRows[index],
-        value: row[colIndex]
-      }));
-
-      sortPairs.sort((a, b) => {
-        return filter.value === 'asc' ? a.value - b.value : b.value - a.value;
-      });
-
-      dataRows = sortPairs.map(pair => pair.data);
-      formulaRows = sortPairs.map(pair => pair.formula);
+        dataRows = indices.map(i => dataRows[i]);
+        formulaRows = indices.map(i => formulaRows[i]);
+      }
     }
 
-    // 4. ページネーション（配列操作のみ）
+    // 4. ページネーション
     const startIndex = (page - 1) * limit;
     const paginatedData = dataRows.slice(startIndex, startIndex + limit);
     const paginatedFormulas = formulaRows.slice(startIndex, startIndex + limit);

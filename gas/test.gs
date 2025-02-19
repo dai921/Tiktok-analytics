@@ -126,4 +126,23 @@ function testMillionViewsFilter() {
   } else {
     console.log('❌ No videos found with over 1 million views');
   }
+}
+
+function testDateFormat() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
+  const allValues = sheet.getDataRange().getValues();
+  const headers = allValues[0];
+  
+  // 作成日時のカラムインデックスを取得
+  const dateColIndex = headers.indexOf('作成日時');
+  
+  // 最初の5行の日付データを確認
+  const sampleDates = allValues.slice(1, 6).map(row => ({
+    rawValue: row[dateColIndex],
+    type: typeof row[dateColIndex],
+    toString: String(row[dateColIndex])
+  }));
+  
+  console.log('Date Column Index:', dateColIndex);
+  console.log('Sample Dates:', JSON.stringify(sampleDates, null, 2));
 } 
