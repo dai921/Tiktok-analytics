@@ -61,7 +61,12 @@ const convertFilterType = (type: FilterType, field: string): string => {
   return result;
 }
 
-export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<PaginatedResponse> {
+export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<{
+  success: boolean
+  data: VideoData[]
+  currentPage: number
+  totalPages: number
+}> {
   try {
     const url = new URL(process.env.NEXT_PUBLIC_GAS_URL || '')
     
@@ -119,7 +124,12 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       if (!result.success) {
         throw new Error('Failed to fetch data from GAS')
       }
-      return result
+      return {
+        success: true,
+        data: result.data,
+        currentPage: result.currentPage,
+        totalPages: result.totalPages
+      }
     } catch (error) {
       console.error('Failed to parse response:', error)
       throw error
@@ -127,11 +137,10 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
   } catch (error) {
     console.error('Error fetching sheet data:', error)
     return {
+      success: false,
       data: [],
-      total: 0,
       currentPage: 1,
-      totalPages: 1,
-      success: false
+      totalPages: 1
     }
   }
 } 
