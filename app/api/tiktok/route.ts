@@ -12,6 +12,9 @@ export async function POST(request: Request) {
       throw new Error('GAS API URL is not configured');
     }
 
+    console.log('Calling GAS API:', gasApiUrl);
+    console.log('Request body:', JSON.stringify(body, null, 2));
+    
     const response = await fetch(gasApiUrl, {
       method: 'POST',
       headers: {
@@ -22,6 +25,13 @@ export async function POST(request: Request) {
       redirect: 'follow',
       cache: 'no-cache',
     });
+    
+    console.log('Response status:', response.status);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`GAS API returned ${response.status}: ${errorText}`);
+    }
 
     // Handle potential redirects
     const finalResponse = response.status === 302 ? 
