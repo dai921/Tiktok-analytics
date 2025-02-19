@@ -225,34 +225,66 @@ function handleFilteredData(sheet, filters, page, limit) {
     
     // If we found matches, get only those rows' data
     if (matchingRowIndices.length > 0) {
-      const ranges = requiredColumns.map(col => {
-        const matchingRows = matchingRowIndices.map(index => 
-          sheet.getRange(cursor.startRow + index, col, 1, 1).getA1Notation()
+      // Calculate continuous ranges for better performance
+      const continuousRanges = matchingRowIndices.reduce((acc, index, i) => {
+        if (i === 0 || index !== matchingRowIndices[i - 1] + 1) {
+          acc.push([index]);
+        } else {
+          acc[acc.length - 1].push(index);
+        }
+        return acc;
+      }, []);
+      
+      // Create range notations for continuous blocks
+      const ranges = continuousRanges.map(indices => {
+        const startIndex = indices[0];
+        const length = indices.length;
+        return requiredColumns.map(col =>
+          sheet.getRange(
+            cursor.startRow + startIndex,
+            col,
+            length,
+            1
+          ).getA1Notation()
         );
-        return matchingRows;
       }).flat();
       
       // Batch get all required data
       const rangeList = sheet.getRangeList(ranges);
-      const data = rangeList.getRanges().map(range => range.getValues());
+      const rangeData = rangeList.getRanges();
+      const data = [];
+      const thumbnailFormulas = [];
       
-      // Get formulas only for thumbnail column
-      const thumbnailFormulas = matchingRowIndices.map(index =>
-        sheet.getRange(cursor.startRow + index, requiredColumns[3], 1, 1).getFormulas()
-      );
-      // Transform data to row format
-      const rows = matchingRowIndices.map((__, i) => ({
-        url: String(data[i * requiredColumns.length][0][0]),
-        accountName: String(data[i * requiredColumns.length + 1][0][0]),
-        videoId: String(data[i * requiredColumns.length + 2][0][0]),
-        thumbnail: extractThumbnailId(thumbnailFormulas[i][0][0]) ? {
-          valueType: 'IMAGE',
-          url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(thumbnailFormulas[i][0][0])}`
-        } : null,
-        views: Number(data[i * requiredColumns.length + 4][0][0]),
-        likes: Number(data[i * requiredColumns.length + 5][0][0]),
-        comments: Number(data[i * requiredColumns.length + 6][0][0])
-      }));
+      // Process data in continuous blocks
+      let dataIndex = 0;
+      continuousRanges.forEach(indices => {
+        const blockData = requiredColumns.map((___, colIndex) => 
+          rangeData[dataIndex + colIndex].getValues()
+        );
+        data.push(...blockData);
+        thumbnailFormulas.push(rangeData[dataIndex + 3].getFormulas());
+        dataIndex += requiredColumns.length;
+      });
+      // Transform data to row format more efficiently
+      let rowIndex = 0;
+      const rows = [];
+      continuousRanges.forEach((indices, blockIndex) => {
+        indices.forEach((__, i) => {
+          rows.push({
+            url: String(data[blockIndex * requiredColumns.length][i][0]),
+            accountName: String(data[blockIndex * requiredColumns.length + 1][i][0]),
+            videoId: String(data[blockIndex * requiredColumns.length + 2][i][0]),
+            thumbnail: extractThumbnailId(thumbnailFormulas[blockIndex][i][0]) ? {
+              valueType: 'IMAGE',
+              url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(thumbnailFormulas[blockIndex][i][0])}`
+            } : null,
+            views: Number(data[blockIndex * requiredColumns.length + 4][i][0]),
+            likes: Number(data[blockIndex * requiredColumns.length + 5][i][0]),
+            comments: Number(data[blockIndex * requiredColumns.length + 6][i][0])
+          });
+          rowIndex++;
+        });
+      });
   );
 
   // 高速化されたソート処理
