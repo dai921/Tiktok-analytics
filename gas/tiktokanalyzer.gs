@@ -184,54 +184,75 @@ function handleFilteredData(sheet, filters, page, limit) {
     Logger.log('Starting filter operation at: ' + startTime);
     Logger.log('handleFilteredData called with filters: ' + JSON.stringify(filters));
     
-    // Get required columns for filtering
-    const requiredColumns = [1, 2, 3, 4, 5, 6, 7]; // URL, accountName, videoId, thumbnail, views, likes, comments
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    // Define required columns
+    const requiredColumns = [
+      1,  // URL
+      2,  // accountName
+      3,  // videoId
+      4,  // thumbnail
+      7,  // views
+      6,  // likes
+      8   // comments
+    ];
     
-    // Create filter criteria
+    // Get headers and find filter column
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     const filter = Object.values(filters)[0];
-    const colIndex = headers.indexOf(filter.field) + 1;
+    const filterColIndex = headers.indexOf(filter.field) + 1;
+    
+    // Create cursor for pagination
+    const cursor = {
+      startRow: ((page - 1) * limit) + 2,
+      endRow: Math.min(page * limit + 1, sheet.getLastRow())
+    };
     if (!indexSheet) {
       Logger.log('Index sheet not found, creating new one');
       createIndex(); // インデックスが存在しない場合は作成
     }
   
-  // Apply filter using native sheet filter
-  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
-  const sheetFilter = range.createFilter();
-  
-  // Create filter criteria based on filter type
-  const filterCriteria = SpreadsheetApp.newFilterCriteria();
-  if (filter.type === 'greater') {
-    filterCriteria.whenNumberGreaterThan(Number(filter.value));
-  } else if (filter.type === 'less') {
-    filterCriteria.whenNumberLessThan(Number(filter.value));
-  }
-  
-  sheetFilter.setColumnFilterCriteria(colIndex, filterCriteria.build());
-  
-  // Get filtered data efficiently
-  const visibleRows = range.getValues().filter((__, index) =>
-    !sheet.isRowHidden(index + 2)
-  );
-  
-  // Apply pagination to filtered results
-  const paginatedRows = visibleRows.slice((page - 1) * limit, page * limit);
-  
-  // Clean up filter
-  sheetFilter.remove();
-    Object.entries(filters).every(([field, filter]) => {
-      const colIndex = indexHeaders.indexOf(COLUMN_MAP[field] || field);
-      if (colIndex === -1) {
-        // インデックスにない場合は元のシートで検索
-        const mainHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-        const mainColIndex = mainHeaders.indexOf(filter.field);
-        const mainRow = sheet.getRange(row[1], mainColIndex + 1, 1, 1).getValue();
-        return evaluateFilter(mainRow, filter);
+    // Get data for current page first
+    const pageRange = sheet.getRange(cursor.startRow, filterColIndex, cursor.endRow - cursor.startRow, 1);
+    const pageValues = pageRange.getValues();
+    
+    // Find matching rows in current page
+    const matchingRowIndices = pageValues.map((value, index) => {
+      const numValue = Number(value);
+      if (filter.type === 'greater' && numValue > Number(filter.value)) {
+        return index;
       }
+      return -1;
+    }).filter(index => index !== -1);
+    
+    // If we found matches, get only those rows' data
+    if (matchingRowIndices.length > 0) {
+      const ranges = requiredColumns.map(col => {
+        const matchingRows = matchingRowIndices.map(index => 
+          sheet.getRange(cursor.startRow + index, col, 1, 1).getA1Notation()
+        );
+        return matchingRows;
+      }).flat();
       
-      return evaluateFilter(row[colIndex], filter);
-    })
+      // Batch get all required data
+      const rangeList = sheet.getRangeList(ranges);
+      const data = rangeList.getRanges().map(range => range.getValues());
+      
+      // Get formulas only for thumbnail column
+      const thumbnailFormulas = matchingRowIndices.map(index =>
+        sheet.getRange(cursor.startRow + index, requiredColumns[3], 1, 1).getFormulas()
+      );
+      // Transform data to row format
+      const rows = matchingRowIndices.map((__, i) => ({
+        url: String(data[i * requiredColumns.length][0][0]),
+        accountName: String(data[i * requiredColumns.length + 1][0][0]),
+        videoId: String(data[i * requiredColumns.length + 2][0][0]),
+        thumbnail: extractThumbnailId(thumbnailFormulas[i][0][0]) ? {
+          valueType: 'IMAGE',
+          url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(thumbnailFormulas[i][0][0])}`
+        } : null,
+        views: Number(data[i * requiredColumns.length + 4][0][0]),
+        likes: Number(data[i * requiredColumns.length + 5][0][0]),
+        comments: Number(data[i * requiredColumns.length + 6][0][0])
+      }));
   );
 
   // 高速化されたソート処理
