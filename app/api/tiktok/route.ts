@@ -15,17 +15,67 @@ export async function POST(request: Request) {
     console.log('Calling GAS API:', gasApiUrl);
     console.log('Request body:', JSON.stringify(body, null, 2));
     
-    const response = await fetch(gasApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Origin': 'http://localhost:3000',
-      },
-      body: JSON.stringify(body),
-      redirect: 'follow',
-      cache: 'no-cache',
-    });
+    console.log('Calling GAS API:', gasApiUrl);
+    console.log('Request body:', JSON.stringify(body, null, 2));
+    
+    let response: Response;
+    
+    try {
+      response = await fetch(gasApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:3000',
+        },
+        body: JSON.stringify(body),
+        redirect: 'manual',
+        cache: 'no-cache',
+      });
+
+      console.log('Initial response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (response.status === 302 || response.status === 301) {
+        const redirectUrl = response.headers.get('location');
+        console.log('Following redirect to:', redirectUrl);
+        
+        if (!redirectUrl) {
+          throw new Error('Redirect URL not found in headers');
+        }
+
+        // Switch to GET method for the redirect
+        const redirectResponse = await fetch(redirectUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Origin': 'http://localhost:3000',
+          },
+        });
+
+        console.log('Redirect response status:', redirectResponse.status);
+        const responseText = await redirectResponse.text();
+        console.log('Redirect response body:', responseText);
+        
+        try {
+          return NextResponse.json(JSON.parse(responseText));
+        } catch (e) {
+          console.error('Failed to parse JSON:', e);
+          throw new Error('Invalid JSON response from GAS API');
+        }
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        throw new Error(`GAS API returned ${response.status}: ${errorText}`);
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
+    }
     
     // Handle redirect manually if needed
     if (response.status === 302 || response.status === 301) {
