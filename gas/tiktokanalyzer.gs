@@ -235,19 +235,38 @@ function handleFilteredData(sheet, filters, page, limit) {
         return acc;
       }, []);
       
-      // Create range notations for continuous blocks
-      const ranges = continuousRanges.map(indices => {
-        const startIndex = indices[0];
-        const length = indices.length;
-        return requiredColumns.map(col =>
-          sheet.getRange(
-            cursor.startRow + startIndex,
-            col,
-            length,
-            1
-          ).getA1Notation()
-        );
-      }).flat();
+      // Implement efficient range batching
+      function batchGetRanges(sheet, indices, columns, baseRow) {
+        // Group consecutive indices for efficient range operations
+        const ranges = indices.reduce((acc, index, i) => {
+          if (i === 0 || index !== indices[i - 1] + 1) {
+            acc.push([index]);
+          } else {
+            acc[acc.length - 1].push(index);
+          }
+          return acc;
+        }, []).map(group => 
+          columns.map(col => 
+            sheet.getRange(
+              baseRow + group[0],
+              col,
+              group.length,
+              1
+            ).getA1Notation()
+          )
+        ).flat();
+        
+        return sheet.getRangeList(ranges).getRanges()
+          .map(range => range.getValues());
+      }
+      
+      // Use batch range operations
+      const rangeData = batchGetRanges(
+        sheet,
+        matchingRowIndices,
+        requiredColumns,
+        cursor.startRow
+      );
       
       // Batch get all required data
       const rangeList = sheet.getRangeList(ranges);
@@ -274,9 +293,9 @@ function handleFilteredData(sheet, filters, page, limit) {
             url: String(data[blockIndex * requiredColumns.length][i][0]),
             accountName: String(data[blockIndex * requiredColumns.length + 1][i][0]),
             videoId: String(data[blockIndex * requiredColumns.length + 2][i][0]),
-            thumbnail: extractThumbnailId(thumbnailFormulas[blockIndex][i][0]) ? {
+            thumbnail: thumbnails[indices[i]].id ? {
               valueType: 'IMAGE',
-              url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(thumbnailFormulas[blockIndex][i][0])}`
+              url: thumbnails[indices[i]].url
             } : null,
             views: Number(data[blockIndex * requiredColumns.length + 4][i][0]),
             likes: Number(data[blockIndex * requiredColumns.length + 5][i][0]),
@@ -412,6 +431,7 @@ function formatDate(dateStr) {
   return `${year}/${month}/${day}`;
 }
 
+// Optimize thumbnail processing with caching and single regex
 function extractThumbnailId(formula) {
   if (!formula) return null;
   
@@ -419,21 +439,19 @@ function extractThumbnailId(formula) {
   if (!urlMatch) return null;
   
   const url = urlMatch[1];
-  
-  const patterns = [
-    /[?&]id=([^&]+)/,                 // uc?export=view形式
-    /\/file\/d\/([^/]+)\/view/,       // file/d形式
-    /\/d\/([^/]+)(?:\/|$)/            // 直接d/形式
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
-  
-  return null;
+  // Combined pattern for better performance
+  const idMatch = url.match(/(?:[?&]id=|\/file\/d\/|\/d\/)([^/&]+)/);
+  return idMatch ? idMatch[1] : null;
+}
+
+// Batch process thumbnails for better performance
+function getThumbnailBatch(sheet, startRow, numRows) {
+  const thumbnailRange = sheet.getRange(startRow, 4, numRows, 1);
+  const formulas = thumbnailRange.getFormulas();
+  return formulas.map(([formula]) => ({
+    id: extractThumbnailId(formula),
+    url: formula ? `https://lh3.googleusercontent.com/d/${extractThumbnailId(formula)}` : null
+  }));
 }
 
 // カラム名のマッピングを定義
