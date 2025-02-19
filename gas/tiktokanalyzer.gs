@@ -17,7 +17,11 @@ function doPost(e) {
     .addHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     .addHeader('Access-Control-Allow-Headers', 'Content-Type')
     .addHeader('Access-Control-Max-Age', '86400')
-    .addHeader('Content-Type', 'application/json');
+    .addHeader('Content-Type', 'application/json')
+    .addHeader('X-Content-Type-Options', 'nosniff');
+
+  // Force immediate response without redirect
+  response.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 
   // Log the request method and content
   Logger.log('Request method: ' + e.method);
