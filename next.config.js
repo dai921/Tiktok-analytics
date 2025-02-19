@@ -1,21 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
   images: {
-    domains: ['lh3.googleusercontent.com'],  // Google Driveのドメインを許可
+    domains: ['lh3.googleusercontent.com'],
   },
-  // リライトルールを一時的にコメントアウト
-  // async rewrites() {
-  //   return [
-  //     {
-  //       source: '/api/sheets',
-  //       destination: process.env.NEXT_PUBLIC_GAS_URL,
-  //     },
-  //     {
-  //       source: '/api/sheets/:path*',
-  //       destination: `${process.env.NEXT_PUBLIC_GAS_URL}/:path*`,
-  //     },
-  //   ]
-  // },
-}
+  experimental: {
+    turbo: {
+      rules: {
+        '**': {
+          loaders: ['@next/loader'],
+        },
+      },
+    },
+  },
+};
 
-module.exports = nextConfig 
+module.exports = nextConfig; 
