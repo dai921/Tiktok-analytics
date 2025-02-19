@@ -10,6 +10,9 @@ function doOptions(e) {
 }
 
 function doPost(e) {
+  const startTime = new Date();
+  Logger.log('Request started at: ' + startTime);
+
   // Handle CORS preflight
   if (e.method === 'OPTIONS') {
     return ContentService.createTextOutput('')
@@ -95,6 +98,9 @@ function doPost(e) {
     }));
   }
   
+  const endTime = new Date();
+  const executionTime = (endTime - startTime) / 1000;
+  Logger.log('Total execution time: ' + executionTime + ' seconds');
   return output;
   }
 }
@@ -143,7 +149,8 @@ const FIELD_TYPES = {
 
 function handleFilteredData(sheet, filters, page, limit) {
   try {
-    // Log function entry
+    const startTime = new Date();
+    Logger.log('Starting filter operation at: ' + startTime);
     Logger.log('handleFilteredData called with filters: ' + JSON.stringify(filters));
     
     // インデックスシートを取得
