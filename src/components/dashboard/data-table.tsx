@@ -80,15 +80,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         return
       }
 
-      // フィルタータイプの変換を追加
-      const convertedType = filterValue.type === 'greater' ? 'greater' :
-                           filterValue.type === 'less' ? 'less' :
-                           'equal'
-
-      // FilterQueryの形式に合わせて修正
       onFilterChange(true, {
-        field: field,
-        type: convertedType,
+        field: COLUMN_MAP[field],
+        type: filterValue.type,
         value: filterValue.value
       })
     }
