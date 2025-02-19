@@ -10,23 +10,37 @@ function doOptions(e) {
 }
 
 function doPost(e) {
-  // Set CORS headers
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': '86400'
-  };
+  // Create response object with CORS headers
+  const response = ContentService.createTextOutput()
+    .setMimeType(ContentService.MimeType.JSON)
+    .addHeader('Access-Control-Allow-Origin', '*')
+    .addHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .addHeader('Access-Control-Allow-Headers', 'Content-Type')
+    .addHeader('Access-Control-Max-Age', '86400')
+    .addHeader('Content-Type', 'application/json');
+
+  // Log the request method and content
+  Logger.log('Request method: ' + e.method);
+  Logger.log('Request content: ' + e.postData.contents);
 
   try {
     // Log request for debugging
     Logger.log('Request received: ' + JSON.stringify(e.postData.contents));
     
-    // Verify spreadsheet access
+    // Parse request
+    const params = JSON.parse(e.postData.contents);
+    const page = parseInt(params.page) || 1;
+    const limit = params.limit || 50;
+    
+    // Access spreadsheet
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     if (!spreadsheet) {
       throw new Error('Unable to access spreadsheet');
+    }
+    
+    const sheet = spreadsheet.getSheetByName('動画データ');
+    if (!sheet) {
+      throw new Error('Sheet 動画データ not found');
 
   const params = JSON.parse(e.postData.contents);
   const page = parseInt(params.page) || 1;
@@ -41,7 +55,17 @@ function doPost(e) {
     
     return handleInitialData(sheet, page, limit);
   } catch (error) {
-    const errorResponse = ContentService.createTextOutput(JSON.stringify({
+    Logger.log('Error: ' + error.toString());
+    const response = ContentService.createTextOutput();
+    response.setMimeType(ContentService.MimeType.JSON);
+    
+    // Set CORS headers
+    Object.entries(headers).forEach(([key, value]) => {
+      response.addHeader(key, value);
+    });
+    
+    // Set error response
+    response.setContent(JSON.stringify({
       data: [],
       total: 0,
       currentPage: 1,
@@ -50,12 +74,7 @@ function doPost(e) {
       error: error.toString()
     }));
     
-    // Set headers and mime type
-    Object.entries(headers).forEach(([key, value]) => {
-      errorResponse.addHeader(key, value);
-    });
-    
-    return errorResponse.setMimeType(ContentService.MimeType.JSON);
+    return response;
   }
 }
 
@@ -69,15 +88,14 @@ function handleInitialData(sheet, page, limit) {
   
   const rows = formatRows(data, formulas);
   
-  return ContentService.createTextOutput(JSON.stringify({
+  response.setContent(JSON.stringify({
     data: rows,
     total: sheet.getLastRow() - 1,
     currentPage: page,
     totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
     success: true
-  }))
-  .setHeaders(headers)
-  .setMimeType(ContentService.MimeType.JSON);
+  }));
+  return response;
 }
 
 // フィールドの種類を定義
@@ -167,15 +185,14 @@ function handleFilteredData(sheet, filters, page, limit) {
     return sheet.getRange(rowIndex + 1, 1, 1, headers.length).getFormulas()[0];
   });
 
-  return ContentService.createTextOutput(JSON.stringify({
+  response.setContent(JSON.stringify({
     data: formatRows(paginatedRows, formulas),
     total: filteredRows.length,
     currentPage: page,
     totalPages: Math.ceil(filteredRows.length / limit),
     success: true
-  }))
-  .setHeaders(headers)
-  .setMimeType(ContentService.MimeType.JSON);
+  }));
+  return response;
 }
 
 // フィルター評価のヘルパー関数

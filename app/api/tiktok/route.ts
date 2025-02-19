@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     const response = await fetch(gasApiUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'text/plain',
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
       redirect: 'follow',
