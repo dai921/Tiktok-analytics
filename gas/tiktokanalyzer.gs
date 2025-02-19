@@ -407,32 +407,13 @@ function formatRows(data, formulas) {
     url: String(row[0]),
     accountName: String(row[1]),
     videoId: String(row[2]),
-    thumbnail: extractThumbnailId(formulas[index][3]) ? {
+    thumbnail: extractThumbnailId(formulas[index][0]) ? {
       valueType: 'IMAGE',
-      url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(formulas[index][3])}`
+      url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(formulas[index][0])}`
     } : null,
-    authorName: String(row[4]),
-    description: String(row[5]),
-    likes: Number(row[6]),
-    views: Number(row[7]),
-    comments: Number(row[8]),
-    shares: Number(row[9]),
-    saves: Number(row[10]),
-    createdAt: formatDate(row[11]),
-    hashtags: String(row[12]).split(',').map(tag => tag.trim()),
-    duration: Number(row[13]),
-    isViral: row[14] === 'TRUE',
-    prevFetchDate: formatDate(row[15]),
-    currentFetchDate: formatDate(row[16]),
-    prevViews: Number(row[17]),
-    viewsIncrease: Number(row[18]),
-    prevLikes: Number(row[19]),
-    likesIncrease: Number(row[20]),
-    product: String(row[21]),
-    category: String(row[22]),
-    audioId: String(row[23]),
-    audioTitle: String(row[24]),
-    artist: String(row[25])
+    views: Number(row[6]),
+    likes: Number(row[5]),
+    comments: Number(row[7])
   }));
 }
 
