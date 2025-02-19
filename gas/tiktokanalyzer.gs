@@ -12,11 +12,15 @@ function doOptions(e) {
 function doPost(e) {
   // Set CORS headers
   const headers = {
-    'Content-Type': 'text/plain',
+    'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST',
     'Access-Control-Allow-Headers': 'Content-Type'
   };
+
+  try {
+    // Log request for debugging
+    Logger.log('Request received: ' + JSON.stringify(e.postData.contents));
 
   const params = JSON.parse(e.postData.contents);
   const page = parseInt(params.page) || 1;
@@ -89,11 +93,16 @@ const FIELD_TYPES = {
 };
 
 function handleFilteredData(sheet, filters, page, limit) {
-  // インデックスシートを取得
-  const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス');
-  if (!indexSheet) {
-    createIndex(); // インデックスが存在しない場合は作成
-  }
+  try {
+    // Log function entry
+    Logger.log('handleFilteredData called with filters: ' + JSON.stringify(filters));
+    
+    // インデックスシートを取得
+    const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス');
+    if (!indexSheet) {
+      Logger.log('Index sheet not found, creating new one');
+      createIndex(); // インデックスが存在しない場合は作成
+    }
   
   const indexRange = indexSheet.getDataRange();
   const indexData = indexRange.getValues();

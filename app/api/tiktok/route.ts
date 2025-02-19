@@ -15,9 +15,18 @@ export async function POST(request: Request) {
         'Content-Type': 'text/plain',
       },
       body: JSON.stringify(body),
+      redirect: 'follow',
     });
 
-    const data = await response.json();
+    // Handle potential redirects
+    const finalResponse = response.status === 302 ? 
+      await fetch(response.headers.get('location') || '', {
+        method: 'GET',
+        redirect: 'follow',
+      }) : 
+      response;
+
+    const data = await finalResponse.json();
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error:', error);
