@@ -106,53 +106,40 @@ function doPost(e) {
 }
 
 function handleInitialData(sheet, page, limit) {
-  // Define required columns for initial view
-  const requiredColumns = [
-    1,  // URL
-    2,  // accountName
-    3,  // videoId
-    4,  // thumbnail
-    7,  // views
-    6,  // likes
-    8   // comments
-  ];
-  
-  const startRow = ((page - 1) * limit) + 2;  // Skip header
+  console.time("Initial Data Load");
+  const startRow = ((page - 1) * limit) + 2;
   const numRows = Math.min(limit, sheet.getLastRow() - startRow + 1);
   
-  // Create range notations for batch operation
-  const ranges = requiredColumns.map(col => 
-    sheet.getRange(startRow, col, numRows, 1).getA1Notation()
-  );
+  // Get data in a single batch operation
+  const range = sheet.getRange(startRow, 1, numRows, 8);
+  const data = range.getValues();
   
-  // Batch get all required ranges
-  const rangeList = sheet.getRangeList(ranges);
-  const data = rangeList.getRanges().map(range => range.getValues());
+  // Get thumbnail formulas separately
+  const thumbnailRange = sheet.getRange(startRow, 4, numRows, 1);
+  const formulas = thumbnailRange.getFormulas();
   
-  // Get formulas only for thumbnail column (index 3 in requiredColumns)
-  const formulas = sheet.getRange(startRow, requiredColumns[3], numRows, 1).getFormulas();
-  
-  // Transform data from column-based to row-based format
-  const rows = Array(numRows).fill().map((_, rowIndex) => ({
-    url: String(data[0][rowIndex][0]),
-    accountName: String(data[1][rowIndex][0]),
-    videoId: String(data[2][rowIndex][0]),
-    thumbnail: extractThumbnailId(formulas[rowIndex][0]) ? {
+  // Transform data efficiently
+  const rows = data.map((row, index) => ({
+    url: String(row[0]),
+    accountName: String(row[1]),
+    videoId: String(row[2]),
+    thumbnail: extractThumbnailId(formulas[index][0]) ? {
       valueType: 'IMAGE',
-      url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(formulas[rowIndex][0])}`
+      url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(formulas[index][0])}`
     } : null,
-    views: Number(data[4][rowIndex][0]),
-    likes: Number(data[5][rowIndex][0]),
-    comments: Number(data[6][rowIndex][0])
+    views: Number(row[6]),
+    likes: Number(row[5]),
+    comments: Number(row[7])
   }));
   
-  return {
+  console.timeEnd("Initial Data Load");
+  return ContentService.createTextOutput(JSON.stringify({
     data: rows,
     total: sheet.getLastRow() - 1,
     currentPage: page,
     totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
     success: true
-  };
+  })).setMimeType(ContentService.MimeType.JSON);
 }
 
 // フィールドの種類を定義
