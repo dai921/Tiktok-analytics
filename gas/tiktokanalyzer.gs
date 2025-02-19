@@ -10,12 +10,16 @@ function doOptions(e) {
 }
 
 function doPost(e) {
-  // Parse request
-  const params = JSON.parse(e.postData.contents);
-  const page = parseInt(params.page) || 1;
-  const limit = params.limit || 50;
+  const output = ContentService.createTextOutput();
+  output.setMimeType(ContentService.MimeType.JSON);
   
   try {
+    // Parse request
+    const params = JSON.parse(e.postData.contents);
+    const page = parseInt(params.page) || 1;
+    const limit = params.limit || 50;
+    
+    // Get sheet
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
     if (!sheet) {
       throw new Error('Sheet not found');
@@ -25,10 +29,12 @@ function doPost(e) {
     const result = params.filters ? 
       handleFilteredData(sheet, params.filters, page, limit) :
       handleInitialData(sheet, page, limit);
-      
-    // Return JSON response
-    return ContentService.createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
+    
+    // Set response
+    output.setContent(JSON.stringify({
+      success: true,
+      ...result
+    }));
 
   // Log the request method and content
   Logger.log('Request method: ' + e.method);
@@ -67,25 +73,22 @@ function doPost(e) {
     return handleInitialData(sheet, page, limit);
   } catch (error) {
     Logger.log('Error: ' + error.toString());
-    const response = ContentService.createTextOutput();
-    response.setMimeType(ContentService.MimeType.JSON);
-    
-    // Set CORS headers
-    Object.entries(headers).forEach(([key, value]) => {
-      response.addHeader(key, value);
-    });
-    
-    // Set error response
-    response.setContent(JSON.stringify({
+    output.setContent(JSON.stringify({
+      success: false,
+      error: error.toString(),
       data: [],
       total: 0,
       currentPage: 1,
-      totalPages: 1,
-      success: false,
-      error: error.toString()
+      totalPages: 1
     }));
-    
-    return response;
+  }
+  
+  // Add CORS headers
+  output.addHeader('Access-Control-Allow-Origin', '*');
+  output.addHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  output.addHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  return output;
   }
 }
 
