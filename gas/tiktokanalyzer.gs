@@ -106,14 +106,45 @@ function doPost(e) {
 }
 
 function handleInitialData(sheet, page, limit) {
-  const startRow = ((page - 1) * limit) + 2;  // ヘッダー行をスキップ
+  // Define required columns for initial view
+  const requiredColumns = [
+    1,  // URL
+    2,  // accountName
+    3,  // videoId
+    4,  // thumbnail
+    7,  // views
+    6,  // likes
+    8   // comments
+  ];
+  
+  const startRow = ((page - 1) * limit) + 2;  // Skip header
   const numRows = Math.min(limit, sheet.getLastRow() - startRow + 1);
   
-  const range = sheet.getRange(startRow, 1, numRows, 26);
-  const data = range.getValues();
-  const formulas = range.getFormulas();
+  // Create range notations for batch operation
+  const ranges = requiredColumns.map(col => 
+    sheet.getRange(startRow, col, numRows, 1).getA1Notation()
+  );
   
-  const rows = formatRows(data, formulas);
+  // Batch get all required ranges
+  const rangeList = sheet.getRangeList(ranges);
+  const data = rangeList.getRanges().map(range => range.getValues());
+  
+  // Get formulas only for thumbnail column (index 3 in requiredColumns)
+  const formulas = sheet.getRange(startRow, requiredColumns[3], numRows, 1).getFormulas();
+  
+  // Transform data from column-based to row-based format
+  const rows = Array(numRows).fill().map((_, rowIndex) => ({
+    url: String(data[0][rowIndex][0]),
+    accountName: String(data[1][rowIndex][0]),
+    videoId: String(data[2][rowIndex][0]),
+    thumbnail: extractThumbnailId(formulas[rowIndex][0]) ? {
+      valueType: 'IMAGE',
+      url: `https://lh3.googleusercontent.com/d/${extractThumbnailId(formulas[rowIndex][0])}`
+    } : null,
+    views: Number(data[4][rowIndex][0]),
+    likes: Number(data[5][rowIndex][0]),
+    comments: Number(data[6][rowIndex][0])
+  }));
   
   return {
     data: rows,
@@ -153,19 +184,42 @@ function handleFilteredData(sheet, filters, page, limit) {
     Logger.log('Starting filter operation at: ' + startTime);
     Logger.log('handleFilteredData called with filters: ' + JSON.stringify(filters));
     
-    // インデックスシートを取得
-    const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス');
+    // Get required columns for filtering
+    const requiredColumns = [1, 2, 3, 4, 5, 6, 7]; // URL, accountName, videoId, thumbnail, views, likes, comments
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Create filter criteria
+    const filter = Object.values(filters)[0];
+    const colIndex = headers.indexOf(filter.field) + 1;
     if (!indexSheet) {
       Logger.log('Index sheet not found, creating new one');
       createIndex(); // インデックスが存在しない場合は作成
     }
   
-  const indexRange = indexSheet.getDataRange();
-  const indexData = indexRange.getValues();
-  const indexHeaders = indexData[0];
+  // Apply filter using native sheet filter
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn());
+  const sheetFilter = range.createFilter();
   
-  // インデックスを使用してフィルタリング
-  const filteredRows = indexData.slice(1).filter(row => 
+  // Create filter criteria based on filter type
+  const filterCriteria = SpreadsheetApp.newFilterCriteria();
+  if (filter.type === 'greater') {
+    filterCriteria.whenNumberGreaterThan(Number(filter.value));
+  } else if (filter.type === 'less') {
+    filterCriteria.whenNumberLessThan(Number(filter.value));
+  }
+  
+  sheetFilter.setColumnFilterCriteria(colIndex, filterCriteria.build());
+  
+  // Get filtered data efficiently
+  const visibleRows = range.getValues().filter((__, index) =>
+    !sheet.isRowHidden(index + 2)
+  );
+  
+  // Apply pagination to filtered results
+  const paginatedRows = visibleRows.slice((page - 1) * limit, page * limit);
+  
+  // Clean up filter
+  sheetFilter.remove();
     Object.entries(filters).every(([field, filter]) => {
       const colIndex = indexHeaders.indexOf(COLUMN_MAP[field] || field);
       if (colIndex === -1) {
