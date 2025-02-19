@@ -271,7 +271,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         accessorKey: 'description',
         header: ({ column }) => (
           <TableHeaderCell
-            title="文字起こし"
+            title="キャプション"
             onFilter={(value) => handleFilter('description')(value)}
           />
         ),
