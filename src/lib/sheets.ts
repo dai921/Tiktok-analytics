@@ -1,4 +1,4 @@
-import type { VideoData, PaginatedResponse, FilterQuery } from '@/types/dashboard'
+import type { VideoData, PaginatedResponse, FilterQuery, FilterType } from '@/types/dashboard'
 
 // カラム名のマッピング（GASと同じ定義）
 export const COLUMN_MAP: Record<string, string> = {
@@ -28,30 +28,83 @@ export const COLUMN_MAP: Record<string, string> = {
   'artist': 'アーティスト'
 }
 
+// 逆マッピングを作成
+const REVERSE_COLUMN_MAP = Object.entries(COLUMN_MAP).reduce((acc, [key, value]) => ({
+  ...acc,
+  [value]: key
+}), {} as Record<string, string>)
+
+// フィルタータイプの変換関数
+const convertFilterType = (type: FilterType, field: string): string => {
+  console.log('Converting filter type:', { type, field });
+  
+  // 日付フィールドの場合
+  if (field === 'createdAt' || field === 'prevFetchDate' || field === 'currentFetchDate') {
+    switch (type) {
+      case 'after': return 'after'
+      case 'before': return 'before'
+      default: return 'equal'
+    }
+  }
+  
+  // 数値フィールドの場合
+  const result = (() => {
+    switch (type) {
+      case 'greater': return 'greater'  // 直接使用
+      case 'less': return 'less'        // 直接使用
+      case 'sort': return 'sort'
+      default: return 'equal'
+    }
+  })();
+  
+  console.log('Converted to:', result);
+  return result;
+}
+
 export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<PaginatedResponse> {
   try {
     const url = new URL(process.env.NEXT_PUBLIC_GAS_URL || '')
     
-    // GETパラメータではなく、POSTボディとしてパラメータを送信
+    console.log('=== Filter Debug ===')
+    console.log('Raw filters:', filters)
+    
     const params = {
       page,
-      filters: filters ? Object.entries(filters).reduce((acc, [key, filter]) => ({
-        ...acc,
-        [COLUMN_MAP[key]]: {
-          ...filter,
-          field: COLUMN_MAP[key]
-        }
-      }), {}) : undefined
+      filters: filters ? Object.entries(filters).reduce((acc, [key, filter]) => {
+        const convertedType = convertFilterType(filter.type, filter.field);
+        console.log('Final conversion:', {  // デバッグ追加
+          from: filter.type,
+          to: convertedType,
+          field: filter.field
+        });
+        
+        return {
+          ...acc,
+          [filter.field]: {
+            field: filter.field,
+            type: convertedType,
+            value: filter.value
+          }
+        };
+      }, {}) : undefined
     }
-
-    console.log('Requesting with params:', params)
+    
+    console.log('Converted params:', {
+      page,
+      filters: params.filters,
+      mappedFields: filters ? Object.entries(filters).map(([key, filter]) => ({
+        field: filter.field,
+        type: filter.type,
+        value: filter.value
+      })) : []
+    })
 
     const response = await fetch(url.toString(), {
-      method: 'POST',  // GETからPOSTに変更
+      method: 'POST',
       headers: {
-        'Content-Type': 'text/plain',  // application/jsonではなくtext/plainを使用
+        'Content-Type': 'text/plain',
       },
-      body: JSON.stringify(params),  // パラメータをボディに含める
+      body: JSON.stringify(params),
     })
     
     if (!response.ok) {

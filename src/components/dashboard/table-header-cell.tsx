@@ -24,8 +24,8 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
     case 'number':
       return [
         { value: 'equal' as const, label: '等しい' },
-        { value: 'gte' as const, label: '以上' },
-        { value: 'lte' as const, label: '以下' }
+        { value: 'greater' as const, label: '以上' },
+        { value: 'less' as const, label: '以下' }
       ]
     case 'date':
       return [
@@ -84,13 +84,13 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
     switch (type) {
       case 'number':
         onFilter({
-          type: filterType === 'gte' ? 'gte' : 'lte',
+          type: filterType,
           value
         });
         break;
       case 'date':
         onFilter({
-          type: filterType === 'after' ? 'after' : 'before',
+          type: filterType,
           value
         });
         break;

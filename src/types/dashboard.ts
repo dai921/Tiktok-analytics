@@ -2,12 +2,12 @@ import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
 export type FilterType = 
-  | 'after'   // 日付：以降
-  | 'before'  // 日付：以前
-  | 'gte'     // 数値：以上
-  | 'lte'     // 数値：以下
-  | 'equal'   // 完全一致
-  | 'sort';   // ソート用
+  | 'after'    // 日付：以降
+  | 'before'   // 日付：以前
+  | 'greater'  // 数値：以上
+  | 'less'     // 数値：以下
+  | 'equal'    // 完全一致
+  | 'sort';    // ソート用
 
 export type FilterValue = 
   | {
@@ -17,11 +17,11 @@ export type FilterValue =
   | { sort: 'asc' | 'desc' }
   | { clear: true }
 
-export interface FilterQuery {
-  field: string
-  type: 'greater' | 'less' | 'equal' | 'sort'
-  value: string | number | 'asc' | 'desc'
-}
+export type FilterQuery = {
+  field: string;
+  type: FilterType;
+  value: string;
+};
 
 // データ型
 export interface VideoData {

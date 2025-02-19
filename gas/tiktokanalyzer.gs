@@ -1,144 +1,160 @@
-function doPost(e) {
-  const params = JSON.parse(e.postData.contents);
-  const page = parseInt(params.page) || 1;
-  const limit = params.limit || 50;
-  
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
-  
-  try {
-    if (params.filters) {
-      return handleFilteredData(sheet, params.filters, page, limit);
-    }
-    
-    return handleInitialData(sheet, page, limit);
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
-      data: [],
-      total: 0,
-      currentPage: 1,
-      totalPages: 1,
-      success: false,
-      error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function handleInitialData(sheet, page, limit) {
-  const startRow = ((page - 1) * limit) + 2;  // ヘッダー行をスキップ
-  const numRows = Math.min(limit, sheet.getLastRow() - startRow + 1);
-  
-  const range = sheet.getRange(startRow, 1, numRows, 26);
-  const data = range.getValues();
-  const formulas = range.getFormulas();
-  
-  const rows = formatRows(data, formulas);
-  
-  return ContentService.createTextOutput(JSON.stringify({
-    data: rows,
-    total: sheet.getLastRow() - 1,
-    currentPage: page,
-    totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
-    success: true
-  })).setMimeType(ContentService.MimeType.JSON);
-}
+// 定数を上部にまとめる
+const SHEET_NAME = '動画データ';
+const INDEX_SHEET_NAME = 'インデックス';
 
 // フィールドの種類を定義
 const FIELD_TYPES = {
-  // 日付フィールド
-  DATE_FIELDS: [
-    'createdAt',
-    'prevFetchDate',
-    'currentFetchDate'
-  ],
-  // 数値フィールド
+  DATE_FIELDS: ['createdAt', 'prevFetchDate', 'currentFetchDate'],
   NUMBER_FIELDS: [
-    'views',
-    'likes',
-    'comments',
-    'shares',
-    'saves',
-    'duration',
-    'prevViews',
-    'viewsIncrease',
-    'prevLikes',
-    'likesIncrease'
+    '再生数', 'いいね数', 'コメント数', '共有数', '保存数',
+    '動画時間(秒)', '前回再生数', '再生数伸び', '前回いいね数', 'いいね数伸び'
   ]
 };
 
-function handleFilteredData(sheet, filters, page, limit) {
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
+// フィルタータイプの定義
+const FILTER_TYPES = {
+  GREATER: 'greater',
+  LESS: 'less',
+  EQUAL: 'equal',
+  AFTER: 'after',
+  BEFORE: 'before',
+  SORT: 'sort'
+};
 
-  const filteredRows = data.slice(1).filter(row => 
-    Object.entries(filters).every(([field, filter]) => {
-      const colIndex = headers.indexOf(filter.field);
-      const value = row[colIndex];
-      const rowValue = typeof value === 'string' ? value.trim() : value;
-      const filterValue = filter.value;
-      
-      // 日付フィールドの場合
-      if (FIELD_TYPES.DATE_FIELDS.includes(field)) {
-        const rowDate = new Date(rowValue);
-        const filterDate = new Date(filterValue);
-        
-        switch (filter.type) {
-          case 'after':  // 以降
-            return rowDate >= filterDate;
-          case 'before': // 以前
-            return rowDate <= filterDate;
-          default:
-            return rowDate.toDateString() === filterDate.toDateString();
-        }
-      }
-      
-      // 数値フィールドの場合
-      if (FIELD_TYPES.NUMBER_FIELDS.includes(field)) {
-        const numValue = Number(rowValue);
-        const numFilter = Number(filterValue);
-        
-        switch (filter.type) {
-          case 'gte':   // 以上
-            return numValue >= numFilter;
-          case 'lte':   // 以下
-            return numValue <= numFilter;
-          default:
-            return numValue === numFilter;
-        }
-      }
-      
-      // その他のフィールド（文字列等）の場合
-      return String(rowValue).toLowerCase() === String(filterValue).toLowerCase();
-    })
-  );
-
-  // ソート処理
-  const sortFilter = Object.entries(filters).find(([_, filter]) => filter.type === 'sort');
-  if (sortFilter) {
-    const [field, filter] = sortFilter;
-    const colIndex = headers.indexOf(field);
-    filteredRows.sort((a, b) => {
-      const aVal = a[colIndex];
-      const bVal = b[colIndex];
-      return filter.value === 'asc' ? aVal - bVal : bVal - aVal;
-    });
+// メイン関数をシンプルに
+function doPost(e) {
+  try {
+    const { page = 1, limit = 50, filters } = JSON.parse(e.postData.contents);
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    
+    return ContentService.createTextOutput(
+      JSON.stringify(
+        filters ? handleFilteredData(sheet, filters, page, limit) : handleInitialData(sheet, page, limit)
+      )
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return handleError(error);
   }
+}
 
-  const startIndex = (page - 1) * limit;
-  const paginatedRows = filteredRows.slice(startIndex, startIndex + limit);
-  
-  // 数式の取得
-  const formulas = paginatedRows.map(row => {
-    const rowIndex = data.findIndex(r => r[2] === row[2]); // videoIdで行を特定
-    return sheet.getRange(rowIndex + 1, 1, 1, headers.length).getFormulas()[0];
-  });
-
+// エラーハンドリングを分離
+function handleError(error) {
   return ContentService.createTextOutput(JSON.stringify({
-    data: formatRows(paginatedRows, formulas),
-    total: filteredRows.length,
-    currentPage: page,
-    totalPages: Math.ceil(filteredRows.length / limit),
-    success: true
+    data: [],
+    total: 0,
+    currentPage: 1,
+    totalPages: 1,
+    success: false,
+    error: error.toString()
   })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// フィルター処理を分離
+function applyFilter(row, filter, headers) {
+  const { field, type, value } = filter;
+  const colIndex = headers.indexOf(field);
+  const rowValue = row[colIndex];
+
+  if (FIELD_TYPES.DATE_FIELDS.includes(field)) {
+    return handleDateFilter(rowValue, value, type);
+  }
+  
+  if (FIELD_TYPES.NUMBER_FIELDS.includes(field)) {
+    return handleNumberFilter(rowValue, value, type);
+  }
+  
+  return handleTextFilter(rowValue, value);
+}
+
+function handleInitialData(sheet, page, limit) {
+  try {
+    const startRow = ((page - 1) * limit) + 2;  // ヘッダー行をスキップ
+    const numRows = Math.min(limit, sheet.getLastRow() - startRow + 1);
+    
+    // データ範囲の取得を1回に
+    const range = sheet.getRange(startRow, 1, numRows, 26);
+    const data = range.getValues();
+    const formulas = range.getFormulas();
+    
+    const rows = formatRows(data, formulas);
+    
+    return {
+      data: rows,
+      total: sheet.getLastRow() - 1,
+      currentPage: page,
+      totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
+      success: true  // successフラグを追加
+    };
+  } catch (error) {
+    console.error('Error in handleInitialData:', error);
+    return handleError(error);
+  }
+}
+
+function handleFilteredData(sheet, filters, page, limit) {
+  try {
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+
+    const filteredRows = data.slice(1).filter(row => 
+      Object.entries(filters).every(([field, filter]) => {
+        const colIndex = headers.indexOf(filter.field);
+        if (colIndex === -1) return false;
+
+        const value = row[colIndex];
+        const rowValue = typeof value === 'string' ? value.trim() : value;
+        const filterValue = filter.value;
+
+        // 数値フィールドの場合
+        if (FIELD_TYPES.NUMBER_FIELDS.includes(filter.field)) {
+          const numValue = Number(rowValue);
+          const numFilter = Number(filterValue);
+          
+          switch (filter.type) {
+            case FILTER_TYPES.GREATER: return numValue >= numFilter;
+            case FILTER_TYPES.LESS: return numValue <= numFilter;
+            case FILTER_TYPES.EQUAL: return numValue === numFilter;
+            default: return false;
+          }
+        }
+        
+        // その他のフィールド（文字列等）の場合
+        return String(rowValue).toLowerCase() === String(filterValue).toLowerCase();
+      })
+    );
+
+    // ソート処理
+    const sortFilter = Object.entries(filters).find(([_, filter]) => filter.type === 'sort');
+    if (sortFilter) {
+      const [field, filter] = sortFilter;
+      const colIndex = headers.indexOf(field);
+      filteredRows.sort((a, b) => {
+        const aVal = a[colIndex];
+        const bVal = b[colIndex];
+        return filter.value === 'asc' ? aVal - bVal : bVal - aVal;
+      });
+    }
+
+    const startIndex = (page - 1) * limit;
+    const paginatedRows = filteredRows.slice(startIndex, startIndex + limit);
+    
+    // 数式の取得
+    const formulas = paginatedRows.map(row => {
+      const rowIndex = data.findIndex(r => r[2] === row[2]); // videoIdで行を特定
+      return sheet.getRange(rowIndex + 1, 1, 1, headers.length).getFormulas()[0];
+    });
+
+    return {
+      data: formatRows(paginatedRows, formulas),
+      total: filteredRows.length,
+      currentPage: page,
+      totalPages: Math.ceil(filteredRows.length / limit),
+      success: true
+    };
+  } catch (error) {
+    console.error('Error in handleFilteredData:', error);
+    return handleError(error);
+  }
 }
 
 function formatRows(data, formulas) {
@@ -253,7 +269,7 @@ function findMatchingRows(sheet, filters, page, limit) {
 
 // 定期的にデータを更新（例：1時間ごと）
 function updateCache() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
   const data = sheet.getDataRange().getValues();
   const cache = CacheService.getScriptCache();
   
@@ -279,9 +295,9 @@ function setTrigger() {
 
 // シート内にインデックスを作成
 function createIndex() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
-  const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス') || 
-    SpreadsheetApp.getActiveSpreadsheet().insertSheet('インデックス');
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INDEX_SHEET_NAME) || 
+    SpreadsheetApp.getActiveSpreadsheet().insertSheet(INDEX_SHEET_NAME);
   
   // よく使用される検索キーでインデックスを作成
   const data = sheet.getDataRange().getValues();
@@ -300,9 +316,9 @@ function createIndex() {
 
 // インデックスを作成・更新
 function updateIndex() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
-  const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス') || 
-    SpreadsheetApp.getActiveSpreadsheet().insertSheet('インデックス');
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const indexSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INDEX_SHEET_NAME) || 
+    SpreadsheetApp.getActiveSpreadsheet().insertSheet(INDEX_SHEET_NAME);
   
   const data = sheet.getDataRange().getValues();
   const header = ['ID', '行番号', 'カテゴリ', '商品', 'アカウント名'];
@@ -351,7 +367,7 @@ function getThumbnailUrl(fileId) {
 
 // よく検索される列のインデックスを作成
 function createSearchIndex() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('インデックス');
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INDEX_SHEET_NAME);
   // ... インデックス作成のロジック
 }
 
