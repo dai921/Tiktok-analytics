@@ -105,9 +105,9 @@ export default function Home() {
                 )}
                 <h2 className="font-semibold">{video.accountName}</h2>
                 <div className="text-sm text-gray-600">
-                  <p>Views: {video.views.toLocaleString()}</p>
-                  <p>Likes: {video.likes.toLocaleString()}</p>
-                  <p>Comments: {video.comments.toLocaleString()}</p>
+                  <p>Views: {video?.views?.toLocaleString() || '0'}</p>
+                  <p>Likes: {video?.likes?.toLocaleString() || '0'}</p>
+                  <p>Comments: {video?.comments?.toLocaleString() || '0'}</p>
                 </div>
                 <a 
                   href={video.url} 
