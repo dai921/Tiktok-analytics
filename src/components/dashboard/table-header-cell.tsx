@@ -14,7 +14,7 @@ interface TableHeaderCellProps {
 
 // 幅を設定する関数を定義
 const getColumnWidth = (title: ReactNode) => {
-  // すべてのカラムで同じ幅を使用
+  // すべてのカラムで同じ幅
   return 'w-[120px] min-w-[120px]'
 }
 
