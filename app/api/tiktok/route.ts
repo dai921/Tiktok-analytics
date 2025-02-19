@@ -27,6 +27,34 @@ export async function POST(request: Request) {
       cache: 'no-cache',
     });
     
+    // Handle redirect manually if needed
+    if (response.status === 302 || response.status === 301) {
+      const redirectUrl = response.headers.get('location');
+      console.log('Following redirect to:', redirectUrl);
+      if (!redirectUrl) throw new Error('Redirect URL not found');
+      
+      const redirectResponse = await fetch(redirectUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!redirectResponse.ok) {
+        const errorText = await redirectResponse.text();
+        console.error('Error after redirect:', errorText);
+        throw new Error(`GAS API returned ${redirectResponse.status} after redirect: ${errorText}`);
+      }
+      
+      return redirectResponse;
+    }
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`GAS API returned ${response.status}: ${errorText}`);
+    }
+    
     console.log('Response status:', response.status);
     if (!response.ok) {
       const errorText = await response.text();
