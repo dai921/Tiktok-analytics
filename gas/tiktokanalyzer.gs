@@ -10,8 +10,20 @@ function doOptions(e) {
 }
 
 function doPost(e) {
+  // Handle CORS preflight
+  if (e.method === 'OPTIONS') {
+    return ContentService.createTextOutput('')
+      .setMimeType(ContentService.MimeType.TEXT)
+      .addHeader('Access-Control-Allow-Origin', '*')
+      .addHeader('Access-Control-Allow-Methods', 'POST')
+      .addHeader('Access-Control-Allow-Headers', 'Content-Type')
+      .addHeader('Access-Control-Max-Age', '86400');
+  }
+
+  // Create response
   const output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
+  output.addHeader('Access-Control-Allow-Origin', '*');
   
   try {
     // Parse request
@@ -82,11 +94,6 @@ function doPost(e) {
       totalPages: 1
     }));
   }
-  
-  // Add CORS headers
-  output.addHeader('Access-Control-Allow-Origin', '*');
-  output.addHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  output.addHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   return output;
   }
