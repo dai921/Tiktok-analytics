@@ -1,4 +1,4 @@
-import type { VideoData, PaginatedResponse, FilterQuery } from '@/types/dashboard'
+import type { VideoData, PaginatedResponse, FilterQuery, FilterType } from '@/types/dashboard'
 
 // カラム名のマッピング（GASと同じ定義）
 export const COLUMN_MAP: Record<string, string> = {
@@ -28,45 +28,76 @@ export const COLUMN_MAP: Record<string, string> = {
   'artist': 'アーティスト'
 }
 
+// 逆マッピングを作成
+const REVERSE_COLUMN_MAP = Object.entries(COLUMN_MAP).reduce((acc, [key, value]) => ({
+  ...acc,
+  [value]: key
+}), {} as Record<string, string>)
+
+// フィルタータイプの変換関数
+const convertFilterType = (type: FilterType, field: string): string => {
+  console.log('Converting filter type:', { type, field });
+  
+  // 日付フィールドの場合
+  if (field === 'createdAt' || field === 'prevFetchDate' || field === 'currentFetchDate') {
+    switch (type) {
+      case 'after': return 'after'
+      case 'before': return 'before'
+      default: return 'equal'
+    }
+  }
+  
+  // 数値フィールドの場合
+  const result = (() => {
+    switch (type) {
+      case 'greater': return 'greater'  // 直接使用
+      case 'less': return 'less'        // 直接使用
+      case 'sort': return 'sort'
+      default: return 'equal'
+    }
+  })();
+  
+  console.log('Converted to:', result);
+  return result;
+}
+
 export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<PaginatedResponse> {
   try {
     const url = new URL(process.env.NEXT_PUBLIC_GAS_URL || '')
     
-    // フィルターパラメータの変換を修正
+    console.log('=== Filter Debug ===')
+    console.log('Raw filters:', filters)
+    
     const params = {
       page,
       filters: filters ? Object.entries(filters).reduce((acc, [key, filter]) => {
-        const japaneseField = COLUMN_MAP[key]
-        if (!japaneseField) {
-          console.error(`No mapping found for field: ${key}`)
-          return acc
-        }
+        const convertedType = convertFilterType(filter.type, filter.field);
+        console.log('Final conversion:', {  // デバッグ追加
+          from: filter.type,
+          to: convertedType,
+          field: filter.field
+        });
+        
         return {
           ...acc,
-          [japaneseField]: {
-            field: japaneseField,  // 日本語のフィールド名
-            type: filter.type,
+          [filter.field]: {
+            field: filter.field,
+            type: convertedType,
             value: filter.value
           }
-        }
+        };
       }, {}) : undefined
     }
-
-    // より詳細なデバッグログ
-    console.log('=== Detailed Request Debug ===');
-    console.log('Original filters:', {
-      filters,
-      type: filters ? Object.values(filters)[0]?.type : 'none',
-      value: filters ? Object.values(filters)[0]?.value : 'none',
-      field: filters ? Object.keys(filters)[0] : 'none'
-    });
+    
     console.log('Converted params:', {
-      raw: params,
-      filterKeys: params.filters ? Object.keys(params.filters) : [],
-      filterValues: params.filters ? Object.values(params.filters) : [],
-      firstFilter: params.filters ? Object.values(params.filters)[0] : null
-    });
-    console.log('URL:', url.toString());
+      page,
+      filters: params.filters,
+      mappedFields: filters ? Object.entries(filters).map(([key, filter]) => ({
+        field: filter.field,
+        type: filter.type,
+        value: filter.value
+      })) : []
+    })
 
     const response = await fetch(url.toString(), {
       method: 'POST',
@@ -81,19 +112,20 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     }
     
     const text = await response.text()
-    console.log('=== Response Debug ===');
-    console.log('Raw response:', text);
+    console.log('Raw response:', text)
     
     try {
       const result = JSON.parse(text)
-      console.log('Parsed response:', result);
+      if (!result.success) {
+        throw new Error('Failed to fetch data from GAS')
+      }
       return result
     } catch (error) {
-      console.error('Parse error:', error);
+      console.error('Failed to parse response:', error)
       throw error
     }
   } catch (error) {
-    console.error('Network error:', error);
+    console.error('Error fetching sheet data:', error)
     return {
       data: [],
       total: 0,
