@@ -10,18 +10,16 @@ function doOptions(e) {
 }
 
 function doPost(e) {
-  // Create response object with CORS headers
-  const response = ContentService.createTextOutput()
-    .setMimeType(ContentService.MimeType.JSON)
-    .addHeader('Access-Control-Allow-Origin', '*')
-    .addHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .addHeader('Access-Control-Allow-Headers', 'Content-Type')
-    .addHeader('Access-Control-Max-Age', '86400')
-    .addHeader('Content-Type', 'application/json')
-    .addHeader('X-Content-Type-Options', 'nosniff');
-
-  // Force immediate response without redirect
-  response.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  // Create HTML template for JSON response
+  const template = HtmlService.createTemplate(
+    '<?!= JSON.stringify(data) ?>'
+  );
+  
+  // Set response data
+  template.data = {
+    method: e.method,
+    postData: e.postData.contents
+  };
 
   // Log the request method and content
   Logger.log('Request method: ' + e.method);
@@ -92,14 +90,17 @@ function handleInitialData(sheet, page, limit) {
   
   const rows = formatRows(data, formulas);
   
-  response.setContent(JSON.stringify({
+  template.data = {
     data: rows,
     total: sheet.getLastRow() - 1,
     currentPage: page,
     totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
     success: true
-  }));
-  return response;
+  };
+  
+  return HtmlService.createHtmlOutput(template.evaluate())
+    .setMimeType(HtmlService.MimeType.JSON)
+    .addHeader('Access-Control-Allow-Origin', '*');
 }
 
 // フィールドの種類を定義
