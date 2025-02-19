@@ -1,4 +1,23 @@
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.TEXT)
+    .setHeaders({
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400'
+    });
+}
+
 function doPost(e) {
+  // Set CORS headers
+  const headers = {
+    'Content-Type': 'text/plain',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+
   const params = JSON.parse(e.postData.contents);
   const page = parseInt(params.page) || 1;
   const limit = params.limit || 50;
@@ -19,7 +38,9 @@ function doPost(e) {
       totalPages: 1,
       success: false,
       error: error.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    }))
+    .setHeaders(headers)
+    .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
@@ -39,7 +60,9 @@ function handleInitialData(sheet, page, limit) {
     currentPage: page,
     totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
     success: true
-  })).setMimeType(ContentService.MimeType.JSON);
+  }))
+  .setHeaders(headers)
+  .setMimeType(ContentService.MimeType.JSON);
 }
 
 // フィールドの種類を定義
@@ -130,7 +153,9 @@ function handleFilteredData(sheet, filters, page, limit) {
     currentPage: page,
     totalPages: Math.ceil(filteredRows.length / limit),
     success: true
-  })).setMimeType(ContentService.MimeType.JSON);
+  }))
+  .setHeaders(headers)
+  .setMimeType(ContentService.MimeType.JSON);
 }
 
 // フィルター評価のヘルパー関数
