@@ -9,13 +9,12 @@ export type FilterType =
   | 'equal'    // 完全一致
   | 'sort';    // ソート用
 
-export type FilterValue = 
-  | {
-      type: FilterType
-      value: string
-    }
-  | { sort: 'asc' | 'desc' }
-  | { clear: true }
+export type FilterValue = {
+  type: FilterType;
+  value: string;
+  field?: string;
+  clear?: boolean;
+};
 
 export type FilterQuery = {
   field: string;
@@ -55,6 +54,8 @@ export interface VideoData {
   audioId: string
   audioTitle: string
   artist: string
+  rank?: number
+  predictedViews: number
 }
 
 // テーブル関連の型
