@@ -15,12 +15,18 @@ function doPost(e) {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400'
   };
 
   try {
     // Log request for debugging
     Logger.log('Request received: ' + JSON.stringify(e.postData.contents));
+    
+    // Verify spreadsheet access
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    if (!spreadsheet) {
+      throw new Error('Unable to access spreadsheet');
 
   const params = JSON.parse(e.postData.contents);
   const page = parseInt(params.page) || 1;
@@ -35,16 +41,21 @@ function doPost(e) {
     
     return handleInitialData(sheet, page, limit);
   } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({
+    const errorResponse = ContentService.createTextOutput(JSON.stringify({
       data: [],
       total: 0,
       currentPage: 1,
       totalPages: 1,
       success: false,
       error: error.toString()
-    }))
-    .setHeaders(headers)
-    .setMimeType(ContentService.MimeType.JSON);
+    }));
+    
+    // Set headers and mime type
+    Object.entries(headers).forEach(([key, value]) => {
+      errorResponse.addHeader(key, value);
+    });
+    
+    return errorResponse.setMimeType(ContentService.MimeType.JSON);
   }
 }
 
