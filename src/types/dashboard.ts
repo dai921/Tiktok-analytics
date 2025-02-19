@@ -2,12 +2,10 @@ import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
 export type FilterType = 
-  | 'after'   // 日付：以降
-  | 'before'  // 日付：以前
-  | 'gte'     // 数値：以上
-  | 'lte'     // 数値：以下
-  | 'equal'   // 完全一致
-  | 'sort';   // ソート用
+  | 'greater'  // 以上
+  | 'less'     // 以下
+  | 'equal'    // 等しい
+  | 'sort';    // ソート用
 
 export type FilterValue = 
   | {
