@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
+  const startTime = Date.now();
+  console.log('API request started at:', new Date(startTime).toISOString());
+  
   try {
     const body = await request.json();
     const gasApiUrl = process.env.NEXT_PUBLIC_GAS_API_URL;
@@ -29,7 +32,15 @@ export async function POST(request: Request) {
       response;
 
     const data = await finalResponse.json();
-    return NextResponse.json(data);
+    const endTime = Date.now();
+    const executionTime = (endTime - startTime) / 1000;
+    console.log('API request completed in:', executionTime, 'seconds');
+    return NextResponse.json({
+      ...data,
+      _debug: {
+        executionTime
+      }
+    });
   } catch (error: any) {
     console.error('Error:', error);
     return NextResponse.json(
