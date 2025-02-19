@@ -10,16 +10,25 @@ function doOptions(e) {
 }
 
 function doPost(e) {
-  // Create HTML template for JSON response
-  const template = HtmlService.createTemplate(
-    '<?!= JSON.stringify(data) ?>'
-  );
+  // Parse request
+  const params = JSON.parse(e.postData.contents);
+  const page = parseInt(params.page) || 1;
+  const limit = params.limit || 50;
   
-  // Set response data
-  template.data = {
-    method: e.method,
-    postData: e.postData.contents
-  };
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('動画データ');
+    if (!sheet) {
+      throw new Error('Sheet not found');
+    }
+    
+    // Process request
+    const result = params.filters ? 
+      handleFilteredData(sheet, params.filters, page, limit) :
+      handleInitialData(sheet, page, limit);
+      
+    // Return JSON response
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
 
   // Log the request method and content
   Logger.log('Request method: ' + e.method);
@@ -90,17 +99,13 @@ function handleInitialData(sheet, page, limit) {
   
   const rows = formatRows(data, formulas);
   
-  template.data = {
+  return {
     data: rows,
     total: sheet.getLastRow() - 1,
     currentPage: page,
     totalPages: Math.ceil((sheet.getLastRow() - 1) / limit),
     success: true
   };
-  
-  return HtmlService.createHtmlOutput(template.evaluate())
-    .setMimeType(HtmlService.MimeType.JSON)
-    .addHeader('Access-Control-Allow-Origin', '*');
 }
 
 // フィールドの種類を定義
