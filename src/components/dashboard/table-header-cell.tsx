@@ -1,97 +1,274 @@
 'use client'
-
-import { useState, ReactNode } from 'react'
-import type { FilterValue } from '@/types/dashboard'
+//テスト用に変更
+import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import type { FilterValue, FilterType } from '@/types/dashboard'
+import { Portal } from '@radix-ui/react-portal'
+import { cn } from '@/lib/utils'
 
 interface TableHeaderCellProps {
-  title: ReactNode
+  title: string
   type?: 'text' | 'number' | 'date'
-  align?: 'left' | 'right'
-  onFilterAction: (value: any) => void
+  align?: 'left' | 'right' | 'center'
+  onFilter?: (value: FilterValue) => void
   style?: React.CSSProperties
+}
+
+
+export interface TableHeaderCellRef {
+  clearFilter: () => void
 }
 
 // 幅を設定する関数を定義
 const getColumnWidth = (title: ReactNode) => {
-  // すべてのカラムで同じ幅を使用
+  // すべてのカラムで同じ幅に
   return 'w-[120px] min-w-[120px]'
 }
 
-export function TableHeaderCell({ title, type = 'text', align = 'left', onFilterAction, style }: TableHeaderCellProps) {
+// 選択肢を動的に生成　
+const getFilterOptions = (type: 'text' | 'number' | 'date') => {
+  switch (type) {
+    case 'number':
+      return [
+        { value: 'equal' as const, label: '等しい' },
+        { value: 'greater' as const, label: '以上' },
+        { value: 'less' as const, label: '以下' }
+      ]
+    case 'date':
+      return [
+        { value: 'equal' as const, label: '等しい' },
+        { value: 'after' as const, label: '以降' },
+        { value: 'before' as const, label: '以前' }
+      ]
+    default:
+      return [
+        { value: 'equal' as const, label: '等しい' }
+      ]
+  }
+}
+
+export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter, style }: TableHeaderCellProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filterValue, setFilterValue] = useState('')
-  const [filterType, setFilterType] = useState<'greater' | 'less' | 'equal'>('equal')
+  const [filterType, setFilterType] = useState<FilterType>('equal')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-  const alignmentClass = align === 'right' ? 'text-right' : 'text-left'
+  const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
 
-  const handleFilter = (value: string) => {
-    setFilterValue(value)
-    if (value) {
-      onFilterAction({ value, type: filterType })
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isFilterOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.height, // ボタンの高さ分だけ下にずらす
+        left: 0
+      });
+    }
+  }, [isFilterOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isFilterOpen && 
+          popupRef.current && 
+          buttonRef.current && 
+          !popupRef.current.contains(event.target as Node) &&
+          !buttonRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false)
+
+      }
+    }, [isFilterOpen])
+
+    // クリックアウトサイドの処理を追加
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (isFilterOpen && 
+            popupRef.current && 
+            buttonRef.current && 
+            !popupRef.current.contains(event.target as Node) &&
+            !buttonRef.current.contains(event.target as Node)) {
+          setIsFilterOpen(false)
+        }
+      }
+
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+      }
+    }, [isFilterOpen])
+
+    const handleSort = () => {
+      // 他のカラムのソートとアクティブ状態をクリア
+      document.querySelectorAll('[data-header-cell]').forEach(el => {
+        if (el !== buttonRef.current?.closest('[data-header-cell]')) {
+          const button = el.querySelector('button');
+          if (button) {
+            button.setAttribute('data-sort-active', 'false');
+            button.classList.remove('text-sky-500');
+          }
+          el.classList.remove('text-blue-600', 'font-medium');
+        }
+      });
+
+      const newDirection = sortDirection === null ? 'desc' : 
+                          sortDirection === 'desc' ? 'asc' : null
+      setSortDirection(newDirection)
+      setIsActive(!!newDirection || !!filterValue)
+
+      if (newDirection) {
+        onFilter?.({
+          field: title,
+          type: 'sort',
+          value: newDirection
+        })
+      } else {
+        handleClear()
+      }
       setIsFilterOpen(false)
     }
-  }
 
-  const handleSort = () => {
-    const newDirection = sortDirection === 'asc' ? 'desc' : 'asc'
-    setSortDirection(newDirection)
-    onFilterAction({ sort: newDirection })
-    setIsFilterOpen(false)
-  }
+    const handleClear = () => {
+      // 全てのヘッダーセルのスタイルをリセット
+      document.querySelectorAll('[data-header-cell]').forEach(el => {
+        const button = el.querySelector('button');
+        if (button) {
+          button.setAttribute('data-sort-active', 'false');
+          button.classList.remove('text-sky-500');
+        }
+        el.classList.remove('text-blue-600', 'font-medium');
+      });
 
-  const handleClear = () => {
-    setFilterValue('')
-    setSortDirection(null)
-    setFilterType('equal')
-    onFilterAction({ clear: true })
-    setIsFilterOpen(false)
-  }
+      setFilterValue('')
+      setSortDirection(null)
+      setFilterType('equal')
+      setIsActive(false)
+      onFilter?.({
+        field: title,
+        type: 'equal',
+        value: '',
+        clear: true
+      })
+      setIsFilterOpen(false)
+    }
 
-  return (
-    <th className={`px-3 py-2 font-normal text-gray-600 relative ${alignmentClass} ${getColumnWidth(title)}`}>
-      <div className="flex items-center justify-between">
-        <span>{title}</span>
-        <button 
-          onClick={() => setIsFilterOpen(!isFilterOpen)}
-          className={`p-1 hover:bg-gray-100 rounded ${filterValue || sortDirection ? 'text-sky-500' : ''}`}
-        >
-          <svg 
-            className="w-4 h-4"
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor"
-            strokeWidth={filterValue || sortDirection ? "3" : "2"}
-          >
-            <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
-          </svg>
-        </button>
+    const handleFilter = (value: string, filterType: FilterType) => {
+      if (!onFilter) return
+      setFilterValue(value)
+      setIsActive(!!value || !!sortDirection)
+      onFilter({
+        field: title,
+        type: filterType,
+        value
+      })
+    }
+
+    const renderFilterInput = () => {
+      switch (type) {
+        case 'date':
+          return (
+            <input
+              type="date"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          )
+        case 'number':
+          return (
+            <input
+              type="number"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleFilter(filterValue, filterType)
+                }
+              }}
+              placeholder="フィルター..."
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          )
+        default:
+          return (
+            <input
+              type="text"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleFilter(filterValue, filterType)
+                }
+              }}
+              placeholder="フィルター..."
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          )
+      }
+    }
+
+    const hasFilter = !!onFilter
+
+    const getSortLabel = () => {
+      // 数値フィールドの場合
+      if (type === 'number') {
+        return sortDirection === null ? '▼ 大きい順に並び替え' :
+               sortDirection === 'desc' ? '▲ 小さい順に並び替え' : 
+               '▼ 大きい順に並び替え';
+      }
+      
+      // その他のフィールド
+      return sortDirection === null ? '▼ 降順に並び替え' :
+             sortDirection === 'desc' ? '▲ 昇順に並び替え' : 
+             '▼ 降順に並び替え';
+    };
+
+    // 外部からアクセスできるようにする
+    useImperativeHandle(ref, () => ({
+      clearFilter: handleClear
+    }))
+
+    return (
+      <div 
+        data-header-cell
+        className={cn(
+          "flex items-center gap-1 whitespace-nowrap",
+          "px-2 py-1 text-gray-700 text-sm",
+          align === 'center' ? 'justify-center' : '',
+          isActive ? "text-blue-600 font-medium" : ""
+        )}
       </div>
       {isFilterOpen && (
-        <div className="absolute top-full left-0 mt-1 w-[200px] bg-white border rounded shadow-lg z-20 text-sm">
+        <div 
+          ref={popupRef}
+          className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
+          style={{ 
+            top: position.top, 
+            left: position.left,
+            maxHeight: '300px',
+            overflowY: 'auto'
+          }}
+        >
           <div className="p-2 border-b">
             <div className="flex items-center gap-2 mb-2">
               <select 
                 value={filterType}
-                onChange={(e) => setFilterType(e.target.value as any)}
+                onChange={(e) => setFilterType(e.target.value as FilterType)}
                 className="px-2 py-1 border rounded text-xs"
               >
-                <option value="equal">等しい</option>
-                <option value="greater">以上</option>
-                <option value="less">以下</option>
+                {getFilterOptions(type).map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
-              <input
-                type={type === 'number' ? 'number' : 'text'}
-                value={filterValue}
-                onChange={(e) => handleFilter(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleFilter(filterValue)
-                  }
-                }}
-                placeholder="フィルター..."
-                className="w-full px-2 py-1 border rounded text-xs"
-              />
+              {renderFilterInput()}
             </div>
+            <button
+              onClick={() => handleFilter(filterValue, filterType)}
+              className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
+            >
+              フィルターを適用
+            </button>
             {(filterValue || sortDirection) && (
               <button
                 onClick={handleClear}
@@ -111,6 +288,6 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
           </div>
         </div>
       )}
-    </th>
+    </div>
   )
 } 

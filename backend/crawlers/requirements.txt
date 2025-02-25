@@ -1,0 +1,5 @@
+playwright==1.41.0
+python-dotenv==1.0.0
+mysql-connector-python==8.2.0
+google-cloud-pubsub==2.18.4
+grpcio==1.59.3 

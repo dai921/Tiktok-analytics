@@ -1,0 +1,6 @@
+functions-framework
+google-api-python-client
+oauth2client
+mysql-connector-python
+python-dotenv
+google-cloud-pubsub

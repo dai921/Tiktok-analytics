@@ -1,51 +1,62 @@
-export interface VideoData {
-  id: string
-  thumbnail: string
-  date: string
-  views: number
-  viewsPrev: number
-  viewsIncrease: number
-  genre: string
-  url: string
-  accountName: string
-  likes: number
-  comments: number
-  hashtags: string[]
-  bgm: string
-  transcript: string
-}
+import type { VideoData } from '@/types/dashboard'
 
 export const mockData: VideoData[] = [
   {
     id: "1",
-    thumbnail: '/dummy1.jpg',
-    date: '2024-03-20',
-    views: 1000,
-    viewsPrev: 800,
-    viewsIncrease: 200,
-    genre: 'スキンケア',
     url: 'https://tiktok.com/...',
     accountName: '@beauty_tips',
+    videoId: '1234567890',
+    thumbnail: '/dummy1.jpg',
+    authorName: 'Beauty Tips',
+    description: 'こんにちは！今日は私のスキンケアルーティン...',
     likes: 100,
+    views: 1000,
     comments: 50,
+    shares: 20,
+    saves: 30,
+    createdAt: '2024-03-20',
     hashtags: ['#スキンケア', '#美容'],
-    bgm: 'Original Sound - beauty_tips',
-    transcript: 'こんにちは！今日は私のスキンケアルーティン...',
+    duration: 60,
+    isViral: false,
+    prevFetchDate: '2024-03-17',
+    currentFetchDate: '2024-03-20',
+    prevViews: 800,
+    viewsIncrease: 200,
+    prevLikes: 80,
+    likesIncrease: 20,
+    product: 'スキンケア',
+    category: 'ビューティー',
+    audioId: 'music123',
+    audioTitle: 'Original Sound - beauty_tips',
+    artist: 'beauty_tips'
   },
   {
     id: "2",
-    thumbnail: '/dummy2.jpg',
-    date: '2024-03-21',
-    views: 2000,
-    viewsPrev: 1800,
-    viewsIncrease: 200,
-    genre: 'ヘアケア',
     url: 'https://tiktok.com/video2',
     accountName: '@hair_salon',
+    videoId: '9876543210',
+    thumbnail: '/dummy2.jpg',
+    authorName: 'Hair Salon',
+    description: '髪の毛の乾かし方で、こんなに変わります！まず最初に...',
     likes: 200,
+    views: 2000,
     comments: 75,
+    shares: 30,
+    saves: 45,
+    createdAt: '2024-03-21',
     hashtags: ['#ヘアケア', '#髪質改善'],
-    bgm: 'Popular Song - artist_name',
-    transcript: '髪の毛の乾かし方で、こんなに変わります！まず最初に...',
+    duration: 45,
+    isViral: false,
+    prevFetchDate: '2024-03-18',
+    currentFetchDate: '2024-03-21',
+    prevViews: 1800,
+    viewsIncrease: 200,
+    prevLikes: 180,
+    likesIncrease: 20,
+    product: 'ヘアケア',
+    category: 'ビューティー',
+    audioId: 'music456',
+    audioTitle: 'Popular Song - artist_name',
+    artist: 'artist_name'
   },
 ] 
