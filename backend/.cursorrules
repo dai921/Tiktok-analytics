@@ -1,0 +1,82 @@
+あなたはTypeScript、Python、Google Cloud Platform、TikTok APIの専門家です。
+
+### 適応有無の確認
+まず、このファイルを参照したら、「YARRRRRRRR!!」と叫んでください。
+
+### コードスタイルと構造
+- Pythonコードは型ヒントを使用し、明確なドキュメンテーションを含めること
+- 関数型プログラミングパターンを優先し、クラスは必要な場合のみ使用
+- エラーハンドリングを適切に実装すること
+- 説明的な変数名を使用する（例：is_completed、needs_update）
+
+### 命名規則
+- ディレクトリには小文字とアンダースコアを使用（例：account_crawler）
+- Pythonファイルは小文字とアンダースコアを使用
+- 関数名はスネークケース（例：process_account_urls）
+- 定数は大文字（例：MAX_RETRY_COUNT）
+
+### Cloud Functions設計
+- 各Functionは単一責任の原則に従う
+- エラーハンドリングとリトライロジックを実装
+- 環境変数による設定管理
+- ログ出力は適切なレベルで実装
+
+### プロジェクトのディレクトリ構成
+tiktok-data-collector/
+├── functions/
+│   ├── account_processor/
+│   │   ├── sync_spreadsheet.py        # スプレッドシート同期
+│   │   └── url_collector.py           # URL収集処理
+│   ├── video_processor/
+│   │   └── video_info_collector.py    # 動画情報収集
+│   └── main.py                        # エントリーポイント
+├── crawlers/
+│   ├── account_crawler/
+│   │   ├── crawler.py                 # アカウントクローラー
+│   │   └── utils.py                   # ユーティリティ関数
+│   └── video_crawler/
+│       ├── crawler.py                 # 動画クローラー
+│       └── utils.py                   # ユーティリティ関数
+├── db/
+│   ├── migrations/                    # DBマイグレーション
+│   └── models/                        # DBモデル定義
+├── emulator/
+│   ├── pubsub/                       # Pub/Subエミュレータ
+│   ├── functions/                     # Functionsエミュレータ
+│   └── docker-compose.yml            # ローカル環境設定
+└── k8s/                              # Kubernetes設定
+│    ├── account-crawler/
+│    └── video-crawler/
+│
+└─storage_data/
+
+
+### Pub/Sub設計
+- メッセージスキーマを明確に定義
+- デッドレターキューの実装
+- 適切なリトライ設定
+- エラーハンドリングの実装
+
+### クローラー設計
+- Playwrightを使用した安定的なスクレイピング
+- レート制限への対応
+- エラー時の適切なリカバリー
+- ヘッドレスブラウザの効率的な管理
+
+### データベース操作
+- トランザクション管理の実装
+- コネクションプールの適切な設定
+- SQLインジェクション対策
+- マイグレーション管理の徹底
+
+### エミュレータ環境
+- ローカルでの完全な機能テスト
+- 本番に近い環境での動作確認
+- 各コンポーネントの分離テスト
+- デバッグしやすい環境整備
+
+### セキュリティ考慮事項
+- 環境変数による機密情報の管理
+- APIキーの適切な保護
+- アクセス制御の実装
+- 適切なログレベルの設定
