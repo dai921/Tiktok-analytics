@@ -9,7 +9,7 @@ def setup_pubsub():
     
     # 環境変数設定
     if not os.getenv('PUBSUB_EMULATOR_HOST'):
-        os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'  # 8086から8681に修正
+        os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'
     
     project_id = os.getenv('PROJECT_ID', 'local-project')
     print(f"Pub/Sub Emulator: {os.environ['PUBSUB_EMULATOR_HOST']}")
@@ -23,7 +23,9 @@ def setup_pubsub():
     topics_and_subs = {
         'process-account-list': 'process-account-list',
         'crawl-complete': 'process-crawl-complete-sub',
-        'crawl-batch-complete': 'process-crawl-batch-complete-sub'  # バッチ完了通知用
+        'crawl-batch-complete': 'process-crawl-batch-complete-sub',
+        'video-processing': 'video-processing-sub',  # 動画処理用を追加
+        'video-data': 'video-data-sub'  # 処理済みデータ用を追加
     }
     
     # 各トピックとサブスクリプションを作成

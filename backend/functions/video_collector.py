@@ -1,83 +1,105 @@
 import os
-from dotenv import load_dotenv
 import mysql.connector
+import logging
 from google.cloud import pubsub_v1
+from typing import List, Dict, Any
 
-load_dotenv()
+# ロギング設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def collect_videos(request):
-    try:
-        # データベース接続
-        conn = mysql.connector.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE')
+class VideoCollector:
+    def __init__(self, batch_size: int = 500):
+        self.batch_size = batch_size
+        # データベース接続設定
+        self.connection = mysql.connector.connect(
+            host=os.getenv('MYSQL_HOST', 'localhost'),
+            port=int(os.getenv('MYSQL_PORT', 3306)),
+            user=os.getenv('MYSQL_USER', 'tiktok_user'),
+            password=os.getenv('MYSQL_PASSWORD', 'tiktok_pass'),
+            database=os.getenv('MYSQL_DATABASE', 'tiktok_data')
         )
-        cursor = conn.cursor()
+        self.cursor = self.connection.cursor(dictionary=True)
 
-        # 更新が必要なアカウントを取得
-        cursor.execute('''
-            SELECT account_url, account_name, is_new_account 
-            FROM account_list 
-            WHERE needs_update = TRUE
-        ''')
-        accounts = cursor.fetchall()
-
-        if not accounts:
-            return 'No accounts need updating', 200
-
-        # Pub/Subクライアントの設定
-        publisher = pubsub_v1.PublisherClient()
-        topic_path = publisher.topic_path(os.getenv('PROJECT_ID'), 'video-crawl-requests')
-
-        # 各アカウントの処理をPub/Subに送信
-        for account in accounts:
-            message = {
-                'account_url': account[0],
-                'account_name': account[1],
-                'is_new_account': account[2]
-            }
-            publisher.publish(topic_path, str(message).encode('utf-8'))
-
-        cursor.close()
-        conn.close()
-
-        return f'Sent {len(accounts)} accounts for processing', 200
-
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return str(e), 500
-
-def process_crawl_complete(event, context):
-    """Pub/Subからの完了通知を処理"""
-    try:
-        # メッセージからアカウントURLを取得
-        message = event['data'].decode('utf-8')
-        account_url = eval(message)['account_url']
-
-        # データベース接続
-        conn = mysql.connector.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE')
+        # PubSub設定
+        if not os.getenv('PUBSUB_EMULATOR_HOST'):
+            os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'
+        
+        self.project_id = os.getenv('PROJECT_ID', 'local-project')
+        self.publisher = pubsub_v1.PublisherClient()
+        self.topic_path = self.publisher.topic_path(
+            self.project_id, 'video-processing'
         )
-        cursor = conn.cursor()
 
-        # アカウントの更新
-        cursor.execute('''
-            UPDATE account_list 
-            SET is_new_account = FALSE, needs_update = FALSE 
-            WHERE account_url = %s
-        ''', (account_url,))
+    def get_videos_to_update(self) -> List[Dict[str, Any]]:
+        """needs_updateがTrueのビデオデータを取得"""
+        try:
+            query = """
+                SELECT 
+                    video_url,
+                    username,
+                    video_id,
+                    is_new_video
+                FROM 
+                    video_url_data
+                WHERE 
+                    needs_update = TRUE
+                LIMIT %s
+            """
+            self.cursor.execute(query, (self.batch_size,))
+            results = self.cursor.fetchall()
+            logger.info(f"取得した動画数: {len(results)}")
+            return results
+        except mysql.connector.Error as e:
+            logger.error(f"データベースエラー: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"予期せぬエラー: {str(e)}")
+            raise
 
-        conn.commit()
-        cursor.close()
-        conn.close()
+    def publish_video_data(self, video_data: Dict[str, Any]) -> None:
+        """動画データをPubSubに送信"""
+        try:
+            # メッセージデータを文字列に変換
+            import json
+            message_data = json.dumps(video_data).encode('utf-8')
+            
+            # メッセージを送信
+            future = self.publisher.publish(self.topic_path, message_data)
+            message_id = future.result()
+            logger.info(f"メッセージを送信しました。Message ID: {message_id}")
+        except Exception as e:
+            logger.error(f"メッセージの送信に失敗: {str(e)}")
+            raise
 
-        return 'Success', 200
+    def process_videos(self) -> None:
+        """動画データを取得してPubSubに送信"""
+        try:
+            # 更新が必要な動画を取得
+            videos = self.get_videos_to_update()
+            
+            # 各動画データをPubSubに送信
+            for video in videos:
+                self.publish_video_data(video)
+                logger.info(f"動画ID {video['video_id']} のデータを送信しました")
+        except Exception as e:
+            logger.error(f"動画処理中にエラーが発生: {str(e)}")
+            raise
+        finally:
+            # データベース接続をクローズ
+            if hasattr(self, 'cursor') and self.cursor:
+                self.cursor.close()
+            if hasattr(self, 'connection') and self.connection:
+                self.connection.close()
 
+def main():
+    try:
+        collector = VideoCollector()
+        collector.process_videos()
+        logger.info("全ての動画データの処理が完了しました")
     except Exception as e:
-        print(f"Error: {str(e)}")
-        return str(e), 500 
+        logger.error(f"エラーが発生しました: {str(e)}")
+        raise
+
+if __name__ == "__main__":
+    main()
