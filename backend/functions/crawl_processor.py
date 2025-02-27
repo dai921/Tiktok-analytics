@@ -10,16 +10,14 @@ import sys
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ホットリロード防止のための設定（追加）
-
-# 環境変数を取得する部分を追加
+# 環境変数を明示的に設定
+os.environ['PUBSUB_EMULATOR_HOST'] = '127.0.0.1:8681'  # 明示的に設定
 environment = os.getenv('ENVIRONMENT', 'development')
-pubsub_host = os.getenv('PUBSUB_EMULATOR_HOST')
 project_id = os.getenv('PROJECT_ID', 'local-project')
 
 # 環境情報をログ出力
 logger.info(f"実行環境: {environment}")
-logger.info(f"Pub/Subエミュレータ: {pubsub_host}")
+logger.info(f"Pub/Subエミュレータ: {os.environ['PUBSUB_EMULATOR_HOST']}")  # 設定した値を確認
 logger.info(f"プロジェクトID: {project_id}")
 
 def get_db_connection():
