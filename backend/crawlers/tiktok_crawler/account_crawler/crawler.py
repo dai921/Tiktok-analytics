@@ -197,7 +197,7 @@ async def crawl_account(account_info):
     """
     account_url = account_info.get('account_url')
     account_name = account_info.get('account_name')
-    is_new_account = account_info.get('is_new_account', True)
+    is_new_account = account_info.get('is_new_account')
     
     logger.info(f"アカウント {account_name} ({account_url}) のクロールを開始")
     

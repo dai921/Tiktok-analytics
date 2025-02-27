@@ -7,6 +7,7 @@ from datetime import datetime
 import pymysql
 import logging
 import concurrent.futures
+import functions_framework
 import sys
 
 # 代わりに環境変数を取得するように変更
@@ -63,6 +64,7 @@ def get_db_connection():
         print(traceback.format_exc())
         raise
 
+@functions_framework.http
 def collect_urls(request):
     """needs_updateフラグが立っているアカウントを取得しPub/Subに送信する"""
     logger.info("==== collect_urls関数の実行開始 ====")
@@ -79,7 +81,7 @@ def collect_urls(request):
             SELECT id, account_url, account_name, is_new_account 
             FROM account_list 
             WHERE needs_update = TRUE
-            LIMIT 4
+            LIMIT 6
             """
             logger.info(f"実行SQL: {sql}")
             cursor.execute(sql)

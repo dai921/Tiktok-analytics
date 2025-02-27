@@ -18,7 +18,9 @@ def run_command(command, prefix=""):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
-        bufsize=1
+        bufsize=1,
+        encoding='utf-8',  # UTF-8エンコーディングを指定
+        errors='replace'  
     )
     
     def log_output(stream):
@@ -92,29 +94,81 @@ def start_function(target, source, port, env_vars=None):
     if env_vars is None:
         env_vars = {}
     
-    # 絶対パスを指定
-    functions_path = r"C:\Users\kyoto\app\tik-analytics\Tiktok-analytics\backend\functions"
+    # プロジェクトルートを取得
+    project_root = os.getenv("PROJECT_ROOT")
+    if not project_root:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+    
+    # functions_pathを正しく設定
+    functions_path = os.path.join(project_root, "backend", "functions")
     source_path = os.path.join(functions_path, source)
     
     print(f"=== Function起動情報 ===")
     print(f"関数名: {target}")
     print(f"ソースファイル: {source_path}")
     print(f"ポート: {port}")
-    print(f"Pub/Subエミュレーター: {env_vars.get('PUBSUB_EMULATOR_HOST')}")
+    print(f"環境変数: {env_vars}")
     
     # ファイルの存在確認
     if not os.path.exists(source_path):
         raise FileNotFoundError(f"ソースファイルが見つかりません: {source_path}")
     
-    # Windows環境用のコマンド構築
-    env_str = " && ".join([f"set {k}={v}" for k, v in env_vars.items()])
-    command = f"cd {functions_path} && {env_str} && functions-framework --target={target} --source={source} --port={port}"
+    # 現在のPythonインタープリタのパスを取得
+    python_path = sys.executable
     
-    print(f"実行コマンド: {command}")
+    # コマンドを構築（ポートとシグネチャーを指定）
+    command = [
+        python_path,
+        "-m", "functions_framework",
+        "--target", target,
+        "--source", source,
+        "--port", str(port),
+        "--signature-type", "http",  # HTTPシグネチャーを指定
+        "--host", "127.0.0.1",       # ホストを指定
+        "--debug"
+    ]
+    
+    print(f"実行コマンド: {' '.join(command)}")
+    
+    # 環境変数を設定
+    env_dict = os.environ.copy()
+    env_dict.update(env_vars)
     
     # 関数を起動して出力をリアルタイム表示
-    proc, _ = run_command(command, f"[Function:{target}]")
-    return proc
+    process = subprocess.Popen(
+        command,
+        cwd=functions_path,
+        env=env_dict,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,  # stderrも取得するように変更
+        universal_newlines=True,
+        bufsize=1,
+        encoding='utf-8',
+        errors='replace'
+    )
+    
+    def log_output(process):
+        while True:
+            # stdoutとstderrの両方からログを読み取る
+            stdout_line = process.stdout.readline()
+            stderr_line = process.stderr.readline()
+            
+            if stdout_line:
+                print(f"[Function:{target}:stdout] | {stdout_line.strip()}")
+            if stderr_line:
+                print(f"[Function:{target}:stderr] | {stderr_line.strip()}")
+            
+            # プロセスが終了していたら終了
+            if process.poll() is not None:
+                break
+    
+    # 出力を別スレッドで処理
+    thread = threading.Thread(target=log_output, args=(process,))
+    thread.daemon = True
+    thread.start()
+    
+    return process
 
 def start_crawler():
     """アカウントクローラーを起動 - Dockerコンテナ内で実行"""
@@ -224,26 +278,6 @@ def setup_environment():
     
     return local_env_vars, docker_env_vars
 
-#def test_collect_urls():
- #   """collect_urls関数の動作確認"""
-#    try:
-#        response = requests.post(
-#            "http://127.0.0.1:8090",
-#            headers={"Content-Type": "application/json"},
-#            json={},
-#            timeout=30
-#        )
-#        
-#        success = response.status_code == 200
-#        print(f"collect_urls テスト: {'成功' if success else '失敗'}")
-#        print(f"レスポンス: {response.text}")
-#        
-#        return success
-#                
-#    except Exception as e:
-#        print(f"collect_urls テストエラー: {e}")
-#        return False
-
 def main():
     """メイン処理"""
     # 環境変数を設定
@@ -273,22 +307,6 @@ def main():
     print("サーバーの起動を待機中...")
     time.sleep(15)  # 15秒待機に延長
     
-    # テストを実行
-    #success = test_collect_urls()
-    #if not success:
-    #    print("collect_urls関数のテストに失敗しました")
-    #else:
-    #    print("collect_urls関数のテストが完了しました")
-    
-    # process_crawl_complete関数を起動
-    #print("\n=== process_crawl_complete関数を起動中... ===")
-    #crawl_proc = start_function(
-    #    "process_crawl_complete", "crawl_processor.py", os.getenv("PROCESS_CRAWL_PORT", "8091"),
-    #    env_vars=local_env
-    #)
-    #if crawl_proc:  # Noneでない場合のみ追加
-    #    processes.append(crawl_proc)
-    
     # クローラーを起動
     print("\n=== アカウントクローラーを起動中... ===")
     crawler_proc = start_crawler()
@@ -305,19 +323,36 @@ def main():
     print("すべてのログがリアルタイムで表示されます")
     print("終了するには Ctrl+C を押してください")
     
-    # 自動テスト実行 - 5秒待機してから実行
+    # 自動テスト実行
     def run_test():
-        print("\n=== 5秒後に自動テストを実行します... ===")
-        time.sleep(5)
+        print("\n=== collect_urls関数を呼び出し中... ===")
         try:
             # collect_urls関数を呼び出し
-            collect_url = f"http://localhost:{os.getenv('COLLECT_URLS_PORT', '8090')}"
-            print(f"\n=== collect_urls関数を呼び出し中: {collect_url} ===")
-            response = requests.get(collect_url)
-            print(f"ステータス: {response.status_code}")
-            print(f"レスポンス: {response.text}")
+            collect_url = f"http://127.0.0.1:{os.getenv('COLLECT_URLS_PORT', '8090')}"
+            print(f"リクエストURL: {collect_url}")
+            
+            # リトライロジックを追加
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(collect_url, timeout=10)
+                    print(f"ステータス: {response.status_code}")
+                    print(f"レスポンス: {response.text}")
+                    break
+                except requests.RequestException as e:
+                    print(f"試行 {attempt + 1}/{max_retries} 失敗: {e}")
+                    if attempt < max_retries - 1:
+                        time.sleep(5)  # 5秒待ってリトライ
+                    else:
+                        raise
+            
+            # エラーの場合は詳細を表示
+            if response.status_code != 200:
+                print(f"エラーレスポンス: {response.text}")
         except Exception as e:
             print(f"テスト実行エラー: {e}")
+            import traceback
+            print(traceback.format_exc())
     
     # テストを別スレッドで実行
     test_thread = threading.Thread(target=run_test)
@@ -326,13 +361,18 @@ def main():
     
     # メインスレッドを維持
     try:
-        while all(p.poll() is None for p in processes):
+        while True:
+            # プロセスの状態を確認
+            all_running = True
+            for i, proc in enumerate(processes):
+                if proc.poll() is not None:
+                    print(f"プロセス {i+1} が終了しました（終了コード: {proc.poll()}）")
+                    all_running = False
+            
+            if not all_running:
+                break
+            
             time.sleep(1)
-        
-        # いずれかのプロセスが終了した場合
-        for i, proc in enumerate(processes):
-            if proc.poll() is not None:
-                print(f"プロセス {i+1} が終了しました（終了コード: {proc.poll()}）")
     
     except KeyboardInterrupt:
         print("\n=== 開発環境を終了します ===")
