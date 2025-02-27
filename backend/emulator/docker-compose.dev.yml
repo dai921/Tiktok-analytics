@@ -1,57 +1,41 @@
 services:
   # Pub/Subエミュレータ
   pubsub:
-    image: messagebird/gcloud-pubsub-emulator:latest
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
     container_name: tiktok_pubsub
     ports:
       - "8681:8681"
     environment:
       - PUBSUB_PROJECT1=local-project,crawl-complete:process-crawl-complete-sub,process-account-list:process-urls-sub
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8681 --project=local-project
+    # Windowsの場合はnetwork_modeを削除
+    # network_mode: "host"
 
-  # Cloud Storageエミュレータ
-  storage:
-    image: fsouza/fake-gcs-server
-    container_name: tiktok_storage
-    ports:
-      - "4443:4443"
-    volumes:
-      - ./storage_data:/data
-    command: -scheme http
-
-  setup_pubsub:
-    build:
-      context: ./crawlers
-      dockerfile: Dockerfile
-    environment:
-      - PUBSUB_EMULATOR_HOST=pubsub:8681
-      - PROJECT_ID=local-project
-    command: python -m tiktok_crawler.setup_pubsub
-    depends_on:
-      - pubsub
-    restart: on-failure
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # MySQLはローカルで実行しているため不要
+  # mysql:
+  #   image: mysql:8.0
+  #   ...
 
   account-crawler:
     build:
-      context: ./crawlers
+      # Windowsパスの正しい表記
+      context: C:/Users/kyoto/app/tik-analytics/Tiktok-analytics/backend/crawlers
       dockerfile: Dockerfile
+    container_name: tiktok_account_crawler
     environment:
-      - PUBSUB_EMULATOR_HOST=localhost:8681
+      - PUBSUB_EMULATOR_HOST=pubsub:8681
       - PROJECT_ID=local-project
       - MYSQL_HOST=host.docker.internal
       - MYSQL_PORT=3306
       - MYSQL_USER=tiktok_user
       - MYSQL_PASSWORD=tiktok_pass
       - MYSQL_DATABASE=tiktok_data
-    command: python -m tiktok_crawler.account_crawler.crawler
-    network_mode: "host"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
+    command: tail -f /dev/null
+    depends_on:
+      - pubsub
+    # Windows Docker Desktopでは自動的にサポートされるが、念のため含める
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   mysql_data:

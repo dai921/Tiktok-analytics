@@ -12,9 +12,19 @@ logger = logging.getLogger(__name__)
 
 # ホットリロード防止のための設定（追加）
 
+# 環境変数を取得する部分を追加
+environment = os.getenv('ENVIRONMENT', 'development')
+pubsub_host = os.getenv('PUBSUB_EMULATOR_HOST')
+project_id = os.getenv('PROJECT_ID', 'local-project')
+
+# 環境情報をログ出力
+logger.info(f"実行環境: {environment}")
+logger.info(f"Pub/Subエミュレータ: {pubsub_host}")
+logger.info(f"プロジェクトID: {project_id}")
+
 def get_db_connection():
     """データベース接続を取得する"""
-    host = "127.0.0.1"  # 明示的IPアドレスを使用
+    host = os.getenv('MYSQL_HOST')  # 明示的IPアドレスを使用
     port = int(os.environ.get("MYSQL_PORT", 3306))
     user = os.environ.get("MYSQL_USER", "tiktok_user")
     password = os.environ.get("MYSQL_PASSWORD", "tiktok_pass")
@@ -102,37 +112,20 @@ def process_crawl_complete(data, context=None):
                     # 新アカウントフラグの更新
                     if status == "completed" and is_new_account:
                         # is_new_accountフラグをfalseに更新
+                        # needs_updateはそのまま（TRUE）
                         update_sql = f"""
                         UPDATE {database_name}.account_list 
-                        SET is_new_account = FALSE, 
-                            needs_update = FALSE,
-                            latest_video_date = %s 
+                        SET is_new_account = FALSE
                         WHERE account_url = %s
                         """
                         
-                        cursor.execute(update_sql, (
-                            datetime.now().strftime('%Y-%m-%d'),
-                            account_url
-                        ))
+                        cursor.execute(update_sql, (account_url,))
                         
                         affected_rows = cursor.rowcount
                         logger.info(f"アカウント {account_url} のis_new_accountをFalseに更新しました（影響行数: {affected_rows}）")
                     elif status == "completed":
-                        # 既存アカウントの場合はneeds_updateのみ更新
-                        update_sql = f"""
-                        UPDATE {database_name}.account_list 
-                        SET needs_update = FALSE,
-                            latest_video_date = %s 
-                        WHERE account_url = %s
-                        """
-                        
-                        cursor.execute(update_sql, (
-                            datetime.now().strftime('%Y-%m-%d'),
-                            account_url
-                        ))
-                        
-                        affected_rows = cursor.rowcount
-                        logger.info(f"アカウント {account_url} のneeds_updateをFalseに更新しました（影響行数: {affected_rows}）")
+                        # 既存アカウントの場合は更新不要
+                        logger.info(f"アカウント {account_url} は既存アカウントのため更新不要")
                     
                     connection.commit()
                     logger.info(f"データベースに保存・更新しました: account_url={account_url}, status={status}")
