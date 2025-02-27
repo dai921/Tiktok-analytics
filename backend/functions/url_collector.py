@@ -79,7 +79,7 @@ def collect_urls(request):
             SELECT id, account_url, account_name, is_new_account 
             FROM account_list 
             WHERE needs_update = TRUE
-            LIMIT 3
+            LIMIT 4
             """
             logger.info(f"実行SQL: {sql}")
             cursor.execute(sql)

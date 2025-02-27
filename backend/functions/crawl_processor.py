@@ -44,20 +44,26 @@ def get_db_connection():
         logger.error(f"データベース接続エラー: {e}")
         raise
 
-def process_crawl_complete(data, context=None):
-    """Pub/Subトピックからクロール完了メッセージを処理する"""
+def process_crawl_complete(cloud_event):
+    """クロール完了通知を処理"""
+    # cloud_eventがdictの場合は直接使用
+    if isinstance(cloud_event, dict):
+        data = cloud_event
+    else:
+        # CloudEventオブジェクトの場合はdataを取得
+        data = cloud_event.data
+
     start_time = time.time()
     logger.info(f"====== process_crawl_complete 開始：{datetime.now().isoformat()} ======")
     
+    connection = None
     try:
         # Pub/Subメッセージからデータを取得
         if isinstance(data, dict) and 'data' in data:
-            # Base64デコードが必要な場合
             import base64
             pubsub_message = base64.b64decode(data['data']).decode('utf-8')
             message_data = json.loads(pubsub_message)
         else:
-            # テスト用：データが直接含まれている場合
             message_data = data
         
         logger.info(f"受信したメッセージ: {message_data}")
@@ -75,60 +81,21 @@ def process_crawl_complete(data, context=None):
         
         # データベースに結果を保存
         connection = get_db_connection()
-        try:
-            with connection:
-                with connection.cursor() as cursor:
-                    # クロール結果をcrawl_resultsテーブルに保存
-                    database_name = os.environ.get("MYSQL_DATABASE", "tiktok_data")
-                    sql = f"""
-                    CREATE TABLE IF NOT EXISTS {database_name}.crawl_results (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        account_url VARCHAR(255) NOT NULL,
-                        status VARCHAR(50) NOT NULL,
-                        video_count INT DEFAULT 0,
-                        timestamp DOUBLE NOT NULL,
-                        UNIQUE KEY (account_url)
-                    )
-                    """
-                    cursor.execute(sql)
-                    
-                    # クロール結果を保存
-                    sql = f"""
-                    INSERT INTO {database_name}.crawl_results 
-                    (account_url, status, video_count, timestamp) 
-                    VALUES (%s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE 
-                    status = %s, video_count = %s, timestamp = %s
-                    """
-                    
-                    cursor.execute(
-                        sql, 
-                        (account_url, status, video_count, timestamp,
-                         status, video_count, timestamp)
-                    )
-                    
-                    # 新アカウントフラグの更新
-                    if status == "completed" and is_new_account:
-                        # is_new_accountフラグをfalseに更新
-                        # needs_updateはそのまま（TRUE）
-                        update_sql = f"""
-                        UPDATE {database_name}.account_list 
-                        SET is_new_account = FALSE
-                        WHERE account_url = %s
-                        """
-                        
-                        cursor.execute(update_sql, (account_url,))
-                        
-                        affected_rows = cursor.rowcount
-                        logger.info(f"アカウント {account_url} のis_new_accountをFalseに更新しました（影響行数: {affected_rows}）")
-                    elif status == "completed":
-                        # 既存アカウントの場合は更新不要
-                        logger.info(f"アカウント {account_url} は既存アカウントのため更新不要")
-                    
-                    connection.commit()
-                    logger.info(f"データベースに保存・更新しました: account_url={account_url}, status={status}")
-        finally:
-            connection.close()
+        with connection.cursor() as cursor:
+            # 新アカウントフラグの更新
+            if status == "completed" and is_new_account:
+                database_name = os.environ.get("MYSQL_DATABASE", "tiktok_data")
+                update_sql = f"""
+                UPDATE {database_name}.account_list 
+                SET is_new_account = FALSE
+                WHERE account_url = %s
+                """
+                
+                cursor.execute(update_sql, (account_url,))
+                logger.info(f"アカウント {account_url} のis_new_accountをFalseに更新しました")
+            
+            connection.commit()
+            logger.info(f"データベースを更新しました: account_url={account_url}, status={status}")
         
         # 処理完了
         total_time = time.time() - start_time
@@ -142,6 +109,12 @@ def process_crawl_complete(data, context=None):
         return {"success": False, "error": str(e)}
     finally:
         total_time = time.time() - start_time
+        if connection and hasattr(connection, 'close'):
+            try:
+                connection.close()
+                logger.info("データベース接続をクローズしました")
+            except Exception as e:
+                logger.warning(f"接続クローズ時にエラーが発生: {e}")
         logger.info(f"====== process_crawl_complete 終了: {total_time:.2f}秒 ======")
 
 # スタンドアロン実行用
@@ -156,16 +129,17 @@ def setup_subscription():
         subscription_path = subscriber.subscription_path(project_id, subscription_name)
         
         logger.info(f"Pub/Subサブスクリプション: {subscription_path}")
+        logger.info(f"PUBSUB_EMULATOR_HOST: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
+        logger.info(f"PROJECT_ID: {project_id}")
         
         # コールバック関数
         def callback(message):
             try:
                 logger.info(f"メッセージ受信: {message.message_id}")
-                # メッセージデータを取得
+                logger.info(f"メッセージデータ: {message.data}")
                 pubsub_data = message.data.decode('utf-8')
                 data = json.loads(pubsub_data)
-                # process_crawl_complete関数を呼び出し
-                process_crawl_complete(data)
+                process_crawl_complete(data)  # {"data": data}ではなく、直接dataを渡す
                 logger.info("メッセージ処理完了")
             except Exception as e:
                 logger.error(f"メッセージ処理エラー: {e}")
@@ -192,7 +166,6 @@ def setup_subscription():
 if __name__ == "__main__":
     # スタンドアロンモードとして起動
     logger.info("スタンドアロンモードでクロール完了プロセッサーを起動しています...")
-    
     try:
         # データベース接続テスト
         connection = get_db_connection()
@@ -222,4 +195,8 @@ if __name__ == "__main__":
         sys.exit(1)
 else:
     # Cloud Functions Frameworkによって呼び出される場合の準備
-    logger.info("Functions Frameworkモードで準備完了") 
+    logger.info("Functions Frameworkモードで準備完了")
+    # サブスクリプション設定
+    future = setup_subscription()
+    if future:
+        logger.info("サブスクリプションの設定が完了しました") 

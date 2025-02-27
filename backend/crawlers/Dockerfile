@@ -33,9 +33,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Playwrightのインストールと依存関係
-RUN pip install playwright && \
-    playwright install chromium && \
-    playwright install-deps chromium
+RUN pip install playwright==1.41.0 && \
+    mkdir -p /root/.cache/ms-playwright && \
+    chmod -R 777 /root/.cache/ms-playwright && \
+    playwright install-deps chromium && \
+    playwright install chromium
 
 # 必要なPythonパッケージをインストール
 COPY requirements.txt .

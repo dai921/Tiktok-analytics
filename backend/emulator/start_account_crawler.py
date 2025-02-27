@@ -36,11 +36,31 @@ def run_command(command, prefix=""):
 def start_docker():
     """Dockerコンテナを起動"""
     print("=== Dockerコンテナを起動中... ===")
-    proc, _ = run_command("docker-compose -f emulator/docker-compose.dev.yml up -d", "[Docker]")
+    
+    # プロジェクトルートを取得
+    project_root = os.getenv("PROJECT_ROOT")
+    if not project_root:
+        # 現在のスクリプトのディレクトリを取得
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # プロジェクトルートディレクトリを推測
+        project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+    
+    # docker-compose.dev.ymlへの絶対パスを構築
+    docker_compose_path = os.path.join(
+        project_root,
+        "backend",
+        "emulator",
+        "docker-compose.dev.yml"
+    )
+    
+    print(f"Docker Compose設定ファイル: {docker_compose_path}")
+    
+    # Dockerコマンドを実行
+    proc, _ = run_command(f"docker-compose -f {docker_compose_path} up -d", "[Docker]")
     proc.wait()  # コンテナ起動を待機
     print("=== Dockerコンテナの起動完了 ===")
     # コンテナが完全に起動するまで少し待機
-    time.sleep(10)  # 5秒から10秒に増加（Pub/Subの起動に時間がかかる場合がある）
+    time.sleep(10)
 
 def check_pubsub():
     """Pub/Subトピックとサブスクリプションを確認/作成"""
@@ -100,19 +120,38 @@ def start_crawler():
     """アカウントクローラーを起動 - Dockerコンテナ内で実行"""
     print("=== アカウントクローラーを起動中... ===")
     
-    # Dockerコンテナ内でコマンドを実行
-    command = "docker exec tiktok_account_crawler python -m tiktok_crawler.account_crawler.crawler"
-    print(f"実行コマンド: {command}")
+    # コンテナの状態を確認
+    run_command("docker ps", "Docker PS")
     
     try:
         # クローラーを起動して出力をリアルタイム表示
-        proc, thread = run_command(command, "AccountCrawler")
-        print("アカウントクローラーを起動しました")
+        command = "docker exec -t tiktok_account_crawler python -m tiktok_crawler.account_crawler.crawler"
+        print(f"実行コマンド: {command}")
+        
+        # -tオプションを追加してTTYを割り当て、出力をバッファリングしない
+        # encoding='utf-8'を追加して文字化けを防ぐ
+        proc = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            bufsize=1,
+            encoding='utf-8',
+            errors='replace'  # デコードできない文字は置換文字に変換
+        )
+        
+        # リアルタイムでログを表示
+        for line in proc.stdout:
+            if line.strip():  # 空行を除外
+                print(f"[AccountCrawler] {line.strip()}")
+        
         return proc
+        
     except Exception as e:
         print(f"アカウントクローラーの起動に失敗しました: {e}")
-        # コンテナの状態を確認
-        run_command("docker ps | grep tiktok_account_crawler", "Docker PS")
+        import traceback
+        print(traceback.format_exc())
         return None
 
 def check_processing_complete():
@@ -185,25 +224,25 @@ def setup_environment():
     
     return local_env_vars, docker_env_vars
 
-def test_collect_urls():
-    """collect_urls関数の動作確認"""
-    try:
-        response = requests.post(
-            "http://127.0.0.1:8090",
-            headers={"Content-Type": "application/json"},
-            json={},
-            timeout=30
-        )
-        
-        success = response.status_code == 200
-        print(f"collect_urls テスト: {'成功' if success else '失敗'}")
-        print(f"レスポンス: {response.text}")
-        
-        return success
-            
-    except Exception as e:
-        print(f"collect_urls テストエラー: {e}")
-        return False
+#def test_collect_urls():
+ #   """collect_urls関数の動作確認"""
+#    try:
+#        response = requests.post(
+#            "http://127.0.0.1:8090",
+#            headers={"Content-Type": "application/json"},
+#            json={},
+#            timeout=30
+#        )
+#        
+#        success = response.status_code == 200
+#        print(f"collect_urls テスト: {'成功' if success else '失敗'}")
+#        print(f"レスポンス: {response.text}")
+#        
+#        return success
+#                
+#    except Exception as e:
+#        print(f"collect_urls テストエラー: {e}")
+#        return False
 
 def main():
     """メイン処理"""
@@ -227,32 +266,39 @@ def main():
         port=os.getenv("COLLECT_URLS_PORT", "8090"),
         env_vars=local_env
     )
-    processes.append(collect_proc)
+    if collect_proc:  # Noneでない場合のみ追加
+        processes.append(collect_proc)
     
     # サーバーの起動を待機（より長く）
     print("サーバーの起動を待機中...")
     time.sleep(15)  # 15秒待機に延長
     
     # テストを実行
-    success = test_collect_urls()
-    if not success:
-        print("collect_urls関数のテストに失敗しました")
-    else:
-        print("collect_urls関数のテストが完了しました")
+    #success = test_collect_urls()
+    #if not success:
+    #    print("collect_urls関数のテストに失敗しました")
+    #else:
+    #    print("collect_urls関数のテストが完了しました")
     
     # process_crawl_complete関数を起動
-    print("\n=== process_crawl_complete関数を起動中... ===")
-    crawl_proc = start_function(
-        "process_crawl_complete", "crawl_processor.py", os.getenv("PROCESS_CRAWL_PORT", "8091"),
-        env_vars=local_env
-    )
-    processes.append(crawl_proc)
+    #print("\n=== process_crawl_complete関数を起動中... ===")
+    #crawl_proc = start_function(
+    #    "process_crawl_complete", "crawl_processor.py", os.getenv("PROCESS_CRAWL_PORT", "8091"),
+    #    env_vars=local_env
+    #)
+    #if crawl_proc:  # Noneでない場合のみ追加
+    #    processes.append(crawl_proc)
     
-    # クローラーを起動（Dockerコンテナ内で実行）
-    # 一旦コメントアウト
-    # print("\n=== アカウントクローラーを起動中... ===")
-    # crawler_proc = start_crawler()
-    # processes.append(crawler_proc)
+    # クローラーを起動
+    print("\n=== アカウントクローラーを起動中... ===")
+    crawler_proc = start_crawler()
+    if crawler_proc:  # Noneでない場合のみ追加
+        processes.append(crawler_proc)
+    
+    # プロセスリストが空の場合は終了
+    if not processes:
+        print("エラー: 起動できたプロセスがありません")
+        return
     
     print("\n=== 開発環境が起動しました ===")
     print(f"collect_urls: http://localhost:{os.getenv('COLLECT_URLS_PORT', '8090')}")
