@@ -6,6 +6,8 @@ import json
 from datetime import datetime
 import pymysql
 import logging
+import concurrent.futures
+import sys
 
 # 代わりに環境変数を取得するように変更
 environment = os.getenv('ENVIRONMENT', 'development')
@@ -23,6 +25,14 @@ print("==== Database Connection Info ====")
 print(f"ENVIRONMENT: {environment}")
 print(f"PUBSUB_EMULATOR_HOST: {pubsub_host}")
 print(f"PROJECT_ID: {project_id}")
+
+# ログ設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout  # 標準出力に出力
+)
+logger = logging.getLogger(__name__)
 
 def get_db_connection():
     """データベース接続を取得する"""
@@ -55,58 +65,79 @@ def get_db_connection():
 
 def collect_urls(request):
     """needs_updateフラグが立っているアカウントを取得しPub/Subに送信する"""
+    logger.info("==== collect_urls関数の実行開始 ====")
+    logger.info(f"リクエストメソッド: {request.method}")
+    
     try:
-        print("==== collect_urls関数を実行中... ====")
-        print(f"リクエストメソッド: {request.method}")
-        print(f"リクエストヘッダー: {dict(request.headers)}")
-        
-        # DBからneeds_updateが立っているアカウントを取得（最大3件）
-        print("==== 更新が必要なアカウントを取得中... ====")
-        conn = get_db_connection()
+        # DBからneeds_updateが立っているアカウントを取得
+        logger.info("==== データベースからアカウント取得開始 ====")
         accounts = []
+        conn = get_db_connection()
         
         with conn.cursor() as cursor:
-            # クエリ実行 - 最大3件に制限
             sql = """
             SELECT id, account_url, account_name, is_new_account 
             FROM account_list 
             WHERE needs_update = TRUE
-            LIMIT 4
+            LIMIT 3
             """
-            print(f"==== 実行するSQL: {sql}")
+            logger.info(f"実行SQL: {sql}")
             cursor.execute(sql)
             accounts = cursor.fetchall()
-            print(f"==== 取得したアカウント数: {len(accounts)}")
+            logger.info(f"取得アカウント数: {len(accounts)}")
             
-            # 取得結果のプレビュー
+            # 取得したアカウントの内容を表示
             for account in accounts:
-                print(f"==== 取得アカウント: {account}")
+                logger.info(f"アカウント情報: {account}")
         
         conn.close()
+        logger.info("==== データベース接続クローズ ====")
         
         if not accounts:
-            print("==== 更新が必要なアカウントが見つかりませんでした")
+            logger.info("==== 更新が必要なアカウントが見つかりませんでした ====")
             return "No accounts to update found", 200
         
-        # Pub/Subにメッセージ送信
+        # Pub/Sub送信処理
+        logger.info("==== Pub/Sub送信処理開始 ====")
+        # Pub/Sub設定
+        os.environ['PUBSUB_EMULATOR_HOST'] = '127.0.0.1:8681'  # 明示的に設定
         publisher = pubsub_v1.PublisherClient()
         topic_name = "process-account-list"
-        topic_path = publisher.topic_path(project_id, topic_name)
+        topic_path = publisher.topic_path(project_id.strip(), topic_name.strip())
         
-        print(f"==== Pub/Subトピック: {topic_path}")
+        logger.info(f"Pub/Sub設定:")
+        logger.info(f"- エミュレーターホスト: '{os.getenv('PUBSUB_EMULATOR_HOST')}'")
+        logger.info(f"- Topic Path: '{topic_path}'")
         
-        # アカウントリストをJSON形式で送信
-        data = json.dumps({"accounts": accounts}).encode("utf-8")
-        future = publisher.publish(topic_path, data)
-        message_id = future.result()
-        
-        print(f"==== メッセージを送信しました。ID: {message_id}")
-        return f"Processed {len(accounts)} accounts for update", 200
-        
+        try:
+            message_data = {
+                "accounts": [
+                    {
+                        "account_url": account["account_url"],
+                        "account_name": account["account_name"],
+                        "is_new_account": bool(account["is_new_account"])
+                    } for account in accounts
+                ]
+            }
+            
+            # メッセージ送信（シンプルに）
+            data = json.dumps(message_data).encode("utf-8")
+            logger.info(f"送信データ: {data.decode('utf-8')}")
+            
+            future = publisher.publish(topic_path, data)
+            message_id = future.result(timeout=30)  # タイムアウトを30秒に
+            
+            logger.info(f"送信成功 - Message ID: {message_id}")
+            return f"Processed {len(accounts)} accounts, Message ID: {message_id}", 200
+            
+        except Exception as e:
+            logger.error(f"Pub/Sub送信エラー: {type(e).__name__}: {str(e)}")
+            return f"Processed {len(accounts)} accounts (Pub/Sub error: {str(e)})", 200
+            
     except Exception as e:
+        logger.error(f"エラー発生: {type(e).__name__}: {str(e)}")
         import traceback
-        print(f"==== エラー発生: {e}")
-        print(traceback.format_exc())
+        logger.error(traceback.format_exc())
         return f"Error: {str(e)}", 500
 
 def process_crawl_complete(event, context):

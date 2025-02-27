@@ -11,33 +11,23 @@ import pymysql
 load_dotenv()
 
 def run_command(command, prefix=""):
-    """コマンドを実行して出力をリアルタイム表示"""
-    # Windows環境ではUTF-8エンコーディングを明示的に指定
-    if sys.platform.startswith('win'):
-        process = subprocess.Popen(
-            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, encoding='utf-8', errors='replace'  # エンコーディングとエラー処理を指定
-        )
-    else:
-        process = subprocess.Popen(
-            command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True
-        )
+    """コマンドを実行し、リアルタイムで出力を表示"""
+    process = subprocess.Popen(
+        command,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+        bufsize=1
+    )
     
-    # 出力を読み取るスレッド
-    def read_output(process, prefix):
-        while True:
-            try:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    print(f"[{prefix}] | {output.strip()}")
-            except UnicodeDecodeError as e:
-                print(f"[{prefix}] | 文字コードエラー: {e}")
-                continue
-    
-    thread = threading.Thread(target=read_output, args=(process, prefix))
+    def log_output(stream):
+        for line in stream:
+            if line.strip():  # 空行を除外
+                print(f"[{prefix}] | {line.strip()}")
+        
+    # 出力を別スレッドで処理
+    thread = threading.Thread(target=log_output, args=(process.stdout,))
     thread.daemon = True
     thread.start()
     
@@ -197,61 +187,23 @@ def setup_environment():
 
 def test_collect_urls():
     """collect_urls関数の動作確認"""
-    print("\n=== collect_urls関数を呼び出し中: http://localhost:8090 ===")
-    
-    # サーバーの起動を待機
-    max_retries = 5
-    retry_delay = 3
-    
-    for i in range(max_retries):
-        try:
-            print(f"接続試行 {i+1}/{max_retries}...")
+    try:
+        response = requests.post(
+            "http://127.0.0.1:8090",
+            headers={"Content-Type": "application/json"},
+            json={},
+            timeout=30
+        )
+        
+        success = response.status_code == 200
+        print(f"collect_urls テスト: {'成功' if success else '失敗'}")
+        print(f"レスポンス: {response.text}")
+        
+        return success
             
-            # まずGETリクエストでサーバーの状態を確認
-            health_check = requests.get(
-                "http://localhost:8090",
-                timeout=5
-            )
-            print(f"サーバー状態確認: {health_check.status_code}")
-            
-            # POSTリクエストを送信（タイムアウトを60秒に延長）
-            response = requests.post(
-                "http://localhost:8090",
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json"
-                },
-                json={},
-                timeout=60  # タイムアウトを60秒に延長
-            )
-            
-            print(f"ステータスコード: {response.status_code}")
-            print(f"レスポンス: {response.text}")
-            
-            if response.status_code == 200:
-                print("collect_urls関数が正常に動作しています")
-                return True
-                
-        except requests.exceptions.ReadTimeout as e:
-            print(f"タイムアウトエラー（処理に時間がかかっています）: {e}")
-            # 処理は継続している可能性があるため、成功として扱う
-            print("処理は継続中と判断して続行します")
-            return True
-            
-        except requests.exceptions.ConnectionError as e:
-            print(f"接続エラー（リトライ中...）: {e}")
-            time.sleep(retry_delay)
-            continue
-            
-        except Exception as e:
-            print(f"予期せぬエラー: {e}")
-            import traceback
-            print(traceback.format_exc())
-            time.sleep(retry_delay)
-            continue
-    
-    print("collect_urls関数の呼び出しに失敗しました（最大リトライ回数に到達）")
-    return False
+    except Exception as e:
+        print(f"collect_urls テストエラー: {e}")
+        return False
 
 def main():
     """メイン処理"""
@@ -297,9 +249,10 @@ def main():
     processes.append(crawl_proc)
     
     # クローラーを起動（Dockerコンテナ内で実行）
-    print("\n=== アカウントクローラーを起動中... ===")
-    crawler_proc = start_crawler()
-    processes.append(crawler_proc)
+    # 一旦コメントアウト
+    # print("\n=== アカウントクローラーを起動中... ===")
+    # crawler_proc = start_crawler()
+    # processes.append(crawler_proc)
     
     print("\n=== 開発環境が起動しました ===")
     print(f"collect_urls: http://localhost:{os.getenv('COLLECT_URLS_PORT', '8090')}")
