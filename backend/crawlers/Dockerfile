@@ -32,12 +32,22 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# パッケージとしてインストール
-COPY . /app/
-RUN pip install -e .
+# Playwrightのインストールと依存関係
+RUN pip install playwright==1.41.0 && \
+    mkdir -p /root/.cache/ms-playwright && \
+    chmod -R 777 /root/.cache/ms-playwright && \
+    playwright install-deps chromium && \
+    playwright install chromium
 
-# Playwrightをインストールしてブラウザをダウンロード
-RUN playwright install chromium
+# 必要なPythonパッケージをインストール
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 追加で必要なパッケージを明示的にインストール
+RUN pip install pymysql google-cloud-pubsub
+
+# アプリケーションコードをコピー
+COPY . .
 
 # 環境変数でクローラーの種類を指定
 ENV CRAWLER_TYPE=account_crawler

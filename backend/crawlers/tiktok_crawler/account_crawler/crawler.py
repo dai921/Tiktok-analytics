@@ -4,7 +4,7 @@ import asyncio
 import random
 from playwright.async_api import async_playwright, TimeoutError
 from google.cloud import pubsub_v1
-from ..common.db import save_video_urls
+from tiktok_crawler.common.db import save_video_urls
 import json
 import base64
 from datetime import datetime
@@ -12,18 +12,29 @@ import pymysql
 import logging
 import threading
 import socket
+import sys
 
-# ロギング設定
-logging.basicConfig(level=logging.INFO)
+# ロギングの設定を強化
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
-# 環境変数の設定（サービス名でなくlocalhostを使用）
-os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'  # localhostを使用
-os.environ['PROJECT_ID'] = 'local-project'
+# 起動時のデバッグ情報を追加
+logger.info("=== Account Crawler Starting ===")
+logger.info(f"Python Version: {sys.version}")
+logger.info(f"Current Directory: {os.getcwd()}")
+logger.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
+
+# 環境変数の設定（Docker環境用）
+pubsub_host = os.environ.get('PUBSUB_EMULATOR_HOST', 'pubsub:8681')  # Dockerサービス名を使用
+project_id = os.environ.get('PROJECT_ID', 'local-project')
 
 # デバッグ情報の表示
-logger.info(f"環境変数: PUBSUB_EMULATOR_HOST={os.environ.get('PUBSUB_EMULATOR_HOST')}")
-logger.info(f"環境変数: PROJECT_ID={os.environ.get('PROJECT_ID')}")
+logger.info(f"環境変数: PUBSUB_EMULATOR_HOST={pubsub_host}")
+logger.info(f"環境変数: PROJECT_ID={project_id}")
 
 # ホスト名の解決をテスト
 try:
@@ -75,9 +86,10 @@ class AccountCrawler:
                     await asyncio.sleep(5)
                 
                 videos = []
+                processed_videos = []
                 previous_height = 0
                 retry_count = 0
-                max_videos = float('inf') if is_new_account else 8  # 新規アカウントは全件、既存は8件まで
+                max_videos = float('inf') if is_new_account else 8
                 
                 while retry_count < 3 and len(videos) < max_videos:
                     video_elements = await page.query_selector_all('div[data-e2e="user-post-item"] a')
@@ -87,10 +99,24 @@ class AccountCrawler:
                             break
                             
                         href = await elem.get_attribute('href')
-                        if href and '/video/' in href and href not in videos:
+                        if href and ('/video/' in href or '/photo/' in href) and href not in videos:
                             if not href.startswith('http'):
                                 href = f'https://www.tiktok.com{href}'
+                            
+                            # video_idまたはphoto_idを抽出
+                            content_id = None
+                            if '/video/' in href:
+                                content_id = href.split('/video/')[1]
+                            elif '/photo/' in href:
+                                content_id = href.split('/photo/')[1]
+                            
+                            # クエリパラメータがある場合は除去
+                            if content_id and '?' in content_id:
+                                content_id = content_id.split('?')[0]
+                            
+                            # シンプルにURLを追加
                             videos.append(href)
+                            processed_videos.append(href)  # video_urlをそのまま追加
                     
                     if not is_new_account and len(videos) >= max_videos:
                         break
@@ -106,46 +132,61 @@ class AccountCrawler:
                     await page.evaluate('window.scrollBy(0, document.body.scrollHeight)')
                     await asyncio.sleep(2)
 
-                print(f"Found {len(videos)} videos")
-                await browser.close()
+                # 動画URL取得後にusernameを設定
+                username = account_url.split('@')[-1]
                 
                 # データベースに保存
-                if videos:
-                    save_video_urls(account_url, videos)
+                connection = get_db_connection()
+                try:
+                    if save_video_urls(connection, processed_videos, username):
+                        print(f"Found {len(processed_videos)} videos/photos")
+                        return processed_videos
+                    else:
+                        print("Error saving URLs")
+                        return []
+                finally:
+                    connection.close()
                 
-                return videos
-
             except Exception as e:
-                print(f"Error collecting videos: {str(e)}")
-                await browser.close()
+                print(f"Error collecting content: {e}")
                 return []
 
-def get_db_connection():
-    """データベース接続を取得する"""
-    host = "127.0.0.1"  # 明示的IPアドレスを使用
-    port = int(os.environ.get("MYSQL_PORT", 3306))
-    user = os.environ.get("MYSQL_USER", "tiktok_user")
-    password = os.environ.get("MYSQL_PASSWORD", "tiktok_pass")
-    database = os.environ.get("MYSQL_DATABASE", "tiktok_data")
-    
-    try:
-        logger.info(f"データベース接続試行: {host}:{port}/{database}")
-        connection = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            charset='utf8mb4',
-            cursorclass=pymysql.cursors.DictCursor
-        )
-        logger.info("データベース接続成功!")
-        return connection
-    except Exception as e:
-        logger.error(f"データベース接続エラー: {e}")
-        raise
+    async def crawl_account(self, account):
+        """アカウントのクローリングを実行"""
+        try:
+            logger.info(f"アカウント {account.get('account_name')} ({account.get('account_url')}) のクロールを開始")
+            
+            video_urls = await self.collect_video_urls(
+                account.get('account_url'),
+                account.get('is_new_account', False)
+            )
+            
+            # データベースに保存
+            connection = get_db_connection()
+            try:
+                # video_urlsは単純な文字列のリストなので、そのまま渡す
+                if save_video_urls(connection, video_urls, account.get('account_name')):
+                    logger.info(f"Found {len(video_urls)} videos/photos")
+                    return {
+                        "success": True,
+                        "account_url": account.get('account_url'),
+                        "video_count": len(video_urls),
+                        "is_new_account": account.get('is_new_account', False)
+                    }
+            finally:
+                connection.close()
+            
+        except Exception as e:
+            logger.error(f"クロール中にエラーが発生しました: {e}")
+            logger.error(traceback.format_exc())
+            return {
+                "success": False,
+                "account_url": account.get('account_url'),
+                "error": str(e),
+                "is_new_account": account.get('is_new_account', False)
+            }
 
-def crawl_account(account_info):
+async def crawl_account(account_info):
     """アカウントページをクロールして動画URLを取得する
     
     Args:
@@ -156,75 +197,19 @@ def crawl_account(account_info):
     """
     account_url = account_info.get('account_url')
     account_name = account_info.get('account_name')
-    is_new_account = account_info.get('is_new_account', True)
+    is_new_account = account_info.get('is_new_account')
     
     logger.info(f"アカウント {account_name} ({account_url}) のクロールを開始")
     
     try:
-        # 実際のクロール処理は collect_video_urls 関数に任せる
-        # ここではテスト用に模擬処理を実装
+        # AccountCrawlerインスタンスを作成
+        crawler = AccountCrawler()
         
-        # 模擬的な動画URL取得
-        # 実際の実装では collect_video_urls を使用
-        video_count = 15 if is_new_account else 8
-        video_urls = []
-        
-        for i in range(video_count):
-            video_id = f"{random.randint(1000000000, 9999999999)}"
-            video_url = f"https://www.tiktok.com/@{account_name}/video/{video_id}"
-            video_urls.append({
-                "video_url": video_url,
-                "video_id": video_id,
-                "username": account_name,
-                "created_at": datetime.now().strftime('%Y-%m-%d'),
-                "play_count": random.randint(100, 100000),
-                "is_new_video": True,
-                "needs_update": True
-            })
-        
-        # DB接続
-        conn = get_db_connection()
-        try:
-            with conn.cursor() as cursor:
-                # 動画URLをDBに保存
-                database_name = os.environ.get("MYSQL_DATABASE", "tiktok_data")
-                for video in video_urls:
-                    try:
-                        sql = f"""
-                        INSERT INTO {database_name}.video_url_data 
-                        (video_url, video_id, username, created_at, play_count, is_new_video, needs_update)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON DUPLICATE KEY UPDATE 
-                            play_count = VALUES(play_count),
-                            is_new_video = VALUES(is_new_video),
-                            needs_update = VALUES(needs_update)
-                        """
-                        cursor.execute(sql, (
-                            video["video_url"], 
-                            video["video_id"],
-                            video["username"],
-                            video["created_at"],
-                            video["play_count"],
-                            video["is_new_video"],
-                            video["needs_update"]
-                        ))
-                    except Exception as e:
-                        logger.error(f"動画URL保存エラー: {e}")
-                
-                conn.commit()
-        finally:
-            conn.close()
-        
-        logger.info(f"アカウント {account_name} のクロールが完了しました。{len(video_urls)}件の動画を取得")
+        # 実際のクローリング処理を実行
+        result = await crawler.crawl_account(account_info)
         
         # 結果を返す
-        return {
-            "success": True,
-            "account_url": account_url,
-            "account_name": account_name,
-            "video_count": len(video_urls),
-            "is_new_account": is_new_account
-        }
+        return result
         
     except Exception as e:
         logger.error(f"クロール中にエラーが発生しました: {e}")
@@ -237,11 +222,30 @@ def crawl_account(account_info):
             "is_new_account": is_new_account
         }
 
+def get_db_connection():
+    """データベース接続を取得"""
+    try:
+        logger.info(f"データベース接続試行: {os.environ.get('MYSQL_HOST')}:{os.environ.get('MYSQL_PORT')}/{os.environ.get('MYSQL_DATABASE')}")
+        
+        # Docker環境用のホスト設定
+        connection = pymysql.connect(
+            host=os.environ.get('MYSQL_HOST', 'host.docker.internal'),  # Docker環境用のホスト
+            port=int(os.environ.get('MYSQL_PORT', 3306)),
+            user=os.environ.get('MYSQL_USER', 'tiktok_user'),
+            password=os.environ.get('MYSQL_PASSWORD', 'tiktok_pass'),
+            database=os.environ.get('MYSQL_DATABASE', 'tiktok_data'),
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+        return connection
+    except Exception as e:
+        logger.error(f"データベース接続エラー: {e}")
+        raise
+
 def send_crawl_complete_notification(result):
     """クロール完了通知をPub/Subで送信する"""
     try:
         publisher = pubsub_v1.PublisherClient()
-        project_id = os.environ.get("PROJECT_ID", "local-project")
         topic_name = "crawl-complete"
         topic_path = publisher.topic_path(project_id, topic_name)
         
@@ -271,12 +275,15 @@ def send_crawl_complete_notification(result):
         logger.error(traceback.format_exc())
         return None
 
-def process_accounts(accounts):
+async def process_accounts(accounts):
     """アカウントリストを処理する"""
+    results = []
+    
     for account in accounts:
         try:
             # アカウントをクロール
-            result = crawl_account(account)
+            result = await crawl_account(account)
+            results.append(result)
             
             # クロール完了通知を送信
             send_crawl_complete_notification(result)
@@ -286,149 +293,101 @@ def process_accounts(accounts):
             
         except Exception as e:
             logger.error(f"アカウント {account.get('account_name')} の処理中にエラーが発生: {e}")
+            results.append({
+                "success": False,
+                "account_url": account.get('account_url'),
+                "account_name": account.get('account_name'),
+                "error": str(e),
+                "is_new_account": account.get('is_new_account', False)
+            })
+    
+    return results
 
-def callback(message):
-    """Pub/Subからのメッセージを処理する"""
+async def process_account_message(message):
+    """メッセージを処理する"""
     try:
-        logger.debug(f"メッセージ受信: {message}")
-        logger.info("Pub/Subからメッセージを受信しました")
+        logger.info(f"=== メッセージ受信開始 ===")
+        logger.info(f"メッセージID: {message.message_id}")
         
-        # メッセージデータを取得と出力
-        pubsub_message = message.data.decode('utf-8')
-        logger.debug(f"デコードされたメッセージデータ: {pubsub_message}")
-        
-        # メッセージをJSONとしてパース
-        message_data = json.loads(pubsub_message)
+        # メッセージデータをデコード
+        data = json.loads(message.data.decode('utf-8'))
+        logger.info(f"受信データ: {data}")
         
         # アカウントリストを取得
-        accounts = message_data.get("accounts", [])
-        logger.info(f"処理するアカウント数: {len(accounts)}")
+        accounts = data.get('accounts', [])
+        logger.info(f"処理対象アカウント数: {len(accounts)}")
         
-        if accounts:
-            # 別スレッドでアカウント処理を開始
-            threading.Thread(target=process_accounts, args=(accounts,)).start()
+        # 各アカウントを処理
+        for account in accounts:
+            logger.info(f"アカウント処理開始: {account}")
+            try:
+                # クローリング処理を実行
+                result = await crawl_account(account)
+                logger.info(f"クローリング結果: {result}")
+                
+                # クロール完了通知を送信
+                send_crawl_complete_notification(result)
+                logger.info(f"完了通知を送信しました: {account}")
+                
+            except Exception as e:
+                logger.error(f"アカウント処理エラー ({account}): {e}")
+                continue
         
         # メッセージを確認応答
         message.ack()
+        logger.info("=== メッセージ処理完了 ===")
         
     except Exception as e:
-        logger.error(f"メッセージ処理中にエラーが発生: {e}")
-        # エラーが発生してもメッセージを確認応答
-        # 再処理を避けるため
+        logger.error(f"メッセージ処理エラー: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # エラー時もメッセージを確認応答（重複処理を防ぐ）
         message.ack()
 
-def debug_subscription():
-    """サブスクリプションのデバッグ情報を取得"""
+def setup_subscription():
+    """サブスクリプションをセットアップする"""
     try:
-        # Pub/Subクライアント
         subscriber = pubsub_v1.SubscriberClient()
-        publisher = pubsub_v1.PublisherClient()
-        project_id = os.environ.get("PROJECT_ID", "local-project")
-        subscription_name = "process-account-list"
-        subscription_path = subscriber.subscription_path(project_id, subscription_name)
-        topic_path = publisher.topic_path(project_id, "process-account-list")
+        subscription_path = subscriber.subscription_path(project_id, "process-account-list")
         
-        # サブスクリプション情報の取得
-        try:
-            sub_info = subscriber.get_subscription(request={"subscription": subscription_path})
-            logger.info(f"サブスクリプション情報: {sub_info}")
-        except Exception as e:
-            logger.error(f"サブスクリプション情報取得エラー: {e}")
+        logger.info(f"サブスクリプション設定開始: {subscription_path}")
+        logger.info(f"Pub/Subエミュレータ接続: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
         
-        # 保留中のメッセージを確認
-        try:
-            response = subscriber.pull(
-                request={"subscription": subscription_path, "max_messages": 10}
-            )
-            logger.info(f"保留中のメッセージ数: {len(response.received_messages)}")
-            
-            # メッセージの詳細をログに出力
-            for msg in response.received_messages:
-                logger.info(f"  メッセージID: {msg.message.message_id}")
-                logger.info(f"  データ: {msg.message.data.decode('utf-8')}")
-                
-                # メッセージをack
-                subscriber.acknowledge(
-                    request={"subscription": subscription_path, "ack_ids": [msg.ack_id]}
-                )
-            
-            # テストメッセージを送信
-            test_data = json.dumps({
-                "accounts": [
-                    {
-                        "account_url": "https://www.tiktok.com/@test_manual",
-                        "account_name": "test_manual",
-                        "is_new_account": True
-                    }
-                ],
-                "test": True,
-                "timestamp": datetime.now().timestamp()
-            }).encode("utf-8")
-            
-            # 直接メッセージを送信
-            msg_id = publisher.publish(topic_path, test_data).result()
-            logger.info(f"テストメッセージを送信しました: {msg_id}")
-            
-        except Exception as e:
-            logger.error(f"メッセージ確認エラー: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-    
-    except Exception as e:
-        logger.error(f"デバッグ関数エラー: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-
-def main():
-    """メインエントリーポイント - Pub/Subサブスクライバーを設定"""
-    # 環境変数
-    project_id = os.environ.get("PROJECT_ID", "local-project")
-    subscription_name = "process-account-list"
-    
-    # デバッグ情報を出力
-    debug_subscription()
-    
-    # Pub/Subクライアント
-    subscriber = pubsub_v1.SubscriberClient()
-    subscription_path = subscriber.subscription_path(project_id, subscription_name)
-    
-    logger.info(f"Pub/Subサブスクリプション: {subscription_path}")
-    
-    # FlowControlの設定
-    flow_control = pubsub_v1.types.FlowControl(
-        max_messages=10,
-        max_bytes=10 * 1024 * 1024
-    )
-    
-    # メッセージハンドラ設定
-    streaming_pull_future = subscriber.subscribe(
-        subscription_path, 
-        callback=callback,
-        flow_control=flow_control
-    )
-    
-    logger.info(f"アカウントクローラーを起動しました。Pub/Subからのメッセージを待機中...")
-    
-    # 強制的にテスト処理を実行（デバッグ用）
-    accounts = [
-        {
-            "account_url": "https://www.tiktok.com/@chokomintokirai",
-            "account_name": "chokomintokirai",
-            "is_new_account": True
-        }
-    ]
-    threading.Thread(target=process_accounts, args=(accounts,)).start()
-    
-    # メインスレッドを維持
-    try:
-        # 処理が継続するよう結果を待機
+        # 非同期処理用のイベントループを取得
+        loop = asyncio.get_event_loop()
+        
+        # コールバックラッパー
+        def callback(message):
+            loop.run_until_complete(process_account_message(message))
+        
+        # サブスクリプションの設定
+        streaming_pull_future = subscriber.subscribe(
+            subscription_path,
+            callback=callback
+        )
+        
+        logger.info("サブスクリプション設定完了 - メッセージ待機中...")
+        
+        # メッセージ待機
         streaming_pull_future.result()
+        
     except Exception as e:
-        streaming_pull_future.cancel()
-        logger.error(f"ストリーミングの処理中にエラーが発生: {e}")
+        logger.error(f"サブスクリプション設定エラー: {e}")
         import traceback
         logger.error(traceback.format_exc())
+        raise
 
-# メイン実行部分
 if __name__ == "__main__":
-    main() 
+    logger.info("=== Account Crawler 起動 ===")
+    logger.info(f"環境変数:")
+    logger.info(f"- PUBSUB_EMULATOR_HOST: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
+    logger.info(f"- PROJECT_ID: {os.environ.get('PROJECT_ID')}")
+    
+    try:
+        setup_subscription()
+    except KeyboardInterrupt:
+        logger.info("プログラムを終了します")
+    except Exception as e:
+        logger.error(f"予期せぬエラー: {e}")
+        import traceback
+        logger.error(traceback.format_exc()) 

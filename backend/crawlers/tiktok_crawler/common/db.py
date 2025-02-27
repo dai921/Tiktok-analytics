@@ -2,6 +2,7 @@ import os
 import mysql.connector
 from dotenv import load_dotenv
 from datetime import datetime
+import logging
 
 load_dotenv()
 
@@ -14,61 +15,40 @@ def get_db_connection():
         database=os.getenv('MYSQL_DATABASE')
     )
 
-def save_video_urls(account_url: str, video_urls: list):
+def save_video_urls(connection, video_urls, username):
     """動画URLをデータベースに保存"""
-    mysql_host = os.getenv('MYSQL_HOST', 'host.docker.internal')
-    print(f"Connecting to MySQL at {mysql_host}...")
     try:
-        conn = mysql.connector.connect(
-            host=mysql_host,
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE'),
-            port=3306
-        )
-        cursor = conn.cursor()
-
-        # テーブル構造を確認
-        cursor.execute("DESCRIBE video_url_data")
-        columns = cursor.fetchall()
-        print("Table structure:", columns)
-
-        # video_url_dataテーブルに保存
-        for video_url in video_urls:
-            try:
-                video_id = video_url.split('/video/')[1].split('?')[0]
-                username = account_url.split('@')[1].split('?')[0]
+        with connection.cursor() as cursor:
+            for video_url in video_urls:
+                # video_idを抽出
+                video_id = None
+                if '/video/' in video_url:
+                    video_id = video_url.split('/video/')[1]
+                elif '/photo/' in video_url:
+                    video_id = video_url.split('/photo/')[1]
                 
-                # video_idから数値部分のみを抽出してbigintとして使用
-                video_url_number = int(video_id)
+                if video_id and '?' in video_id:
+                    video_id = video_id.split('?')[0]
                 
-                insert_query = """
-                INSERT INTO video_url_data 
-                (video_url, video_id, username, is_new_video, needs_update)
-                VALUES (%s, %s, %s, TRUE, TRUE)
+                sql = """
+                INSERT INTO video_url_data
+                    (video_url, video_id, username, is_new_video, needs_update) 
+                VALUES 
+                    (%s, %s, %s, 1, 1)
                 ON DUPLICATE KEY UPDATE
-                needs_update = TRUE
+                    needs_update = 1
                 """
+                cursor.execute(sql, (video_url, video_id, username))
                 
-                cursor.execute(insert_query, (
-                    video_url_number,  # video_idの数値部分
-                    video_id,          # 元のvideo_id文字列
-                    username,
-                    datetime.now().date()
-                ))
-                
-            except Exception as e:
-                print(f"Error inserting video URL {video_url}: {str(e)}")
-                print(f"Extracted values - video_id: {video_id}, video_url_number: {video_url_number}")
-                continue
-
-        conn.commit()
-        print(f"Successfully saved {len(video_urls)} video URLs for {account_url}")
-
+        connection.commit()
+        return True
     except Exception as e:
-        print(f"Database error: {str(e)}")
-        raise
-    finally:
-        if 'conn' in locals() and conn.is_connected():
-            cursor.close()
-            conn.close() 
+        logger.error(f"Error inserting video URL {video_url}: {e}")
+        logger.info(f"Extracted video_id: {video_id}")
+        return False
+
+def extract_video_id(video_url):
+    # Implementation of extract_video_id function
+    pass
+
+logger = logging.getLogger(__name__) 

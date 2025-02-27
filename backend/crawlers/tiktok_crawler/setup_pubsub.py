@@ -22,7 +22,8 @@ def setup_pubsub():
     # 'トピック名': 'サブスクリプション名'
     topics_and_subs = {
         'process-account-list': 'process-account-list',
-        'crawl-complete': 'process-crawl-complete-sub'  # 新しいトピックを追加
+        'crawl-complete': 'process-crawl-complete-sub',
+        'crawl-batch-complete': 'process-crawl-batch-complete-sub'  # バッチ完了通知用
     }
     
     # 各トピックとサブスクリプションを作成
