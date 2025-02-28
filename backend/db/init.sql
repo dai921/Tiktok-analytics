@@ -69,7 +69,7 @@ CREATE TABLE video_master (
 
 -- カテゴリーマスターテーブル
 CREATE TABLE category_master (
-    category_id SERIAL PRIMARY KEY,
+    category_id INT AUTO_INCREMENT,
     category_name VARCHAR(255) NOT NULL UNIQUE
 );
 
@@ -78,6 +78,7 @@ CREATE TABLE category_keywords (
     keyword_id SERIAL PRIMARY KEY,
     category_id INTEGER REFERENCES category_master(category_id),
     keyword VARCHAR(255) NOT NULL,
+    is_product BOOLEAN DEFAULT,
     INDEX idx_keyword (keyword)
 );
 
