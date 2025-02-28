@@ -9,12 +9,16 @@ services:
       - PUBSUB_PROJECT1=local-project,crawl-complete:process-crawl-complete-sub,process-account-list:process-urls-sub,video-processing:video-processing-sub,video-data:video-data-sub
     command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8681 --project=local-project
     # Windowsの場合はnetwork_modeを削除
-    # network_mode: "host"
-
-  # MySQLはローカルで実行しているため不要
-  # mysql:
-  #   image: mysql:8.0
-  #   ...
+ 
+ # Cloud Storageエミュレータ
+  storage:
+    image: fsouza/fake-gcs-server
+    container_name: tiktok_storage
+    ports:
+      - "4443:4443"
+    command: ["-scheme", "http", "-port", "4443"]
+    volumes:
+      - storage_data:/storage
 
   account-crawler:
     build:
@@ -30,6 +34,7 @@ services:
       - MYSQL_USER=tiktok_user
       - MYSQL_PASSWORD=tiktok_pass
       - MYSQL_DATABASE=tiktok_data
+      - CRAWLER_TYPE=account_crawler
     command: tail -f /dev/null
     depends_on:
       - pubsub
@@ -51,11 +56,17 @@ services:
       - MYSQL_USER=tiktok_user
       - MYSQL_PASSWORD=tiktok_pass
       - MYSQL_DATABASE=tiktok_data
+      - CRAWLER_TYPE=video_crawler
+      - BUCKET_NAME=tiktok-data-bucket
+      - STORAGE_EMULATOR_HOST=http://storage:4443
+      - GOOGLE_CLOUD_PROJECT=local-project
     command: tail -f /dev/null
     depends_on:
       - pubsub
+      - storage
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
 volumes:
   mysql_data:
+  storage_data:

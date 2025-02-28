@@ -44,15 +44,19 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 追加で必要なパッケージを明示的にインストール
-RUN pip install pymysql google-cloud-pubsub
+RUN pip install pymysql google-cloud-pubsub google-cloud-storage aiohttp TikTokApi==7.0.0
 
 # アプリケーションコードをコピー
 COPY . .
 
 # 環境変数でクローラーの種類を指定
-ENV CRAWLER_TYPE=account_crawler
+ENV CRAWLER_TYPE=${CRAWLER_TYPE:-account_crawler}
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# コマンドを配列形式で指定
-CMD ["python", "-m", "tiktok_crawler.account_crawler.crawler"] 
+# コマンドを条件分岐で指定
+CMD if [ "$CRAWLER_TYPE" = "video_crawler" ]; then \
+        python -m tiktok_crawler.video_crawler.video_processor; \
+    else \
+        python -m tiktok_crawler.account_crawler.crawler; \
+    fi 
