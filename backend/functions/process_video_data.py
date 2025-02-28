@@ -190,7 +190,20 @@ def process_video_data(cloud_event):
                 )
 
             try:
+                # video_masterへの保存
                 cursor.execute(insert_query if is_new_video else update_query, values)
+
+                # 新規動画の場合、video_url_dataのis_new_videoフラグを更新
+                if is_new_video:
+                    update_flag_query = """
+                        UPDATE video_url_data 
+                        SET is_new_video = FALSE,
+                            needs_update = FALSE
+                        WHERE video_id = %s
+                    """
+                    cursor.execute(update_flag_query, (message_data['video_id'],))
+                    logger.info(f"Updated is_new_video flag for video_id: {message_data['video_id']}")
+
                 conn.commit()
                 logger.info(f"Successfully processed video {message_data['video_id']}")
                 return {"success": True, "execution_time": time.time() - start_time}

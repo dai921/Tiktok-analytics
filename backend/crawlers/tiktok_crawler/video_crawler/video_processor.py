@@ -104,16 +104,19 @@ class VideoProcessor:
             if not video:
                 raise Exception("Empty response received")
 
-            # 基本情報を取得
+            # 基本情報を取得（既存のデータを使用）
             base_info = {
                 'video_id': video_id,
+                'username': username,     # 既存のデータを使用
+                'url': video_url,        # 既存のデータを使用
                 'currentFetchDate': datetime.now().isoformat(),
                 'likes_count': video.get('stats', {}).get('diggCount'),
                 'play_count': video.get('stats', {}).get('playCount'),
                 'comment_count': video.get('stats', {}).get('commentCount'),
                 'share_count': video.get('stats', {}).get('shareCount'),
                 'save_count': video.get('stats', {}).get('collectCount'),
-                'isViral': video.get('stats', {}).get('playCount', 0) >= 100000
+                'isViral': video.get('stats', {}).get('playCount', 0) >= 100000,
+                'is_new_video': is_new_video  # is_new_videoも含める
             }
 
             # 新規動画の場合は追加情報を取得
