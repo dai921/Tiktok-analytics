@@ -18,8 +18,8 @@ CREATE TABLE account_list (
 
 -- 動画URLデータテーブル
 CREATE TABLE video_url_data (
-    id INT AUTO_INCREMENT,
-    video_url VARCHAR(255)　SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT　PRIMARY KEY,
+    video_url VARCHAR(255)　UNIQUE,
     video_id INT UNSIGNED   ,
     username VARCHAR(50) NOT NULL,
     created_at DATE,
@@ -33,8 +33,8 @@ CREATE TABLE video_url_data (
 
 -- 動画マスターテーブル
 CREATE TABLE video_master (
-    id VARCHAR(10) UNIQUE,
-    url VARCHAR(255) PRIMARY KEY,
+    id VARCHAR(10) PRIMARY KEY,
+    url VARCHAR(255) UNIQUE,
     video_id VARCHAR(50) UNIQUE,
     username VARCHAR(50) NOT NULL,
     cover_image_url VARCHAR(255),
@@ -111,8 +111,8 @@ CREATE TABLE category_keywords (
 
 -- フロントエンドデータテーブル
 CREATE TABLE frontend_data (
-    id VARCHAR(10) UNIQUE,
-    url VARCHAR(255) PRIMARY KEY,
+    id VARCHAR(10) PRIMARY KEY,
+    url VARCHAR(255) UNIQUE,
     thumbnail_url VARCHAR(255),
     created_at DATE,
     play_count INT UNSIGNED,
