@@ -159,3 +159,27 @@ gcloud secrets versions add mysql-password --data-file="/path/to/password.txt"
 ### ストレージ最適化
 - 古いログの削除ポリシー
 - 不要なデータの定期的なクリーンアップ
+
+1. Cloud SQL の設定
+   - インスタンスの作成
+   - データベースユーザーの作成
+   - ネットワーク設定（Private IP推奨）
+
+2. Secret Manager の設定
+   - データベース接続情報の保存
+   MYSQL_HOST: your-instance.region.cloudsql.com
+   MYSQL_USER: tiktok_user
+   MYSQL_PASSWORD: secure-password
+   MYSQL_DATABASE: tiktok_data
+
+3. Cloud Functions の設定
+   - ランタイム: Python 3.9+
+   - メモリ: 256MB（データ量に応じて調整）
+   - タイムアウト: 540秒（必要に応じて調整）
+   - 環境変数: Secret Manager から取得
+
+4. Cloud Scheduler の設定
+   - スケジュール: "0 0 */2 * *"（2日に1回）
+   - タイムゾーン: "Asia/Tokyo"
+   - ターゲット: HTTP
+   - 認証: OIDC token
