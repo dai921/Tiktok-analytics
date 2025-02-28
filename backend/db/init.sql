@@ -18,8 +18,8 @@ CREATE TABLE account_list (
 
 -- 動画URLデータテーブル
 CREATE TABLE video_url_data (
-    id INT AUTO_INCREMENT,
-    video_url VARCHAR(255)　SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT　PRIMARY KEY,
+    video_url VARCHAR(255)　UNIQUE,
     video_id INT UNSIGNED   ,
     username VARCHAR(50) NOT NULL,
     created_at DATE,
@@ -33,8 +33,8 @@ CREATE TABLE video_url_data (
 
 -- 動画マスターテーブル
 CREATE TABLE video_master (
-    id VARCHAR(10) UNIQUE,
-    url VARCHAR(255) PRIMARY KEY,
+    id VARCHAR(10) PRIMARY KEY,
+    url VARCHAR(255) UNIQUE,
     video_id VARCHAR(50) UNIQUE,
     username VARCHAR(50) NOT NULL,
     cover_image_url VARCHAR(255),
@@ -67,9 +67,36 @@ CREATE TABLE video_master (
     INDEX idx_currentFetchDate (currentFetchDate)
 );
 
+-- カーソル管理テーブル
+CREATE TABLE processing_cursors (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    processor_name VARCHAR(50) NOT NULL,
+    target_table VARCHAR(50) NOT NULL,
+    last_cursor_id INT NOT NULL DEFAULT 0,
+    last_reset_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    batch_size INT NOT NULL DEFAULT 4,
+    reset_interval INT NOT NULL DEFAULT 86400,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_processor (processor_name, target_table)
+);
+
+-- url_collector用のカーソル初期データ
+INSERT INTO processing_cursors 
+(processor_name, target_table, batch_size, reset_interval) 
+VALUES 
+('url_collector', 'account_list', 4, 86400);
+
+-- video_collector用のカーソル初期データ
+INSERT INTO processing_cursors 
+(processor_name, target_table, batch_size, reset_interval) 
+VALUES 
+('video_collector', 'video_url_data', 10, 172800);  -- バッチサイズ10、リセット間隔48時間（172800秒）
+
+
 -- カテゴリーマスターテーブル
 CREATE TABLE category_master (
-    category_id SERIAL PRIMARY KEY,
+    category_id INT AUTO_INCREMENT,
     category_name VARCHAR(255) NOT NULL UNIQUE
 );
 
@@ -78,13 +105,14 @@ CREATE TABLE category_keywords (
     keyword_id SERIAL PRIMARY KEY,
     category_id INTEGER REFERENCES category_master(category_id),
     keyword VARCHAR(255) NOT NULL,
+    is_product BOOLEAN DEFAULT,
     INDEX idx_keyword (keyword)
 );
 
 -- フロントエンドデータテーブル
 CREATE TABLE frontend_data (
-    id VARCHAR(10) UNIQUE,
-    url VARCHAR(255) PRIMARY KEY,
+    id VARCHAR(10) PRIMARY KEY,
+    url VARCHAR(255) UNIQUE,
     thumbnail_url VARCHAR(255),
     created_at DATE,
     play_count INT UNSIGNED,
@@ -105,9 +133,3 @@ CREATE TABLE user_data (
     email VARCHAR(255)
 );
 
--- テストデータの挿入
-INSERT INTO account_list 
-(account_url, account_name, is_new_account, needs_update, under_100k_flag) 
-VALUES 
-('https://www.tiktok.com/@test1', 'テストユーザー1', TRUE, TRUE, 'Y'),
-('https://www.tiktok.com/@test2', 'テストユーザー2', TRUE, TRUE, 'N');
