@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class VideoCollector:
-    def __init__(self, batch_size: int = 500):
+    def __init__(self, batch_size: int = 10):
         self.batch_size = batch_size
         # データベース接続設定
         self.connection = mysql.connector.connect(
