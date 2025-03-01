@@ -25,7 +25,8 @@ def setup_pubsub():
         'crawl-complete': 'process-crawl-complete-sub',
         'crawl-batch-complete': 'process-crawl-batch-complete-sub',
         'video-processing': 'video-processing-sub',  # 動画処理用を追加
-        'video-data': 'video-data-sub'  # 処理済みデータ用を追加
+        'video-data': 'video-data-sub',  # 処理済みデータ用を追加
+        'video-url-data-update': 'trigger-video-url-data-update' #Account-crawler終了通知
     }
     
     # 各トピックとサブスクリプションを作成
