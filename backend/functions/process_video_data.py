@@ -117,7 +117,7 @@ def process_video_data(cloud_event):
             play_count_increase = message_data['play_count'] - message_data.get('prevPlayCount', 0)
             likes_count_increase = message_data['likes_count'] - message_data.get('prevLikesCount', 0)
 
-            # video_masterへの保存
+            # 新規動画の場合のINSERTクエリを修正
             if is_new_video:
                 insert_query = """
                     INSERT INTO video_master (
@@ -125,15 +125,23 @@ def process_video_data(cloud_event):
                         cover_image_url, description, likes_count, play_count,
                         comment_count, share_count, save_count, created_at,
                         hashtags, duration, isViral, currentFetchDate,
-                        music_id, music_title, music_artist, category, product
+                        music_id, music_title, music_artist, category, product,
+                        status, content_type, file_path, folder_path, image_count  # 新しいフィールド
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                 """
                 # hashtagsをUTF-8でエンコード
                 hashtags_json = json.dumps(message_data['hashtags'], ensure_ascii=False)
                 
+                # ファイルパスとステータスの処理
+                status = message_data.get('status', 'unknown')
+                content_type = message_data.get('type', 'video')
+                file_path = message_data.get('file_path')
+                folder_path = message_data.get('folder_path')
+                image_count = message_data.get('image_count', 0)
+
                 values = (
                     message_data['url'],
                     message_data['video_id'],
@@ -155,20 +163,36 @@ def process_video_data(cloud_event):
                     message_data['music_title'],
                     message_data['music_artist'],
                     category_names,
-                    product_names
+                    product_names,
+                    status,                     # 新規: ステータス
+                    content_type,               # 新規: コンテンツタイプ
+                    file_path,                  # 新規: ファイルパス
+                    folder_path,                # 新規: フォルダパス（カルーセル用）
+                    image_count                 # 新規: 画像数（カルーセル用）
                 )
             else:
+                # 既存動画の更新クエリも修正
                 update_query = """
                     INSERT INTO video_master (
                         url, video_id, username, likes_count,
                         play_count, comment_count, share_count, save_count,
                         isViral, currentFetchDate, prevFetchDate,
                         prevPlayCount, prevLikesCount, playCountIncrease,
-                        likesCountIncrease, category, product
+                        likesCountIncrease, category, product,
+                        status, content_type, file_path, folder_path, image_count  # 新しいフィールド
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s
                     )
                 """
+                
+                # ファイルパスとステータスの処理
+                status = message_data.get('status', 'unknown')
+                content_type = message_data.get('type', 'video')
+                file_path = message_data.get('file_path')
+                folder_path = message_data.get('folder_path')
+                image_count = message_data.get('image_count', 0)
+
                 values = (
                     message_data['url'],
                     message_data['video_id'],
@@ -186,7 +210,12 @@ def process_video_data(cloud_event):
                     play_count_increase,
                     likes_count_increase,
                     category_names,
-                    product_names
+                    product_names,
+                    status,                     # 新規: ステータス
+                    content_type,               # 新規: コンテンツタイプ
+                    file_path,                  # 新規: ファイルパス
+                    folder_path,                # 新規: フォルダパス（カルーセル用）
+                    image_count                 # 新規: 画像数（カルーセル用）
                 )
 
             try:

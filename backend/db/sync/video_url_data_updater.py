@@ -18,7 +18,6 @@ pubsub_host = os.getenv('PUBSUB_EMULATOR_HOST')
 project_id = os.getenv('PROJECT_ID', 'local-project')
 
 # Pub/Sub設定
-TOPIC_NAME = "video-url-data-update"
 SUBSCRIPTION_NAME = "trigger-video-url-data-update"
 
 if environment == 'development':
@@ -77,6 +76,7 @@ class VideoUrlDataUpdater:
                     OR vm.created_at IS NULL
                 )
                 AND vud.needs_update = FALSE
+                AND (vm.status != 'deleted' OR vm.status IS NULL)
             """
             
             self.cursor.execute(update_query, (fifteen_days_ago,))

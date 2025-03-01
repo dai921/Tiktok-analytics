@@ -8,6 +8,10 @@ from typing import Dict, Any, Optional
 from google.cloud import pubsub_v1, storage
 from TikTokApi import TikTokApi
 import random
+import shutil
+import requests
+from yt_dlp import YoutubeDL
+from playwright.async_api import async_playwright
 
 # ロギング設定を更新
 logging.basicConfig(
@@ -18,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 class VideoProcessor:
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger  # 既存のロガーを使用
         self.semaphore = asyncio.Semaphore(1)  # 同時処理を1つに制限
         # User-Agent一覧
         self.user_agents = [
@@ -69,6 +73,15 @@ class VideoProcessor:
             self.logger.error(f"バケットの作成に失敗: {str(e)}")
             raise
 
+        # 保存先ディレクトリの設定
+        self.temp_dir = "temp_downloads"
+        self.storage_dir = "storage"
+        
+        # ディレクトリの作成
+        for directory in [self.temp_dir, self.storage_dir]:
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
     def get_random_user_agent(self) -> str:
         return random.choice(self.user_agents)
 
@@ -99,8 +112,18 @@ class VideoProcessor:
             video_url = video_data['video_url']
             is_new_video = video_data['is_new_video']
 
+                        # URLから動画IDとユーザー名を正しく抽出
+            try:
+                parts = video_url.split('/')
+                video_id = parts[-1].split('?')[0]
+                username = parts[3].lstrip('@')
+                normalized_url = f'https://www.tiktok.com/@{username}/video/{video_id}'
+                self.logger.error(f"正規化後の動画URL: {normalized_url}")
+            except Exception as e:
+                self.logger.error(f"動画URLの解析に失敗: {str(e)}")
+                return None# URLから動画IDとユーザー名を正しく抽出
             # 動画情報を取得
-            video = await api.video(id=video_id, username=username, url=video_url).info()
+            video = await api.video(id=video_id, username=username, url=normalized_url).info()
             if not video:
                 raise Exception("Empty response received")
 
@@ -144,7 +167,10 @@ class VideoProcessor:
 
         except Exception as e:
             self.logger.error(f"動画情報の取得に失敗 - video_id: {video_id}, error: {str(e)}")
-            return None
+            return {
+                "video_url": video_url,
+                "video_id": video_id,
+            }
 
     async def save_to_storage(self, url: str, storage_path: str) -> None:
         """画像をCloud Storageに保存"""
@@ -160,6 +186,100 @@ class VideoProcessor:
             self.logger.error(f"画像の保存に失敗: {str(e)}")
             raise
 
+    async def _process_video(self, url: str, video_id: str) -> Dict[str, Any]:
+        """動画のダウンロードと保存"""
+        temp_path = os.path.join(self.temp_dir, f"{video_id}")
+        storage_path = os.path.join(self.storage_dir, f"{video_id}")
+        
+        try:
+            ydl_opts = {
+                'outtmpl': f"{temp_path}.%(ext)s",
+                'format': 'bestvideo+bestaudio/best',
+            }
+            
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                
+                # ストレージに移動
+                final_path = f"{storage_path}.{downloaded_file.split('.')[-1]}"
+                shutil.move(downloaded_file, final_path)
+                
+                self.logger.info(f"動画を保存しました: {final_path}")
+                return {
+                    "status": "success",
+                    "video_id": video_id,
+                    "file_path": final_path,
+                    "type": "video"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"動画ダウンロード中にエラー: {str(e)}")
+            return {
+                "status": "error",
+                "video_id": video_id,
+                "message": str(e),
+                "type": "video"
+            }
+
+    async def process_video_data(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
+        """動画データの処理を実行"""
+        try:
+            url = video_data['video_url']
+            video_id = video_data['video_id']           
+
+            result = await self._process_video(url, video_id)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"処理中にエラーが発生: {str(e)}")
+            return {
+                "status": "error",
+                "video_id": video_data.get('video_id', 'unknown'),
+                "message": str(e)
+            }
+
+    async def _check_deleted_content(self, url: str) -> bool:
+        """コンテンツが削除されているかチェック"""
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+                
+                await page.goto(url, wait_until='domcontentloaded')
+                await asyncio.sleep(2)
+                
+                # 削除されているかチェック
+                dead_link_selector = 'p.css-1y4x9xk-PTitle'
+                try:
+                    element = await page.wait_for_selector(dead_link_selector, timeout=2000)
+                    if element:
+                        text = await element.text_content()
+                        self.logger.info(f"削除メッセージを検出: '{text}'")  # 実際のメッセージをログ出力
+                        return any(msg in text for msg in [
+                            "動画は現在ご利用できません",
+                            "Video currently unavailable",
+                            "This video is unavailable",
+                        ])
+                except:
+                    return False
+                finally:
+                    await browser.close()
+                    
+        except Exception as e:
+            self.logger.error(f"削除チェック中にエラー: {str(e)}")
+            return False
+
+    def cleanup(self):
+        """一時ファイルの削除"""
+        try:
+            shutil.rmtree(self.temp_dir)
+            os.makedirs(self.temp_dir)
+            self.logger.info("一時ファイルを削除しました")
+        except Exception as e:
+            self.logger.error(f"一時ファイルの削除中にエラー: {str(e)}")
+
     async def process_message(self, message) -> None:
         """PubSubメッセージを処理"""
         async with self.semaphore:
@@ -167,7 +287,7 @@ class VideoProcessor:
                 data = json.loads(message.data.decode('utf-8'))
                 self.logger.debug(f"処理開始: video_id={data['video_id']}")
 
-                # TikTokApiのセッション管理
+                # TikTokApiのセッション作成
                 api = TikTokApi()
                 try:
                     self.logger.debug("TikTokAPIセッション作成中...")
@@ -186,8 +306,76 @@ class VideoProcessor:
                     # 動画情報を取得
                     self.logger.debug(f"動画情報取得開始: {data['video_id']}")
                     video_info = await self.get_video_info(api, data)
+
                     if video_info:
+                        content_type = data.get('content_type')
+                        video_id = data['video_id']
+                        url = data['video_url']
+
+                        # 削除チェック
+                        is_deleted = await self._check_deleted_content(url)
+                        if is_deleted:
+                            result = {
+                                "status": "deleted",
+                                "video_id": video_id,
+                                "message": "コンテンツは削除されています"
+                            }
+                        else:
+                            page = await api.browser.new_page()
+                            try:
+                                await page.goto(url, wait_until='domcontentloaded')
+                                await asyncio.sleep(2)
+
+                                if content_type == '動画':
+                                    result = await self._process_video(url, video_id)
+                                else:
+                                    carousel_dir = os.path.join(self.storage_dir, f"carousel_{video_id}")
+                                    os.makedirs(carousel_dir, exist_ok=True)
+                                    
+                                    # カルーセル処理のコード
+                                    image_urls = []
+                                    while True:
+                                        img_elements = await page.query_selector_all('img.css-brxox6-ImgPhotoSlide')
+                                        for elem in img_elements:
+                                            src = await elem.get_attribute('src')
+                                            if src and src.startswith('http') and src not in image_urls:
+                                                image_urls.append(src)
+                                        
+                                        try:
+                                            next_button = await page.wait_for_selector('button[class*="NextButton"]', timeout=2000)
+                                            if next_button:
+                                                await next_button.click()
+                                                await asyncio.sleep(1)
+                                            else:
+                                                break
+                                        except:
+                                            break
+
+                                    # 画像のダウンロードと保存
+                                    saved_images = []
+                                    for i, img_url in enumerate(image_urls, 1):
+                                        try:
+                                            response = requests.get(img_url)
+                                            if response.status_code == 200:
+                                                image_path = os.path.join(carousel_dir, f"image_{i:02d}.jpg")
+                                                with open(image_path, 'wb') as f:
+                                                    f.write(response.content)
+                                                saved_images.append(image_path)
+                                        except Exception as e:
+                                            self.logger.error(f"画像 {i} のダウンロード中にエラー: {str(e)}")
+
+                                    result = {
+                                        "status": "success" if saved_images else "error",
+                                        "video_id": video_id,
+                                        "folder_path": carousel_dir if saved_images else None,
+                                        "image_count": len(saved_images),
+                                        "type": "carousel"
+                                    }
+                            finally:
+                                await page.close()
+
                         # 処理済みデータをPubSubに送信
+                        video_info.update(result)
                         message_data = json.dumps(video_info).encode('utf-8')
                         future = self.publisher.publish(self.video_data_topic, message_data)
                         message_id = future.result()
@@ -200,7 +388,7 @@ class VideoProcessor:
                 # メッセージを確認
                 message.ack()
                 self.logger.debug(f"処理完了: video_id={data['video_id']}")
-                
+
             except Exception as e:
                 self.logger.error(f"メッセージ処理中にエラー: {str(e)}", exc_info=True)
                 message.nack()

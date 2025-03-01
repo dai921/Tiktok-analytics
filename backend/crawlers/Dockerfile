@@ -7,6 +7,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    ffmpeg \
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && apt-get update \
     && apt-get install -y \
@@ -44,7 +45,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 追加で必要なパッケージを明示的にインストール
-RUN pip install pymysql google-cloud-pubsub google-cloud-storage aiohttp TikTokApi==7.0.0
+RUN pip install pymysql google-cloud-pubsub google-cloud-storage aiohttp TikTokApi==7.0.0 yt-dlp
 
 # アプリケーションコードをコピー
 COPY . .
