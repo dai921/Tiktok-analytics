@@ -74,7 +74,7 @@ CREATE TABLE processing_cursors (
     target_table VARCHAR(50) NOT NULL,
     last_cursor_id INT NOT NULL DEFAULT 0,
     last_reset_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    batch_size INT NOT NULL DEFAULT 0,
+    batch_size INT NOT NULL DEFAULT 100,
     reset_interval INT NOT NULL DEFAULT 86400,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -85,7 +85,7 @@ CREATE TABLE processing_cursors (
 INSERT INTO processing_cursors 
 (processor_name, target_table, batch_size, reset_interval) 
 VALUES 
-('url_collector', 'account_list', 0, 86400);
+('url_collector', 'account_list', 100, 86400);
 
 -- video_collector用のカーソル初期データ
 INSERT INTO processing_cursors 

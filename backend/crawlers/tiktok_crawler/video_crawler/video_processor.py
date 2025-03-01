@@ -244,8 +244,16 @@ class VideoProcessor:
         """コンテンツが削除されているかチェック"""
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page()
+                # 日本語ロケールとタイムゾーンを設定
+                browser = await p.chromium.launch(
+                    headless=True,
+                )
+                context = await browser.new_context(
+                    locale='ja-JP',
+                    timezone_id='Asia/Tokyo',
+                    user_agent=self.get_random_user_agent()
+                )
+                page = await context.new_page()
                 
                 await page.goto(url, wait_until='domcontentloaded')
                 await asyncio.sleep(2)
@@ -261,10 +269,13 @@ class VideoProcessor:
                             "動画は現在ご利用できません",
                             "Video currently unavailable",
                             "This video is unavailable",
+                            "このビデオは削除されました",
+                            "このビデオは利用できません"
                         ])
                 except:
                     return False
                 finally:
+                    await context.close()
                     await browser.close()
                     
         except Exception as e:
@@ -311,13 +322,21 @@ class VideoProcessor:
                         content_type = data.get('content_type')
                         video_id = data['video_id']
                         url = data['video_url']
+                        username = data['username']
+
+                        # 基本情報を設定
+                        base_result = {
+                            "video_id": video_id,
+                            "video_url": url,
+                            "username": username
+                        }
 
                         # 削除チェック
                         is_deleted = await self._check_deleted_content(url)
                         if is_deleted:
                             result = {
+                                **base_result,  # 基本情報を展開
                                 "status": "deleted",
-                                "video_id": video_id,
                                 "message": "コンテンツは削除されています"
                             }
                         else:
@@ -327,7 +346,8 @@ class VideoProcessor:
                                 await asyncio.sleep(2)
 
                                 if content_type == '動画':
-                                    result = await self._process_video(url, video_id)
+                                    process_result = await self._process_video(url, video_id)
+                                    result = {**base_result, **process_result}  # 基本情報と処理結果を結合
                                 else:
                                     carousel_dir = os.path.join(self.storage_dir, f"carousel_{video_id}")
                                     os.makedirs(carousel_dir, exist_ok=True)
@@ -365,8 +385,8 @@ class VideoProcessor:
                                             self.logger.error(f"画像 {i} のダウンロード中にエラー: {str(e)}")
 
                                     result = {
+                                        **base_result,  # 基本情報を展開
                                         "status": "success" if saved_images else "error",
-                                        "video_id": video_id,
                                         "folder_path": carousel_dir if saved_images else None,
                                         "image_count": len(saved_images),
                                         "type": "carousel"
@@ -374,9 +394,13 @@ class VideoProcessor:
                             finally:
                                 await page.close()
 
+                        # video_infoから重複する基本情報を削除
+                        for key in ["video_id", "video_url", "username"]:
+                            video_info.pop(key, None)
+
                         # 処理済みデータをPubSubに送信
-                        video_info.update(result)
-                        message_data = json.dumps(video_info).encode('utf-8')
+                        final_message = {**result, **video_info}  # resultを優先して結合
+                        message_data = json.dumps(final_message).encode('utf-8')
                         future = self.publisher.publish(self.video_data_topic, message_data)
                         message_id = future.result()
                         self.logger.info(f"処理済みデータを送信: Message ID: {message_id}")

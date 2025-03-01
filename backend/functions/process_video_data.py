@@ -56,6 +56,60 @@ def process_video_data(cloud_event):
             message_data = data
 
         logger.info(f"受信したメッセージ: {message_data}")
+
+        # 真っ先にステータスをチェック
+        status = message_data.get('status', 'unknown')
+        if status in ['error', 'deleted']:
+            # データベース接続
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            try:
+                # video_masterの更新（INSERT ... ON DUPLICATE KEY UPDATE）
+                error_upsert_query = """
+                    INSERT INTO video_master (
+                        url, video_id, username, status, currentFetchDate
+                    ) VALUES (
+                        %s, %s, %s, %s, %s
+                    ) ON DUPLICATE KEY UPDATE
+                        status = VALUES(status),
+                        currentFetchDate = VALUES(currentFetchDate)
+                """
+                error_values = (
+                    message_data['video_url'],
+                    message_data['video_id'],
+                    message_data['username'],
+                    status,
+                    datetime.now().isoformat()
+                )
+                
+                # video_url_dataのフラグを更新
+                update_flag_query = """
+                    UPDATE video_url_data 
+                    SET is_new_video = FALSE,
+                        needs_update = FALSE
+                    WHERE video_id = %s
+                """
+                
+                cursor.execute(error_upsert_query, error_values)
+                cursor.execute(update_flag_query, (message_data['video_id'],))
+                
+                conn.commit()
+                logger.info(f"Updated status and flags for video {message_data['video_id']}")
+                return {"success": True, "execution_time": time.time() - start_time}
+            
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Error storing error/deleted status: {str(e)}")
+                return {"success": False, "error": str(e)}
+            
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+
+        # 以降は通常の処理（status が normal の場合）
         is_new_video = message_data.get('is_new_video')
 
         # データベース接続
@@ -95,7 +149,7 @@ def process_video_data(cloud_event):
             if not is_new_video:
                 # 既存動画の場合、前回のデータを取得
                 cursor.execute("""
-                    SELECT currentFetchDate, prevPlayCount, prevLikesCount
+                    SELECT currentFetchDate, play_count, likes_count
                     FROM video_master
                     WHERE video_id = %s
                     ORDER BY currentFetchDate DESC
@@ -105,8 +159,8 @@ def process_video_data(cloud_event):
 
                 if prev_data:
                     message_data['prevFetchDate'] = prev_data['currentFetchDate']
-                    message_data['prevPlayCount'] = prev_data['prevPlayCount']
-                    message_data['prevLikesCount'] = prev_data['prevLikesCount']
+                    message_data['prevPlayCount'] = prev_data['play_count']
+                    message_data['prevLikesCount'] = prev_data['likes_count']
 
             # デバッグ用：受信したメッセージの内容を詳細に出力
             logger.info("受信したメッセージの詳細:")
@@ -117,7 +171,7 @@ def process_video_data(cloud_event):
             play_count_increase = message_data['play_count'] - message_data.get('prevPlayCount', 0)
             likes_count_increase = message_data['likes_count'] - message_data.get('prevLikesCount', 0)
 
-            # 新規動画の場合のINSERTクエリを修正
+            # 正常な場合は既存の処理を続行
             if is_new_video:
                 insert_query = """
                     INSERT INTO video_master (
@@ -136,7 +190,6 @@ def process_video_data(cloud_event):
                 hashtags_json = json.dumps(message_data['hashtags'], ensure_ascii=False)
                 
                 # ファイルパスとステータスの処理
-                status = message_data.get('status', 'unknown')
                 content_type = message_data.get('type', 'video')
                 file_path = message_data.get('file_path')
                 folder_path = message_data.get('folder_path')
@@ -171,32 +224,26 @@ def process_video_data(cloud_event):
                     image_count                 # 新規: 画像数（カルーセル用）
                 )
             else:
-                # 既存動画の更新クエリも修正
+                # 既存動画の更新クエリ
                 update_query = """
-                    INSERT INTO video_master (
-                        url, video_id, username, likes_count,
-                        play_count, comment_count, share_count, save_count,
-                        isViral, currentFetchDate, prevFetchDate,
-                        prevPlayCount, prevLikesCount, playCountIncrease,
-                        likesCountIncrease, category, product,
-                        status, content_type, file_path, folder_path, image_count  # 新しいフィールド
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s
-                    )
+                    UPDATE video_master 
+                    SET likes_count = %s,
+                        play_count = %s,
+                        comment_count = %s,
+                        share_count = %s,
+                        save_count = %s,
+                        isViral = %s,
+                        currentFetchDate = %s,
+                        prevFetchDate = %s,
+                        prevLikesCount = %s,
+                        prevPlayCount = %s,
+                        playCountIncrease = %s,
+                        likesCountIncrease = %s,
+                        status = %s
+                    WHERE video_id = %s
                 """
                 
-                # ファイルパスとステータスの処理
-                status = message_data.get('status', 'unknown')
-                content_type = message_data.get('type', 'video')
-                file_path = message_data.get('file_path')
-                folder_path = message_data.get('folder_path')
-                image_count = message_data.get('image_count', 0)
-
                 values = (
-                    message_data['url'],
-                    message_data['video_id'],
-                    message_data['username'],
                     message_data['likes_count'],
                     message_data['play_count'],
                     message_data['comment_count'],
@@ -205,33 +252,27 @@ def process_video_data(cloud_event):
                     message_data['isViral'],
                     message_data['currentFetchDate'],
                     message_data.get('prevFetchDate'),
-                    message_data.get('prevPlayCount'),
                     message_data.get('prevLikesCount'),
+                    message_data.get('prevPlayCount'),
                     play_count_increase,
                     likes_count_increase,
-                    category_names,
-                    product_names,
-                    status,                     # 新規: ステータス
-                    content_type,               # 新規: コンテンツタイプ
-                    file_path,                  # 新規: ファイルパス
-                    folder_path,                # 新規: フォルダパス（カルーセル用）
-                    image_count                 # 新規: 画像数（カルーセル用）
+                    status,
+                    message_data['video_id']
                 )
 
             try:
                 # video_masterへの保存
                 cursor.execute(insert_query if is_new_video else update_query, values)
 
-                # 新規動画の場合、video_url_dataのis_new_videoフラグを更新
-                if is_new_video:
-                    update_flag_query = """
-                        UPDATE video_url_data 
-                        SET is_new_video = FALSE,
-                            needs_update = FALSE
-                        WHERE video_id = %s
-                    """
-                    cursor.execute(update_flag_query, (message_data['video_id'],))
-                    logger.info(f"Updated is_new_video flag for video_id: {message_data['video_id']}")
+                # 新規動画も既存動画も、video_url_dataのフラグを更新
+                update_flag_query = """
+                    UPDATE video_url_data 
+                    SET is_new_video = FALSE,
+                        needs_update = FALSE
+                    WHERE video_id = %s
+                """
+                cursor.execute(update_flag_query, (message_data['video_id'],))
+                logger.info(f"Updated flags for video_id: {message_data['video_id']}")
 
                 conn.commit()
                 logger.info(f"Successfully processed video {message_data['video_id']}")

@@ -72,7 +72,7 @@ class VideoUrlDataUpdater:
             SET vud.needs_update = TRUE
             WHERE 
                 (
-                    (vm.created_at >= %s AND vm.playCountIncrease > 0)
+                    (vm.created_at >= %s AND (vm.playCountIncrease > 0 OR vm.playCountIncrease IS NULL))
                     OR vm.created_at IS NULL
                 )
                 AND vud.needs_update = FALSE
@@ -136,3 +136,12 @@ def update_video_url_data(cloud_event):
             "error": error_message,
             "execution_time": datetime.now().isoformat()
         }), 500
+
+if __name__ == "__main__":
+    try:
+        logger.info("video_url_dataの更新処理を直接実行します")
+        updater = VideoUrlDataUpdater()
+        result = updater.update_needs_update_flag()
+        logger.info(f"実行結果: {result}")
+    except Exception as e:
+        logger.error(f"実行中にエラーが発生: {str(e)}")
