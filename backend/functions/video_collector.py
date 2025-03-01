@@ -141,7 +141,8 @@ class VideoCollector:
                         video_url,
                         username,
                         video_id,
-                        is_new_video
+                        is_new_video,
+                        content_type
                     FROM 
                         video_url_data
                     WHERE 
@@ -154,7 +155,6 @@ class VideoCollector:
                 cursor.execute(query, (cursor_id, batch_size))
                 results = cursor.fetchall()
                 
-                # 次のカーソル値を設定（結果がある場合は最後のIDを使用）
                 if results:
                     next_cursor = results[-1]['id']
                     self.cursor_manager.update_cursor(next_cursor)

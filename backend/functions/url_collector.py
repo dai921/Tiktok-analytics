@@ -76,7 +76,8 @@ class CursorManager:
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 sql = """
-                SELECT last_cursor_id, last_reset_time, batch_size, reset_interval
+                SELECT last_cursor_id, last_reset_time, batch_size, 
+                       reset_interval, batch_number
                 FROM processing_cursors
                 WHERE processor_name = %s AND target_table = %s
                 """
@@ -147,92 +148,117 @@ def collect_urls(request):
     try:
         # カーソル管理の初期化
         cursor_manager = CursorManager('url_collector', 'account_list')
-        
-        # カーソルのリセットチェックと状態取得
-        cursor_manager.reset_if_needed()
         cursor_state = cursor_manager.get_cursor_state()
-        cursor_id = cursor_state['last_cursor_id']
         batch_size = cursor_state['batch_size']
+        current_batch = cursor_state.get('batch_number', 0)  # batch_numberも取得
         
-        logger.info(f"現在のカーソル位置: {cursor_id}")
-        
-        # DBからneeds_updateが立っているアカウントを取得
-        logger.info("==== データベースからアカウント取得開始 ====")
-        accounts = []
         conn = get_db_connection()
+        logger.info("==== データベースからアカウント取得開始 ====")
         
         with conn.cursor() as cursor:
+            # 更新が必要な総数を取得
+            cursor.execute("""
+                SELECT COUNT(*) as total
+                FROM account_list 
+                WHERE needs_update = TRUE
+            """)
+            total_needs_update = cursor.fetchone()['total']
+            
+            if not total_needs_update:
+                logger.info("更新が必要なアカウントが見つかりませんでした")
+                return {"message": "No accounts to update found"}, 200
+            
+            # 未処理のアカウントを取得（batch_size分）
             sql = """
             SELECT id, account_url, account_name, is_new_account 
             FROM account_list 
             WHERE needs_update = TRUE
-            AND id > %s
-            ORDER BY id
+            AND id > %s  -- last_cursor_idより大きいIDのレコードを取得
             LIMIT %s
             """
-            logger.info(f"実行SQL: {sql}")
-            cursor.execute(sql, (cursor_id, batch_size))
+            cursor.execute(sql, (cursor_state['last_cursor_id'], batch_size))
             accounts = cursor.fetchall()
             
-            if accounts:
-                # 次のカーソル値を設定
-                next_cursor = accounts[-1]['id']
-                cursor_manager.update_cursor(next_cursor)
-                logger.info(f"次のカーソル値を設定: {next_cursor}")
-            else:
-                next_cursor = cursor_id
+            if not accounts:
+                return {"message": "No accounts to process"}, 200
+
+            # 新しいバッチ番号を計算
+            new_batch = current_batch + 1
+            processed_total = (new_batch - 1) * batch_size + len(accounts)
+            is_final_batch = processed_total >= total_needs_update
             
-            logger.info(f"取得アカウント数: {len(accounts)}")
+            # カーソル位置とバッチ番号を一度に更新
+            cursor.execute("""
+                UPDATE processing_cursors
+                SET last_cursor_id = %s,
+                    batch_number = %s,
+                    updated_at = NOW()
+                WHERE processor_name = 'url_collector' 
+                AND target_table = 'account_list'
+            """, (accounts[-1]['id'], new_batch))
             
-            # 取得したアカウントの内容を表示
-            for account in accounts:
-                logger.info(f"アカウント情報: {account}")
-    
-        if not accounts:
-            logger.info("==== 更新が必要なアカウントが見つかりませんでした ====")
-            return {"message": "No accounts to update found", "next_cursor": cursor_id}, 200
-        
-        # Pub/Sub送信処理
-        logger.info("==== Pub/Sub送信処理開始 ====")
-        os.environ['PUBSUB_EMULATOR_HOST'] = '127.0.0.1:8681'
-        publisher = pubsub_v1.PublisherClient()
-        topic_name = "process-account-list"
-        topic_path = publisher.topic_path(project_id.strip(), topic_name.strip())
-        
-        logger.info(f"Pub/Sub設定:")
-        logger.info(f"- エミュレーターホスト: '{os.getenv('PUBSUB_EMULATOR_HOST')}'")
-        logger.info(f"- Topic Path: '{topic_path}'")
-        
-        try:
+            # message_dataの構造を修正
             message_data = {
                 "accounts": [
                     {
                         "account_url": account["account_url"],
                         "account_name": account["account_name"],
-                        "is_new_account": bool(account["is_new_account"])
+                        "is_new_account": bool(account["is_new_account"]),
+                        "account_id": account["id"]
                     } for account in accounts
                 ]
             }
+
+            # 最後のアカウントの場合のみprocessing_infoを追加
+            if is_final_batch and accounts:  # accountsが空でないことを確認
+                message_data["processing_info"] = {
+                    "is_final_batch": True,
+                    "batch_number": new_batch,
+                    "total_needs_update": total_needs_update,
+                    "last_account_id": accounts[-1]["id"]
+                }
+                
+                # 最後のバッチの場合はbatch_numberをリセット
+                cursor.execute("""
+                    UPDATE processing_cursors
+                    SET batch_number = 0
+                    WHERE processor_name = 'url_collector' 
+                    AND target_table = 'account_list'
+                """)
             
-            data = json.dumps(message_data).encode("utf-8")
-            logger.info(f"送信データ: {data.decode('utf-8')}")
+            conn.commit()
             
-            future = publisher.publish(topic_path, data)
-            message_id = future.result(timeout=30)
+            # Pub/Sub送信処理
+            logger.info("==== Pub/Sub送信処理開始 ====")
+            os.environ['PUBSUB_EMULATOR_HOST'] = '127.0.0.1:8681'
+            publisher = pubsub_v1.PublisherClient()
+            topic_name = "process-account-list"
+            topic_path = publisher.topic_path(project_id.strip(), topic_name.strip())
             
-            logger.info(f"送信成功 - Message ID: {message_id}")
-            return {
-                "message": f"Processed {len(accounts)} accounts",
-                "message_id": message_id,
-                "next_cursor": next_cursor
-            }, 200
+            logger.info(f"Pub/Sub設定:")
+            logger.info(f"- エミュレーターホスト: '{os.getenv('PUBSUB_EMULATOR_HOST')}'")
+            logger.info(f"- Topic Path: '{topic_path}'")
             
-        except Exception as e:
-            logger.error(f"Pub/Sub送信エラー: {type(e).__name__}: {str(e)}")
-            return {
-                "message": f"Processed {len(accounts)} accounts (Pub/Sub error: {str(e)})",
-                "next_cursor": next_cursor
-            }, 200
+            try:
+                data = json.dumps(message_data).encode("utf-8")
+                logger.info(f"送信データ: {data.decode('utf-8')}")
+                
+                future = publisher.publish(topic_path, data)
+                message_id = future.result(timeout=30)
+                
+                logger.info(f"送信成功 - Message ID: {message_id}")
+                return {
+                    "message": f"Processed {len(accounts)} accounts",
+                    "message_id": message_id,
+                    "next_cursor": accounts[-1]['id']
+                }, 200
+                
+            except Exception as e:
+                logger.error(f"Pub/Sub送信エラー: {type(e).__name__}: {str(e)}")
+                return {
+                    "message": f"Processed {len(accounts)} accounts (Pub/Sub error: {str(e)})",
+                    "next_cursor": accounts[-1]['id']
+                }, 200
             
     except Exception as e:
         logger.error(f"エラー発生: {type(e).__name__}: {str(e)}")

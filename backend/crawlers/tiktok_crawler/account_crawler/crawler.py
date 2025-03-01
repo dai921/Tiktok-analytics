@@ -13,6 +13,7 @@ import logging
 import threading
 import socket
 import sys
+from typing import Dict, Any
 
 # ロギングの設定を強化
 logging.basicConfig(
@@ -74,15 +75,45 @@ class AccountCrawler:
             page = await context.new_page()
             
             try:
-                print(f"Accessing account: {account_url} (New account: {is_new_account})")
+                logger.info(f"アカウントにアクセス: {account_url} (新規アカウント: {is_new_account})")
                 await page.goto(account_url, timeout=30000)
                 await page.wait_for_load_state('domcontentloaded', timeout=30000)
                 await asyncio.sleep(5)
                 
+                # デッドリンクチェック
+                dead_link_texts = [
+                    "このアカウントは見つかりませんでした",
+                    "Couldn't find this account"
+                ]
+                
+                logger.info("デッドリンクチェックを開始します")  # デバッグ用
+                try:
+                    # セレクタでデッドリンクを確認
+                    selector = 'p.css-1y4x9xk-PTitle'
+                    element = await page.wait_for_selector(selector, timeout=1000)
+                    if element:
+                        text = await element.text_content()
+                        logger.info(f"セレクタのテキスト: {text}")  # デバッグ用
+                        if any(dead_text in text for dead_text in dead_link_texts):
+                            logger.info(f"削除済みアカウントを検出（セレクタ）: {account_url}")
+                            return {
+                                "success": False,
+                                "account_url": account_url,
+                                "status": "deleted_account",
+                                "video_count": 0,
+                                "is_new_account": is_new_account,
+                                "videos": []
+                            }
+                except TimeoutError:
+                    logger.debug("デッドリンク確認用のセレクタが見つかりませんでした")
+                except Exception as e:
+                    logger.warning(f"デッドリンク確認中に予期せぬエラー: {e}")
+
+                # 動画要素の確認
                 try:
                     await page.wait_for_selector('div[data-e2e="user-post-item"]', timeout=10000)
                 except TimeoutError:
-                    print("動画要素の読み込みに時間がかかっています。さらに待機します。")
+                    logger.info("動画要素の読み込みに時間がかかっています。さらに待機します。")
                     await asyncio.sleep(5)
                 
                 videos = []
@@ -102,26 +133,25 @@ class AccountCrawler:
                         if href and ('/video/' in href or '/photo/' in href) and href not in videos:
                             if not href.startswith('http'):
                                 href = f'https://www.tiktok.com{href}'
-                            
-                            # video_idまたはphoto_idを抽出
-                            content_id = None
+                                
+                            # video_idの抽出
+                            video_id = None
                             if '/video/' in href:
-                                content_id = href.split('/video/')[1]
+                                video_id = href.split('/video/')[-1].split('?')[0]
                             elif '/photo/' in href:
-                                content_id = href.split('/photo/')[1]
-                            
-                            # クエリパラメータがある場合は除去
-                            if content_id and '?' in content_id:
-                                content_id = content_id.split('?')[0]
-                            
-                            # シンプルにURLを追加
-                            videos.append(href)
-                            processed_videos.append(href)  # video_urlをそのまま追加
+                                video_id = href.split('/photo/')[-1].split('?')[0]
+                                
+                            video_info = {
+                                'url': href,
+                                'video_id': video_id,
+                                'type': 'video' if '/video/' in href else 'photo'
+                            }
+                            videos.append(video_info)
+                            processed_videos.append(video_info)
                     
                     if not is_new_account and len(videos) >= max_videos:
                         break
                     
-                    # スクロール処理
                     current_height = await page.evaluate('document.body.scrollHeight')
                     if current_height == previous_height:
                         retry_count += 1
@@ -132,58 +162,82 @@ class AccountCrawler:
                     await page.evaluate('window.scrollBy(0, document.body.scrollHeight)')
                     await asyncio.sleep(2)
 
-                # 動画URL取得後にusernameを設定
-                username = account_url.split('@')[-1]
+                # アカウントURLからユーザー名を抽出
+                try:
+                    username = account_url.split('@')[-1].split('?')[0]
+                    if not username:
+                        logger.warning(f"URLからユーザー名を抽出できませんでした: {account_url}")
+                except Exception as e:
+                    logger.warning(f"ユーザー名の取得に失敗: {e}")
+                    username = None
+
+                # 正常なアカウントとして処理を完了
+                return {
+                    "success": True,
+                    "account_url": account_url,
+                    "status": "success",
+                    "video_count": len(processed_videos),
+                    "is_new_account": is_new_account,
+                    "username": username,
+                    "videos": processed_videos
+                }
                 
+            except Exception as e:
+                logger.error(f"コンテンツ収集中にエラー: {e}")
+                return {
+                    "success": False,
+                    "account_url": account_url,
+                    "status": "error",
+                    "error": str(e),
+                    "video_count": 0,
+                    "is_new_account": is_new_account,
+                    "videos": []
+                }
+
+    async def crawl_account(self, account_info: dict):
+        """アカウントのクローリングを実行"""
+        try:
+            account_url = account_info.get('account_url')
+            account_name = account_info.get('account_name')
+            is_new_account = account_info.get('is_new_account')
+            
+            logger.info(f"アカウント {account_name} ({account_url}) のクロールを開始")
+            
+            # 動画URL収集
+            result = await self.collect_video_urls(account_url, is_new_account)
+            
+            if result["success"]:
                 # データベースに保存
                 connection = get_db_connection()
                 try:
-                    if save_video_urls(connection, processed_videos, username):
-                        print(f"Found {len(processed_videos)} videos/photos")
-                        return processed_videos
-                    else:
-                        print("Error saving URLs")
-                        return []
+                    if save_video_urls(connection, result["videos"], result["username"]):
+                        logger.info(f"{len(result['videos'])} 件の動画/写真を保存しました")
                 finally:
                     connection.close()
-                
-            except Exception as e:
-                print(f"Error collecting content: {e}")
-                return []
-
-    async def crawl_account(self, account):
-        """アカウントのクローリングを実行"""
-        try:
-            logger.info(f"アカウント {account.get('account_name')} ({account.get('account_url')}) のクロールを開始")
             
-            video_urls = await self.collect_video_urls(
-                account.get('account_url'),
-                account.get('is_new_account', False)
-            )
-            
-            # データベースに保存
-            connection = get_db_connection()
-            try:
-                # video_urlsは単純な文字列のリストなので、そのまま渡す
-                if save_video_urls(connection, video_urls, account.get('account_name')):
-                    logger.info(f"Found {len(video_urls)} videos/photos")
-                    return {
-                        "success": True,
-                        "account_url": account.get('account_url'),
-                        "video_count": len(video_urls),
-                        "is_new_account": account.get('is_new_account', False)
-                    }
-            finally:
-                connection.close()
+            # 結果を返す（Pub/Sub通知用）
+            return {
+                "success": result["success"],
+                "account_url": account_url,
+                "account_name": account_name,
+                "status": result["status"],
+                "video_count": result["video_count"],
+                "is_new_account": is_new_account,
+                "error": result.get("error")
+            }
             
         except Exception as e:
             logger.error(f"クロール中にエラーが発生しました: {e}")
+            import traceback
             logger.error(traceback.format_exc())
             return {
                 "success": False,
-                "account_url": account.get('account_url'),
+                "account_url": account_url,
+                "account_name": account_name,
+                "status": "error",
                 "error": str(e),
-                "is_new_account": account.get('is_new_account', False)
+                "is_new_account": is_new_account,
+                "video_count": 0
             }
 
 async def crawl_account(account_info):
@@ -303,46 +357,79 @@ async def process_accounts(accounts):
     
     return results
 
-async def process_account_message(message):
+async def process_message(message) -> None:
     """メッセージを処理する"""
     try:
-        logger.info(f"=== メッセージ受信開始 ===")
-        logger.info(f"メッセージID: {message.message_id}")
+        message_data = json.loads(message.data.decode('utf-8'))
+        logger.info(f"受信したメッセージ: {message_data}")
         
-        # メッセージデータをデコード
-        data = json.loads(message.data.decode('utf-8'))
-        logger.info(f"受信データ: {data}")
+        accounts = message_data.get("accounts", [])
+        processing_info = message_data.get("processing_info")
         
-        # アカウントリストを取得
-        accounts = data.get('accounts', [])
-        logger.info(f"処理対象アカウント数: {len(accounts)}")
+        crawler = AccountCrawler()  # クローラーインスタンスを作成
         
-        # 各アカウントを処理
         for account in accounts:
-            logger.info(f"アカウント処理開始: {account}")
             try:
-                # クローリング処理を実行
-                result = await crawl_account(account)
-                logger.info(f"クローリング結果: {result}")
+                # クローリング処理
+                result = await crawler.crawl_account(account)
                 
-                # クロール完了通知を送信
-                send_crawl_complete_notification(result)
-                logger.info(f"完了通知を送信しました: {account}")
+                # 完了通知メッセージの作成と送信
+                complete_message = {
+                    "account_url": account["account_url"],
+                    "account_name": account["account_name"],
+                    "account_id": account["account_id"],
+                    "is_new_account": account["is_new_account"],
+                    "status": result.get("status", "failed"),
+                    "video_count": result.get("video_count", 0),
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                # 最後のアカウントの場合、processing_infoを含める
+                if processing_info and account["account_id"] == processing_info["last_account_id"]:
+                    complete_message["processing_info"] = processing_info
+                
+                # Pub/Subにメッセージを送信
+                publisher = pubsub_v1.PublisherClient()
+                topic_path = publisher.topic_path(project_id, "crawl-complete")
+                
+                future = publisher.publish(
+                    topic_path,
+                    json.dumps(complete_message).encode("utf-8")
+                )
+                message_id = future.result()
+                logger.info(f"クロール完了通知を送信: {message_id}")
                 
             except Exception as e:
-                logger.error(f"アカウント処理エラー ({account}): {e}")
-                continue
+                logger.error(f"アカウント処理中にエラー: {str(e)}")
+                # エラー通知の送信
+                error_message = {
+                    "account_url": account["account_url"],
+                    "account_name": account["account_name"],
+                    "account_id": account["account_id"],
+                    "is_new_account": account["is_new_account"],
+                    "status": "failed",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                if processing_info and account["account_id"] == processing_info["last_account_id"]:
+                    error_message["processing_info"] = processing_info
+                
+                publisher = pubsub_v1.PublisherClient()
+                topic_path = publisher.topic_path(project_id, "crawl-complete")
+                future = publisher.publish(
+                    topic_path,
+                    json.dumps(error_message).encode("utf-8")
+                )
+                message_id = future.result()
+                logger.error(f"エラー通知を送信: {message_id}")
         
-        # メッセージを確認応答
         message.ack()
-        logger.info("=== メッセージ処理完了 ===")
-        
+                
     except Exception as e:
-        logger.error(f"メッセージ処理エラー: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        # エラー時もメッセージを確認応答（重複処理を防ぐ）
-        message.ack()
+        logger.error(f"メッセージ処理中にエラー: {str(e)}")
+        message.nack()
+        raise
 
 def setup_subscription():
     """サブスクリプションをセットアップする"""
@@ -358,7 +445,11 @@ def setup_subscription():
         
         # コールバックラッパー
         def callback(message):
-            loop.run_until_complete(process_account_message(message))
+            try:
+                loop.run_until_complete(process_message(message))
+            except Exception as e:
+                logger.error(f"メッセージ処理エラー: {e}")
+                message.nack()
         
         # サブスクリプションの設定
         streaming_pull_future = subscriber.subscribe(

@@ -46,25 +46,24 @@ def get_db_connection():
 
 def process_crawl_complete(cloud_event):
     """クロール完了通知を処理"""
-    # cloud_eventがdictの場合は直接使用
-    if isinstance(cloud_event, dict):
-        data = cloud_event
-    else:
-        # CloudEventオブジェクトの場合はdataを取得
-        data = cloud_event.data
-
     start_time = time.time()
     logger.info(f"====== process_crawl_complete 開始：{datetime.now().isoformat()} ======")
     
     connection = None
     try:
         # Pub/Subメッセージからデータを取得
-        if isinstance(data, dict) and 'data' in data:
-            import base64
-            pubsub_message = base64.b64decode(data['data']).decode('utf-8')
-            message_data = json.loads(pubsub_message)
+        if isinstance(cloud_event, dict):
+            if 'data' in cloud_event:
+                # Cloud Functions形式のメッセージ
+                import base64
+                pubsub_message = base64.b64decode(cloud_event['data']).decode('utf-8')
+                message_data = json.loads(pubsub_message)
+            else:
+                # 直接のJSONメッセージ
+                message_data = cloud_event
         else:
-            message_data = data
+            # CloudEventオブジェクト
+            message_data = json.loads(cloud_event.data)
         
         logger.info(f"受信したメッセージ: {message_data}")
         
@@ -74,6 +73,7 @@ def process_crawl_complete(cloud_event):
         is_new_account = message_data.get('is_new_account', False)
         video_count = message_data.get('video_count', 0)
         timestamp = message_data.get('timestamp', datetime.now().timestamp())
+        processing_info = message_data.get('processing_info')  # processing_infoを取得
         
         if not account_url or not status:
             logger.error("必須フィールドがありません: account_url または status")
@@ -82,20 +82,59 @@ def process_crawl_complete(cloud_event):
         # データベースに結果を保存
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            # 新アカウントフラグの更新
-            if status == "completed" and is_new_account:
-                database_name = os.environ.get("MYSQL_DATABASE", "tiktok_data")
-                update_sql = f"""
-                UPDATE {database_name}.account_list 
-                SET is_new_account = FALSE
+            # アカウントの更新状態を更新
+            if status == "deleted_account":
+                # 削除済みアカウントの場合のみneeds_updateをFALSEに設定
+                update_sql = """
+                UPDATE account_list 
+                SET is_new_account = FALSE,
+                    last_crawl_date = CURRENT_TIMESTAMP,
+                    last_video_count = %s,
+                    status = %s,
+                    needs_update = FALSE
                 WHERE account_url = %s
                 """
-                
-                cursor.execute(update_sql, (account_url,))
-                logger.info(f"アカウント {account_url} のis_new_accountをFalseに更新しました")
+            else:
+                # その他のステータスの場合は既存の更新内容のみ
+                update_sql = """
+                UPDATE account_list 
+                SET is_new_account = FALSE,
+                    last_crawl_date = CURRENT_TIMESTAMP,
+                    last_video_count = %s,
+                    status = %s
+                WHERE account_url = %s
+                """
             
+            cursor.execute(update_sql, (video_count, status, account_url))
             connection.commit()
-            logger.info(f"データベースを更新しました: account_url={account_url}, status={status}")
+            logger.info(f"アカウント {account_url} の状態を更新しました（ステータス: {status}）")
+
+            # 最後のアカウントの処理が完了した場合、video-url-data-updateトピックにメッセージを送信
+            if processing_info and processing_info.get('is_final_batch'):
+                logger.info("最後のアカウントの処理が完了しました。video-url-data-updateトリガーを送信します。")
+                
+                # Pub/Subクライアントを初期化
+                from google.cloud import pubsub_v1
+                publisher = pubsub_v1.PublisherClient()
+                topic_path = publisher.topic_path(project_id, 'video-url-data-update')
+                
+                # 更新トリガーメッセージを作成
+                trigger_message = {
+                    'trigger_time': datetime.now().isoformat(),
+                    'trigger_type': 'batch_completion',
+                    'batch_info': {
+                        'batch_number': processing_info.get('batch_number'),
+                        'total_needs_update': processing_info.get('total_needs_update')
+                    }
+                }
+                
+                # メッセージを送信
+                future = publisher.publish(
+                    topic_path,
+                    json.dumps(trigger_message).encode('utf-8')
+                )
+                message_id = future.result()
+                logger.info(f"video-url-data-update トリガーを送信しました。Message ID: {message_id}")
         
         # 処理完了
         total_time = time.time() - start_time
