@@ -1,0 +1,25 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: tiktok-analytics-api
+spec:
+  template:
+    spec:
+      containers:
+      - image: tiktok-analytics-api
+        ports:
+        - containerPort: 8080
+          name: http1
+        env:
+        - name: PORT
+          value: "8080"
+        - name: MYSQL_HOST
+          value: "host.docker.internal"
+        - name: MYSQL_USER
+          value: "tiktok_user"
+        - name: MYSQL_PASSWORD
+          value: "tiktok_pass"
+        - name: MYSQL_DATABASE
+          value: "tiktok_data"
+        - name: MYSQL_PORT
+          value: "3306"
