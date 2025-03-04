@@ -128,7 +128,21 @@ def process_video_data(cloud_event):
             # カテゴリの判定
             categories = set()
             description = message_data.get('description', '').lower()
-            hashtags = message_data.get('hashtags', [])
+            hashtags = message_data.get('hashtags', '')
+            
+            # ハッシュタグの処理を単純化
+            if isinstance(hashtags, str):
+                # カンマ区切りの文字列として処理
+                hashtags = [tag.strip() for tag in hashtags.split(',') if tag.strip()]
+            elif isinstance(hashtags, list):
+                # リストの場合はそのまま使用
+                hashtags = [str(tag).strip() for tag in hashtags if str(tag).strip()]
+            else:
+                # その他の場合は空リストとして扱う
+                hashtags = []
+            
+            # ハッシュタグをカンマ区切りの文字列に変換
+            hashtags_str = ','.join(hashtags)
             
             # コンテンツタイプの判定
             video_url = message_data.get('url', '')
@@ -138,25 +152,6 @@ def process_video_data(cloud_event):
                 content_type = 'carousel'
             else:
                 content_type = 'unknown'
-            
-            # ハッシュタグの処理を改善
-            if isinstance(hashtags, str):
-                # 文字列の場合、JSONとして解析を試みる
-                try:
-                    hashtags = json.loads(hashtags)
-                except json.JSONDecodeError:
-                    # JSONとして解析できない場合、カンマまたは空白で分割
-                    if ',' in hashtags:
-                        hashtags = [tag.strip() for tag in hashtags.split(',')]
-                    else:
-                        hashtags = [tag.strip() for tag in hashtags.split()]
-            
-            # リストでない場合は空リストとして扱う
-            if not isinstance(hashtags, list):
-                hashtags = []
-            
-            # ハッシュタグから#記号と空白を除去し、重複を排除
-            hashtags = list(set(tag.strip('#').strip() for tag in hashtags if tag.strip()))
             
             # ハッシュタグのテキストを結合（カテゴリ判定用）
             hashtags_text = ' '.join(hashtags).lower()
@@ -216,8 +211,6 @@ def process_video_data(cloud_event):
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                 """
-                # hashtagsをカンマ区切りの文字列として保存
-                hashtags_str = ','.join(hashtags)
                 
                 # ファイルパスとステータスの処理
                 file_path = message_data.get('file_path')
@@ -275,9 +268,6 @@ def process_video_data(cloud_event):
                         content_type = %s
                     WHERE video_id = %s
                 """
-                
-                # hashtagsをカンマ区切りの文字列として保存
-                hashtags_str = ','.join(hashtags)
                 
                 values = (
                     message_data['likes_count'],
