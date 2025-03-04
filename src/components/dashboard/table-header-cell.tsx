@@ -67,8 +67,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         
         // スクロール位置を考慮した絶対位置を計算
         setPopupPosition({
-          top: rect.top + scrollY - 160, // ボタンより上部
-          left: rect.left + scrollX
+          top: rect.top + scrollY - 130, // ボタンの上部に表示
+          left: rect.left + scrollX - 10 // 少し左に調整
         });
       }
     }, []);
