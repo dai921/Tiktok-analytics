@@ -129,6 +129,36 @@ def process_video_data(cloud_event):
             categories = set()
             description = message_data.get('description', '').lower()
             hashtags = message_data.get('hashtags', [])
+            
+            # コンテンツタイプの判定
+            video_url = message_data.get('url', '')
+            if 'video' in video_url.lower():
+                content_type = 'video'
+            elif 'photo' in video_url.lower():
+                content_type = 'carousel'
+            else:
+                content_type = 'unknown'
+            
+            # ハッシュタグの処理を改善
+            if isinstance(hashtags, str):
+                # 文字列の場合、JSONとして解析を試みる
+                try:
+                    hashtags = json.loads(hashtags)
+                except json.JSONDecodeError:
+                    # JSONとして解析できない場合、カンマまたは空白で分割
+                    if ',' in hashtags:
+                        hashtags = [tag.strip() for tag in hashtags.split(',')]
+                    else:
+                        hashtags = [tag.strip() for tag in hashtags.split()]
+            
+            # リストでない場合は空リストとして扱う
+            if not isinstance(hashtags, list):
+                hashtags = []
+            
+            # ハッシュタグから#記号と空白を除去し、重複を排除
+            hashtags = list(set(tag.strip('#').strip() for tag in hashtags if tag.strip()))
+            
+            # ハッシュタグのテキストを結合（カテゴリ判定用）
             hashtags_text = ' '.join(hashtags).lower()
 
             for keyword_data in keywords_data:
@@ -186,11 +216,10 @@ def process_video_data(cloud_event):
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                 """
-                # hashtagsをUTF-8でエンコード
-                hashtags_json = json.dumps(message_data['hashtags'], ensure_ascii=False)
+                # hashtagsをカンマ区切りの文字列として保存
+                hashtags_str = ','.join(hashtags)
                 
                 # ファイルパスとステータスの処理
-                content_type = message_data.get('type', 'video')
                 file_path = message_data.get('file_path')
                 folder_path = message_data.get('folder_path')
                 image_count = message_data.get('image_count', 0)
@@ -208,7 +237,7 @@ def process_video_data(cloud_event):
                     message_data['share_count'],
                     message_data['save_count'],
                     message_data['created_at'],
-                    hashtags_json,  # 修正したハッシュタグを使用
+                    hashtags_str,  # JSONではなくカンマ区切りの文字列として保存
                     message_data['duration'],
                     message_data['isViral'],
                     message_data['currentFetchDate'],
@@ -218,7 +247,7 @@ def process_video_data(cloud_event):
                     category_names,
                     product_names,
                     status,                     # 新規: ステータス
-                    content_type,               # 新規: コンテンツタイプ
+                    content_type,               # コンテンツタイプを追加
                     file_path,                  # 新規: ファイルパス
                     folder_path,                # 新規: フォルダパス（カルーセル用）
                     image_count                 # 新規: 画像数（カルーセル用）
