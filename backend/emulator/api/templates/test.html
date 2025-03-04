@@ -21,6 +21,20 @@
         th, td { text-align: left; padding: 8px; }
         th { background-color: #f2f2f2; }
         .error { color: red; background: #ffeeee; padding: 10px; border-radius: 4px; margin-top: 20px; }
+        td:first-child {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        td:first-child:hover {
+            overflow: visible;
+            white-space: normal;
+            word-break: break-all;
+            background-color: #f8f8f8;
+            position: relative;
+            z-index: 1;
+        }
     </style>
 </head>
 <body>
@@ -247,7 +261,7 @@
             
             let html = '<table>';
             html += '<thead><tr>';
-            html += '<th>ID</th>';
+            html += '<th>URL</th>';
             html += '<th>アカウント</th>';
             html += '<th>カテゴリ</th>';
             html += '<th>サムネイル</th>';
@@ -256,13 +270,13 @@
             html += '<th>いいね数</th>';
             html += '<th>コメント数</th>';
             html += '<th>ハッシュタグ</th>';
-            html += '<th>リンク</th>';
+            html += '<th>音楽情報</th>';
             html += '</tr></thead>';
             
             html += '<tbody>';
             data.forEach(item => {
                 html += '<tr>';
-                html += `<td>${item.id}</td>`;
+                html += `<td>${item.url}</td>`;
                 html += `<td>${item.account_name}</td>`;
                 html += `<td>${item.category}</td>`;
                 html += `<td><img src="${item.thumbnail}" alt="サムネイル" width="80" /></td>`;
@@ -271,7 +285,7 @@
                 html += `<td>${formatNumber(item.likes_count)}</td>`;
                 html += `<td>${formatNumber(item.comment_count)}</td>`;
                 html += `<td>${(item.hashtags || []).join(', ')}</td>`;
-                html += `<td><a href="${item.url}" target="_blank">動画を見る</a></td>`;
+                html += `<td>${item.music_info?.title || ''}</td>`;
                 html += '</tr>';
             });
             html += '</tbody></table>';

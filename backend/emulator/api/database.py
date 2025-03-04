@@ -36,7 +36,7 @@ def format_video(row):
         else:
             created_at_str = str(created_at)
         
-        # hashtags処理 - JSONパースを試みるが失敗したら文字列として処理
+        # hashtags処理
         hashtags = []
         hashtags_raw = row[9]  # hashtagsのインデックス
         if hashtags_raw:
@@ -78,8 +78,9 @@ def format_video(row):
             thumbnail = f"https://storage.googleapis.com/{bucket_name}/{object_path}"
         
         # 動画データの整形
+        # 注意: idフィールドを削除し、music_infoをaudioInfoの別名として追加
         return {
-            "id": row[0],
+            # "id": row[0],  # IDフィールドを削除
             "url": row[1],
             "thumbnail": thumbnail,
             "created_at": created_at_str,
@@ -87,7 +88,8 @@ def format_video(row):
             "comment_count": row[8] or 0,
             "account_name": row[6],
             "likes_count": row[7] or 0,
-            "audioInfo": audio_info,
+            "audioInfo": audio_info,       # 既存のaudioInfoを保持
+            "music_info": audio_info,      # 新しくmusic_infoとして同じ内容を追加
             "hashtags": hashtags,
             "caption": row[11] if len(row) > 11 else "",
             "category": row[12] if len(row) > 12 else "その他"
@@ -97,7 +99,7 @@ def format_video(row):
         print(f"問題の行: {row}")
         # エラーが発生しても最低限のデータを返す
         return {
-            "id": row[0] if len(row) > 0 else "unknown",
+            # "id": row[0] if len(row) > 0 else "unknown",  # IDフィールドを削除
             "url": row[1] if len(row) > 1 else "",
             "thumbnail": "",
             "created_at": "",
