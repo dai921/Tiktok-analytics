@@ -70,6 +70,7 @@ async def get_videos(
     account_name: Optional[str] = None,
     category: Optional[str] = None,
     hashtag: Optional[str] = None,
+    music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     min_play_count: Optional[int] = None,
@@ -105,13 +106,9 @@ async def get_videos(
             where_clauses.append("hashtags LIKE %s")
             params.append(f"%{hashtag}%")
             
-        if start_date:
-            where_clauses.append("created_at >= %s")
-            params.append(start_date)
-            
-        if end_date:
-            where_clauses.append("created_at <= %s")
-            params.append(end_date)
+        if music_info:
+            where_clauses.append("music_info LIKE %s")
+            params.append(f"%{music_info}%")
             
         if min_play_count:
             where_clauses.append("play_count >= %s")
@@ -132,8 +129,16 @@ async def get_videos(
             query += " WHERE " + " AND ".join(where_clauses)
 
         # ソート処理
-        if sort_by:
-            query += f" ORDER BY {sort_by} {sort_order}"
+        # フロントエンドのカラム名とデータベースのカラム名をマッピング
+        column_mapping = {
+            "audioTitle": "music_info"  # フロントエンドのaudioTitleはデータベースではmusic_info
+        }
+        
+        # ソートカラムのマッピングを適用
+        actual_sort_by = column_mapping.get(sort_by, sort_by)
+        
+        # ソートの適用
+        query += f" ORDER BY {actual_sort_by} {sort_order}"
 
         # 総件数取得
         count_cursor = conn.cursor()
@@ -184,6 +189,7 @@ async def get_videos_alt(
     account_name: Optional[str] = None,
     category: Optional[str] = None,
     hashtag: Optional[str] = None,
+    music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     min_play_count: Optional[int] = None,
@@ -200,6 +206,7 @@ async def get_videos_alt(
         account_name=account_name,
         category=category,
         hashtag=hashtag,
+        music_info=music_info,
         start_date=start_date,
         end_date=end_date,
         min_play_count=min_play_count,
