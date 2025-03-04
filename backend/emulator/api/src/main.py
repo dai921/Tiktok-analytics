@@ -229,7 +229,7 @@ async def health_check():
         
         # データベースモジュールのインポートを試行
         try:
-            from database import get_db_connection
+            from src.db.database import get_db_connection
             print("Database module imported successfully")
         except ImportError as e:
             print(f"Failed to import database module: {e}")
