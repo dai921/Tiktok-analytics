@@ -254,6 +254,12 @@ export const COLUMN_MAP: Record<string, string> = {
   'artist': 'アーティスト'
 }
 
+// COLUMN_MAPの逆引きマップを作成
+const REVERSE_COLUMN_MAP: Record<string, string> = {};
+Object.entries(COLUMN_MAP).forEach(([key, value]) => {
+  REVERSE_COLUMN_MAP[value] = key;
+});
+
 // フィルタータイプの変換関数
 const convertFilterType = (type: FilterType, field: string): string => {
   console.log('Converting filter type for API:', { type, field });
@@ -278,18 +284,23 @@ const convertFilterType = (type: FilterType, field: string): string => {
   })();
 }
 
-// フィールド名のマッピング（フロントエンド → バックエンド）
+// フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
 const mapFieldToApiField = (field: string): string => {
-  const mapping: Record<string, string> = {
+  // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
+  const internalField = REVERSE_COLUMN_MAP[field] || field;
+  
+  // 内部名をバックエンドのカラム名に変換
+  const fieldMapping: Record<string, string> = {
     'views': 'play_count',
     'likes': 'likes_count',
     'comments': 'comment_count',
     'createdAt': 'created_at',
     'accountName': 'account_name',
-    'description': 'caption'
+    'description': 'caption',
+    // 他のフィールドも必要に応じて追加
   };
   
-  return mapping[field] || field;
+  return fieldMapping[internalField] || internalField;
 }
 
 // バックエンドのレスポンスとVideoDataのマッピング
@@ -406,14 +417,14 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     // フィルターの処理
     if (filters) {
       Object.entries(filters).forEach(([key, filter]) => {
-        // フィールド名のマッピング（フロントエンド → バックエンド）
-        let apiFieldName = filter.field;
-        if (filter.field === 'views') apiFieldName = 'play_count';
-        if (filter.field === 'likes') apiFieldName = 'likes_count';
-        if (filter.field === 'comments') apiFieldName = 'comment_count';
-        if (filter.field === 'createdAt') apiFieldName = 'created_at';
-        if (filter.field === 'accountName') apiFieldName = 'account_name';
-        if (filter.field === 'description') apiFieldName = 'caption';
+        console.log('処理するフィルター:', filter);
+        
+        // フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
+        // field には title や field を使う（実際のデータによる）
+        const fieldToUse = filter.field || filter.title || key;
+        const apiFieldName = mapFieldToApiField(fieldToUse);
+        
+        console.log(`フィールド変換: ${fieldToUse} → ${apiFieldName}`);
         
         // フィルタータイプの処理
         const apiFilterType = filter.type;
