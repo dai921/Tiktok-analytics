@@ -319,10 +319,10 @@ class VideoProcessor:
                     video_info = await self.get_video_info(api, data)
 
                     if video_info:
-                        content_type = data.get('content_type')
                         video_id = data['video_id']
                         url = data['video_url']
                         username = data['username']
+                        self.logger.debug(f"処理するデータ: video_id={video_id}, url={url}, username={username}")
 
                         # 基本情報を設定
                         base_result = {
@@ -330,48 +330,92 @@ class VideoProcessor:
                             "video_url": url,
                             "username": username
                         }
+                        self.logger.debug(f"基本情報を設定: {json.dumps(base_result)}")
+
+                        # content_typeの判定（URLを使用）
+                        original_url = url
+                        url_lower = url.lower()
+                        self.logger.debug(f"URL判定開始: {url_lower}")
+
+                        if 'video' in url_lower:
+                            content_type = 'video'
+                            self.logger.debug(f"'video'キーワードを検出: content_type='video'に設定")
+                        elif 'photo' in url_lower:
+                            content_type = 'carousel'
+                            self.logger.debug(f"'photo'キーワードを検出: content_type='carousel'に設定")
+                        else:
+                            content_type = 'video'
+                            self.logger.debug(f"キーワード未検出: デフォルトでcontent_type='video'に設定")
 
                         # 削除チェック
+                        self.logger.debug(f"削除チェック開始: {url}")
                         is_deleted = await self._check_deleted_content(url)
+                        self.logger.debug(f"削除チェック結果: is_deleted={is_deleted}")
+
                         if is_deleted:
                             result = {
-                                **base_result,  # 基本情報を展開
+                                **base_result,
                                 "status": "deleted",
-                                "message": "コンテンツは削除されています"
+                                "message": "コンテンツは削除されています",
+                                "type": content_type
                             }
+                            self.logger.info(f"削除済みコンテンツを検出: {json.dumps(result)}")
                         else:
                             page = await api.browser.new_page()
                             try:
+                                self.logger.debug(f"ページアクセス開始: {url}")
                                 await page.goto(url, wait_until='domcontentloaded')
                                 await asyncio.sleep(2)
+                                self.logger.debug("ページロード完了")
 
-                                if content_type == '動画':
+                                if content_type == 'video':
+                                    self.logger.debug(f"ビデオ処理開始: content_type={content_type}, url={url}")
                                     process_result = await self._process_video(url, video_id)
-                                    result = {**base_result, **process_result}  # 基本情報と処理結果を結合
+                                    self.logger.debug(f"ビデオ処理結果: {json.dumps(process_result)}")
+                                    
+                                    if process_result["status"] == "error":
+                                        self.logger.error(f"ビデオ処理エラー: {process_result.get('message')}")
+                                        self.logger.error(f"エラー発生URL: {url}")
+                                    
+                                    result = {**base_result, **process_result}
+                                    self.logger.debug(f"最終結果: {json.dumps(result)}")
                                 else:
+                                    self.logger.debug(f"カルーセル処理開始: content_type={content_type}, url={url}")
                                     carousel_dir = os.path.join(self.storage_dir, f"carousel_{video_id}")
                                     os.makedirs(carousel_dir, exist_ok=True)
-                                    
+                                    self.logger.debug(f"カルーセルディレクトリ作成: {carousel_dir}")
+
                                     # カルーセル処理のコード
                                     image_urls = []
+                                    slide_count = 0
                                     while True:
+                                        slide_count += 1
+                                        self.logger.debug(f"スライド {slide_count} の処理開始")
+                                        
                                         img_elements = await page.query_selector_all('img.css-brxox6-ImgPhotoSlide')
+                                        self.logger.debug(f"検出された画像要素数: {len(img_elements)}")
+                                        
                                         for elem in img_elements:
                                             src = await elem.get_attribute('src')
                                             if src and src.startswith('http') and src not in image_urls:
                                                 image_urls.append(src)
+                                                self.logger.debug(f"新しい画像URLを追加: {src}")
                                         
                                         try:
                                             next_button = await page.wait_for_selector('button[class*="NextButton"]', timeout=2000)
                                             if next_button:
                                                 await next_button.click()
+                                                self.logger.debug("次のスライドに移動")
                                                 await asyncio.sleep(1)
                                             else:
+                                                self.logger.debug("次のスライドボタンが見つからないため終了")
                                                 break
-                                        except:
+                                        except Exception as e:
+                                            self.logger.debug(f"スライド処理終了: {str(e)}")
                                             break
 
                                     # 画像のダウンロードと保存
+                                    self.logger.debug(f"画像ダウンロード開始: {len(image_urls)}個の画像")
                                     saved_images = []
                                     for i, img_url in enumerate(image_urls, 1):
                                         try:
@@ -381,18 +425,29 @@ class VideoProcessor:
                                                 with open(image_path, 'wb') as f:
                                                     f.write(response.content)
                                                 saved_images.append(image_path)
+                                                self.logger.debug(f"画像 {i} を保存: {image_path}")
                                         except Exception as e:
-                                            self.logger.error(f"画像 {i} のダウンロード中にエラー: {str(e)}")
+                                            self.logger.error(f"画像 {i} のダウンロード失敗: {str(e)}")
 
                                     result = {
-                                        **base_result,  # 基本情報を展開
+                                        **base_result,
                                         "status": "success" if saved_images else "error",
                                         "folder_path": carousel_dir if saved_images else None,
                                         "image_count": len(saved_images),
                                         "type": "carousel"
                                     }
+                                    self.logger.debug(f"カルーセル処理結果: {json.dumps(result)}")
+                            except Exception as e:
+                                self.logger.error(f"ページ処理中のエラー: {str(e)}")
+                                result = {
+                                    **base_result,
+                                    "status": "error",
+                                    "message": str(e),
+                                    "type": content_type
+                                }
                             finally:
                                 await page.close()
+                                self.logger.debug("ページをクローズ")
 
                         # video_infoから重複する基本情報を削除
                         for key in ["video_id", "video_url", "username"]:
@@ -400,6 +455,12 @@ class VideoProcessor:
 
                         # 処理済みデータをPubSubに送信
                         final_message = {**result, **video_info}  # resultを優先して結合
+                        self.logger.debug("=== 送信前の最終データ確認 ===")
+                        self.logger.debug(f"result: {json.dumps(result, indent=2)}")
+                        self.logger.debug(f"video_info: {json.dumps(video_info, indent=2)}")
+                        self.logger.debug(f"final_message: {json.dumps(final_message, indent=2)}")
+                        self.logger.debug("===========================")
+                        
                         message_data = json.dumps(final_message).encode('utf-8')
                         future = self.publisher.publish(self.video_data_topic, message_data)
                         message_id = future.result()
