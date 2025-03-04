@@ -242,25 +242,33 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         ),
         cell: ({ row }) => {
-          // ハッシュタグの安全な取得と変換
-          const hashtags = row.hashtags
-          const hashtagString = Array.isArray(hashtags) 
-            ? hashtags.join(', ') 
-            : typeof hashtags === 'string' 
-              ? hashtags 
-              : ''
+          // ハッシュタグの処理
+          const hashtags = row.hashtags;
+          const caption = row.description || '';
+          
+          // キャプションからハッシュタグを抽出
+          const hashtagsFromCaption = (caption.match(/#[^\s#]+/g) || [])
+            .map(tag => tag.replace('#', ''));
+          
+          // 既存のハッシュタグと結合（重複を除去）
+          const allHashtags = [...new Set([
+            ...(Array.isArray(hashtags) ? hashtags : []),
+            ...hashtagsFromCaption
+          ])];
+          
+          const hashtagString = allHashtags.join(', ');
 
           return (
             <div className="w-[60px] min-w-[60px]">
               <button 
                 onClick={() => setSelectedText({ 
                   title: 'ハッシュタグ', 
-                  content: hashtagString
+                  content: hashtagString || 'ハッシュタグなし'
                 })}
                 className="text-left w-full"
               >
                 <span className="line-clamp-2 text-sm">
-                  {hashtagString}
+                  {hashtagString || 'ハッシュタグなし'}
                 </span>
               </button>
             </div>
@@ -356,9 +364,23 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         >
                           {column.cell 
                             ? column.cell({ row }) 
-                            : typeof row[column.accessorKey] === 'object'
-                              ? JSON.stringify(row[column.accessorKey])
-                              : String(row[column.accessorKey])
+                            : column.accessorKey === 'hashtags'
+                              ? (() => {
+                                  const value = row[column.accessorKey] as unknown;
+                                  console.log('Hashtags value:', value);
+                                  console.log('Hashtags type:', typeof value);
+                                  console.log('Is array:', Array.isArray(value));
+                                  if (Array.isArray(value)) {
+                                    return (value as string[]).join(', ');
+                                  }
+                                  if (typeof value === 'string') {
+                                    return value.split(',').filter(Boolean).join(', ');
+                                  }
+                                  return '';
+                                })()
+                              : typeof row[column.accessorKey] === 'object'
+                                ? JSON.stringify(row[column.accessorKey])
+                                : String(row[column.accessorKey])
                           }
                         </td>
                       ))}

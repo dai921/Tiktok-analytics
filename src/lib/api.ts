@@ -1,4 +1,3 @@
-import { TikTokVideo, FilterOptions, SortOptions, ApiResponse, AccountData, CategoryData, HashtagData } from '../types/dashboard';
 import type { VideoData, PaginatedResponse, FilterQuery, FilterType } from '@/types/dashboard'
 
 // 環境変数からAPI設定を取得
@@ -311,15 +310,17 @@ const convertToVideoData = (video: any): VideoData => {
   // hashtagsの処理（文字列から配列へ）
   let hashtagsArray: string[] = [];
   try {
+    // キャプションからハッシュタグを抽出
+    const caption = video.caption || '';
+    const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
+    
     if (video.hashtags) {
       if (typeof video.hashtags === 'string') {
-        // カンマ区切りや空白区切りのテキストを配列に変換
         if (video.hashtags.includes(',')) {
           hashtagsArray = video.hashtags.split(',').map((tag: string) => tag.trim());
         } else if (video.hashtags.includes(' ')) {
           hashtagsArray = video.hashtags.split(' ').filter(Boolean);
         } else {
-          // JSONの可能性もチェック
           try {
             const parsed = JSON.parse(video.hashtags);
             hashtagsArray = Array.isArray(parsed) ? parsed : [video.hashtags];
@@ -331,6 +332,9 @@ const convertToVideoData = (video: any): VideoData => {
         hashtagsArray = video.hashtags;
       }
     }
+    
+    // キャプションから抽出したハッシュタグを追加（重複を除去）
+    hashtagsArray = [...new Set([...hashtagsArray, ...hashtagsFromCaption])];
   } catch (error) {
     console.error('ハッシュタグの処理エラー:', error);
     hashtagsArray = [];

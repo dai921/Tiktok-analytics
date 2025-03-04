@@ -13,6 +13,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # アプリケーションのコピー
+COPY src/ src/
 COPY . .
 
 # デバッグ用：コンテナ起動時にファイル一覧を表示
@@ -23,4 +24,4 @@ ENV PORT=8080
 
 # 起動コマンド
 ENV PYTHONUNBUFFERED=1
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
