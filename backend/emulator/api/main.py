@@ -49,40 +49,77 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 @app.get("/api/videos")
-async def get_videos(page: int = 1, limit: int = 50, filters: Optional[Dict] = None):
+async def get_videos(
+    request: Request,
+    page: int = 1,
+    limit: int = 50,
+    account_name: Optional[str] = None,
+    category: Optional[str] = None,
+    hashtag: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_play_count: Optional[int] = None,
+    min_likes_count: Optional[int] = None,
+    is_viral: Optional[bool] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "desc"
+):
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # デバッグ情報
+        print(f"Request params: page={page}, limit={limit}, account_name={account_name}, category={category}, ...")
+
         # 基本クエリ
         query = "SELECT * FROM frontend_data"
         params = []
+        where_clauses = []
 
         # フィルター処理
-        if filters:
-            where_clauses = []
-            for field, filter_data in filters.items():
-                if filter_data["type"] == "sort":
-                    continue
-                if filter_data["type"] == "greater":
-                    where_clauses.append(f"{field} >= %s")
-                elif filter_data["type"] == "less":
-                    where_clauses.append(f"{field} <= %s")
-                elif filter_data["type"] == "equal":
-                    where_clauses.append(f"{field} LIKE %s")
-                params.append(filter_data["value"])
+        if account_name:
+            where_clauses.append("account_name LIKE %s")
+            params.append(f"%{account_name}%")
+        
+        if category:
+            where_clauses.append("category LIKE %s")
+            params.append(f"%{category}%")
+            
+        if hashtag:
+            where_clauses.append("hashtags LIKE %s")
+            params.append(f"%{hashtag}%")
+            
+        if start_date:
+            where_clauses.append("created_at >= %s")
+            params.append(start_date)
+            
+        if end_date:
+            where_clauses.append("created_at <= %s")
+            params.append(end_date)
+            
+        if min_play_count:
+            where_clauses.append("play_count >= %s")
+            params.append(min_play_count)
+            
+        if min_likes_count:
+            where_clauses.append("likes_count >= %s")
+            params.append(min_likes_count)
+            
+        if is_viral is not None:
+            # is_viral の定義に基づいて条件を追加
+            # 例: is_viral = True の場合、play_count > 10000 など
+            where_clauses.append("play_count > %s")
+            params.append(10000)  # viral動画の定義に合わせて調整
 
-            if where_clauses:
-                query += " WHERE " + " AND ".join(where_clauses)
+        # WHERE句の追加
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
 
         # ソート処理
-        if filters:
-            for field, filter_data in filters.items():
-                if filter_data["type"] == "sort":
-                    query += f" ORDER BY {field} {filter_data['value']}"
-                    break
+        if sort_by:
+            query += f" ORDER BY {sort_by} {sort_order}"
 
         # 総件数取得
         count_cursor = conn.cursor()
@@ -92,6 +129,10 @@ async def get_videos(page: int = 1, limit: int = 50, filters: Optional[Dict] = N
         # ページネーション
         query += " LIMIT %s OFFSET %s"
         params.extend([limit, (page - 1) * limit])
+
+        # デバッグ用にクエリとパラメータを出力
+        print(f"Executing query: {query}")
+        print(f"With parameters: {params}")
 
         # メインクエリ実行
         cursor.execute(query, params)
@@ -106,6 +147,8 @@ async def get_videos(page: int = 1, limit: int = 50, filters: Optional[Dict] = N
         }
 
     except Exception as e:
+        print(f"Error in get_videos: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
             detail={
@@ -118,6 +161,39 @@ async def get_videos(page: int = 1, limit: int = 50, filters: Optional[Dict] = N
             cursor.close()
         if conn:
             conn.close()
+
+@app.get("/videos")
+async def get_videos_alt(
+    request: Request,
+    page: int = 1,
+    limit: int = 50,
+    account_name: Optional[str] = None,
+    category: Optional[str] = None,
+    hashtag: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_play_count: Optional[int] = None,
+    min_likes_count: Optional[int] = None,
+    is_viral: Optional[bool] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_order: Optional[str] = "desc"
+):
+    """代替の/videosエンドポイント - 既存の/api/videosと同じ処理を行う"""
+    return await get_videos(
+        request=request,
+        page=page,
+        limit=limit,
+        account_name=account_name,
+        category=category,
+        hashtag=hashtag,
+        start_date=start_date,
+        end_date=end_date,
+        min_play_count=min_play_count,
+        min_likes_count=min_likes_count,
+        is_viral=is_viral,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
 @app.get("/health")
 async def health_check():
@@ -181,6 +257,44 @@ async def test():
     print("Test endpoint called")  # デバッグ用ログ
     return {"status": "ok"}
 
+@app.get("/debug/row/{row_id}")
+async def debug_row(row_id: str):
+    """特定の行の生データとJSONパース結果を確認するためのデバッグエンドポイント"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM frontend_data WHERE id = %s", (row_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            return {"error": "Row not found"}
+            
+        # 生データを表示
+        raw_data = {
+            "row_data": [str(item) for item in row],
+            "columns": [desc[0] for desc in cursor.description]
+        }
+        
+        # format_videoを試す（エラーをキャッチする）
+        formatted = None
+        try:
+            formatted = format_video(row)
+        except Exception as e:
+            formatted = {"error": str(e)}
+            
+        return {
+            "raw_data": raw_data,
+            "formatted": formatted
+        }
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":
     print("Starting application via __main__")
@@ -192,4 +306,4 @@ if __name__ == "__main__":
         access_log=True,
         proxy_headers=True,  # プロキシヘッダーを信頼
         forwarded_allow_ips="*"  # すべてのIPからのフォワードを許可
-    )
+        )

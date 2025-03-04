@@ -3,7 +3,7 @@ from mysql.connector import Error
 from dotenv import load_dotenv
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 from logger_config import setup_logger
 import logging
 
@@ -28,24 +28,81 @@ def get_db_connection():
         raise
 
 def format_video(row):
-    """データベースの行をAPIレスポンス形式に変換"""
-    return {
-        "id": row[0],
-        "url": row[1],
-        "thumbnail": {
-            "valueType": "IMAGE",
-            "url": row[2]
-        } if row[2] else None,
-        "createdAt": row[3].strftime("%y/%m/%d") if row[3] else None,
-        "views": row[4] or 0,
-        "viewsIncrease": row[5] or 0,
-        "accountName": row[6],
-        "likes": row[7] or 0,
-        "comments": row[8] or 0,
-        "hashtags": json.loads(row[9]) if row[9] else [],
-        "audioInfo": json.loads(row[10]) if row[10] else {},
-        "description": row[11]
-    }
+    try:
+        # 日付処理
+        created_at = row[3]  # created_atカラムのインデックス
+        if isinstance(created_at, date):
+            created_at_str = created_at.isoformat()
+        else:
+            created_at_str = str(created_at)
+        
+        # hashtags処理 - JSONパースを試みるが失敗したら文字列として処理
+        hashtags = []
+        hashtags_raw = row[9]  # hashtagsのインデックス
+        if hashtags_raw:
+            if isinstance(hashtags_raw, str):
+                if hashtags_raw.startswith('['):
+                    try:
+                        hashtags = json.loads(hashtags_raw)
+                    except json.JSONDecodeError:
+                        print(f"JSONパースエラー（hashtags）: {hashtags_raw}")
+                        # ハッシュタグをテキストから抽出
+                        if '#' in hashtags_raw:
+                            hashtags = [tag.strip() for tag in hashtags_raw.split('#') if tag.strip()]
+                elif '#' in hashtags_raw:
+                    # #で区切られたハッシュタグ文字列の場合
+                    hashtags = [tag.strip() for tag in hashtags_raw.split('#') if tag.strip()]
+        
+        # 音楽情報処理 - テキストとして扱う
+        audio_info = {}
+        audio_raw = row[10]  # audio_infoのインデックス
+        if audio_raw:
+            if isinstance(audio_raw, str):
+                if audio_raw.startswith('{') or audio_raw.startswith('['):
+                    try:
+                        audio_info = json.loads(audio_raw)
+                    except json.JSONDecodeError:
+                        audio_info = {"title": audio_raw}
+                else:
+                    # JSONではない場合、テキストとして格納
+                    audio_info = {"title": audio_raw}
+            else:
+                audio_info = {"title": str(audio_raw)}
+        
+        # サムネイルパスをURLに変換
+        thumbnail = row[2]  # サムネイルカラムのインデックス
+        if thumbnail and isinstance(thumbnail, str) and thumbnail.startswith('gs://'):
+            # Google Cloud Storageのパスをpublicなurlに変換
+            bucket_name = thumbnail.split('/')[2]
+            object_path = '/'.join(thumbnail.split('/')[3:])
+            thumbnail = f"https://storage.googleapis.com/{bucket_name}/{object_path}"
+        
+        # 動画データの整形
+        return {
+            "id": row[0],
+            "url": row[1],
+            "thumbnail": thumbnail,
+            "created_at": created_at_str,
+            "play_count": row[4] or 0,
+            "comment_count": row[8] or 0,
+            "account_name": row[6],
+            "likes_count": row[7] or 0,
+            "audioInfo": audio_info,
+            "hashtags": hashtags,
+            "caption": row[11] if len(row) > 11 else "",
+            "category": row[12] if len(row) > 12 else "その他"
+        }
+    except Exception as e:
+        print(f"行のフォーマット中にエラーが発生: {e}")
+        print(f"問題の行: {row}")
+        # エラーが発生しても最低限のデータを返す
+        return {
+            "id": row[0] if len(row) > 0 else "unknown",
+            "url": row[1] if len(row) > 1 else "",
+            "thumbnail": "",
+            "created_at": "",
+            "error": str(e)
+        }
 
 def get_db():
     db = get_db_connection()
