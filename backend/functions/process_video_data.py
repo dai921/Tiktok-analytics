@@ -268,9 +268,16 @@ def process_video_data(cloud_event):
                         prevPlayCount = %s,
                         playCountIncrease = %s,
                         likesCountIncrease = %s,
-                        status = %s
+                        status = %s,
+                        hashtags = %s,
+                        category = %s,
+                        product = %s,
+                        content_type = %s
                     WHERE video_id = %s
                 """
+                
+                # hashtagsをカンマ区切りの文字列として保存
+                hashtags_str = ','.join(hashtags)
                 
                 values = (
                     message_data['likes_count'],
@@ -286,6 +293,10 @@ def process_video_data(cloud_event):
                     play_count_increase,
                     likes_count_increase,
                     status,
+                    hashtags_str,          # 追加: ハッシュタグ
+                    category_names,        # 追加: カテゴリ
+                    product_names,         # 追加: プロダクト
+                    content_type,          # 追加: コンテンツタイプ
                     message_data['video_id']
                 )
 
