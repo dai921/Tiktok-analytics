@@ -1,6 +1,6 @@
 'use client'
 //テスト用に変更
-import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react'
 import type { FilterValue, FilterType } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 import { cn } from '@/lib/utils'
@@ -12,7 +12,6 @@ interface TableHeaderCellProps {
   onFilter?: (value: FilterValue) => void
   style?: React.CSSProperties
 }
-
 
 export interface TableHeaderCellRef {
   clearFilter: () => void
@@ -46,41 +45,50 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
   }
 }
 
-export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter, style }: TableHeaderCellProps) {
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [filterValue, setFilterValue] = useState('')
-  const [filterType, setFilterType] = useState<FilterType>('equal')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-  const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
+  ({ title, type = 'text', align = 'left', onFilter, style }, ref) => {
+    const [isFilterOpen, setIsFilterOpen] = useState(false)
+    const [filterValue, setFilterValue] = useState('')
+    const [filterType, setFilterType] = useState<FilterType>('equal')
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+    const [isActive, setIsActive] = useState(false)
+    const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
 
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  const buttonRef = useRef<HTMLButtonElement>(null)
-  const popupRef = useRef<HTMLDivElement>(null)
+    const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
+    const buttonRef = useRef<HTMLButtonElement>(null)
+    const popupRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (isFilterOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setPosition({
-        top: rect.height, // ボタンの高さ分だけ下にずらす
-        left: 0
-      });
-    }
-  }, [isFilterOpen]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isFilterOpen && 
-          popupRef.current && 
-          buttonRef.current && 
-          !popupRef.current.contains(event.target as Node) &&
-          !buttonRef.current.contains(event.target as Node)) {
-        setIsFilterOpen(false)
-
+    // ポップアップの位置を計算する関数
+    const calculatePopupPosition = useCallback(() => {
+      if (buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        const scrollX = window.scrollX || document.documentElement.scrollLeft;
+        
+        // スクロール位置を考慮した絶対位置を計算
+        setPopupPosition({
+          top: rect.top + scrollY - 130, // ボタンの上部に表示
+          left: rect.left + scrollX - 10 // 少し左に調整
+        });
       }
-    }, [isFilterOpen])
+    }, []);
 
-    // クリックアウトサイドの処理を追加
+    // フィルターを開くときに位置を計算
     useEffect(() => {
+      if (isFilterOpen) {
+        calculatePopupPosition();
+      }
+    }, [isFilterOpen, calculatePopupPosition]);
+
+    useEffect(() => {
+      if (isFilterOpen && buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect();
+        // 画面上部に表示するための位置計算は不要になるため、この部分は使用しません
+      }
+    }, [isFilterOpen]);
+
+    useEffect(() => {
+      // クリック外側検知のハンドラー
       const handleClickOutside = (event: MouseEvent) => {
         if (isFilterOpen && 
             popupRef.current && 
@@ -91,11 +99,54 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
         }
       }
 
+      // イベントリスナーを登録 (スクロールイベントリスナーは削除)
       document.addEventListener('mousedown', handleClickOutside)
+      
+      // クリーンアップ関数
       return () => {
         document.removeEventListener('mousedown', handleClickOutside)
       }
-    }, [isFilterOpen])
+    }, [isFilterOpen]);
+
+    // ポップアップの可視性を監視するIntersection Observer
+    useEffect(() => {
+      if (!isFilterOpen || !popupRef.current) return;
+
+      // 少し遅延させてからObserverを設定（初期表示での誤検出を防ぐ）
+      const timer = setTimeout(() => {
+        // 画面外に出たら閉じる処理を実装
+        const observer = new IntersectionObserver(
+          (entries) => {
+            // entriesは監視対象の要素の配列
+            const [entry] = entries;
+            // 要素が画面外に出たら（intersectionRatio === 0）ポップアップを閉じる
+            if (!entry.isIntersecting) {
+              setIsFilterOpen(false);
+            }
+          },
+          {
+            // rootはビューポート（null）、marginは余裕を持たせる
+            root: null,
+            threshold: 0,  // 完全に見えなくなったときに反応
+            rootMargin: '10px', // 少し余裕を持たせる
+          }
+        );
+
+        // popupRefの監視を開始
+        if (popupRef.current) {
+          observer.observe(popupRef.current);
+        }
+
+        return () => {
+          observer.disconnect();
+        };
+      }, 100); // 100ms遅延
+
+      // クリーンアップ
+      return () => {
+        clearTimeout(timer);
+      };
+    }, [isFilterOpen]);
 
     const handleSort = () => {
       // 他のカラムのソートとアクティブ状態をクリア
@@ -227,6 +278,11 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
       clearFilter: handleClear
     }))
 
+    // isFilterOpenの状態変更を処理
+    const toggleFilter = () => {
+      setIsFilterOpen(!isFilterOpen);
+    };
+
     return (
       <div 
         data-header-cell
@@ -236,58 +292,83 @@ export function TableHeaderCell({ title, type = 'text', align = 'left', onFilter
           align === 'center' ? 'justify-center' : '',
           isActive ? "text-blue-600 font-medium" : ""
         )}
-      </div>
-      {isFilterOpen && (
-        <div 
-          ref={popupRef}
-          className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
-          style={{ 
-            top: position.top, 
-            left: position.left,
-            maxHeight: '300px',
-            overflowY: 'auto'
-          }}
-        >
-          <div className="p-2 border-b">
-            <div className="flex items-center gap-2 mb-2">
-              <select 
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value as FilterType)}
-                className="px-2 py-1 border rounded text-xs"
-              >
-                {getFilterOptions(type).map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              {renderFilterInput()}
+      >
+        <span>{title}</span>
+        {hasFilter && (
+          <button 
+            ref={buttonRef}
+            onClick={toggleFilter}
+            data-sort-active={!!sortDirection}
+            className={`p-1 hover:bg-gray-100 rounded ${(sortDirection || filterValue) ? 'text-sky-500' : ''}`}
+          >
+            <svg 
+              className="w-4 h-4"
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor"
+              strokeWidth={(sortDirection || filterValue) ? "3" : "2"}
+            >
+              <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
+            </svg>
+          </button>
+        )}
+        
+        {isFilterOpen && (
+          <Portal>
+            <div 
+              ref={popupRef}
+              className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
+              style={{ 
+                top: `${popupPosition.top}px`,
+                left: `${popupPosition.left}px`,
+                maxHeight: '300px',
+                overflowY: 'auto',
+              }}
+            >
+              <div className="p-2 border-b">
+                <div className="flex items-center gap-2 mb-2">
+                  <select 
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value as FilterType)}
+                    className="px-2 py-1 border rounded text-xs"
+                  >
+                    {getFilterOptions(type).map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {renderFilterInput()}
+                </div>
+                <button
+                  onClick={() => handleFilter(filterValue, filterType)}
+                  className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
+                >
+                  フィルターを適用
+                </button>
+                {(filterValue || sortDirection) && (
+                  <button
+                    onClick={handleClear}
+                    className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
+                  >
+                    フィルターをクリア
+                  </button>
+                )}
+              </div>
+              <div className="p-2 border-t">
+                <button 
+                  onClick={handleSort}
+                  className="w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs"
+                >
+                  {getSortLabel()}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => handleFilter(filterValue, filterType)}
-              className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
-            >
-              フィルターを適用
-            </button>
-            {(filterValue || sortDirection) && (
-              <button
-                onClick={handleClear}
-                className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
-              >
-                フィルターをクリア
-              </button>
-            )}
-          </div>
-          <div className="p-2 border-t">
-            <button 
-              onClick={handleSort}
-              className="w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs"
-            >
-              {sortDirection === 'asc' ? '▼ 降順に並び替え' : '▲ 昇順に並び替え'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-} 
+          </Portal>
+        )}
+      </div>
+    )
+  }
+)
+
+TableHeaderCell.displayName = "TableHeaderCell" 

@@ -94,4 +94,20 @@ export interface FilterPopoverProps {
   type?: 'text' | 'number' | 'date'
   onFilter: (value: FilterValue) => void
   onClose: () => void
+}
+
+// 必要に応じて型を調整
+export interface TikTokVideo {
+  url: string;
+  thumbnail: string;
+  createdAt: string;
+  playCount: number;
+  likesCount: number;
+  commentCount: number;
+  accountName: string;
+  audioInfo?: { title: string } | string;
+  music_info?: { title: string } | string;  // 追加
+  hashtags: string[];
+  caption: string;
+  category: string;
 } 

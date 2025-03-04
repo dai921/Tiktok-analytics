@@ -5,7 +5,7 @@ import type { VideoData, FilterValue, Column, FilterQuery } from '@/types/dashbo
 import { TableHeaderCell } from './table-header-cell'
 import Image from 'next/image'
 import { TextPopup } from '@/components/ui/text-popup'
-import { COLUMN_MAP } from '@/lib/sheets'
+import { COLUMN_MAP } from '@/lib/api'
 import { Pagination } from './pagination'
 import { ImageHover } from '@/components/ui/image-hover'
 
