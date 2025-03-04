@@ -241,7 +241,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'authorName': '作成者表示名',
   'shares': '共有数',
   'saves': '保存数',
-  'createdAt': '作成日時',
+  'createdAt': '投稿日時',
   'duration': '動画時間(秒)',
   'isViral': '10万再生以上',
   'prevViews': '前回再生数',
