@@ -147,3 +147,11 @@ class FrontendDataUpdater:
             
         finally:
             self.close()
+
+if __name__ == "__main__":
+    try:
+        updater = FrontendDataUpdater()
+        result = updater.update_frontend_from_master()
+        print("実行結果:", result)
+    except Exception as e:
+        print(f"エラーが発生しました: {str(e)}")

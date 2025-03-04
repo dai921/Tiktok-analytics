@@ -126,10 +126,31 @@ CREATE TABLE frontend_data (
 );
 
 -- ユーザーデータテーブル
-CREATE TABLE user_data (
-    user_id SERIAL PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    email VARCHAR(255)
+REATE TABLE users (
+    id VARCHAR(255) PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    email_verified DATETIME,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- 2. セッションテーブル
+CREATE TABLE sessions (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    session_token VARCHAR(255) UNIQUE NOT NULL,
+    expires DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- 3. パスワードリセット用トークンテーブル
+CREATE TABLE verification_tokens (
+    id VARCHAR(255) PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    token VARCHAR(255) NOT NULL,
+    expires DATETIME NOT NULL,
+    type ENUM('RESET_PASSWORD', 'VERIFY_EMAIL') NOT NULL,
+    UNIQUE KEY token_unique (token)
+);
