@@ -292,45 +292,101 @@ const mapFieldToApiField = (field: string): string => {
   return mapping[field] || field;
 }
 
-// TikTokVideo型からVideoData型への変換
-const convertToVideoData = (video: TikTokVideo): VideoData => {
+// バックエンドのレスポンスとVideoDataのマッピング
+const convertToVideoData = (video: any): VideoData => {
+  // デバッグ用：受け取ったデータを確認
+  console.log('APIレスポンスの生データ:', video);
+  
+  // hashtagsの処理（文字列から配列へ）
+  let hashtagsArray: string[] = [];
+  try {
+    if (video.hashtags) {
+      if (typeof video.hashtags === 'string') {
+        // カンマ区切りや空白区切りのテキストを配列に変換
+        if (video.hashtags.includes(',')) {
+          hashtagsArray = video.hashtags.split(',').map((tag: string) => tag.trim());
+        } else if (video.hashtags.includes(' ')) {
+          hashtagsArray = video.hashtags.split(' ').filter(Boolean);
+        } else {
+          // JSONの可能性もチェック
+          try {
+            const parsed = JSON.parse(video.hashtags);
+            hashtagsArray = Array.isArray(parsed) ? parsed : [video.hashtags];
+          } catch (e) {
+            hashtagsArray = [video.hashtags];
+          }
+        }
+      } else if (Array.isArray(video.hashtags)) {
+        hashtagsArray = video.hashtags;
+      }
+    }
+  } catch (error) {
+    console.error('ハッシュタグの処理エラー:', error);
+    hashtagsArray = [];
+  }
+
+  // music_infoの処理
+  let musicInfo: any = {};
+  try {
+    if (video.music_info) {
+      if (typeof video.music_info === 'string') {
+        try {
+          musicInfo = JSON.parse(video.music_info);
+        } catch (e) {
+          musicInfo = { title: video.music_info };
+        }
+      } else {
+        musicInfo = video.music_info;
+      }
+    }
+  } catch (error) {
+    console.error('音楽情報の処理エラー:', error);
+    musicInfo = {};
+  }
+
+  // 数値の処理（文字列から数値へ）
+  const parseNumberSafely = (value: any): number => {
+    if (value === null || value === undefined) return 0;
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
   return {
-    id: video.url.split('/').pop() || '',
-    url: video.url,
-    videoId: video.url.split('/').pop() || '',
-    accountName: video.accountName,
-    thumbnail: video.thumbnail ? {
+    id: video.id?.toString() || video.url?.split('/').pop() || '',
+    url: video.url || '',
+    videoId: video.url?.split('/').pop() || '',
+    accountName: video.account_name || '',  // DB名に合わせて修正
+    thumbnail: {
       valueType: 'IMAGE',
-      url: video.thumbnail
-    } : null,
-    authorName: video.accountName, // アカウント名を作成者表示名として代用
-    description: video.caption,
-    likes: video.likesCount,
-    views: video.playCount,
-    comments: video.commentCount,
-    shares: 0, // バックエンドに実装がなければデフォルト値
-    saves: 0,  // バックエンドに実装がなければデフォルト値
-    createdAt: video.createdAt,
-    hashtags: video.hashtags || [],
-    duration: 0, // バックエンドに実装がなければデフォルト値
-    isViral: video.playCount > 100000,
-    prevFetchDate: '', // バックエンドに実装がなければデフォルト値
+      url: video.thumbnail_url || video.thumbnail || ''  // DB名に合わせて修正
+    },
+    authorName: video.account_name || '',  // DB名に合わせて修正
+    description: video.caption || '',  // DB名に合わせて修正
+    likes: parseNumberSafely(video.likes_count),  // DB名に合わせて修正
+    views: parseNumberSafely(video.play_count),   // DB名に合わせて修正
+    comments: parseNumberSafely(video.comment_count), // DB名に合わせて修正
+    shares: 0,
+    saves: 0,
+    createdAt: video.created_at || '',  // DB名に合わせて修正
+    hashtags: hashtagsArray,
+    duration: 0,
+    isViral: parseNumberSafely(video.play_count) > 100000,
+    prevFetchDate: '',
     currentFetchDate: new Date().toISOString(),
-    prevViews: 0,  // バックエンドに実装がなければデフォルト値
-    viewsIncrease: 0,  // バックエンドに実装がなければデフォルト値
-    prevLikes: 0,  // バックエンドに実装がなければデフォルト値
-    likesIncrease: 0,  // バックエンドに実装がなければデフォルト値
-    product: '',  // バックエンドに実装がなければデフォルト値
+    prevViews: 0,
+    viewsIncrease: parseNumberSafely(video.play_count_increase), // DB名に合わせて修正
+    prevLikes: 0,
+    likesIncrease: 0,
+    product: '',
     category: video.category || '',
-    audioId: typeof video.audioInfo === 'object' ? (video.audioInfo?.title || '') : '',
-    audioTitle: typeof video.audioInfo === 'object' ? (video.audioInfo?.title || '') : 
-               (typeof video.music_info === 'object' ? (video.music_info?.title || '') : ''),
-    artist: '', // バックエンドに実装がなければデフォルト値
-    predictedViews: 0 // バックエンドに実装がなければデフォルト値
+    audioId: musicInfo.id || '',
+    audioTitle: musicInfo.title || '',
+    artist: musicInfo.artist || '',
+    predictedViews: 0
   };
 }
 
-// バックエンドAPIからデータを取得する関数（sheets.tsのgetSheetDataと同じシグネチャ）
+// バックエンドAPIからデータを取得する関数
 export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<{
   success: boolean
   data: VideoData[]
@@ -350,10 +406,19 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     // フィルターの処理
     if (filters) {
       Object.entries(filters).forEach(([key, filter]) => {
-        const apiFilterType = convertFilterType(filter.type, filter.field);
-        const apiFieldName = mapFieldToApiField(filter.field);
+        // フィールド名のマッピング（フロントエンド → バックエンド）
+        let apiFieldName = filter.field;
+        if (filter.field === 'views') apiFieldName = 'play_count';
+        if (filter.field === 'likes') apiFieldName = 'likes_count';
+        if (filter.field === 'comments') apiFieldName = 'comment_count';
+        if (filter.field === 'createdAt') apiFieldName = 'created_at';
+        if (filter.field === 'accountName') apiFieldName = 'account_name';
+        if (filter.field === 'description') apiFieldName = 'caption';
         
-        // フィルター値の追加
+        // フィルタータイプの処理
+        const apiFilterType = filter.type;
+        
+        // パラメータの追加
         if (apiFilterType === 'sort') {
           params.append('sort_by', apiFieldName);
           params.append('sort_order', filter.value === 'asc' ? 'asc' : 'desc');
@@ -383,6 +448,17 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     try {
       const result = JSON.parse(text);
       
+      // レスポンスのデバッグ情報
+      console.log('APIレスポンス構造:', {
+        hasData: !!result.data,
+        dataLength: result.data?.length,
+        firstItem: result.data?.[0],
+        metadata: {
+          currentPage: result.currentPage,
+          totalPages: result.totalPages
+        }
+      });
+      
       // レスポンスの構造チェック
       if (!result.data || !Array.isArray(result.data)) {
         console.error('APIレスポンスの形式が正しくありません:', result);
@@ -390,7 +466,7 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       }
       
       // バックエンドAPIのレスポンスをVideoData[]に変換
-      const formattedData = result.data.map((video: TikTokVideo) => convertToVideoData(video));
+      const formattedData = result.data.map((video: any) => convertToVideoData(video));
       
       return {
         success: true,
