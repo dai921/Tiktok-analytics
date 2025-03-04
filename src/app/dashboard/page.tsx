@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { DataTable } from '@/components/dashboard/data-table'
 import { Header } from "@/components/header"
-import { getSheetData } from '@/lib/sheets'
+import { getSheetData } from '@/lib/api'
 import type { VideoData, FilterQuery } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 
