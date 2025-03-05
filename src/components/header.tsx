@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { Logo } from "@/components/ui/logo"
 import { usePathname } from "next/navigation"
+import { useAuth } from '@/lib/auth-context'
 
 interface HeaderProps {
   hasFilters?: boolean
@@ -11,7 +12,28 @@ interface HeaderProps {
 
 export function Header({ hasFilters, onClearFilters }: HeaderProps) {
   const pathname = usePathname()
+  const { logout } = useAuth()
   const showFilterClear = pathname === '/dashboard' && hasFilters
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        logout()
+      } else {
+        console.error('ログアウトに失敗しました')
+      }
+    } catch (error) {
+      console.error('ログアウトエラー:', error)
+    }
+  }
 
   return (
     <header className="border-b bg-white">
@@ -28,7 +50,10 @@ export function Header({ hasFilters, onClearFilters }: HeaderProps) {
               フィルターを全てクリア
             </button>
           )}
-          <button className="text-sm text-gray-500 hover:text-gray-700">
+          <button 
+            onClick={handleLogout}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
             ログアウト
           </button>
         </div>
