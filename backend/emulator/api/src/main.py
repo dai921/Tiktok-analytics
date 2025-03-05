@@ -256,6 +256,9 @@ async def get_videos_alt(
     created_at: Optional[str] = None,
     created_at_type: Optional[str] = None,
 ):
+    print(f"Received request with params: {request.query_params}")
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -263,7 +266,7 @@ async def get_videos_alt(
         # 基本クエリ
         query = "SELECT * FROM frontend_data"
         params = []
-        where_clauses = []  # ここで初期化が必要
+        where_clauses = []
 
         # 日付フィルターの処理
         if created_at:
@@ -347,18 +350,29 @@ async def get_videos_alt(
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
 
-        # ソート処理
-        query += f" ORDER BY created_at DESC"
+        # ソート処理の追加
+        if sort_by:
+            # フィールド名のマッピング
+            field_mapping = {
+                'play_count': 'play_count',
+                'likes_count': 'likes_count',
+                'comment_count': 'comment_count',
+                'created_at': 'created_at',
+                # 必要に応じて他のフィールドも追加
+            }
+            
+            # マッピングされたフィールド名を使用
+            db_field = field_mapping.get(sort_by, sort_by)
+            query += f" ORDER BY {db_field} {sort_order.upper()}"
 
         # ページネーション
         query += " LIMIT %s OFFSET %s"
-        params.extend([limit, (page - 1) * limit])
+        offset = (page - 1) * limit
+        params.extend([limit, offset])
 
-        # デバッグ用にクエリとパラメータを出力
         print(f"Executing query: {query}")
-        print(f"With parameters: {params}")
+        print(f"With params: {params}")
 
-        # メインクエリ実行
         cursor.execute(query, params)
         rows = cursor.fetchall()
 

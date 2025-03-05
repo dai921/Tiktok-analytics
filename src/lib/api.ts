@@ -424,7 +424,23 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
         console.log('getSheetData - フィルター処理:', { key, filter });
         const apiFieldName = mapFieldToApiField(key);
         
-        // 日付フィルターの特別処理
+        // ソート処理の場合
+        if (filter.type === 'sort') {
+          console.log('ソート処理:', { field: apiFieldName, order: filter.value });
+          // フィールド名のマッピングを確認
+          const sortFieldMap = {
+            'views': 'play_count',
+            'likes': 'likes_count',
+            'comments': 'comment_count',
+            'createdAt': 'created_at'
+          };
+          const sortField = sortFieldMap[apiFieldName] || apiFieldName;
+          params.append('sort_by', sortField);
+          params.append('sort_order', String(filter.value));
+          return;
+        }
+
+        // 日付フィルターの場合
         if (key === '投稿日時' || key === 'created_at') {
           console.log('日付フィルター処理:', { type: filter.type, value: filter.value });
           
@@ -436,13 +452,31 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
           } else if (filter.type === 'before') {
             params.append('end_date', String(filter.value));
           }
-        } else {
-          // 通常のフィルター処理
-          params.append(apiFieldName, String(filter.value));
-          if (filter.type) {
-            params.append(`${apiFieldName}_type`, filter.type);
-          }
+          return;
         }
+
+        // 数値フィルターの場合
+        if (['views', 'likes', 'comments', 'shares', 'saves'].includes(apiFieldName)) {
+          console.log('数値フィルター処理:', { field: apiFieldName, type: filter.type, value: filter.value });
+          const fieldMap = {
+            'views': 'play_count',
+            'likes': 'likes_count',
+            'comments': 'comment_count',
+            'shares': 'shares_count',
+            'saves': 'saves_count'
+          };
+          
+          const dbField = fieldMap[apiFieldName] || apiFieldName;
+          params.append(dbField, String(filter.value));
+          if (filter.type !== 'equal') {
+            params.append(`${dbField}_type`, filter.type);
+          }
+          return;
+        }
+
+        // テキストフィルターの場合（アカウント名、カテゴリ、ハッシュタグなど）
+        console.log('テキストフィルター処理:', { field: apiFieldName, value: filter.value });
+        params.append(apiFieldName, String(filter.value));
       });
     }
   }
