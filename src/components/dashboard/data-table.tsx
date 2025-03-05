@@ -78,7 +78,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     const handleFilter = (field: string) => (filterValue: FilterValue) => {
       if ('clear' in filterValue) {
-        onFilterChange(false)
+        onFilterChange(true, {
+          field: COLUMN_MAP[field],
+          type: 'equal',
+          value: ''
+        })
         return
       }
 

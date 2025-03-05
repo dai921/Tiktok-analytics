@@ -409,26 +409,27 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
   });
 
   if (filters) {
-    console.log('受け取ったフィルター:', filters);
+    console.log('getSheetData - 受け取ったフィルター:', filters);
+    
+    // フィルターが空オブジェクトの場合は、フィルターなしとして扱う
+    if (Object.keys(filters).length === 0) {
+      console.log('getSheetData - フィルターなしでデータを取得');
+      return;
+    }
+
     Object.entries(filters).forEach(([key, filter]) => {
-      console.log('処理中のフィルター:', { key, filter });
-      const apiFieldName = mapFieldToApiField(key);  // filterオブジェクトのkeyを使用
-      console.log('変換後のフィールド名:', apiFieldName);
-      
-      // フィルター値と型を追加
-      if (filter.value !== undefined) {
-        params.append(apiFieldName, filter.value.toString());
-        if (filter.type) {
-          params.append(`${apiFieldName}_type`, filter.type);
-        }
+      if (!filter || !filter.value) {
+        console.log('getSheetData - 無効なフィルター:', { key, filter });
+        return;
       }
 
-      console.log('フィルター詳細:', {
-        key,
-        filterObject: filter,
-        filterValue: filter.value,
-        filterType: filter.type
-      });
+      console.log('getSheetData - フィルター処理:', { key, filter });
+      const apiFieldName = mapFieldToApiField(key);
+      
+      params.append(apiFieldName, filter.value.toString());
+      if (filter.type) {
+        params.append(`${apiFieldName}_type`, filter.type);
+      }
     });
   }
 

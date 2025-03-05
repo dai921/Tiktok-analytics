@@ -46,22 +46,30 @@ const Dashboard = () => {
   const handleFilter = (newFilter: FilterValue) => {
     console.log('Dashboard - Filter received:', {
       newFilter,
-      currentFilters: filters
+      currentFilters: filters,
+      isClearing: newFilter.clear
     });
 
     if (newFilter.clear) {
+      console.log('Dashboard - Clearing filter for field:', newFilter.field);
       setFilters(prev => {
-        const updated = { ...prev }
-        delete updated[newFilter.field]
-        return updated
-      })
+        const updated = { ...prev };
+        delete updated[newFilter.field];
+        console.log('Updated filters after clear:', updated);
+        return updated;
+      });
+      
+      // フィルターが全てクリアされた場合は、データを再取得
+      if (Object.keys(updated).length === 0) {
+        fetchData(1, {});
+      }
     } else {
       setFilters(prev => ({
         ...prev,
         [newFilter.field]: convertFilterValueToQuery(newFilter)
-      }))
+      }));
     }
-  }
+  };
 
   const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true)

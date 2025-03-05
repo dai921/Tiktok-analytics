@@ -107,4 +107,16 @@ export interface TikTokVideo {
   hashtags: string[];
   caption: string;
   category: string;
+}
+
+const handleFilter = (field: string) => (filterValue: FilterValue) => {
+  if ('clear' in filterValue) {
+    onFilterChange(true, {
+      field: COLUMN_MAP[field],
+      type: 'equal',
+      value: ''  // clearプロパティは除外
+    })
+    return
+  }
+  // ... 他のコードは変更なし
 } 

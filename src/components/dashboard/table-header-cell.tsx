@@ -205,20 +205,39 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         type: 'equal',
         value: '',
         clear: true
-      }, false)
+      }, true)
       setIsFilterOpen(false)
     }
 
-    const handleFilter = (value: string, filterType: FilterType) => {
-      if (!onFilter) return;
-      
-      const newFilter = {
-        field: title,
-        type: filterType,
-        value
-      };
-      
-      onFilter(newFilter, true); // 第二引数のtrueで既存フィルタとマージすることを指示
+    const handleFilter = (field: string) => (filterValue: FilterValue) => {
+      console.log('DataTable - handleFilter:', { field, filterValue });
+
+      if (filterValue.clear) {
+        console.log('DataTable - Clearing filter for field:', field);
+        onFilter?.({
+          field: field,
+          type: 'equal',
+          value: '',
+          clear: true
+        }, true);
+        return;
+      }
+
+      // 残りの処理は変更なし
+      if ('sort' in filterValue) {
+        onFilter?.({
+          field: field,
+          type: 'sort',
+          value: filterValue.sort as string
+        }, true);
+        return;
+      }
+
+      onFilter?.({
+        field: field,
+        type: filterValue.type,
+        value: filterValue.value
+      }, true);
     }
 
     const renderFilterInput = () => {
@@ -240,7 +259,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               onChange={(e) => setFilterValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  handleFilter(filterValue, filterType)
+                  handleFilter(title)({
+                    type: filterType,
+                    value: filterValue
+                  })
                 }
               }}
               placeholder="フィルター..."
@@ -255,7 +277,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               onChange={(e) => setFilterValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  handleFilter(filterValue, filterType)
+                  handleFilter(title)({
+                    type: filterType,
+                    value: filterValue
+                  })
                 }
               }}
               placeholder="フィルター..."
@@ -349,7 +374,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                   {renderFilterInput()}
                 </div>
                 <button
-                  onClick={() => handleFilter(filterValue, filterType)}
+                  onClick={() => handleFilter(title)({
+                    type: filterType,
+                    value: filterValue
+                  })}
                   className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
                 >
                   フィルターを適用
