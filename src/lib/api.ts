@@ -402,53 +402,40 @@ const convertToVideoData = (video: any): VideoData => {
 }
 
 // バックエンドAPIからデータを取得する関数
-export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<{
-  success: boolean
-  data: VideoData[]
-  currentPage: number
-  totalPages: number
-}> {
-  try {
-    console.log('=== API Filter Debug ===');
-    console.log('Raw filters:', filters);
+export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>) {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: '50'
+  });
 
-    // クエリパラメータの構築
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: '50' // 適切な値に設定
-    });
-
-    // フィルターの処理
-    if (filters) {
-      Object.entries(filters).forEach(([key, filter]) => {
-        console.log('処理するフィルター:', filter);
-        
-        // フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
-        // field には title や field を使う（実際のデータによる）
-        const fieldToUse = filter.field || filter.title || key;
-        const apiFieldName = mapFieldToApiField(fieldToUse);
-        
-        console.log(`フィールド変換: ${fieldToUse} → ${apiFieldName}`);
-        
-        // フィルタータイプの処理
-        const apiFilterType = filter.type;
-        
-        // パラメータの追加
-        if (apiFilterType === 'sort') {
-          params.append('sort_by', apiFieldName);
-          params.append('sort_order', filter.value === 'asc' ? 'asc' : 'desc');
-        } else {
-          // 通常のフィルター
-          params.append(apiFieldName, filter.value.toString());
-          if (apiFilterType !== 'equal') {
-            params.append(`${apiFieldName}_type`, apiFilterType);
-          }
+  if (filters) {
+    console.log('受け取ったフィルター:', filters);
+    Object.entries(filters).forEach(([key, filter]) => {
+      console.log('処理中のフィルター:', { key, filter });
+      const apiFieldName = mapFieldToApiField(key);  // filterオブジェクトのkeyを使用
+      console.log('変換後のフィールド名:', apiFieldName);
+      
+      // フィルター値と型を追加
+      if (filter.value !== undefined) {
+        params.append(apiFieldName, filter.value.toString());
+        if (filter.type) {
+          params.append(`${apiFieldName}_type`, filter.type);
         }
-      });
-    }
+      }
 
-    console.log(`バックエンドAPIから取得: ${apiUrl}/videos?${params}`);
-    const response = await fetch(`${apiUrl}/videos?${params}`);
+      console.log('フィルター詳細:', {
+        key,
+        filterObject: filter,
+        filterValue: filter.value,
+        filterType: filter.type
+      });
+    });
+  }
+
+  const url = `${apiUrl}/videos?${params}`;
+  console.log('最終的なURL:', url);
+  try {
+    const response = await fetch(url);
     
     if (!response.ok) {
       console.error(`API エラー: HTTP ${response.status}`);

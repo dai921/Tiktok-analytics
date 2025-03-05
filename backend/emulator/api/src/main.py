@@ -83,8 +83,11 @@ async def get_videos(
     min_likes_count: Optional[int] = None,
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
-    sort_order: Optional[str] = "desc"
+    sort_order: Optional[str] = "desc",
+    play_count: Optional[int] = None,
+    play_count_type: Optional[str] = None
 ):
+    print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
     cursor = None
     try:
@@ -129,6 +132,21 @@ async def get_videos(
             # 例: is_viral = True の場合、play_count > 10000 など
             where_clauses.append("play_count > %s")
             params.append(10000)  # viral動画の定義に合わせて調整
+
+        if play_count is not None:
+            if play_count_type == "greater":
+                where_clauses.append("play_count > %s")
+                params.append(play_count)
+            elif play_count_type == "less":
+                where_clauses.append("play_count < %s")
+                params.append(play_count)
+            else:
+                where_clauses.append("play_count = %s")
+                params.append(play_count)
+
+        # フィルター条件のデバッグログ
+        if play_count is not None:
+            print(f"Applying play_count filter: {play_count} ({play_count_type})")
 
         # WHERE句の追加
         if where_clauses:
@@ -202,7 +220,9 @@ async def get_videos_alt(
     min_likes_count: Optional[int] = None,
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
-    sort_order: Optional[str] = "desc"
+    sort_order: Optional[str] = "desc",
+    play_count: Optional[int] = None,
+    play_count_type: Optional[str] = None
 ):
     """代替の/videosエンドポイント - 既存の/api/videosと同じ処理を行う"""
     return await get_videos(
@@ -219,7 +239,9 @@ async def get_videos_alt(
         min_likes_count=min_likes_count,
         is_viral=is_viral,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
+        play_count=play_count,
+        play_count_type=play_count_type
     )
 
 @app.get("/health")
