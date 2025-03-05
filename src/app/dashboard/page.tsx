@@ -56,13 +56,14 @@ const Dashboard = () => {
         const updated = { ...prev };
         delete updated[newFilter.field];
         console.log('Updated filters after clear:', updated);
+        
+        // フィルターが全てクリアされた場合は、データを再取得
+        if (Object.keys(updated).length === 0) {
+          fetchData(1, {});
+        }
+        
         return updated;
       });
-      
-      // フィルターが全てクリアされた場合は、データを再取得
-      if (Object.keys(updated).length === 0) {
-        fetchData(1, {});
-      }
     } else {
       setFilters(prev => ({
         ...prev,
@@ -72,20 +73,21 @@ const Dashboard = () => {
   };
 
   const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const response = await getSheetData(page, currentFilters)
-      if (response.success) {
-        setData(response.data)
-        setCurrentPage(page)
-        setTotalPages(response.totalPages)
+      const response = await getSheetData(page, currentFilters);
+      // responseがundefinedでないことを確認
+      if (response && response.success) {
+        setData(response.data);
+        setCurrentPage(page);
+        setTotalPages(response.totalPages);
       }
     } catch (error) {
-      console.error('Failed to fetch data:', error)
+      console.error('Failed to fetch data:', error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     console.log('Dashboard - Filters changed:', filters);
