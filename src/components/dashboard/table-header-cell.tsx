@@ -203,11 +203,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }
 
     const handleFilter = (value: string, filterType: FilterType) => {
-      if (!onFilter) return
-      setFilterValue(value)
-      setIsActive(!!value || !!sortDirection)
       onFilter({
-        field: title,
+        field: title,  // 例: '投稿日時', 'いいね数', 'コメント数'
         type: filterType,
         value
       })

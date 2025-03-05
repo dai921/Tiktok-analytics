@@ -85,7 +85,11 @@ async def get_videos(
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
     play_count: Optional[int] = None,
-    play_count_type: Optional[str] = None
+    play_count_type: Optional[str] = None,
+    likes_count: Optional[int] = None,
+    likes_count_type: Optional[str] = None,
+    comment_count: Optional[int] = None,
+    comment_count_type: Optional[str] = None
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
@@ -143,6 +147,28 @@ async def get_videos(
             else:
                 where_clauses.append("play_count = %s")
                 params.append(play_count)
+
+        if likes_count is not None:
+            if likes_count_type == "greater":
+                where_clauses.append("likes_count > %s")
+                params.append(likes_count)
+            elif likes_count_type == "less":
+                where_clauses.append("likes_count < %s")
+                params.append(likes_count)
+            else:
+                where_clauses.append("likes_count = %s")
+                params.append(likes_count)
+
+        if comment_count is not None:
+            if comment_count_type == "greater":
+                where_clauses.append("comment_count > %s")
+                params.append(comment_count)
+            elif comment_count_type == "less":
+                where_clauses.append("comment_count < %s")
+                params.append(comment_count)
+            else:
+                where_clauses.append("comment_count = %s")
+                params.append(comment_count)
 
         # フィルター条件のデバッグログ
         if play_count is not None:
@@ -222,7 +248,11 @@ async def get_videos_alt(
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
     play_count: Optional[int] = None,
-    play_count_type: Optional[str] = None
+    play_count_type: Optional[str] = None,
+    likes_count: Optional[int] = None,
+    likes_count_type: Optional[str] = None,
+    comment_count: Optional[int] = None,
+    comment_count_type: Optional[str] = None
 ):
     """代替の/videosエンドポイント - 既存の/api/videosと同じ処理を行う"""
     return await get_videos(
@@ -241,7 +271,11 @@ async def get_videos_alt(
         sort_by=sort_by,
         sort_order=sort_order,
         play_count=play_count,
-        play_count_type=play_count_type
+        play_count_type=play_count_type,
+        likes_count=likes_count,
+        likes_count_type=likes_count_type,
+        comment_count=comment_count,
+        comment_count_type=comment_count_type
     )
 
 @app.get("/health")
