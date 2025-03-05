@@ -1,13 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 
-  | 'after'    // 日付：以降
-  | 'before'   // 日付：以前
-  | 'greater'  // 数値：以上
-  | 'less'     // 数値：以下
-  | 'equal'    // 完全一致
-  | 'sort';    // ソート用
+export type FilterType = 'equal' | 'greater' | 'less' | 'after' | 'before' | 'sort' | 'date';
 
 export interface FilterQuery {
   field: string
@@ -109,14 +103,3 @@ export interface TikTokVideo {
   category: string;
 }
 
-const handleFilter = (field: string) => (filterValue: FilterValue) => {
-  if ('clear' in filterValue) {
-    onFilterChange(true, {
-      field: COLUMN_MAP[field],
-      type: 'equal',
-      value: ''  // clearプロパティは除外
-    })
-    return
-  }
-  // ... 他のコードは変更なし
-} 

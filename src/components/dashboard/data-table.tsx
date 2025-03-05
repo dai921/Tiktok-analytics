@@ -77,29 +77,32 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     }
 
     const handleFilter = (field: string) => (filterValue: FilterValue) => {
+      console.log('=== DataTable handleFilter 開始 ===');
+      console.log('受け取ったパラメータ:', {
+        field,
+        filterValue,
+        mappedField: COLUMN_MAP[field]  // フィールド名のマッピング結果も確認
+      });
+
       if ('clear' in filterValue) {
+        console.log('クリア処理を実行');
         onFilterChange(true, {
           field: COLUMN_MAP[field],
           type: 'equal',
           value: ''
-        })
-        return
+        });
+        return;
       }
 
-      if ('sort' in filterValue) {
-        onFilterChange(true, {
-          field: COLUMN_MAP[field],
-          type: 'sort',
-          value: filterValue.sort as string
-        })
-        return
-      }
-
-      onFilterChange(true, {
+      const filterQuery = {
         field: COLUMN_MAP[field],
         type: filterValue.type,
         value: filterValue.value
-      })
+      };
+
+      console.log('Dashboardに送信するフィルター値:', filterQuery);
+      onFilterChange(true, filterQuery);
+      console.log('=== DataTable handleFilter 終了 ===');
     }
 
     const handlePageChange = (page: number) => {
@@ -125,13 +128,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       },
       {
         accessorKey: 'createdAt',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title={COLUMN_MAP['createdAt']}
-            type="date"
-            onFilter={(value) => handleFilter('createdAt')(value)}
-          />
-        ),
+        header: ({ column }) => {
+          console.log('createdAtヘッダーの設定:', {
+            title: COLUMN_MAP['createdAt'],
+            mappedField: 'createdAt'
+          });
+          return (
+            <TableHeaderCell
+              title={COLUMN_MAP['createdAt']}
+              type="date"
+              onFilter={(value) => {
+                console.log('createdAtのフィルター呼び出し:', value);
+                return handleFilter('createdAt')(value);
+              }}
+            />
+          );
+        },
       },
       {
         accessorKey: 'views',

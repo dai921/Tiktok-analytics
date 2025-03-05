@@ -252,31 +252,138 @@ async def get_videos_alt(
     likes_count: Optional[int] = None,
     likes_count_type: Optional[str] = None,
     comment_count: Optional[int] = None,
-    comment_count_type: Optional[str] = None
+    comment_count_type: Optional[str] = None,
+    created_at: Optional[str] = None,
+    created_at_type: Optional[str] = None,
 ):
-    """代替の/videosエンドポイント - 既存の/api/videosと同じ処理を行う"""
-    return await get_videos(
-        request=request,
-        page=page,
-        limit=limit,
-        account_name=account_name,
-        category=category,
-        hashtag=hashtag,
-        music_info=music_info,
-        start_date=start_date,
-        end_date=end_date,
-        min_play_count=min_play_count,
-        min_likes_count=min_likes_count,
-        is_viral=is_viral,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        play_count=play_count,
-        play_count_type=play_count_type,
-        likes_count=likes_count,
-        likes_count_type=likes_count_type,
-        comment_count=comment_count,
-        comment_count_type=comment_count_type
-    )
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # 基本クエリ
+        query = "SELECT * FROM frontend_data"
+        params = []
+        where_clauses = []  # ここで初期化が必要
+
+        # 日付フィルターの処理
+        if created_at:
+            print(f"Applying date filter: created_at={created_at}, type={created_at_type}")
+            
+            if created_at_type == 'date':
+                where_clauses.append("DATE(created_at) = DATE(%s)")
+                params.append(created_at)
+            elif created_at_type == 'after':
+                where_clauses.append("DATE(created_at) >= DATE(%s)")
+                params.append(created_at)
+            elif created_at_type == 'before':
+                where_clauses.append("DATE(created_at) <= DATE(%s)")
+                params.append(created_at)
+
+        # フィルター処理
+        if account_name:
+            where_clauses.append("account_name LIKE %s")
+            params.append(f"%{account_name}%")
+        
+        if category:
+            where_clauses.append("category LIKE %s")
+            params.append(f"%{category}%")
+            
+        if hashtag:
+            where_clauses.append("hashtags LIKE %s")
+            params.append(f"%{hashtag}%")
+            
+        if music_info:
+            where_clauses.append("music_info LIKE %s")
+            params.append(f"%{music_info}%")
+            
+        if min_play_count:
+            where_clauses.append("play_count >= %s")
+            params.append(min_play_count)
+            
+        if min_likes_count:
+            where_clauses.append("likes_count >= %s")
+            params.append(min_likes_count)
+            
+        if is_viral is not None:
+            # is_viral の定義に基づいて条件を追加
+            # 例: is_viral = True の場合、play_count > 10000 など
+            where_clauses.append("play_count > %s")
+            params.append(10000)  # viral動画の定義に合わせて調整
+
+        if play_count is not None:
+            if play_count_type == "greater":
+                where_clauses.append("play_count > %s")
+                params.append(play_count)
+            elif play_count_type == "less":
+                where_clauses.append("play_count < %s")
+                params.append(play_count)
+            else:
+                where_clauses.append("play_count = %s")
+                params.append(play_count)
+
+        if likes_count is not None:
+            if likes_count_type == "greater":
+                where_clauses.append("likes_count > %s")
+                params.append(likes_count)
+            elif likes_count_type == "less":
+                where_clauses.append("likes_count < %s")
+                params.append(likes_count)
+            else:
+                where_clauses.append("likes_count = %s")
+                params.append(likes_count)
+
+        if comment_count is not None:
+            if comment_count_type == "greater":
+                where_clauses.append("comment_count > %s")
+                params.append(comment_count)
+            elif comment_count_type == "less":
+                where_clauses.append("comment_count < %s")
+                params.append(comment_count)
+            else:
+                where_clauses.append("comment_count = %s")
+                params.append(comment_count)
+
+        # WHERE句の追加
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        # ソート処理
+        query += f" ORDER BY created_at DESC"
+
+        # ページネーション
+        query += " LIMIT %s OFFSET %s"
+        params.extend([limit, (page - 1) * limit])
+
+        # デバッグ用にクエリとパラメータを出力
+        print(f"Executing query: {query}")
+        print(f"With parameters: {params}")
+
+        # メインクエリ実行
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        return {
+            "success": True,
+            "data": [format_video(row) for row in rows],
+            "currentPage": page,
+            "totalPages": 1  # 仮の値、実際には総件数から計算する必要があります
+        }
+
+    except Exception as e:
+        print(f"Error in get_videos_alt: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error": str(e)
+            }
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.get("/health")
 async def health_check():

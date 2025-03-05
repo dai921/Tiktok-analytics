@@ -65,10 +65,22 @@ const Dashboard = () => {
         return updated;
       });
     } else {
-      setFilters(prev => ({
-        ...prev,
-        [newFilter.field]: convertFilterValueToQuery(newFilter)
-      }));
+      // created_atの場合は、APIの期待する形式に変換
+      const field = newFilter.field;
+      const filterQuery: FilterQuery = {
+        field: field,
+        type: newFilter.type,
+        value: newFilter.value
+      };
+      
+      setFilters(prev => {
+        const updated = {
+          ...prev,
+          [field]: filterQuery
+        };
+        console.log('Dashboard - フィルター変更を検知:', updated);
+        return updated;
+      });
     }
   };
 

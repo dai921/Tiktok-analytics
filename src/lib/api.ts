@@ -424,9 +424,24 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
         console.log('getSheetData - フィルター処理:', { key, filter });
         const apiFieldName = mapFieldToApiField(key);
         
-        params.append(apiFieldName, filter.value.toString());
-        if (filter.type) {
-          params.append(`${apiFieldName}_type`, filter.type);
+        // 日付フィルターの特別処理
+        if (key === '投稿日時' || key === 'created_at') {
+          console.log('日付フィルター処理:', { type: filter.type, value: filter.value });
+          
+          if (filter.type === 'date') {
+            params.append('created_at', String(filter.value));
+            params.append('created_at_type', 'date');
+          } else if (filter.type === 'after') {
+            params.append('start_date', String(filter.value));
+          } else if (filter.type === 'before') {
+            params.append('end_date', String(filter.value));
+          }
+        } else {
+          // 通常のフィルター処理
+          params.append(apiFieldName, String(filter.value));
+          if (filter.type) {
+            params.append(`${apiFieldName}_type`, filter.type);
+          }
         }
       });
     }

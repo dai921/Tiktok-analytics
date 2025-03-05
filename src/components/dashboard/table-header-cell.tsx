@@ -35,9 +35,9 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
       ]
     case 'date':
       return [
-        { value: 'equal' as const, label: '等しい' },
-        { value: 'after' as const, label: '以降' },
-        { value: 'before' as const, label: '以前' }
+        { value: 'date' as const, label: '等しい' },
+        { value: 'after' as const, label: 'この日以降' },
+        { value: 'before' as const, label: 'この日以前' }
       ]
     default:
       return [
@@ -50,7 +50,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
   ({ title, type = 'text', align = 'left', onFilter, style, currentFilters }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
-    const [filterType, setFilterType] = useState<FilterType>('equal')
+    const [filterType, setFilterType] = useState<FilterType>(type === 'date' ? 'equal' : 'equal')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const [isActive, setIsActive] = useState(false)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
@@ -210,23 +210,121 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }
 
     const handleFilter = (value: string, type: FilterType) => {
-      onFilter?.({
-        field: title,
-        type: type,
-        value: value
-      }, true);
+      console.log('=== TableHeaderCell handleFilter 開始 ===');
+      console.log('受け取ったパラメータ:', {
+        value,
+        type,
+        title,
+        componentType: type  // コンポーネントに渡されたtype prop
+      });
+
+      setIsActive(true);
+
+      // 日付フィルターの場合の処理
+      if (title === '投稿日時') {
+        console.log('投稿日時のフィルター処理を開始');
+        const dateValue = new Date(value);
+        console.log('変換された日付:', dateValue);
+
+        if (!isNaN(dateValue.getTime())) {
+          const formattedDate = dateValue.toISOString().split('T')[0];
+          console.log('フォーマットされた日付:', formattedDate);
+          
+          const filterValue = {
+            field: '投稿日時',
+            type: type === 'equal' ? 'date' : type,
+            value: formattedDate
+          };
+          console.log('親コンポーネントに送信するフィルター値:', filterValue);
+          
+          // 親コンポーネントにフィルター変更を通知
+          onFilter?.(filterValue);
+          console.log('onFilter関数の呼び出し完了');
+          
+          setIsFilterOpen(false);
+        } else {
+          console.warn('無効な日付形式:', value);
+        }
+      } else {
+        console.log('通常のフィルター処理');
+        const filterValue = {
+          field: title,
+          type,
+          value
+        };
+        console.log('親コンポーネントに送信するフィルター値:', filterValue);
+        
+        onFilter?.(filterValue);
+        console.log('onFilter関数の呼び出し完了');
+        
+        setIsFilterOpen(false);
+      }
+      console.log('=== TableHeaderCell handleFilter 終了 ===');
+    };
+
+    const getSortLabel = () => {
+      // 数値フィールドの場合
+      if (type === 'number') {
+        return sortDirection === null ? '▼ 大きい順に並び替え' :
+               sortDirection === 'desc' ? '▲ 小さい順に並び替え' : 
+               '▼ 大きい順に並び替え';
+      }
+      
+      // その他のフィールド
+      return sortDirection === null ? '▼ 降順に並び替え' :
+             sortDirection === 'desc' ? '▲ 昇順に並び替え' : 
+             '▼ 降順に並び替え';
+    };
+
+    // 外部からアクセスできるようにする
+    useImperativeHandle(ref, () => ({
+      clearFilter: handleClear
+    }))
+
+    // isFilterOpenの状態変更を処理
+    const toggleFilter = () => {
+      setIsFilterOpen(!isFilterOpen);
     };
 
     const renderFilterInput = () => {
       switch (type) {
         case 'date':
           return (
-            <input
-              type="date"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              className="w-full px-2 py-1 border rounded text-xs"
-            />
+            <div className="flex flex-col gap-2">
+              <select 
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as FilterType)}
+                className="w-full px-2 py-1 border rounded text-xs"
+              >
+                {getFilterOptions('date').map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={filterValue}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setFilterValue(newValue);
+                }}
+                onClick={(e) => {
+                  // カレンダーを強制的に表示
+                  const input = e.target as HTMLInputElement;
+                  input.showPicker();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filterValue) {
+                    handleFilter(filterValue, filterType);
+                  }
+                }}
+                className="w-full px-2 py-1 border rounded text-xs mt-2 cursor-pointer"
+                style={{
+                  colorScheme: 'auto'
+                }}
+              />
+            </div>
           )
         case 'number':
           return (
@@ -262,30 +360,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }
 
     const hasFilter = !!onFilter
-
-    const getSortLabel = () => {
-      // 数値フィールドの場合
-      if (type === 'number') {
-        return sortDirection === null ? '▼ 大きい順に並び替え' :
-               sortDirection === 'desc' ? '▲ 小さい順に並び替え' : 
-               '▼ 大きい順に並び替え';
-      }
-      
-      // その他のフィールド
-      return sortDirection === null ? '▼ 降順に並び替え' :
-             sortDirection === 'desc' ? '▲ 昇順に並び替え' : 
-             '▼ 降順に並び替え';
-    };
-
-    // 外部からアクセスできるようにする
-    useImperativeHandle(ref, () => ({
-      clearFilter: handleClear
-    }))
-
-    // isFilterOpenの状態変更を処理
-    const toggleFilter = () => {
-      setIsFilterOpen(!isFilterOpen);
-    };
 
     return (
       <div 
@@ -331,17 +405,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             >
               <div className="p-2 border-b">
                 <div className="flex items-center gap-2 mb-2">
-                  <select 
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value as FilterType)}
-                    className="px-2 py-1 border rounded text-xs"
-                  >
-                    {getFilterOptions(type).map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  {type === 'number' && (
+                    <select 
+                      value={filterType}
+                      onChange={(e) => setFilterType(e.target.value as FilterType)}
+                      className="px-2 py-1 border rounded text-xs"
+                    >
+                      {getFilterOptions(type).map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {renderFilterInput()}
                 </div>
                 <button
