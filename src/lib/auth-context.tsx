@@ -33,9 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
   const fetchUser = async (token: string, tokenType: string) => {
     try {
-      const response = await fetch('http://localhost:8080/api/auth/me', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `${tokenType} ${token}`
         }
@@ -58,12 +60,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = (token: string, tokenType: string) => {
     localStorage.setItem('token', token);
     localStorage.setItem('token_type', tokenType);
+    
+    document.cookie = `token=${token}; path=/`;
+    document.cookie = `token_type=${tokenType}; path=/`;
+    
     fetchUser(token, tokenType);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('token_type');
+    
+    document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+    document.cookie = 'token_type=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT';
+    
     setUser(null);
     router.push('/login');
   };
