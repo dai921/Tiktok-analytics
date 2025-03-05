@@ -9,18 +9,15 @@ export type FilterType =
   | 'equal'    // 完全一致
   | 'sort';    // ソート用
 
-export type FilterValue = {
-  type: FilterType;
-  value: string;
-  field?: string;
-  clear?: boolean;
-};
+export interface FilterQuery {
+  field: string
+  type: FilterType
+  value: string | number
+}
 
-export type FilterQuery = {
-  field: string;
-  type: FilterType;
-  value: string;
-};
+export interface FilterValue extends FilterQuery {
+  clear?: boolean
+}
 
 // データ型
 export interface VideoData {

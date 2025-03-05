@@ -9,8 +9,9 @@ interface TableHeaderCellProps {
   title: string
   type?: 'text' | 'number' | 'date'
   align?: 'left' | 'right' | 'center'
-  onFilter?: (value: FilterValue) => void
+  onFilter?: (value: FilterValue, shouldMerge?: boolean) => void
   style?: React.CSSProperties
+  currentFilters?: Record<string, FilterValue>
 }
 
 export interface TableHeaderCellRef {
@@ -46,7 +47,7 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterType>('equal')
@@ -179,6 +180,12 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }
 
     const handleClear = () => {
+      console.log('TableHeaderCell - Clearing filter:', {
+        field: title,
+        previousValue: filterValue,
+        previousType: filterType
+      });
+
       // 全てのヘッダーセルのスタイルをリセット
       document.querySelectorAll('[data-header-cell]').forEach(el => {
         const button = el.querySelector('button');
@@ -198,16 +205,20 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         type: 'equal',
         value: '',
         clear: true
-      })
+      }, false)
       setIsFilterOpen(false)
     }
 
     const handleFilter = (value: string, filterType: FilterType) => {
-      onFilter({
-        field: title,  // 例: '投稿日時', 'いいね数', 'コメント数'
+      if (!onFilter) return;
+      
+      const newFilter = {
+        field: title,
         type: filterType,
         value
-      })
+      };
+      
+      onFilter(newFilter, true); // 第二引数のtrueで既存フィルタとマージすることを指示
     }
 
     const renderFilterInput = () => {

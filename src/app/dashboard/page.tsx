@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { DataTable } from '@/components/dashboard/data-table'
 import { Header } from "@/components/header"
 import { getSheetData } from '@/lib/api'
-import type { VideoData, FilterQuery } from '@/types/dashboard'
+import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 
 const headers = [
@@ -32,13 +32,41 @@ const Dashboard = () => {
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [filters, setFilters] = useState<Record<string, FilterQuery> | undefined>(undefined)
+  const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
 
-  const fetchData = async (page: number = 1, filters?: Record<string, FilterQuery>) => {
+  const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
+    return {
+      field: filter.field,
+      type: filter.type,
+      value: filter.value
+    }
+  }
+
+  const handleFilter = (newFilter: FilterValue) => {
+    console.log('Dashboard - Filter received:', {
+      newFilter,
+      currentFilters: filters
+    });
+
+    if (newFilter.clear) {
+      setFilters(prev => {
+        const updated = { ...prev }
+        delete updated[newFilter.field]
+        return updated
+      })
+    } else {
+      setFilters(prev => ({
+        ...prev,
+        [newFilter.field]: convertFilterValueToQuery(newFilter)
+      }))
+    }
+  }
+
+  const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true)
     try {
-      const response = await getSheetData(page, filters)
+      const response = await getSheetData(page, currentFilters)
       if (response.success) {
         setData(response.data)
         setCurrentPage(page)
@@ -52,19 +80,21 @@ const Dashboard = () => {
   }
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    console.log('Dashboard - Filters changed:', filters);
+    fetchData(currentPage, filters);
+  }, [filters, currentPage]);
 
   const handleClearAllFilters = () => {
     headerRefs.current.forEach(ref => {
       ref?.clearFilter()
     })
+    setFilters({})
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
-        hasFilters={hasFilters} 
+        hasFilters={Object.keys(filters).length > 0}
         onClearFilters={handleClearAllFilters} 
       />
       <main className="max-w-screen-2xl mx-auto px-4 py-4">
@@ -72,14 +102,11 @@ const Dashboard = () => {
           ref={tableRef}
           initialData={data} 
           onFilterChange={(hasFilters, filter) => {
-            setHasFilters(hasFilters)
             if (filter) {
-              fetchData(1, { [filter.field]: filter })
-            } else {
-              fetchData()
+              handleFilter(filter)
             }
           }}
-          onPageChange={(page) => fetchData(page, filters || undefined)}
+          onPageChange={(page) => setCurrentPage(page)}
           currentPage={currentPage}
           totalPages={totalPages}
           isLoading={isLoading}
