@@ -414,27 +414,27 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     // フィルターが空オブジェクトの場合は、フィルターなしとして扱う
     if (Object.keys(filters).length === 0) {
       console.log('getSheetData - フィルターなしでデータを取得');
-      return;
+    } else {
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || !filter.value) {
+          console.log('getSheetData - 無効なフィルター:', { key, filter });
+          return;
+        }
+
+        console.log('getSheetData - フィルター処理:', { key, filter });
+        const apiFieldName = mapFieldToApiField(key);
+        
+        params.append(apiFieldName, filter.value.toString());
+        if (filter.type) {
+          params.append(`${apiFieldName}_type`, filter.type);
+        }
+      });
     }
-
-    Object.entries(filters).forEach(([key, filter]) => {
-      if (!filter || !filter.value) {
-        console.log('getSheetData - 無効なフィルター:', { key, filter });
-        return;
-      }
-
-      console.log('getSheetData - フィルター処理:', { key, filter });
-      const apiFieldName = mapFieldToApiField(key);
-      
-      params.append(apiFieldName, filter.value.toString());
-      if (filter.type) {
-        params.append(`${apiFieldName}_type`, filter.type);
-      }
-    });
   }
 
   const url = `${apiUrl}/videos?${params}`;
-  console.log('最終的なURL:', url);
+  console.log('APIリクエストURL:', url);
+  
   try {
     const response = await fetch(url);
     
@@ -445,49 +445,36 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const text = await response.text();
-    console.log('API レスポンス (先頭500文字):', text.substring(0, 500) + '...');
+    const result = await response.json();
     
-    try {
-      const result = JSON.parse(text);
-      
-      // レスポンスのデバッグ情報
-      console.log('APIレスポンス構造:', {
-        hasData: !!result.data,
-        dataLength: result.data?.length,
-        firstItem: result.data?.[0],
-        metadata: {
-          currentPage: result.currentPage,
-          totalPages: result.totalPages
-        }
-      });
-      
-      // レスポンスの構造チェック
-      if (!result.data || !Array.isArray(result.data)) {
-        console.error('APIレスポンスの形式が正しくありません:', result);
-        throw new Error('無効なAPIレスポンス形式');
-      }
-      
-      // バックエンドAPIのレスポンスをVideoData[]に変換
-      const formattedData = result.data.map((video: any) => convertToVideoData(video));
-      
+    // レスポンスの構造チェック
+    if (!result.data || !Array.isArray(result.data)) {
+      console.error('APIレスポンスの形式が正しくありません:', result);
       return {
-        success: true,
-        data: formattedData,
-        currentPage: result.currentPage || 1,
-        totalPages: result.totalPages || 1
+        success: false,
+        data: [],
+        currentPage: 1,
+        totalPages: 1
       };
-    } catch (error) {
-      console.error('APIレスポンスの解析に失敗:', error);
-      throw error;
     }
+    
+    // バックエンドAPIのレスポンスをVideoData[]に変換
+    const formattedData = result.data.map((video: any) => convertToVideoData(video));
+    
+    return {
+      success: true,
+      data: formattedData,
+      currentPage: result.currentPage || 1,
+      totalPages: result.totalPages || 1
+    };
   } catch (error) {
     console.error('APIデータの取得エラー:', error);
     return {
       success: false,
       data: [],
       currentPage: 1,
-      totalPages: 1
+      totalPages: 1,
+      error: error instanceof Error ? error.message : '不明なエラーが発生しました'
     };
   }
 } 

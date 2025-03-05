@@ -76,22 +76,36 @@ const Dashboard = () => {
     setIsLoading(true);
     try {
       const response = await getSheetData(page, currentFilters);
-      // responseがundefinedでないことを確認
+      console.log('APIレスポンス:', response);  // デバッグログを追加
+      
       if (response && response.success) {
-        setData(response.data);
-        setCurrentPage(page);
-        setTotalPages(response.totalPages);
+        if (Array.isArray(response.data)) {
+          setData(response.data);
+          setCurrentPage(response.currentPage || page);
+          setTotalPages(response.totalPages || 1);
+        } else {
+          console.error('データの形式が不正です:', response.data);
+          setData([]);
+        }
+      } else {
+        console.error('APIエラー:', response?.error || '不明なエラー');
+        setData([]);
       }
     } catch (error) {
-      console.error('Failed to fetch data:', error);
+      console.error('データ取得エラー:', error);
+      setData([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    console.log('Dashboard - Filters changed:', filters);
-    fetchData(currentPage, filters);
+    console.log('Dashboard - フィルター変更を検知:', filters);
+    const timer = setTimeout(() => {
+      fetchData(currentPage, filters);
+    }, 300); // デバウンス処理を追加
+
+    return () => clearTimeout(timer);
   }, [filters, currentPage]);
 
   const handleClearAllFilters = () => {
