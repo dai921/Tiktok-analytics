@@ -150,34 +150,32 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }, [isFilterOpen]);
 
     const handleSort = () => {
-      // 他のカラムのソートとアクティブ状態をクリア
+      // ソートの状態のみをリセット（data-sort-active属性のみ）
       document.querySelectorAll('[data-header-cell]').forEach(el => {
         if (el !== buttonRef.current?.closest('[data-header-cell]')) {
           const button = el.querySelector('button');
           if (button) {
             button.setAttribute('data-sort-active', 'false');
-            button.classList.remove('text-sky-500');
           }
-          el.classList.remove('text-blue-600', 'font-medium');
         }
       });
 
       const newDirection = sortDirection === null ? 'desc' : 
-                          sortDirection === 'desc' ? 'asc' : null
-      setSortDirection(newDirection)
-      setIsActive(!!newDirection || !!filterValue)
+                          sortDirection === 'desc' ? 'asc' : null;
+      setSortDirection(newDirection);
+      setIsActive(!!newDirection || !!filterValue);
 
       if (newDirection) {
         onFilter?.({
           field: title,
           type: 'sort',
           value: newDirection
-        })
+        });
       } else {
-        handleClear()
+        handleClear();
       }
-      setIsFilterOpen(false)
-    }
+      setIsFilterOpen(false);
+    };
 
     const handleClear = () => {
       console.log('TableHeaderCell - Clearing filter:', {

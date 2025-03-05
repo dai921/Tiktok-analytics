@@ -315,10 +315,10 @@ async def get_videos_alt(
 
         if play_count is not None:
             if play_count_type == "greater":
-                where_clauses.append("play_count > %s")
+                where_clauses.append("play_count >= %s")
                 params.append(play_count)
             elif play_count_type == "less":
-                where_clauses.append("play_count < %s")
+                where_clauses.append("play_count <= %s")
                 params.append(play_count)
             else:
                 where_clauses.append("play_count = %s")
@@ -326,10 +326,10 @@ async def get_videos_alt(
 
         if likes_count is not None:
             if likes_count_type == "greater":
-                where_clauses.append("likes_count > %s")
+                where_clauses.append("likes_count >= %s")
                 params.append(likes_count)
             elif likes_count_type == "less":
-                where_clauses.append("likes_count < %s")
+                where_clauses.append("likes_count <= %s")
                 params.append(likes_count)
             else:
                 where_clauses.append("likes_count = %s")
@@ -337,10 +337,10 @@ async def get_videos_alt(
 
         if comment_count is not None:
             if comment_count_type == "greater":
-                where_clauses.append("comment_count > %s")
+                where_clauses.append("comment_count >= %s")
                 params.append(comment_count)
             elif comment_count_type == "less":
-                where_clauses.append("comment_count < %s")
+                where_clauses.append("comment_count <= %s")
                 params.append(comment_count)
             else:
                 where_clauses.append("comment_count = %s")
