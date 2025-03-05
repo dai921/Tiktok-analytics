@@ -186,16 +186,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         previousType: filterType
       });
 
-      // 全てのヘッダーセルのスタイルをリセット
-      document.querySelectorAll('[data-header-cell]').forEach(el => {
-        const button = el.querySelector('button');
-        if (button) {
-          button.setAttribute('data-sort-active', 'false');
-          button.classList.remove('text-sky-500');
-        }
-        el.classList.remove('text-blue-600', 'font-medium');
-      });
-
+      // 全体リセットを削除し、個別のセルの状態のみをリセット
       setFilterValue('')
       setSortDirection(null)
       setFilterType('equal')
