@@ -102,15 +102,6 @@ export default function LoginPage() {
               >
                 {isLoading ? 'ログイン中...' : 'ログイン'}
               </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="w-full h-12 text-lg text-sky-600 border-sky-600 hover:bg-sky-50"
-                onClick={() => router.push('/register')}
-                disabled={isLoading}
-              >
-                新規登録
-              </Button>
             </div>
           </form>
         </CardContent>
