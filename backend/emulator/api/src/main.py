@@ -46,7 +46,7 @@ app.include_router(auth_router)
 # 絶対パスを使用してテンプレートディレクトリを指定
 base_dir = pathlib.Path(__file__).parent.resolve()
 templates_directory = str(base_dir / "templates")
-print(f"テンプレートディレクトリ: {templates_directory}")  # デバッグ用
+print(f"テンプレートディレクトリ: {templates_directory}")  # デバッグ用i
 templates = Jinja2Templates(directory=templates_directory)
 
 # 静的ファイルのディレクトリも同様に絶対パスで指定
@@ -139,10 +139,10 @@ async def get_videos(
 
         if play_count is not None:
             if play_count_type == "greater":
-                where_clauses.append("play_count > %s")
+                where_clauses.append("play_count >= %s")
                 params.append(play_count)
             elif play_count_type == "less":
-                where_clauses.append("play_count < %s")
+                where_clauses.append("play_count <= %s")
                 params.append(play_count)
             else:
                 where_clauses.append("play_count = %s")
@@ -150,10 +150,10 @@ async def get_videos(
 
         if likes_count is not None:
             if likes_count_type == "greater":
-                where_clauses.append("likes_count > %s")
+                where_clauses.append("likes_count >= %s")
                 params.append(likes_count)
             elif likes_count_type == "less":
-                where_clauses.append("likes_count < %s")
+                where_clauses.append("likes_count <= %s")
                 params.append(likes_count)
             else:
                 where_clauses.append("likes_count = %s")
@@ -161,10 +161,10 @@ async def get_videos(
 
         if comment_count is not None:
             if comment_count_type == "greater":
-                where_clauses.append("comment_count > %s")
+                where_clauses.append("comment_count >= %s")
                 params.append(comment_count)
             elif comment_count_type == "less":
-                where_clauses.append("comment_count < %s")
+                where_clauses.append("comment_count <= %s")
                 params.append(comment_count)
             else:
                 where_clauses.append("comment_count = %s")
@@ -190,14 +190,13 @@ async def get_videos(
         # ソートの適用
         query += f" ORDER BY {actual_sort_by} {sort_order}"
 
-        # 総件数取得
-        count_cursor = conn.cursor()
-        count_cursor.execute(f"SELECT COUNT(*) FROM ({query}) as count_query", params)
-        total = count_cursor.fetchone()[0]
+        # フィルタパラメータを保持
+        filter_params = params.copy()
 
-        # ページネーション
+        # ページネーション用にLIMIT/OFFSETを追加
         query += " LIMIT %s OFFSET %s"
-        params.extend([limit, (page - 1) * limit])
+        offset = (page - 1) * limit
+        params.extend([limit, offset])
 
         # デバッグ用にクエリとパラメータを出力
         print(f"Executing query: {query}")
@@ -206,6 +205,11 @@ async def get_videos(
         # メインクエリ実行
         cursor.execute(query, params)
         rows = cursor.fetchall()
+
+        # 総件数取得（フィルタパラメータを使用）
+        count_query = f"SELECT COUNT(*) FROM ({query}) as count_query"
+        cursor.execute(count_query, filter_params)
+        total = cursor.fetchone()[0]
 
         return {
             "data": [format_video(row) for row in rows],
@@ -365,7 +369,13 @@ async def get_videos_alt(
             db_field = field_mapping.get(sort_by, sort_by)
             query += f" ORDER BY {db_field} {sort_order.upper()}"
 
-        # ページネーション
+        # 基本クエリを保存（LIMIT/OFFSET なし）
+        base_query = query
+
+        # フィルタパラメータを保持
+        filter_params = params.copy()
+
+        # ページネーション用にLIMIT/OFFSETを追加
         query += " LIMIT %s OFFSET %s"
         offset = (page - 1) * limit
         params.extend([limit, offset])
@@ -373,14 +383,24 @@ async def get_videos_alt(
         print(f"Executing query: {query}")
         print(f"With params: {params}")
 
+        # メインクエリ実行
         cursor.execute(query, params)
         rows = cursor.fetchall()
+
+        # 総件数取得（フィルタパラメータを使用）
+        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
+        cursor.execute(count_query, filter_params)
+        total = cursor.fetchone()[0]
+
+        # 総ページ数を計算
+        total_pages = (total + limit - 1) // limit
 
         return {
             "success": True,
             "data": [format_video(row) for row in rows],
             "currentPage": page,
-            "totalPages": 1  # 仮の値、実際には総件数から計算する必要があります
+            "totalPages": total_pages,
+            "total": total
         }
 
     except Exception as e:

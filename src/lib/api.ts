@@ -416,6 +416,13 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       console.log('getSheetData - フィルターなしでデータを取得');
     } else {
       Object.entries(filters).forEach(([key, filter]) => {
+        console.log('API - フィルター処理開始:', {
+          key,
+          filter,
+          type: filter?.type, // typeの値を明示的にログ出力
+          apiFieldName: mapFieldToApiField(key)
+        });
+
         if (!filter || !filter.value) {
           console.log('getSheetData - 無効なフィルター:', { key, filter });
           return;
@@ -441,36 +448,41 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
         }
 
         // 日付フィルターの場合
-        if (key === '投稿日時' || key === 'created_at') {
+        if (key === 'createdAt' || key === 'created_at') {
           console.log('日付フィルター処理:', { type: filter.type, value: filter.value });
           
-          if (filter.type === 'date') {
-            params.append('created_at', String(filter.value));
-            params.append('created_at_type', 'date');
-          } else if (filter.type === 'after') {
-            params.append('start_date', String(filter.value));
-          } else if (filter.type === 'before') {
-            params.append('end_date', String(filter.value));
-          }
-          return;
+          params.append('created_at', String(filter.value));
+          params.append('created_at_type', filter.type);  // フィルタータイプを追加
+          return;  // 重要: ここでreturnして他の処理に進まないようにする
         }
 
         // 数値フィルターの場合
-        if (['views', 'likes', 'comments', 'shares', 'saves'].includes(apiFieldName)) {
-          console.log('数値フィルター処理:', { field: apiFieldName, type: filter.type, value: filter.value });
-          const fieldMap = {
-            'views': 'play_count',
-            'likes': 'likes_count',
-            'comments': 'comment_count',
-            'shares': 'shares_count',
-            'saves': 'saves_count'
-          };
-          
-          const dbField = fieldMap[apiFieldName] || apiFieldName;
+        const numericFields = {
+          'views': 'play_count',
+          'likes': 'likes_count',
+          'comments': 'comment_count',
+          'shares': 'shares_count',
+          'saves': 'saves_count'
+        };
+
+        // 元のフィールド名（viewsなど）で判定する
+        if (Object.keys(numericFields).includes(key)) {
+          console.log('API - 数値フィルター変換前:', {
+            originalKey: key,
+            mappedField: numericFields[key],
+            filterType: filter.type,
+            value: filter.value
+          });
+
+          const dbField = numericFields[key];
           params.append(dbField, String(filter.value));
-          if (filter.type !== 'equal') {
-            params.append(`${dbField}_type`, filter.type);
-          }
+          params.append(`${dbField}_type`, filter.type);
+
+          console.log('API - 数値フィルター変換後:', {
+            dbField,
+            type: filter.type,
+            params: Object.fromEntries(params.entries())
+          });
           return;
         }
 

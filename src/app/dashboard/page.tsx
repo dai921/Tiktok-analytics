@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { DataTable } from '@/components/dashboard/data-table'
 import { Header } from "@/components/header"
-import { getSheetData } from '@/lib/api'
+import { getSheetData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 
@@ -65,22 +65,28 @@ const Dashboard = () => {
         return updated;
       });
     } else {
-      // created_atの場合は、APIの期待する形式に変換
-      const field = newFilter.field;
+      // フィールド名を英語に逆変換
+      const field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
+      
+      console.log('Dashboard - フィールド変換:', {
+        originalField: newFilter.field,
+        convertedField: field,
+        type: newFilter.type,
+        value: newFilter.value
+      });
+
       const filterQuery: FilterQuery = {
         field: field,
         type: newFilter.type,
         value: newFilter.value
       };
       
-      setFilters(prev => {
-        const updated = {
-          ...prev,
-          [field]: filterQuery
-        };
-        console.log('Dashboard - フィルター変更を検知:', updated);
-        return updated;
-      });
+      console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);
+      
+      setFilters(prev => ({
+        ...prev,
+        [field]: filterQuery
+      }));
     }
   };
 
