@@ -9,8 +9,9 @@ interface TableHeaderCellProps {
   title: string
   type?: 'text' | 'number' | 'date'
   align?: 'left' | 'right' | 'center'
-  onFilter?: (value: FilterValue) => void
+  onFilter?: (value: FilterValue, shouldMerge?: boolean) => void
   style?: React.CSSProperties
+  currentFilters?: Record<string, FilterValue>
 }
 
 export interface TableHeaderCellRef {
@@ -34,9 +35,9 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
       ]
     case 'date':
       return [
-        { value: 'equal' as const, label: '等しい' },
-        { value: 'after' as const, label: '以降' },
-        { value: 'before' as const, label: '以前' }
+        { value: 'date' as const, label: '等しい' },
+        { value: 'after' as const, label: 'この日以降' },
+        { value: 'before' as const, label: 'この日以前' }
       ]
     default:
       return [
@@ -46,10 +47,10 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
-    const [filterType, setFilterType] = useState<FilterType>('equal')
+    const [filterType, setFilterType] = useState<FilterType>(type === 'date' ? 'equal' : 'equal')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const [isActive, setIsActive] = useState(false)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
@@ -149,46 +150,41 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }, [isFilterOpen]);
 
     const handleSort = () => {
-      // 他のカラムのソートとアクティブ状態をクリア
+      // ソートの状態のみをリセット（data-sort-active属性のみ）
       document.querySelectorAll('[data-header-cell]').forEach(el => {
         if (el !== buttonRef.current?.closest('[data-header-cell]')) {
           const button = el.querySelector('button');
           if (button) {
             button.setAttribute('data-sort-active', 'false');
-            button.classList.remove('text-sky-500');
           }
-          el.classList.remove('text-blue-600', 'font-medium');
         }
       });
 
       const newDirection = sortDirection === null ? 'desc' : 
-                          sortDirection === 'desc' ? 'asc' : null
-      setSortDirection(newDirection)
-      setIsActive(!!newDirection || !!filterValue)
+                          sortDirection === 'desc' ? 'asc' : null;
+      setSortDirection(newDirection);
+      setIsActive(!!newDirection || !!filterValue);
 
       if (newDirection) {
         onFilter?.({
           field: title,
           type: 'sort',
           value: newDirection
-        })
+        });
       } else {
-        handleClear()
+        handleClear();
       }
-      setIsFilterOpen(false)
-    }
+      setIsFilterOpen(false);
+    };
 
     const handleClear = () => {
-      // 全てのヘッダーセルのスタイルをリセット
-      document.querySelectorAll('[data-header-cell]').forEach(el => {
-        const button = el.querySelector('button');
-        if (button) {
-          button.setAttribute('data-sort-active', 'false');
-          button.classList.remove('text-sky-500');
-        }
-        el.classList.remove('text-blue-600', 'font-medium');
+      console.log('TableHeaderCell - Clearing filter:', {
+        field: title,
+        previousValue: filterValue,
+        previousType: filterType
       });
 
+      // 全体リセットを削除し、個別のセルの状態のみをリセット
       setFilterValue('')
       setSortDirection(null)
       setFilterType('equal')
@@ -198,66 +194,62 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         type: 'equal',
         value: '',
         clear: true
-      })
+      }, true)
       setIsFilterOpen(false)
     }
 
-    const handleFilter = (value: string, filterType: FilterType) => {
-      if (!onFilter) return
-      setFilterValue(value)
-      setIsActive(!!value || !!sortDirection)
-      onFilter({
-        field: title,
-        type: filterType,
-        value
-      })
-    }
+    const handleFilter = (value: string, type: FilterType) => {
+      console.log('=== TableHeaderCell handleFilter 開始 ===');
+      console.log('受け取ったパラメータ:', {
+        value,
+        type,
+        title,
+        componentType: type  // コンポーネントに渡されたtype prop
+      });
 
-    const renderFilterInput = () => {
-      switch (type) {
-        case 'date':
-          return (
-            <input
-              type="date"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              className="w-full px-2 py-1 border rounded text-xs"
-            />
-          )
-        case 'number':
-          return (
-            <input
-              type="number"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleFilter(filterValue, filterType)
-                }
-              }}
-              placeholder="フィルター..."
-              className="w-full px-2 py-1 border rounded text-xs"
-            />
-          )
-        default:
-          return (
-            <input
-              type="text"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleFilter(filterValue, filterType)
-                }
-              }}
-              placeholder="フィルター..."
-              className="w-full px-2 py-1 border rounded text-xs"
-            />
-          )
+      setIsActive(true);
+
+      // 日付フィルターの場合の処理
+      if (title === '投稿日時') {
+        console.log('投稿日時のフィルター処理を開始');
+        const dateValue = new Date(value);
+        console.log('変換された日付:', dateValue);
+
+        if (!isNaN(dateValue.getTime())) {
+          const formattedDate = dateValue.toISOString().split('T')[0];
+          console.log('フォーマットされた日付:', formattedDate);
+          
+          const filterValue = {
+            field: '投稿日時',
+            type: type === 'equal' ? 'date' : type,
+            value: formattedDate
+          };
+          console.log('親コンポーネントに送信するフィルター値:', filterValue);
+          
+          // 親コンポーネントにフィルター変更を通知
+          onFilter?.(filterValue);
+          console.log('onFilter関数の呼び出し完了');
+          
+          setIsFilterOpen(false);
+        } else {
+          console.warn('無効な日付形式:', value);
+        }
+      } else {
+        console.log('通常のフィルター処理');
+        const filterValue = {
+          field: title,
+          type,
+          value
+        };
+        console.log('親コンポーネントに送信するフィルター値:', filterValue);
+        
+        onFilter?.(filterValue);
+        console.log('onFilter関数の呼び出し完了');
+        
+        setIsFilterOpen(false);
       }
-    }
-
-    const hasFilter = !!onFilter
+      console.log('=== TableHeaderCell handleFilter 終了 ===');
+    };
 
     const getSortLabel = () => {
       // 数値フィールドの場合
@@ -282,6 +274,81 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     const toggleFilter = () => {
       setIsFilterOpen(!isFilterOpen);
     };
+
+    const renderFilterInput = () => {
+      switch (type) {
+        case 'date':
+          return (
+            <div className="flex flex-col gap-2">
+              <select 
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as FilterType)}
+                className="w-full px-2 py-1 border rounded text-xs"
+              >
+                {getFilterOptions('date').map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={filterValue}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setFilterValue(newValue);
+                }}
+                onClick={(e) => {
+                  // カレンダーを強制的に表示
+                  const input = e.target as HTMLInputElement;
+                  input.showPicker();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filterValue) {
+                    handleFilter(filterValue, filterType);
+                  }
+                }}
+                className="w-full px-2 py-1 border rounded text-xs mt-2 cursor-pointer"
+                style={{
+                  colorScheme: 'auto'
+                }}
+              />
+            </div>
+          )
+        case 'number':
+          return (
+            <input
+              type="number"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleFilter(filterValue, filterType);
+                }
+              }}
+              placeholder="フィルター..."
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          )
+        default:
+          return (
+            <input
+              type="text"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleFilter(filterValue, filterType);
+                }
+              }}
+              placeholder="フィルター..."
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          )
+      }
+    }
+
+    const hasFilter = !!onFilter
 
     return (
       <div 
@@ -327,17 +394,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             >
               <div className="p-2 border-b">
                 <div className="flex items-center gap-2 mb-2">
-                  <select 
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value as FilterType)}
-                    className="px-2 py-1 border rounded text-xs"
-                  >
-                    {getFilterOptions(type).map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  {type === 'number' && (
+                    <select 
+                      value={filterType}
+                      onChange={(e) => setFilterType(e.target.value as FilterType)}
+                      className="px-2 py-1 border rounded text-xs"
+                    >
+                      {getFilterOptions(type).map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {renderFilterInput()}
                 </div>
                 <button

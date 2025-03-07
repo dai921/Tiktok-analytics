@@ -1,4 +1,3 @@
-import { TikTokVideo, FilterOptions, SortOptions, ApiResponse, AccountData, CategoryData, HashtagData } from '../types/dashboard';
 import type { VideoData, PaginatedResponse, FilterQuery, FilterType } from '@/types/dashboard'
 
 // 環境変数からAPI設定を取得
@@ -242,7 +241,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'authorName': '作成者表示名',
   'shares': '共有数',
   'saves': '保存数',
-  'createdAt': '作成日時',
+  'createdAt': '投稿日時',
   'duration': '動画時間(秒)',
   'isViral': '10万再生以上',
   'prevViews': '前回再生数',
@@ -311,15 +310,17 @@ const convertToVideoData = (video: any): VideoData => {
   // hashtagsの処理（文字列から配列へ）
   let hashtagsArray: string[] = [];
   try {
+    // キャプションからハッシュタグを抽出
+    const caption = video.caption || '';
+    const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
+    
     if (video.hashtags) {
       if (typeof video.hashtags === 'string') {
-        // カンマ区切りや空白区切りのテキストを配列に変換
         if (video.hashtags.includes(',')) {
           hashtagsArray = video.hashtags.split(',').map((tag: string) => tag.trim());
         } else if (video.hashtags.includes(' ')) {
           hashtagsArray = video.hashtags.split(' ').filter(Boolean);
         } else {
-          // JSONの可能性もチェック
           try {
             const parsed = JSON.parse(video.hashtags);
             hashtagsArray = Array.isArray(parsed) ? parsed : [video.hashtags];
@@ -331,6 +332,9 @@ const convertToVideoData = (video: any): VideoData => {
         hashtagsArray = video.hashtags;
       }
     }
+    
+    // キャプションから抽出したハッシュタグを追加（重複を除去）
+    hashtagsArray = [...new Set([...hashtagsArray, ...hashtagsFromCaption])];
   } catch (error) {
     console.error('ハッシュタグの処理エラー:', error);
     hashtagsArray = [];
@@ -398,53 +402,102 @@ const convertToVideoData = (video: any): VideoData => {
 }
 
 // バックエンドAPIからデータを取得する関数
-export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>): Promise<{
-  success: boolean
-  data: VideoData[]
-  currentPage: number
-  totalPages: number
-}> {
-  try {
-    console.log('=== API Filter Debug ===');
-    console.log('Raw filters:', filters);
+export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>) {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: '50'
+  });
 
-    // クエリパラメータの構築
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: '50' // 適切な値に設定
-    });
-
-    // フィルターの処理
-    if (filters) {
+  if (filters) {
+    console.log('getSheetData - 受け取ったフィルター:', filters);
+    
+    // フィルターが空オブジェクトの場合は、フィルターなしとして扱う
+    if (Object.keys(filters).length === 0) {
+      console.log('getSheetData - フィルターなしでデータを取得');
+    } else {
       Object.entries(filters).forEach(([key, filter]) => {
-        console.log('処理するフィルター:', filter);
-        
-        // フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
-        // field には title や field を使う（実際のデータによる）
-        const fieldToUse = filter.field || filter.title || key;
-        const apiFieldName = mapFieldToApiField(fieldToUse);
-        
-        console.log(`フィールド変換: ${fieldToUse} → ${apiFieldName}`);
-        
-        // フィルタータイプの処理
-        const apiFilterType = filter.type;
-        
-        // パラメータの追加
-        if (apiFilterType === 'sort') {
-          params.append('sort_by', apiFieldName);
-          params.append('sort_order', filter.value === 'asc' ? 'asc' : 'desc');
-        } else {
-          // 通常のフィルター
-          params.append(apiFieldName, filter.value.toString());
-          if (apiFilterType !== 'equal') {
-            params.append(`${apiFieldName}_type`, apiFilterType);
-          }
+        console.log('API - フィルター処理開始:', {
+          key,
+          filter,
+          type: filter?.type, // typeの値を明示的にログ出力
+          apiFieldName: mapFieldToApiField(key)
+        });
+
+        if (!filter || !filter.value) {
+          console.log('getSheetData - 無効なフィルター:', { key, filter });
+          return;
         }
+
+        console.log('getSheetData - フィルター処理:', { key, filter });
+        const apiFieldName = mapFieldToApiField(key);
+        
+        // ソート処理の場合
+        if (filter.type === 'sort') {
+          console.log('ソート処理:', { field: apiFieldName, order: filter.value });
+          // フィールド名のマッピングを確認
+          const sortFieldMap = {
+            'views': 'play_count',
+            'likes': 'likes_count',
+            'comments': 'comment_count',
+            'createdAt': 'created_at'
+          };
+          const sortField = sortFieldMap[apiFieldName] || apiFieldName;
+          params.append('sort_by', sortField);
+          params.append('sort_order', String(filter.value));
+          return;
+        }
+
+        // 日付フィルターの場合
+        if (key === 'createdAt' || key === 'created_at') {
+          console.log('日付フィルター処理:', { type: filter.type, value: filter.value });
+          
+          params.append('created_at', String(filter.value));
+          params.append('created_at_type', filter.type);  // フィルタータイプを追加
+          return;  // 重要: ここでreturnして他の処理に進まないようにする
+        }
+
+        // 数値フィルターの場合
+        const numericFields = {
+          'views': 'play_count',
+          'likes': 'likes_count',
+          'comments': 'comment_count',
+          'shares': 'shares_count',
+          'saves': 'saves_count'
+        };
+
+        // 元のフィールド名（viewsなど）で判定する
+        if (Object.keys(numericFields).includes(key)) {
+          console.log('API - 数値フィルター変換前:', {
+            originalKey: key,
+            mappedField: numericFields[key],
+            filterType: filter.type,
+            value: filter.value
+          });
+
+          const dbField = numericFields[key];
+          params.append(dbField, String(filter.value));
+          params.append(`${dbField}_type`, filter.type);
+
+          console.log('API - 数値フィルター変換後:', {
+            dbField,
+            type: filter.type,
+            params: Object.fromEntries(params.entries())
+          });
+          return;
+        }
+
+        // テキストフィルターの場合（アカウント名、カテゴリ、ハッシュタグなど）
+        console.log('テキストフィルター処理:', { field: apiFieldName, value: filter.value });
+        params.append(apiFieldName, String(filter.value));
       });
     }
+  }
 
-    console.log(`バックエンドAPIから取得: ${apiUrl}/videos?${params}`);
-    const response = await fetch(`${apiUrl}/videos?${params}`);
+  const url = `${apiUrl}/videos?${params}`;
+  console.log('APIリクエストURL:', url);
+  
+  try {
+    const response = await fetch(url);
     
     if (!response.ok) {
       console.error(`API エラー: HTTP ${response.status}`);
@@ -453,49 +506,36 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    const text = await response.text();
-    console.log('API レスポンス (先頭500文字):', text.substring(0, 500) + '...');
+    const result = await response.json();
     
-    try {
-      const result = JSON.parse(text);
-      
-      // レスポンスのデバッグ情報
-      console.log('APIレスポンス構造:', {
-        hasData: !!result.data,
-        dataLength: result.data?.length,
-        firstItem: result.data?.[0],
-        metadata: {
-          currentPage: result.currentPage,
-          totalPages: result.totalPages
-        }
-      });
-      
-      // レスポンスの構造チェック
-      if (!result.data || !Array.isArray(result.data)) {
-        console.error('APIレスポンスの形式が正しくありません:', result);
-        throw new Error('無効なAPIレスポンス形式');
-      }
-      
-      // バックエンドAPIのレスポンスをVideoData[]に変換
-      const formattedData = result.data.map((video: any) => convertToVideoData(video));
-      
+    // レスポンスの構造チェック
+    if (!result.data || !Array.isArray(result.data)) {
+      console.error('APIレスポンスの形式が正しくありません:', result);
       return {
-        success: true,
-        data: formattedData,
-        currentPage: result.currentPage || 1,
-        totalPages: result.totalPages || 1
+        success: false,
+        data: [],
+        currentPage: 1,
+        totalPages: 1
       };
-    } catch (error) {
-      console.error('APIレスポンスの解析に失敗:', error);
-      throw error;
     }
+    
+    // バックエンドAPIのレスポンスをVideoData[]に変換
+    const formattedData = result.data.map((video: any) => convertToVideoData(video));
+    
+    return {
+      success: true,
+      data: formattedData,
+      currentPage: result.currentPage || 1,
+      totalPages: result.totalPages || 1
+    };
   } catch (error) {
     console.error('APIデータの取得エラー:', error);
     return {
       success: false,
       data: [],
       currentPage: 1,
-      totalPages: 1
+      totalPages: 1,
+      error: error instanceof Error ? error.message : '不明なエラーが発生しました'
     };
   }
 } 

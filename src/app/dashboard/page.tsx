@@ -3,8 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { DataTable } from '@/components/dashboard/data-table'
 import { Header } from "@/components/header"
-import { getSheetData } from '@/lib/api'
-import type { VideoData, FilterQuery } from '@/types/dashboard'
+import { getSheetData, COLUMN_MAP } from '@/lib/api'
+import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 
 const headers = [
@@ -32,39 +32,111 @@ const Dashboard = () => {
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [filters, setFilters] = useState<Record<string, FilterQuery> | undefined>(undefined)
+  const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
 
-  const fetchData = async (page: number = 1, filters?: Record<string, FilterQuery>) => {
-    setIsLoading(true)
-    try {
-      const response = await getSheetData(page, filters)
-      if (response.success) {
-        setData(response.data)
-        setCurrentPage(page)
-        setTotalPages(response.totalPages)
-      }
-    } catch (error) {
-      console.error('Failed to fetch data:', error)
-    } finally {
-      setIsLoading(false)
+  const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
+    return {
+      field: filter.field,
+      type: filter.type,
+      value: filter.value
     }
   }
 
+  const handleFilter = (newFilter: FilterValue) => {
+    console.log('Dashboard - Filter received:', {
+      newFilter,
+      currentFilters: filters,
+      isClearing: newFilter.clear
+    });
+
+    if (newFilter.clear) {
+      console.log('Dashboard - Clearing filter for field:', newFilter.field);
+      setFilters(prev => {
+        const updated = { ...prev };
+        delete updated[newFilter.field];
+        console.log('Updated filters after clear:', updated);
+        
+        // フィルターが全てクリアされた場合は、データを再取得
+        if (Object.keys(updated).length === 0) {
+          fetchData(1, {});
+        }
+        
+        return updated;
+      });
+    } else {
+      // フィールド名を英語に逆変換
+      const field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
+      
+      console.log('Dashboard - フィールド変換:', {
+        originalField: newFilter.field,
+        convertedField: field,
+        type: newFilter.type,
+        value: newFilter.value
+      });
+
+      const filterQuery: FilterQuery = {
+        field: field,
+        type: newFilter.type,
+        value: newFilter.value
+      };
+      
+      console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);
+      
+      setFilters(prev => ({
+        ...prev,
+        [field]: filterQuery
+      }));
+    }
+  };
+
+  const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
+    setIsLoading(true);
+    try {
+      const response = await getSheetData(page, currentFilters);
+      console.log('APIレスポンス:', response);  // デバッグログを追加
+      
+      if (response && response.success) {
+        if (Array.isArray(response.data)) {
+          setData(response.data);
+          setCurrentPage(response.currentPage || page);
+          setTotalPages(response.totalPages || 1);
+        } else {
+          console.error('データの形式が不正です:', response.data);
+          setData([]);
+        }
+      } else {
+        console.error('APIエラー:', response?.error || '不明なエラー');
+        setData([]);
+      }
+    } catch (error) {
+      console.error('データ取得エラー:', error);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchData()
-  }, [])
+    console.log('Dashboard - フィルター変更を検知:', filters);
+    const timer = setTimeout(() => {
+      fetchData(currentPage, filters);
+    }, 300); // デバウンス処理を追加
+
+    return () => clearTimeout(timer);
+  }, [filters, currentPage]);
 
   const handleClearAllFilters = () => {
     headerRefs.current.forEach(ref => {
       ref?.clearFilter()
     })
+    setFilters({})
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
-        hasFilters={hasFilters} 
+        hasFilters={Object.keys(filters).length > 0}
         onClearFilters={handleClearAllFilters} 
       />
       <main className="max-w-screen-2xl mx-auto px-4 py-4">
@@ -72,14 +144,11 @@ const Dashboard = () => {
           ref={tableRef}
           initialData={data} 
           onFilterChange={(hasFilters, filter) => {
-            setHasFilters(hasFilters)
             if (filter) {
-              fetchData(1, { [filter.field]: filter })
-            } else {
-              fetchData()
+              handleFilter(filter)
             }
           }}
-          onPageChange={(page) => fetchData(page, filters || undefined)}
+          onPageChange={(page) => setCurrentPage(page)}
           currentPage={currentPage}
           totalPages={totalPages}
           isLoading={isLoading}

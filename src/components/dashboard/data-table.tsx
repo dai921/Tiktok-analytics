@@ -77,25 +77,32 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     }
 
     const handleFilter = (field: string) => (filterValue: FilterValue) => {
-      if ('clear' in filterValue) {
-        onFilterChange(false)
-        return
-      }
+      console.log('=== DataTable handleFilter 開始 ===');
+      console.log('受け取ったパラメータ:', {
+        field,
+        filterValue,
+        mappedField: COLUMN_MAP[field]  // フィールド名のマッピング結果も確認
+      });
 
-      if ('sort' in filterValue) {
+      if ('clear' in filterValue) {
+        console.log('クリア処理を実行');
         onFilterChange(true, {
           field: COLUMN_MAP[field],
-          type: 'sort',
-          value: filterValue.sort as string
-        })
-        return
+          type: 'equal',
+          value: ''
+        });
+        return;
       }
 
-      onFilterChange(true, {
+      const filterQuery = {
         field: COLUMN_MAP[field],
         type: filterValue.type,
         value: filterValue.value
-      })
+      };
+
+      console.log('Dashboardに送信するフィルター値:', filterQuery);
+      onFilterChange(true, filterQuery);
+      console.log('=== DataTable handleFilter 終了 ===');
     }
 
     const handlePageChange = (page: number) => {
@@ -121,13 +128,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       },
       {
         accessorKey: 'createdAt',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title={COLUMN_MAP['createdAt']}
-            type="date"
-            onFilter={(value) => handleFilter('createdAt')(value)}
-          />
-        ),
+        header: ({ column }) => {
+          console.log('createdAtヘッダーの設定:', {
+            title: COLUMN_MAP['createdAt'],
+            mappedField: 'createdAt'
+          });
+          return (
+            <TableHeaderCell
+              title={COLUMN_MAP['createdAt']}
+              type="date"
+              onFilter={(value) => {
+                console.log('createdAtのフィルター呼び出し:', value);
+                return handleFilter('createdAt')(value);
+              }}
+            />
+          );
+        },
       },
       {
         accessorKey: 'views',
@@ -242,25 +258,33 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         ),
         cell: ({ row }) => {
-          // ハッシュタグの安全な取得と変換
-          const hashtags = row.hashtags
-          const hashtagString = Array.isArray(hashtags) 
-            ? hashtags.join(', ') 
-            : typeof hashtags === 'string' 
-              ? hashtags 
-              : ''
+          // ハッシュタグの処理
+          const hashtags = row.hashtags;
+          const caption = row.description || '';
+          
+          // キャプションからハッシュタグを抽出
+          const hashtagsFromCaption = (caption.match(/#[^\s#]+/g) || [])
+            .map(tag => tag.replace('#', ''));
+          
+          // 既存のハッシュタグと結合（重複を除去）
+          const allHashtags = [...new Set([
+            ...(Array.isArray(hashtags) ? hashtags : []),
+            ...hashtagsFromCaption
+          ])];
+          
+          const hashtagString = allHashtags.join(', ');
 
           return (
             <div className="w-[60px] min-w-[60px]">
               <button 
                 onClick={() => setSelectedText({ 
                   title: 'ハッシュタグ', 
-                  content: hashtagString
+                  content: hashtagString || 'ハッシュタグなし'
                 })}
                 className="text-left w-full"
               >
                 <span className="line-clamp-2 text-sm">
-                  {hashtagString}
+                  {hashtagString || 'ハッシュタグなし'}
                 </span>
               </button>
             </div>
@@ -356,9 +380,23 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         >
                           {column.cell 
                             ? column.cell({ row }) 
-                            : typeof row[column.accessorKey] === 'object'
-                              ? JSON.stringify(row[column.accessorKey])
-                              : String(row[column.accessorKey])
+                            : column.accessorKey === 'hashtags'
+                              ? (() => {
+                                  const value = row[column.accessorKey] as unknown;
+                                  console.log('Hashtags value:', value);
+                                  console.log('Hashtags type:', typeof value);
+                                  console.log('Is array:', Array.isArray(value));
+                                  if (Array.isArray(value)) {
+                                    return (value as string[]).join(', ');
+                                  }
+                                  if (typeof value === 'string') {
+                                    return value.split(',').filter(Boolean).join(', ');
+                                  }
+                                  return '';
+                                })()
+                              : typeof row[column.accessorKey] === 'object'
+                                ? JSON.stringify(row[column.accessorKey])
+                                : String(row[column.accessorKey])
                           }
                         </td>
                       ))}

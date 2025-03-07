@@ -59,15 +59,18 @@ class FrontendDataUpdater:
                 vm.username as account_name,
                 vm.likes_count,
                 vm.comment_count,
-                vm.hashtags,
+                COALESCE(vm.hashtags, '') as hashtags,
                 vm.music_title as music_info,
-                vm.description as caption
+                vm.description as caption,
+                vm.category,
+                vm.product,
+                vm.content_type,
+                vm.status
             FROM 
                 video_master vm
             LEFT JOIN frontend_data fd ON vm.id = fd.id
             WHERE 
-                vm.currentFetchDate > COALESCE(fd.created_at, '1970-01-01')
-                OR fd.id IS NULL
+                vm.status != 'deleted'
             """
             
             self.cursor.execute(select_query)
@@ -80,6 +83,8 @@ class FrontendDataUpdater:
                     "updated_count": 0,
                     "execution_time": datetime.now().isoformat()
                 }
+
+            logger.info(f"更新対象のレコード数: {len(rows_to_update)}")
 
             # REPLACE文を使用してUPSERT操作を実行
             update_query = """
@@ -95,15 +100,24 @@ class FrontendDataUpdater:
                 comment_count,
                 hashtags,
                 music_info,
-                caption
+                caption,
+                category
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """
             
             updated_count = 0
             for row in rows_to_update:
                 try:
+                    # ハッシュタグの処理
+                    hashtags = row['hashtags']
+                    if hashtags is None or hashtags == '' or hashtags == '[]':
+                        hashtags = ''
+                    else:
+                        # カンマ区切りの文字列として処理
+                        hashtags = ','.join([tag.strip() for tag in hashtags.split(',') if tag.strip()])
+                    
                     params = (
                         row['id'],
                         row['url'],
@@ -114,9 +128,10 @@ class FrontendDataUpdater:
                         row['account_name'],
                         row['likes_count'],
                         row['comment_count'],
-                        row['hashtags'],
+                        hashtags,  # 処理済みのハッシュタグ
                         row['music_info'],
-                        row['caption']
+                        row['caption'],
+                        row['category'],
                     )
                     
                     self.cursor.execute(update_query, params)
@@ -147,3 +162,11 @@ class FrontendDataUpdater:
             
         finally:
             self.close()
+
+if __name__ == "__main__":
+    try:
+        updater = FrontendDataUpdater()
+        result = updater.update_frontend_from_master()
+        print("実行結果:", result)
+    except Exception as e:
+        print(f"エラーが発生しました: {str(e)}")

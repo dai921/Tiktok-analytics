@@ -1,26 +1,17 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 
-  | 'after'    // 日付：以降
-  | 'before'   // 日付：以前
-  | 'greater'  // 数値：以上
-  | 'less'     // 数値：以下
-  | 'equal'    // 完全一致
-  | 'sort';    // ソート用
+export type FilterType = 'equal' | 'greater' | 'less' | 'after' | 'before' | 'sort' | 'date';
 
-export type FilterValue = {
-  type: FilterType;
-  value: string;
-  field?: string;
-  clear?: boolean;
-};
+export interface FilterQuery {
+  field: string
+  type: FilterType
+  value: string | number
+}
 
-export type FilterQuery = {
-  field: string;
-  type: FilterType;
-  value: string;
-};
+export interface FilterValue extends FilterQuery {
+  clear?: boolean
+}
 
 // データ型
 export interface VideoData {
@@ -110,4 +101,5 @@ export interface TikTokVideo {
   hashtags: string[];
   caption: string;
   category: string;
-} 
+}
+
