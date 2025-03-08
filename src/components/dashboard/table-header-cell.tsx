@@ -57,6 +57,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
     const [categories, setCategories] = useState<string[]>([])
+    const [filteredCategories, setFilteredCategories] = useState<string[]>([]) // フィルタリングされたカテゴリリスト
     const [isLoadingCategories, setIsLoadingCategories] = useState(false)
 
     // フィルターまたはソートがアクティブかどうかを判定
@@ -314,7 +315,13 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <input
               type="text"
               value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                setFilterValue(newValue);
+                
+                // ジャンルの場合は即時フィルタリングのみ行う（フィルタは適用しない）
+                // onChange内では e.key は存在しないため参照しない
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   handleFilter(filterValue, filterType);
@@ -333,8 +340,26 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       if (title === 'ジャンル' && isFilterOpen) {
         // 外部から渡されたcategoryDataだけを使用（ハードコードは一切なし）
         setCategories(categoryData);
+        // 初期表示時は全カテゴリを表示
+        setFilteredCategories(categoryData);
       }
     }, [title, isFilterOpen, categoryData]);
+
+    // フィルター値の変更に応じてカテゴリリストをフィルタリング
+    useEffect(() => {
+      if (title === 'ジャンル') {
+        if (filterValue === '') {
+          // フィルター値が空の場合は全カテゴリを表示
+          setFilteredCategories(categories);
+        } else {
+          // フィルター値に応じてカテゴリをフィルタリング (部分一致、大文字小文字を区別しない)
+          const filtered = categories.filter(category => 
+            category.toLowerCase().includes(filterValue.toLowerCase())
+          );
+          setFilteredCategories(filtered);
+        }
+      }
+    }, [filterValue, categories, title]);
 
     // カテゴリを選択する処理
     const handleCategorySelect = (category: string) => {
@@ -357,9 +382,9 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       return (
         <div className="mt-2 border-t pt-2">
           <p className="text-xs font-medium mb-1 text-gray-700">利用可能なカテゴリ:</p>
-          {categories.length > 0 ? (
-            <ul className="space-y-1">
-              {categories.map((category, index) => (
+          {filteredCategories.length > 0 ? (
+            <ul className="space-y-1 max-h-60 overflow-y-auto">
+              {filteredCategories.map((category, index) => (
                 <li key={index}>
                   <button
                     className="w-full text-left px-2 py-1 text-xs hover:bg-gray-50 rounded"
@@ -371,7 +396,9 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-gray-500 p-2">カテゴリがありません</p>
+            <p className="text-xs text-gray-500 p-2">
+              {filterValue ? "一致するカテゴリがありません" : "カテゴリがありません"}
+            </p>
           )}
         </div>
       );
