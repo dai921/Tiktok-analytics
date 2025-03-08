@@ -187,20 +187,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         }
       });
 
+      // ソートのサイクルを変更: null→desc→asc→descのループになるように
       const newDirection = sortDirection === null ? 'desc' : 
-                          sortDirection === 'desc' ? 'asc' : null;
+                          sortDirection === 'desc' ? 'asc' : 'desc';
+      
       setSortDirection(newDirection);
       setIsFilterOpen(false);
 
-      if (newDirection) {
-        onFilter?.({
-          field: title,
-          type: 'sort',
-          value: newDirection
-        });
-      } else {
-        handleClear();
-      }
+      // 常にソート方向が存在するので条件分岐は不要
+      onFilter?.({
+        field: title,
+        type: 'sort',
+        value: newDirection
+      });
     };
 
     const handleClear = () => {
@@ -244,15 +243,13 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     const getSortLabel = () => {
       // 数値フィールドの場合
       if (type === 'number') {
-        return sortDirection === null ? '▼ 大きい順に並び替え' :
-               sortDirection === 'desc' ? '▲ 小さい順に並び替え' : 
-               '▼ 大きい順に並び替え';
+        // descとascの表示を反転: descが降順、ascが昇順
+        return sortDirection === 'desc' ? '▼ 小さい順に並び替え' : '▲ 大きい順に並び替え';
       }
       
-      // その他のフィールド
-      return sortDirection === null ? '▼ 降順に並び替え' :
-             sortDirection === 'desc' ? '▲ 昇順に並び替え' : 
-             '▼ 降順に並び替え';
+      // テキストフィールドの場合（日付やアルファベット順など）
+      // descとascの表示を反転: descが降順、ascが昇順
+      return sortDirection === 'desc' ? '▼ 昇順に並び替え' : '▲ 降順に並び替え';
     };
 
     // 外部からアクセスできるようにする

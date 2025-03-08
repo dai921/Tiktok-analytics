@@ -341,24 +341,54 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     }, [initialData]);
 
     const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
-      console.log('DataTable handleFilter:', { field, filterValue });
+      console.log('DataTable handleFilter:', { field, filterValue, shouldMerge });
 
-      if ('clear' in filterValue) {
-        const newFilters = { ...columnFilters }
-        delete newFilters[field]
-        setColumnFilters(newFilters)
-        onFilterChange(true, {
-          field: COLUMN_MAP[field],
+      // clearフラグがある場合の処理
+      if ('clear' in filterValue && filterValue.clear === true) {
+        // ソートのクリア処理（type: 'sort'の場合）
+        if (filterValue.type === 'sort') {
+          console.log('ソート情報のクリア:', { field });
+          
+          // ソート情報のみをクリア（通常のフィルターはそのまま）
+          const newFilters = { ...columnFilters };
+          // ソートフィールドの命名パターンに基づいて削除
+          const sortKey = `${field}_sort`;
+          delete newFilters[sortKey];
+          setColumnFilters(newFilters);
+          
+          // 他のフィルターがあるかどうかを確認
+          const hasOtherFilters = Object.keys(newFilters).length > 0;
+          
+          // ソートリセット情報を親コンポーネントに渡す
+          onFilterChange(hasOtherFilters, {
+            field: COLUMN_MAP[field] || field,
+            type: 'sort',
+            value: ''
+          });
+          return;
+        } 
+        
+        // 通常のフィルタークリア処理
+        const newFilters = { ...columnFilters };
+        delete newFilters[field];
+        setColumnFilters(newFilters);
+        
+        // 他のフィルターがあるかどうかを確認
+        const hasOtherFilters = Object.keys(newFilters).length > 0;
+        
+        onFilterChange(hasOtherFilters, {
+          field: COLUMN_MAP[field] || field,
           type: 'equal',
           value: ''
-        })
+        });
         return;
       }
 
+      // 以下は通常のフィルター設定処理（変更なし）
       setColumnFilters(prev => ({
         ...prev,
         [field]: true
-      }))
+      }));
       
       // ハッシュタグの場合は専用フラグを設定
       const isHashtagFilter = field === 'hashtags';
