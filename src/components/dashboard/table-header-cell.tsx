@@ -4,6 +4,7 @@ import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle
 import type { FilterValue, FilterType } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 import { cn } from '@/lib/utils'
+import { fetchCategories } from '@/lib/api'  // カテゴリ取得用のAPIを追加
 
 interface TableHeaderCellProps {
   title: string
@@ -13,6 +14,7 @@ interface TableHeaderCellProps {
   style?: React.CSSProperties
   currentFilters?: Record<string, FilterValue>
   isActive?: boolean
+  categoryData?: string[]  // カテゴリデータの型を追加
 }
 
 export interface TableHeaderCellRef {
@@ -48,12 +50,14 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [] }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterType>('equal')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+    const [categories, setCategories] = useState<string[]>([])
+    const [isLoadingCategories, setIsLoadingCategories] = useState(false)
 
     // フィルターまたはソートがアクティブかどうかを判定
     const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
@@ -211,65 +215,24 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     }
 
     const handleFilter = (value: string, type: FilterType) => {
-      console.log('=== TableHeaderCell handleFilter 開始 ===');
-      setIsFilterOpen(false);
-
-      // 日付フィルターの場合の処理
-      if (title === '投稿日時') {
-        console.log('投稿日時のフィルター処理を開始');
-        const dateValue = new Date(value);
-        console.log('変換された日付:', dateValue);
-
-        if (!isNaN(dateValue.getTime())) {
-          const formattedDate = dateValue.toISOString().split('T')[0];
-          console.log('フォーマットされた日付:', formattedDate);
-          
-          const filterValue = {
-            field: '投稿日時',
-            type: type === 'equal' ? 'date' : type,
-            value: formattedDate
-          };
-          console.log('親コンポーネントに送信するフィルター値:', filterValue);
-          
-          // 親コンポーネントにフィルター変更を通知
-          onFilter?.(filterValue);
-          console.log('onFilter関数の呼び出し完了');
-          
-        } else {
-          console.warn('無効な日付形式:', value);
-        }
-      // ハッシュタグフィルターの場合の処理
-      } else if (title === 'ハッシュタグ') {
-        console.log('ハッシュタグのフィルター処理を開始');
-        
-        // 入力されたタグを整形（前後の空白を削除、#があれば削除）
-        const cleanedTag = value.trim().replace(/^#/, '');
-        
-        if (cleanedTag) {
-          const filterValue = {
-            field: title,
-            type,
-            value: cleanedTag,
-            isHashtag: true // ハッシュタグフィルター用のフラグ
-          };
-          console.log('ハッシュタグフィルター値:', filterValue);
-          
-          onFilter?.(filterValue);
-        }
-      } else {
-        console.log('通常のフィルター処理');
-        const filterValue = {
+      if (!onFilter) return;
+      
+      // カテゴリフィールドの場合は特別な処理
+      if (title === 'ジャンル') {
+        // 既存の型に合わせて渡すデータを調整
+        onFilter({
           field: title,
-          type,
-          value
-        };
-        console.log('親コンポーネントに送信するフィルター値:', filterValue);
-        
-        onFilter?.(filterValue);
-        console.log('onFilter関数の呼び出し完了');
-        
+          value: value,
+          type: type
+        }, true);
+      } else {
+        // 他のフィールドは通常通り
+        onFilter({
+          field: title,
+          value: value,
+          type: type
+        }, true);
       }
-      console.log('=== TableHeaderCell handleFilter 終了 ===');
     };
 
     const getSortLabel = () => {
@@ -364,6 +327,56 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     }
 
+    // カテゴリデータをロードするロジックを修正
+    useEffect(() => {
+      // タイトルが「ジャンル」の場合のみカテゴリを設定
+      if (title === 'ジャンル' && isFilterOpen) {
+        // 外部から渡されたcategoryDataだけを使用（ハードコードは一切なし）
+        setCategories(categoryData);
+      }
+    }, [title, isFilterOpen, categoryData]);
+
+    // カテゴリを選択する処理
+    const handleCategorySelect = (category: string) => {
+      setFilterValue(category);
+      // フィルタを適用
+      onFilter?.({
+        field: title,
+        value: category,
+        type: 'equal'
+      }, true);
+      
+      // ポップアップを閉じる
+      setIsFilterOpen(false);
+    };
+
+    // カテゴリリストのレンダリング
+    const renderCategoryList = () => {
+      if (title !== 'ジャンル') return null;
+      
+      return (
+        <div className="mt-2 border-t pt-2">
+          <p className="text-xs font-medium mb-1 text-gray-700">利用可能なカテゴリ:</p>
+          {categories.length > 0 ? (
+            <ul className="space-y-1">
+              {categories.map((category, index) => (
+                <li key={index}>
+                  <button
+                    className="w-full text-left px-2 py-1 text-xs hover:bg-gray-50 rounded"
+                    onClick={() => handleCategorySelect(category)}
+                  >
+                    {category}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-500 p-2">カテゴリがありません</p>
+          )}
+        </div>
+      );
+    };
+
     return (
       <div 
         data-header-cell
@@ -437,6 +450,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                   </button>
                 )}
               </div>
+              
+              {/* カテゴリリストを表示 */}
+              {renderCategoryList()}
+              
               <div className="p-2 border-t">
                 <button 
                   onClick={handleSort}

@@ -62,11 +62,17 @@ const formatNumber = (num: number): ReactElement => {
   )
 }
 
+// カテゴリ型の追加
+interface CategoryItem {
+  category: string;
+}
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, boolean>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
+    const [categoryList, setCategoryList] = useState<string[]>([])
 
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
@@ -86,7 +92,58 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       console.log('DataTable - columnFilters changed:', columnFilters);
     }, [columnFilters])
 
-    const handleFilter = (field: string) => (filterValue: FilterValue) => {
+    // コンポーネントマウント時にカテゴリを取得
+    useEffect(() => {
+      const fetchCategories = async () => {
+        try {
+          // APIのパスを修正
+          const response = await fetch('http://localhost:8080/api/categories');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && Array.isArray(data.categories)) {
+              // カテゴリ名を抽出して、「、」で分割
+              let allCategories: string[] = [];
+              
+              data.categories.forEach((cat: CategoryItem) => {
+                if (!cat.category) return;
+                
+                // 「、」や「,」で区切られたカテゴリを分割
+                const splitCategories = cat.category.split(/[、,]/).map(c => c.trim()).filter(Boolean);
+                
+                // 分割したカテゴリを追加
+                allCategories = [...allCategories, ...splitCategories];
+              });
+              
+              // 重複を削除
+              const uniqueCategories = [...new Set(allCategories)];
+              
+              // 「カテゴリ」を削除し、「その他」を除外して並べ替え
+              const otherCategory = 'その他';
+              const sortedCategories = uniqueCategories
+                .filter(cat => cat !== otherCategory && cat !== 'カテゴリ') // カテゴリを除外
+                .sort((a, b) => a.localeCompare(b, 'ja'));
+              
+              // 「その他」があれば最後に追加
+              if (uniqueCategories.includes(otherCategory)) {
+                sortedCategories.push(otherCategory);
+              }
+              
+              setCategoryList(sortedCategories);
+            }
+          } else {
+            console.error('カテゴリの取得に失敗しました');
+            setCategoryList([]);
+          }
+        } catch (error) {
+          console.error('カテゴリの取得中にエラーが発生しました:', error);
+          setCategoryList([]);
+        }
+      };
+      
+      fetchCategories();
+    }, []);
+
+    const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
       console.log('DataTable handleFilter:', { field, filterValue });
 
       if ('clear' in filterValue) {
@@ -109,13 +166,35 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       // ハッシュタグの場合は専用フラグを設定
       const isHashtagFilter = field === 'hashtags';
       
-      onFilterChange(true, {
-        field: COLUMN_MAP[field],
-        type: filterValue.type,
-        value: filterValue.value,
-        ...(isHashtagFilter && { isHashtag: true }),
-        ...(filterValue.isHashtag && { isHashtag: true })
-      })
+      // ジャンルフィールドの場合の特別処理
+      if (field === 'category') {
+        // 通常のフィルター処理を使用
+        // 内部ロジックでジャンルの特別処理を行う
+        onFilterChange(true, {
+          field,
+          value: filterValue.value,
+          type: filterValue.type
+        });
+        
+        return;
+      }
+      
+      // その他のフィールドの通常の処理
+      if (shouldMerge) {
+        setHasActiveFilters(true)
+        onFilterChange(true, {
+          field,
+          value: filterValue.value,
+          type: filterValue.type
+        })
+      } else {
+        setHasActiveFilters(true)
+        onFilterChange(true, {
+          field,
+          value: filterValue.value,
+          type: filterValue.type
+        })
+      }
     }
 
     const handlePageChange = (page: number) => {
@@ -194,6 +273,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="ジャンル"
             onFilter={(value) => handleFilter('category')(value)}
             isActive={columnFilters['category']}
+            categoryData={categoryList}
           />
         ),
       },

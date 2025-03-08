@@ -526,6 +526,42 @@ async def test_ui(request: Request):
     print("test-uiエンドポイントにアクセスがありました")  # デバッグ用
     return templates.TemplateResponse("test.html", {"request": request})
 
+@app.get("/api/categories")
+async def get_categories():
+    """データベースから利用可能なカテゴリ一覧を取得するエンドポイント"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # データベースからユニークなカテゴリを取得
+        # 空または無効なカテゴリは除外
+        query = "SELECT DISTINCT category FROM frontend_data WHERE category IS NOT NULL AND category != '' AND category != 'null'"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        # カテゴリのリストを作成
+        categories = [row[0] for row in rows if row[0]]
+        
+        return {
+            "success": True,
+            "categories": [{"category": category} for category in categories]
+        }
+    except Exception as e:
+        print(f"Error in get_categories: {str(e)}")
+        print(traceback.format_exc())
+        return {
+            "success": False,
+            "categories": [],
+            "error": str(e)
+        }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":
     print("Starting application via __main__")
