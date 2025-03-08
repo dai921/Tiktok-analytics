@@ -349,56 +349,25 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     }
 
-    // カテゴリデータをロードするロジックを修正
+    // propsから受け取ったcategoryDataを使用
     useEffect(() => {
-      if ((title === 'ジャンル' || title === 'アカウント名' || title === 'ハッシュタグ' || title === 'BGM') && isFilterOpen) {
-        console.log(`${title} - 利用可能なデータをセット:`, categoryData);
-        
-        if (Array.isArray(categoryData) && categoryData.length > 0) {
-          // ジャンルの場合、「その他」を最後に配置
-          if (title === 'ジャンル') {
-            const sortedCategories = [...categoryData].sort((a, b) => {
-              if (a === 'その他') return 1;  // 「その他」を最後に
-              if (b === 'その他') return -1; // 「その他」を最後に
-              return a.localeCompare(b);     // それ以外は通常のソート
-            });
-            setCategories(sortedCategories);
-            setFilteredCategories(sortedCategories);
-          } else {
-            // その他のタイプの場合は通常通り
-            setCategories(categoryData);
-            setFilteredCategories(categoryData);
-          }
-        } else {
-          console.warn(`${title} - 有効なデータがありません:`, categoryData);
-          setCategories([]);
-          setFilteredCategories([]);
-        }
-      }
-    }, [title, isFilterOpen, categoryData]);
-
-    // フィルター値の変更に応じてカテゴリリストをフィルタリング
-    useEffect(() => {
-      if (title === 'ジャンル' || title === 'アカウント名' || title === 'ハッシュタグ' || title === 'BGM') {
-        console.log(`${title} - フィルタリング:`, { filterValue, categoriesCount: categories.length });
-        
+      if (categoryData && categoryData.length > 0) {
+        console.log(`TableHeaderCell(${title}) - カテゴリデータを受け取りました:`, {
+          count: categoryData.length,
+          sample: categoryData.slice(0, 3)
+        });
+        setCategories(categoryData);
+        // フィルタリングされた値も更新
         if (filterValue === '') {
-          // フィルター値が空の場合は全カテゴリを表示
-          setFilteredCategories(categories);
+          setFilteredCategories(categoryData);
         } else {
-          // フィルター値に応じてカテゴリをフィルタリング (部分一致、大文字小文字を区別しない)
-          const filtered = categories.filter(category => 
+          const filtered = categoryData.filter(category => 
             category.toLowerCase().includes(filterValue.toLowerCase())
           );
-          console.log(`${title} - フィルタリング結果:`, { 
-            original: categories.length, 
-            filtered: filtered.length,
-            sample: filtered.slice(0, 3)
-          });
           setFilteredCategories(filtered);
         }
       }
-    }, [filterValue, categories, title]);
+    }, [categoryData, title, filterValue]);
 
     // カテゴリを選択する処理
     const handleCategorySelect = (category: string) => {
@@ -419,13 +388,15 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     };
 
-    // カテゴリリストのレンダリング
+    // カテゴリリストを描画する関数を改善
     const renderCategoryList = () => {
-      if (title !== 'ジャンル' && title !== 'アカウント名' && title !== 'ハッシュタグ' && title !== 'BGM') return null;
-      
+      // カテゴリーデータが関連するカラムにのみ表示
+      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title) || filteredCategories.length === 0) {
+        return null;
+      }
+
       return (
-        <div className="mt-2 border-t pt-2">
-          {/* 検索ボックスを追加 */}
+        <div className="p-2 border-t">
           <div className="mb-2">
             <input
               type="text"
@@ -436,7 +407,11 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             />
           </div>
           
-          <p className="text-xs font-medium mb-1 text-gray-700">利用可能な{getTitleLabel()}:</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-medium text-gray-700">利用可能な{getTitleLabel()}:</p>
+            <span className="text-xs text-gray-500">{filteredCategories.length}件</span>
+          </div>
+
           {filteredCategories.length > 0 ? (
             <ul className="space-y-1 max-h-60 overflow-y-auto">
               {filteredCategories.map((category, index) => (

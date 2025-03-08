@@ -428,6 +428,37 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       onPageChange(page)
     }
 
+    // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
+    const getFilteredOptions = useCallback((columnName: string) => {
+      // APIで取得した全データの選択肢を使用
+      switch (columnName) {
+        case 'ジャンル':
+          // APIから取得したカテゴリリストを使用（「カテゴリ」を削除し、「その他」を最後にソート）
+          return [...categoryList]
+            .filter(category => category !== 'カテゴリ') // 「カテゴリ」を除外
+            .sort((a, b) => {
+              if (a === 'その他') return 1;  // 「その他」を最後に
+              if (b === 'その他') return -1; // 「その他」を最後に
+              return a.localeCompare(b);     // それ以外は通常のソート
+            });
+          
+        case 'アカウント名':
+          // APIから取得したアカウントリストを使用
+          return accountList;
+          
+        case 'ハッシュタグ':
+          // APIから取得したハッシュタグリストを使用
+          return hashtagList;
+          
+        case 'BGM':
+          // APIから取得したBGMリストを使用
+          return audioTitleList;
+          
+        default:
+          return [];
+      }
+    }, [categoryList, accountList, hashtagList, audioTitleList]);
+
     const columns: Column[] = [
       {
         accessorKey: 'thumbnail',
@@ -498,9 +529,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="ジャンル"
+            type="text"
             onFilter={(value) => handleFilter('category')(value)}
-            isActive={columnFilters['category']}
-            categoryData={categoryList}
+            isActive={!!columnFilters['category']}
+            categoryData={getFilteredOptions('ジャンル')}
           />
         ),
       },
@@ -537,9 +569,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="アカウント名"
+            type="text"
             onFilter={(value) => handleFilter('accountName')(value)}
-            isActive={columnFilters['accountName']}
-            categoryData={accountList}
+            isActive={!!columnFilters['accountName']}
+            categoryData={getFilteredOptions('アカウント名')}
           />
         ),
         cell: ({ row }) => (
@@ -583,8 +616,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="ハッシュタグ"
             type="text"
             onFilter={(value) => handleFilter('hashtags')(value)}
-            isActive={columnFilters['hashtags']}
-            categoryData={hashtagList}
+            isActive={!!columnFilters['hashtags']}
+            categoryData={getFilteredOptions('ハッシュタグ')}
           />
         ),
         cell: ({ row }) => {
@@ -626,9 +659,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="BGM"
+            type="text"
             onFilter={(value) => handleFilter('audioTitle')(value)}
-            isActive={columnFilters['audioTitle']}
-            categoryData={audioTitleList}
+            isActive={!!columnFilters['audioTitle']}
+            categoryData={getFilteredOptions('BGM')}
           />
         ),
       },
