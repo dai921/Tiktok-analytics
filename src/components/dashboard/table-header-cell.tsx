@@ -12,6 +12,7 @@ interface TableHeaderCellProps {
   onFilter?: (value: FilterValue, shouldMerge?: boolean) => void
   style?: React.CSSProperties
   currentFilters?: Record<string, FilterValue>
+  isActive?: boolean
 }
 
 export interface TableHeaderCellRef {
@@ -47,17 +48,33 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
-    const [filterType, setFilterType] = useState<FilterType>(type === 'date' ? 'equal' : 'equal')
+    const [filterType, setFilterType] = useState<FilterType>('equal')
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-    const [isActive, setIsActive] = useState(false)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
 
+    // フィルターまたはソートがアクティブかどうかを判定
     const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
     const buttonRef = useRef<HTMLButtonElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
+
+    // フィルターの状態をリセットする関数を更新
+    const resetFilterState = useCallback(() => {
+      console.log(`TableHeaderCell(${title}) - resetFilterState called`);
+      setFilterValue('')
+      setFilterType('equal')
+      setSortDirection(null)
+    }, [title])
+
+    // isActiveの変更を監視
+    useEffect(() => {
+      console.log(`TableHeaderCell(${title}) - isActive changed:`, { isActive });
+      if (!isActive) {
+        resetFilterState()
+      }
+    }, [isActive, resetFilterState, title])
 
     // ポップアップの位置を計算する関数
     const calculatePopupPosition = useCallback(() => {
@@ -163,7 +180,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       const newDirection = sortDirection === null ? 'desc' : 
                           sortDirection === 'desc' ? 'asc' : null;
       setSortDirection(newDirection);
-      setIsActive(!!newDirection || !!filterValue);
+      setIsFilterOpen(false);
 
       if (newDirection) {
         onFilter?.({
@@ -174,7 +191,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       } else {
         handleClear();
       }
-      setIsFilterOpen(false);
     };
 
     const handleClear = () => {
@@ -184,11 +200,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         previousType: filterType
       });
 
-      // 全体リセットを削除し、個別のセルの状態のみをリセット
-      setFilterValue('')
-      setSortDirection(null)
-      setFilterType('equal')
-      setIsActive(false)
+      resetFilterState();  // これでisFilterActiveもリセットされる
       onFilter?.({
         field: title,
         type: 'equal',
@@ -200,14 +212,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     const handleFilter = (value: string, type: FilterType) => {
       console.log('=== TableHeaderCell handleFilter 開始 ===');
-      console.log('受け取ったパラメータ:', {
-        value,
-        type,
-        title,
-        componentType: type  // コンポーネントに渡されたtype prop
-      });
-
-      setIsActive(true);
+      setIsFilterOpen(false);
 
       // 日付フィルターの場合の処理
       if (title === '投稿日時') {
@@ -230,7 +235,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           onFilter?.(filterValue);
           console.log('onFilter関数の呼び出し完了');
           
-          setIsFilterOpen(false);
         } else {
           console.warn('無効な日付形式:', value);
         }
@@ -246,7 +250,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         onFilter?.(filterValue);
         console.log('onFilter関数の呼び出し完了');
         
-        setIsFilterOpen(false);
       }
       console.log('=== TableHeaderCell handleFilter 終了 ===');
     };
@@ -267,13 +270,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // 外部からアクセスできるようにする
     useImperativeHandle(ref, () => ({
-      clearFilter: handleClear
-    }))
-
-    // isFilterOpenの状態変更を処理
-    const toggleFilter = () => {
-      setIsFilterOpen(!isFilterOpen);
-    };
+      clearFilter: resetFilterState
+    }), [resetFilterState])
 
     const renderFilterInput = () => {
       switch (type) {
@@ -348,8 +346,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     }
 
-    const hasFilter = !!onFilter
-
     return (
       <div 
         data-header-cell
@@ -361,19 +357,18 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         )}
       >
         <span>{title}</span>
-        {hasFilter && (
+        {onFilter && (
           <button 
             ref={buttonRef}
-            onClick={toggleFilter}
-            data-sort-active={!!sortDirection}
-            className={`p-1 hover:bg-gray-100 rounded ${(sortDirection || filterValue) ? 'text-sky-500' : ''}`}
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500' : ''}`}
           >
             <svg 
               className="w-4 h-4"
               viewBox="0 0 24 24" 
               fill="none" 
               stroke="currentColor"
-              strokeWidth={(sortDirection || filterValue) ? "3" : "2"}
+              strokeWidth={isActive ? "3" : "2"}
             >
               <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
             </svg>

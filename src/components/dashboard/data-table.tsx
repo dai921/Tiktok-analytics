@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, forwardRef, useImperativeHandle, useEffect, ReactElement } from 'react'
+import { useState, forwardRef, useImperativeHandle, useEffect, ReactElement, useCallback } from 'react'
 import type { VideoData, FilterValue, Column, FilterQuery } from '@/types/dashboard'
 import { TableHeaderCell } from './table-header-cell'
 import Image from 'next/image'
@@ -65,44 +65,51 @@ const formatNumber = (num: number): ReactElement => {
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
+    const [columnFilters, setColumnFilters] = useState<Record<string, boolean>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
 
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
     }))
 
-    const handleClearAllFilters = () => {
+    const handleClearAllFilters = useCallback(() => {
+      console.log('DataTable - handleClearAllFilters called');
+      console.log('DataTable - columnFilters before clear:', columnFilters);
       setHasActiveFilters(false)
+      setColumnFilters({})
+      console.log('DataTable - columnFilters after clear: {}');
       onFilterChange(false)
-    }
+    }, [onFilterChange, columnFilters])
+
+    // columnFiltersの変更を監視
+    useEffect(() => {
+      console.log('DataTable - columnFilters changed:', columnFilters);
+    }, [columnFilters])
 
     const handleFilter = (field: string) => (filterValue: FilterValue) => {
-      console.log('=== DataTable handleFilter 開始 ===');
-      console.log('受け取ったパラメータ:', {
-        field,
-        filterValue,
-        mappedField: COLUMN_MAP[field]  // フィールド名のマッピング結果も確認
-      });
+      console.log('DataTable handleFilter:', { field, filterValue });
 
       if ('clear' in filterValue) {
-        console.log('クリア処理を実行');
+        const newFilters = { ...columnFilters }
+        delete newFilters[field]
+        setColumnFilters(newFilters)
         onFilterChange(true, {
           field: COLUMN_MAP[field],
           type: 'equal',
           value: ''
-        });
+        })
         return;
       }
 
-      const filterQuery = {
+      setColumnFilters(prev => ({
+        ...prev,
+        [field]: true
+      }))
+      onFilterChange(true, {
         field: COLUMN_MAP[field],
         type: filterValue.type,
         value: filterValue.value
-      };
-
-      console.log('Dashboardに送信するフィルター値:', filterQuery);
-      onFilterChange(true, filterQuery);
-      console.log('=== DataTable handleFilter 終了 ===');
+      })
     }
 
     const handlePageChange = (page: number) => {
@@ -141,6 +148,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 console.log('createdAtのフィルター呼び出し:', value);
                 return handleFilter('createdAt')(value);
               }}
+              isActive={columnFilters['createdAt']}
             />
           );
         },
@@ -153,6 +161,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('views')(value)}
+            isActive={columnFilters['views']}
           />
         ),
         cell: ({ row }) => formatNumber(row.views)
@@ -178,6 +187,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="ジャンル"
             onFilter={(value) => handleFilter('category')(value)}
+            isActive={columnFilters['category']}
           />
         ),
       },
@@ -187,6 +197,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="URL"
             onFilter={(value: FilterValue) => handleFilter('url')(value)}
+            isActive={columnFilters['url']}
           />
         ),
         cell: ({ row }) => (
@@ -214,6 +225,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="アカウント名"
             onFilter={(value) => handleFilter('accountName')(value)}
+            isActive={columnFilters['accountName']}
           />
         ),
         cell: ({ row }) => (
@@ -232,6 +244,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('likes')(value)}
+            isActive={columnFilters['likes']}
           />
         ),
         cell: ({ row }) => formatNumber(row.likes)
@@ -244,6 +257,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('comments')(value)}
+            isActive={columnFilters['comments']}
           />
         ),
         cell: ({ row }) => formatNumber(row.comments)
@@ -255,6 +269,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="ハッシュタグ"
             type="text"
             onFilter={(value) => handleFilter('hashtags')(value)}
+            isActive={columnFilters['hashtags']}
           />
         ),
         cell: ({ row }) => {
@@ -297,6 +312,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="BGM"
             onFilter={(value) => handleFilter('audioTitle')(value)}
+            isActive={columnFilters['audioTitle']}
           />
         ),
       },
@@ -306,6 +322,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="キャプション"
             onFilter={(value) => handleFilter('description')(value)}
+            isActive={columnFilters['description']}
           />
         ),
         cell: ({ row }) => (
@@ -350,7 +367,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         key={column.accessorKey} 
                         className="px-4 py-3 font-medium text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
-                          minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px'
+                          minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px',
+                          color: columnFilters[column.accessorKey] ? 'var(--color-sky-500)' : undefined
                         }}
                       >
                         {column.header({ column })}

@@ -127,9 +127,7 @@ const Dashboard = () => {
   }, [filters, currentPage]);
 
   const handleClearAllFilters = () => {
-    headerRefs.current.forEach(ref => {
-      ref?.clearFilter()
-    })
+    tableRef.current?.clearAllFilters()
     setFilters({})
   }
 
