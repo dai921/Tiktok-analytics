@@ -176,7 +176,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       };
     }, [isFilterOpen]);
 
-    const handleSort = () => {
+    // 昇順・降順ソート用の新しい関数を追加
+    const handleSortDirection = (direction: 'asc' | 'desc') => {
       // ソートの状態のみをリセット（data-sort-active属性のみ）
       document.querySelectorAll('[data-header-cell]').forEach(el => {
         if (el !== buttonRef.current?.closest('[data-header-cell]')) {
@@ -186,7 +187,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           }
         }
       });
+      
+      setSortDirection(direction);
+      setIsFilterOpen(false);
 
+      onFilter?.({
+        field: title,
+        type: 'sort',
+        value: direction
+      });
+    };
+
+    const handleSort = () => {
+      // 元の関数を残しておくが、実際には使用しない
       // ソートのサイクルを変更: null→desc→asc→descのループになるように
       const newDirection = sortDirection === null ? 'desc' : 
                           sortDirection === 'desc' ? 'asc' : 'desc';
@@ -462,6 +475,25 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     };
 
+    // 昇順/降順のラベルを取得する関数
+    const getAscSortLabel = () => {
+      // 数値フィールドの場合
+      if (type === 'number') {
+        return '▲ 小さい順に並び替え';
+      }
+      // テキストフィールドの場合（日付やアルファベット順など）
+      return '▲ 昇順に並び替え';
+    };
+
+    const getDescSortLabel = () => {
+      // 数値フィールドの場合
+      if (type === 'number') {
+        return '▼ 大きい順に並び替え';
+      }
+      // テキストフィールドの場合（日付やアルファベット順など）
+      return '▼ 降順に並び替え';
+    };
+
     return (
       <div 
         data-header-cell
@@ -540,11 +572,18 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               {renderCategoryList()}
               
               <div className="p-2 border-t">
+                <p className="text-xs font-medium mb-1 text-gray-700">並び替え:</p>
                 <button 
-                  onClick={handleSort}
-                  className="w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs"
+                  onClick={() => handleSortDirection('desc')}
+                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs mb-1 ${sortDirection === 'desc' ? 'bg-gray-100 font-semibold' : ''}`}
                 >
-                  {getSortLabel()}
+                  {getDescSortLabel()}
+                </button>
+                <button 
+                  onClick={() => handleSortDirection('asc')}
+                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs ${sortDirection === 'asc' ? 'bg-gray-100 font-semibold' : ''}`}
+                >
+                  {getAscSortLabel()}
                 </button>
               </div>
             </div>
