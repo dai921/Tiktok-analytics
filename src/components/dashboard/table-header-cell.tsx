@@ -341,16 +341,24 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // カテゴリデータをロードするロジックを修正
     useEffect(() => {
-      // 指定されたタイトルの場合のみカテゴリを設定
       if ((title === 'ジャンル' || title === 'アカウント名' || title === 'ハッシュタグ' || title === 'BGM') && isFilterOpen) {
-        // 外部から渡されたcategoryDataだけを使用（ハードコードは一切なし）
         console.log(`${title} - 利用可能なデータをセット:`, categoryData);
         
-        // データが配列かつ空でない場合のみ設定
         if (Array.isArray(categoryData) && categoryData.length > 0) {
-          setCategories(categoryData);
-          // 初期表示時は全カテゴリを表示
-          setFilteredCategories(categoryData);
+          // ジャンルの場合、「その他」を最後に配置
+          if (title === 'ジャンル') {
+            const sortedCategories = [...categoryData].sort((a, b) => {
+              if (a === 'その他') return 1;  // 「その他」を最後に
+              if (b === 'その他') return -1; // 「その他」を最後に
+              return a.localeCompare(b);     // それ以外は通常のソート
+            });
+            setCategories(sortedCategories);
+            setFilteredCategories(sortedCategories);
+          } else {
+            // その他のタイプの場合は通常通り
+            setCategories(categoryData);
+            setFilteredCategories(categoryData);
+          }
         } else {
           console.warn(`${title} - 有効なデータがありません:`, categoryData);
           setCategories([]);

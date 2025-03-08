@@ -137,8 +137,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   // 「、」と「,」両方をチェック（全角・半角の両方に対応）
                   const hasJapaneseComma = category.includes('、');
                   const hasEnglishComma = category.includes(',');
-                  const hasSlash = category.includes('/');
-                  
                   if (hasJapaneseComma || hasEnglishComma) {
                     // 両方の区切り文字で分割（まず「、」で分割し、その後各部分を「,」で分割）
                     let splitCategories: string[] = [];
@@ -159,13 +157,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                     splitCategories = splitCategories.map((cat: string) => cat.trim());
                     console.log(`  "${category}" の分割結果: [${splitCategories.join(', ')}]`);
                     allCategories.push(...splitCategories);
-                  } else if (hasSlash) {
-                    // スラッシュで区切られたカテゴリも別々のカテゴリとして扱う
-                    // 例: 「スキンケア/美容」を「スキンケア」と「美容」に分割
-                    const slashSplitCategories = category.split('/').map((cat: string) => cat.trim());
-                    console.log(`  スラッシュ区切りを検出: "${category}" → [${slashSplitCategories.join(', ')}]`);
-                    allCategories.push(...slashSplitCategories);
                   } else {
+                    // hasSlashの条件を削除し、スラッシュによる分割もなし
                     allCategories.push(category);
                   }
                 } else {
@@ -237,12 +230,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         allHashtags.push(part.trim());
                       }
                     });
-                  } else if (hashtag.includes('/')) {
-                    // スラッシュで区切られたハッシュタグも別々に扱う
-                    const slashSplit = hashtag.split('/').map((tag: string) => tag.trim());
-                    console.log(`  スラッシュ区切りのハッシュタグ: "${hashtag}" → [${slashSplit.join(', ')}]`);
-                    allHashtags.push(...slashSplit);
                   } else {
+                    // スラッシュによる分割は行わない
                     allHashtags.push(hashtag);
                   }
                 }
@@ -294,12 +283,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                       allTitles.push(part.trim());
                     }
                   });
-                } else if (title.includes('/')) {
-                  // スラッシュで区切られた音声タイトルも別々に扱う
-                  const slashSplit = title.split('/').map((t: string) => t.trim());
-                  console.log(`  スラッシュ区切りの音声タイトル: "${title}" → [${slashSplit.join(', ')}]`);
-                  allTitles.push(...slashSplit);
                 } else {
+                  // スラッシュによる分割は行わない
                   allTitles.push(title);
                 }
               }
