@@ -1,10 +1,15 @@
 'use client'
 //テスト用に変更
 import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react'
-import type { FilterValue, FilterType } from '@/types/dashboard'
+import type { FilterValue } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 import { cn } from '@/lib/utils'
 import { fetchCategories } from '@/lib/api'  // カテゴリ取得用のAPIを追加
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+
+// FilterType定義を更新
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort';
 
 interface TableHeaderCellProps {
   title: string
@@ -336,18 +341,29 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // カテゴリデータをロードするロジックを修正
     useEffect(() => {
-      // タイトルが「ジャンル」の場合のみカテゴリを設定
-      if (title === 'ジャンル' && isFilterOpen) {
+      // 指定されたタイトルの場合のみカテゴリを設定
+      if ((title === 'ジャンル' || title === 'アカウント名' || title === 'ハッシュタグ' || title === 'BGM') && isFilterOpen) {
         // 外部から渡されたcategoryDataだけを使用（ハードコードは一切なし）
-        setCategories(categoryData);
-        // 初期表示時は全カテゴリを表示
-        setFilteredCategories(categoryData);
+        console.log(`${title} - 利用可能なデータをセット:`, categoryData);
+        
+        // データが配列かつ空でない場合のみ設定
+        if (Array.isArray(categoryData) && categoryData.length > 0) {
+          setCategories(categoryData);
+          // 初期表示時は全カテゴリを表示
+          setFilteredCategories(categoryData);
+        } else {
+          console.warn(`${title} - 有効なデータがありません:`, categoryData);
+          setCategories([]);
+          setFilteredCategories([]);
+        }
       }
     }, [title, isFilterOpen, categoryData]);
 
     // フィルター値の変更に応じてカテゴリリストをフィルタリング
     useEffect(() => {
-      if (title === 'ジャンル') {
+      if (title === 'ジャンル' || title === 'アカウント名' || title === 'ハッシュタグ' || title === 'BGM') {
+        console.log(`${title} - フィルタリング:`, { filterValue, categoriesCount: categories.length });
+        
         if (filterValue === '') {
           // フィルター値が空の場合は全カテゴリを表示
           setFilteredCategories(categories);
@@ -356,6 +372,11 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           const filtered = categories.filter(category => 
             category.toLowerCase().includes(filterValue.toLowerCase())
           );
+          console.log(`${title} - フィルタリング結果:`, { 
+            original: categories.length, 
+            filtered: filtered.length,
+            sample: filtered.slice(0, 3)
+          });
           setFilteredCategories(filtered);
         }
       }
@@ -363,25 +384,41 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // カテゴリを選択する処理
     const handleCategorySelect = (category: string) => {
-      setFilterValue(category);
-      // フィルタを適用
-      onFilter?.({
-        field: title,
-        value: category,
-        type: 'equal'
-      }, true);
+      console.log(`カテゴリ選択: ${category}`);
       
-      // ポップアップを閉じる
-      setIsFilterOpen(false);
+      if (onFilter) {
+        // カテゴリ選択時の処理
+        // 部分一致によるフィルタリングを実装
+        onFilter({
+          type: 'contains', // 'equals'から'contains'に変更して部分一致検索に
+          value: category,
+          field: title
+        });
+        
+        // UI状態を更新
+        setFilterValue(category);
+        setIsFilterOpen(false);
+      }
     };
 
     // カテゴリリストのレンダリング
     const renderCategoryList = () => {
-      if (title !== 'ジャンル') return null;
+      if (title !== 'ジャンル' && title !== 'アカウント名' && title !== 'ハッシュタグ' && title !== 'BGM') return null;
       
       return (
         <div className="mt-2 border-t pt-2">
-          <p className="text-xs font-medium mb-1 text-gray-700">利用可能なカテゴリ:</p>
+          {/* 検索ボックスを追加 */}
+          <div className="mb-2">
+            <input
+              type="text"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              placeholder={`${getTitleLabel()}を検索...`}
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          </div>
+          
+          <p className="text-xs font-medium mb-1 text-gray-700">利用可能な{getTitleLabel()}:</p>
           {filteredCategories.length > 0 ? (
             <ul className="space-y-1 max-h-60 overflow-y-auto">
               {filteredCategories.map((category, index) => (
@@ -397,11 +434,27 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             </ul>
           ) : (
             <p className="text-xs text-gray-500 p-2">
-              {filterValue ? "一致するカテゴリがありません" : "カテゴリがありません"}
+              {filterValue ? "一致する項目がありません" : "項目がありません"}
             </p>
           )}
         </div>
       );
+    };
+
+    // タイトルに応じたラベルを取得
+    const getTitleLabel = () => {
+      switch (title) {
+        case 'ジャンル':
+          return 'カテゴリ';
+        case 'アカウント名':
+          return 'アカウント';
+        case 'ハッシュタグ':
+          return 'ハッシュタグ';
+        case 'BGM':
+          return '音声タイトル';
+        default:
+          return '項目';
+      }
     };
 
     return (

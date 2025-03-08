@@ -73,6 +73,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [columnFilters, setColumnFilters] = useState<Record<string, boolean>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
     const [categoryList, setCategoryList] = useState<string[]>([])
+    const [accountList, setAccountList] = useState<string[]>([])
+    const [hashtagList, setHashtagList] = useState<string[]>([])
+    const [audioTitleList, setAudioTitleList] = useState<string[]>([])
 
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
@@ -92,56 +95,265 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       console.log('DataTable - columnFilters changed:', columnFilters);
     }, [columnFilters])
 
-    // コンポーネントマウント時にカテゴリを取得
+    // コンポーネントマウント時にカテゴリとその他のデータを取得
     useEffect(() => {
       const fetchCategories = async () => {
         try {
-          // APIのパスを修正
+          console.log('カテゴリ一覧取得開始');
           const response = await fetch('http://localhost:8080/api/categories');
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && Array.isArray(data.categories)) {
-              // カテゴリ名を抽出して、「、」で分割
-              let allCategories: string[] = [];
-              
-              data.categories.forEach((cat: CategoryItem) => {
-                if (!cat.category) return;
-                
-                // 「、」や「,」で区切られたカテゴリを分割
-                const splitCategories = cat.category.split(/[、,]/).map(c => c.trim()).filter(Boolean);
-                
-                // 分割したカテゴリを追加
-                allCategories = [...allCategories, ...splitCategories];
+          
+          if (!response.ok) {
+            console.error('カテゴリAPI応答エラー:', response.status, response.statusText);
+            return;
+          }
+          
+          const data = await response.json();
+          console.log('カテゴリAPIレスポンス:', data);
+          
+          if (data.success) {
+            if (Array.isArray(data.categories)) {
+              // 詳細なデバッグ: カテゴリデータの内容とコードポイントを確認
+              console.log('受信したカテゴリデータ:');
+              data.categories.forEach((category: string, index: number) => {
+                if (category && typeof category === 'string') {
+                  // 文字コードの確認（区切り文字の問題を特定するため）
+                  const charCodes = Array.from(category).map(c => c.charCodeAt(0).toString(16));
+                  console.log(`カテゴリ[${index}]: "${category}" - 文字コード: [${charCodes.join(', ')}]`);
+                  
+                  // 「、」の検出と確認
+                  const commaPos = category.indexOf('、');
+                  if (commaPos >= 0) {
+                    console.log(`  「、」を検出: 位置=${commaPos}, コード=${category.charCodeAt(commaPos).toString(16)}`);
+                    console.log(`  分割結果: [${category.split('、').map(s => `"${s.trim()}"`).join(', ')}]`);
+                  }
+                }
               });
               
-              // 重複を削除
+              // カテゴリを「、」で分割して個別のカテゴリとして扱う
+              const allCategories: string[] = [];
+              data.categories.forEach((category: string) => {
+                // カテゴリが「、」で区切られている場合は分割
+                if (category && typeof category === 'string') {
+                  // 「、」と「,」両方をチェック（全角・半角の両方に対応）
+                  const hasJapaneseComma = category.includes('、');
+                  const hasEnglishComma = category.includes(',');
+                  const hasSlash = category.includes('/');
+                  
+                  if (hasJapaneseComma || hasEnglishComma) {
+                    // 両方の区切り文字で分割（まず「、」で分割し、その後各部分を「,」で分割）
+                    let splitCategories: string[] = [];
+                    
+                    // まず「、」で分割
+                    const japaneseCommaSplit = hasJapaneseComma ? category.split('、') : [category];
+                    
+                    // 次に各部分を「,」で分割
+                    japaneseCommaSplit.forEach((part: string) => {
+                      if (part.includes(',')) {
+                        splitCategories.push(...part.split(','));
+                      } else {
+                        splitCategories.push(part);
+                      }
+                    });
+                    
+                    // 各カテゴリの空白を削除
+                    splitCategories = splitCategories.map((cat: string) => cat.trim());
+                    console.log(`  "${category}" の分割結果: [${splitCategories.join(', ')}]`);
+                    allCategories.push(...splitCategories);
+                  } else if (hasSlash) {
+                    // スラッシュで区切られたカテゴリも別々のカテゴリとして扱う
+                    // 例: 「スキンケア/美容」を「スキンケア」と「美容」に分割
+                    const slashSplitCategories = category.split('/').map((cat: string) => cat.trim());
+                    console.log(`  スラッシュ区切りを検出: "${category}" → [${slashSplitCategories.join(', ')}]`);
+                    allCategories.push(...slashSplitCategories);
+                  } else {
+                    allCategories.push(category);
+                  }
+                } else {
+                  console.warn('無効なカテゴリ値:', category);
+                }
+              });
+              
+              // 重複を除去
               const uniqueCategories = [...new Set(allCategories)];
-              
-              // 「カテゴリ」を削除し、「その他」を除外して並べ替え
-              const otherCategory = 'その他';
-              const sortedCategories = uniqueCategories
-                .filter(cat => cat !== otherCategory && cat !== 'カテゴリ') // カテゴリを除外
-                .sort((a, b) => a.localeCompare(b, 'ja'));
-              
-              // 「その他」があれば最後に追加
-              if (uniqueCategories.includes(otherCategory)) {
-                sortedCategories.push(otherCategory);
-              }
-              
-              setCategoryList(sortedCategories);
+              setCategoryList(uniqueCategories.filter(Boolean) as string[]);
+              console.log('処理後のカテゴリ:', uniqueCategories);
+            } else {
+              console.error('カテゴリデータが配列ではありません:', data.categories);
             }
           } else {
-            console.error('カテゴリの取得に失敗しました');
-            setCategoryList([]);
+            console.error('カテゴリ取得APIエラー:', data.error);
           }
         } catch (error) {
-          console.error('カテゴリの取得中にエラーが発生しました:', error);
+          console.error('カテゴリの取得中に例外が発生しました:', error);
           setCategoryList([]);
         }
       };
+
+      const fetchAccounts = async () => {
+        try {
+          // APIエンドポイントを修正
+          const response = await fetch('http://localhost:8080/api/accounts');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && Array.isArray(data.data)) {
+              const accounts = data.data.filter(Boolean);
+              setAccountList(accounts as string[]);
+              console.log('取得したアカウント:', accounts);
+            }
+          }
+        } catch (error) {
+          console.error('アカウントの取得中にエラーが発生しました:', error);
+          setAccountList([]);
+        }
+      };
+
+      const fetchHashtags = async () => {
+        try {
+          // APIエンドポイントを修正
+          const response = await fetch('http://localhost:8080/api/hashtags?limit=100');
+          if (response.ok) {
+            const data = await response.json();
+            console.log('ハッシュタグAPIレスポンス:', data);
+            
+            if (data.success && Array.isArray(data.data)) {
+              // ハッシュタグを抽出
+              const allHashtags: string[] = [];
+              data.data.forEach((tagObj: any) => {
+                if (tagObj && tagObj.hashtag && typeof tagObj.hashtag === 'string') {
+                  const hashtag = tagObj.hashtag;
+                  console.log(`検出されたハッシュタグ: "${hashtag}"`);
+                  
+                  // 「、」「,」などで区切られている場合は分割
+                  if (hashtag.includes('、') || hashtag.includes(',')) {
+                    // まず「、」で分割
+                    const parts = hashtag.includes('、') ? hashtag.split('、') : [hashtag];
+                    
+                    // 次に各部分を「,」で分割
+                    parts.forEach((part: string) => {
+                      if (part.includes(',')) {
+                        const commaSplit = part.split(',').map((t: string) => t.trim());
+                        allHashtags.push(...commaSplit);
+                      } else {
+                        allHashtags.push(part.trim());
+                      }
+                    });
+                  } else if (hashtag.includes('/')) {
+                    // スラッシュで区切られたハッシュタグも別々に扱う
+                    const slashSplit = hashtag.split('/').map((tag: string) => tag.trim());
+                    console.log(`  スラッシュ区切りのハッシュタグ: "${hashtag}" → [${slashSplit.join(', ')}]`);
+                    allHashtags.push(...slashSplit);
+                  } else {
+                    allHashtags.push(hashtag);
+                  }
+                }
+              });
+              // 重複を除去
+              const uniqueHashtags = [...new Set(allHashtags)].filter(Boolean);
+              setHashtagList(uniqueHashtags as string[]);
+              console.log('処理後のハッシュタグ:', uniqueHashtags);
+            }
+          }
+        } catch (error) {
+          console.error('ハッシュタグの取得中にエラーが発生しました:', error);
+          setHashtagList([]);
+        }
+      };
+
+      // BGM(音声タイトル)リストの取得 - APIから取得するように変更
+      const fetchAudioTitles = async () => {
+        try {
+          console.log('BGM一覧取得開始');
+          const response = await fetch('http://localhost:8080/api/music');
+          
+          if (!response.ok) {
+            console.error('BGM API応答エラー:', response.status, response.statusText);
+            return;
+          }
+          
+          const data = await response.json();
+          console.log('BGM APIレスポンス:', data);
+          
+          if (data.success && Array.isArray(data.data)) {
+            // 音声タイトルも「、」で分割して処理
+            const allTitles: string[] = [];
+            data.data.forEach((title: string) => {
+              if (title && typeof title === 'string') {
+                console.log(`検出された音声タイトル: "${title}"`);
+                
+                // 「、」「,」などで区切られている場合は分割
+                if (title.includes('、') || title.includes(',')) {
+                  // まず「、」で分割
+                  const parts = title.includes('、') ? title.split('、') : [title];
+                  
+                  // 次に各部分を「,」で分割
+                  parts.forEach((part: string) => {
+                    if (part.includes(',')) {
+                      const commaSplit = part.split(',').map((t: string) => t.trim());
+                      allTitles.push(...commaSplit);
+                    } else {
+                      allTitles.push(part.trim());
+                    }
+                  });
+                } else if (title.includes('/')) {
+                  // スラッシュで区切られた音声タイトルも別々に扱う
+                  const slashSplit = title.split('/').map((t: string) => t.trim());
+                  console.log(`  スラッシュ区切りの音声タイトル: "${title}" → [${slashSplit.join(', ')}]`);
+                  allTitles.push(...slashSplit);
+                } else {
+                  allTitles.push(title);
+                }
+              }
+            });
+            // 重複を除去
+            const uniqueTitles = [...new Set(allTitles)].filter(Boolean);
+            setAudioTitleList(uniqueTitles as string[]);
+            console.log('処理後の音声タイトル:', uniqueTitles);
+          } else {
+            console.error('BGMデータの取得に失敗:', data);
+            // 失敗した場合はデータからの抽出を試みる
+            extractAudioTitlesFromData();
+          }
+        } catch (error) {
+          console.error('音声タイトルの取得中に例外が発生しました:', error);
+          // 失敗した場合はデータからの抽出を試みる
+          extractAudioTitlesFromData();
+        }
+      };
+
+      // データから音声タイトルを抽出するフォールバック処理
+      const extractAudioTitlesFromData = () => {
+        if (Array.isArray(initialData) && initialData.length > 0) {
+          const titles = initialData
+            .map(item => item.audioTitle)
+            .filter(Boolean);
+          
+          // 重複を除去
+          const uniqueTitles = [...new Set(titles)];
+          setAudioTitleList(uniqueTitles);
+          console.log('データから抽出した音声タイトル:', uniqueTitles);
+        }
+      };
+      
+      // 取得処理の後にデバッグ出力を追加
+      const logAvailableData = () => {
+        // コンポーネントマウント後、遅延してデータ設定完了を確認
+        setTimeout(() => {
+          console.log('=== 利用可能なフィルターデータの確認 ===');
+          console.log('カテゴリリスト:', categoryList);
+          console.log('アカウントリスト:', accountList);
+          console.log('ハッシュタグリスト:', hashtagList);
+          console.log('BGMリスト:', audioTitleList);
+          console.log('===============================');
+        }, 1000);
+      };
       
       fetchCategories();
-    }, []);
+      fetchAccounts();
+      fetchHashtags();
+      fetchAudioTitles(); // extractAudioTitlesの代わりにfetchAudioTitlesを呼び出す
+      
+      logAvailableData();
+    }, [initialData]);
 
     const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
       console.log('DataTable handleFilter:', { field, filterValue });
@@ -312,6 +524,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="アカウント名"
             onFilter={(value) => handleFilter('accountName')(value)}
             isActive={columnFilters['accountName']}
+            categoryData={accountList}
           />
         ),
         cell: ({ row }) => (
@@ -356,6 +569,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="text"
             onFilter={(value) => handleFilter('hashtags')(value)}
             isActive={columnFilters['hashtags']}
+            categoryData={hashtagList}
           />
         ),
         cell: ({ row }) => {
@@ -399,6 +613,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="BGM"
             onFilter={(value) => handleFilter('audioTitle')(value)}
             isActive={columnFilters['audioTitle']}
+            categoryData={audioTitleList}
           />
         ),
       },

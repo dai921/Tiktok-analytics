@@ -240,26 +240,20 @@ Object.entries(COLUMN_MAP).forEach(([key, value]) => {
 
 // フィルタータイプの変換関数
 const convertFilterType = (type: FilterType, field: string): string => {
-  console.log('Converting filter type for API:', { type, field });
-
-  // 日付フィールドの場合
-  if (field === 'createdAt') {
-    switch (type) {
-      case 'after': return 'after';
-      case 'before': return 'before';
-      default: return 'equal';
-    }
+  switch (type) {
+    case 'equal':
+      return 'equal';
+    case 'greater':
+      return 'gt';
+    case 'less':
+      return 'lt';
+    case 'between':
+      return 'between';
+    case 'contains':
+      return 'contains'; // 部分一致検索のタイプを追加
+    default:
+      return 'equal';
   }
-
-  // 数値フィールドの場合
-  return (() => {
-    switch (type) {
-      case 'greater': return 'greater';
-      case 'less': return 'less';
-      case 'sort': return 'sort';
-      default: return 'equal';
-    }
-  })();
 }
 
 // フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
@@ -442,6 +436,25 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
           
           console.log('ハッシュタグフィルター設定:', {
             value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+        }
+        // カテゴリフィルターの処理
+        else if (key === 'category' || apiField === 'category') {
+          console.log('API - カテゴリフィルタリング処理');
+          
+          // カテゴリは部分一致で検索する
+          if (filter.type === 'contains') {
+            // 部分一致検索のための処理
+            params.append('category', filter.value.toString());
+          } else {
+            // 従来の完全一致検索
+            params.append('category', filter.value.toString());
+          }
+          
+          console.log('カテゴリフィルター設定:', {
+            value: filter.value.toString(),
+            type: filter.type,
             queryParams: Object.fromEntries(params.entries())
           });
         }

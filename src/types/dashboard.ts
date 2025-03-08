@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 'equal' | 'greater' | 'less' | 'after' | 'before' | 'sort' | 'date';
+export type FilterType = 'equal' | 'greater' | 'less' | 'after' | 'before' | 'sort' | 'date' | 'contains' | 'between';
 
 export interface FilterQuery {
   field: string
