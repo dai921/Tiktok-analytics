@@ -109,20 +109,28 @@ async def get_videos(
 
         # フィルター処理
         if account_name:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_name LIKE %s")
-            params.append(f"%{account_name}%")
+            params.append(f"%{escaped_account_name}%")
         
         if category:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
-            params.append(f"%{category}%")
+            params.append(f"%{escaped_category}%")
             
         if hashtag:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{hashtag}%")
+            params.append(f"%{escaped_hashtag}%")
             
         if music_info:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("music_info LIKE %s")
-            params.append(f"%{music_info}%")
+            params.append(f"%{escaped_music_info}%")
             
         if min_play_count:
             where_clauses.append("play_count >= %s")
@@ -289,20 +297,28 @@ async def get_videos_alt(
 
         # フィルター処理
         if account_name:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_name LIKE %s")
-            params.append(f"%{account_name}%")
+            params.append(f"%{escaped_account_name}%")
         
         if category:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
-            params.append(f"%{category}%")
+            params.append(f"%{escaped_category}%")
             
         if hashtag:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{hashtag}%")
+            params.append(f"%{escaped_hashtag}%")
             
         if music_info:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("music_info LIKE %s")
-            params.append(f"%{music_info}%")
+            params.append(f"%{escaped_music_info}%")
             
         if min_play_count:
             where_clauses.append("play_count >= %s")
