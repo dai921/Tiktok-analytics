@@ -105,10 +105,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         ...prev,
         [field]: true
       }))
+      
+      // ハッシュタグの場合は専用フラグを設定
+      const isHashtagFilter = field === 'hashtags';
+      
       onFilterChange(true, {
         field: COLUMN_MAP[field],
         type: filterValue.type,
-        value: filterValue.value
+        value: filterValue.value,
+        ...(isHashtagFilter && { isHashtag: true }),
+        ...(filterValue.isHashtag && { isHashtag: true })
       })
     }
 

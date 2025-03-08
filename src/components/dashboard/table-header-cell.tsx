@@ -238,6 +238,24 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         } else {
           console.warn('無効な日付形式:', value);
         }
+      // ハッシュタグフィルターの場合の処理
+      } else if (title === 'ハッシュタグ') {
+        console.log('ハッシュタグのフィルター処理を開始');
+        
+        // 入力されたタグを整形（前後の空白を削除、#があれば削除）
+        const cleanedTag = value.trim().replace(/^#/, '');
+        
+        if (cleanedTag) {
+          const filterValue = {
+            field: title,
+            type,
+            value: cleanedTag,
+            isHashtag: true // ハッシュタグフィルター用のフラグ
+          };
+          console.log('ハッシュタグフィルター値:', filterValue);
+          
+          onFilter?.(filterValue);
+        }
       } else {
         console.log('通常のフィルター処理');
         const filterValue = {

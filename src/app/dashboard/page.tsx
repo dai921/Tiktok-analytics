@@ -36,6 +36,15 @@ const Dashboard = () => {
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
 
   const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
+    // ハッシュタグ用のフラグを引き継ぐ
+    if (filter.isHashtag) {
+      return {
+        field: filter.field,
+        type: filter.type,
+        value: filter.value,
+        isHashtag: true
+      }
+    }
     return {
       field: filter.field,
       type: filter.type,
@@ -66,19 +75,26 @@ const Dashboard = () => {
       });
     } else {
       // フィールド名を英語に逆変換
-      const field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
+      let field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
+      
+      // ハッシュタグの場合は特別に処理
+      if (newFilter.field === 'ハッシュタグ') {
+        field = 'hashtags';
+      }
       
       console.log('Dashboard - フィールド変換:', {
         originalField: newFilter.field,
         convertedField: field,
         type: newFilter.type,
-        value: newFilter.value
+        value: newFilter.value,
+        isHashtag: newFilter.isHashtag
       });
 
       const filterQuery: FilterQuery = {
         field: field,
         type: newFilter.type,
-        value: newFilter.value
+        value: newFilter.value,
+        ...(newFilter.isHashtag && { isHashtag: true })
       };
       
       console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);

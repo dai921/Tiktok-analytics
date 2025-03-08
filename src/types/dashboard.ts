@@ -7,10 +7,12 @@ export interface FilterQuery {
   field: string
   type: FilterType
   value: string | number
+  isHashtag?: boolean
 }
 
 export interface FilterValue extends FilterQuery {
   clear?: boolean
+  isHashtag?: boolean
 }
 
 // データ型

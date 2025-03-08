@@ -296,6 +296,7 @@ const mapFieldToApiField = (field: string): string => {
     'createdAt': 'created_at',
     'accountName': 'account_name',
     'description': 'caption',
+    'hashtags': 'hashtag', // hashtag（単数形）に変換
     // 他のフィールドも必要に応じて追加
   };
   
@@ -423,72 +424,54 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
           apiFieldName: mapFieldToApiField(key)
         });
 
-        if (!filter || !filter.value) {
-          console.log('getSheetData - 無効なフィルター:', { key, filter });
-          return;
-        }
-
-        console.log('getSheetData - フィルター処理:', { key, filter });
-        const apiFieldName = mapFieldToApiField(key);
-        
-        // ソート処理の場合
-        if (filter.type === 'sort') {
-          console.log('ソート処理:', { field: apiFieldName, order: filter.value });
-          // フィールド名のマッピングを確認
-          const sortFieldMap = {
-            'views': 'play_count',
-            'likes': 'likes_count',
-            'comments': 'comment_count',
-            'createdAt': 'created_at'
-          };
-          const sortField = sortFieldMap[apiFieldName] || apiFieldName;
-          params.append('sort_by', sortField);
-          params.append('sort_order', String(filter.value));
-          return;
-        }
-
-        // 日付フィルターの場合
-        if (key === 'createdAt' || key === 'created_at') {
-          console.log('日付フィルター処理:', { type: filter.type, value: filter.value });
+        // ハッシュタグフィルターの場合の特別な処理
+        if (filter.isHashtag || key === 'hashtags') {
+          console.log('API - ハッシュタグのフィルタリング処理');
           
-          params.append('created_at', String(filter.value));
-          params.append('created_at_type', filter.type);  // フィルタータイプを追加
-          return;  // 重要: ここでreturnして他の処理に進まないようにする
-        }
-
-        // 数値フィルターの場合
-        const numericFields = {
-          'views': 'play_count',
-          'likes': 'likes_count',
-          'comments': 'comment_count',
-          'shares': 'shares_count',
-          'saves': 'saves_count'
-        };
-
-        // 元のフィールド名（viewsなど）で判定する
-        if (Object.keys(numericFields).includes(key)) {
-          console.log('API - 数値フィルター変換前:', {
-            originalKey: key,
-            mappedField: numericFields[key],
-            filterType: filter.type,
-            value: filter.value
+          // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
+          // バックエンドAPIでは'hashtag'というパラメータ名で扱われる
+          params.append('hashtag', filter.value.toString());
+          
+          // フィルタリングのロギング
+          console.log('ハッシュタグフィルター設定:', {
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
           });
+        } else {
+          // 通常のフィルター処理
+          const apiFieldName = mapFieldToApiField(key);
+          
+          // 日付フィルターの処理
+          if (filter.type === 'date' || filter.type === 'after' || filter.type === 'before') {
+            if (filter.type === 'date') {
+              params.append('created_at', filter.value.toString());
+              params.append('created_at_type', 'exact');
+            } else if (filter.type === 'after') {
+              params.append('start_date', filter.value.toString());
+            } else if (filter.type === 'before') {
+              params.append('end_date', filter.value.toString());
+            }
+          } 
+          // 数値フィルターの処理
+          else if (filter.type === 'greater' || filter.type === 'less') {
+            console.log('API - 数値フィルター変換前:', {
+              originalKey: key,
+              mappedField: apiFieldName,
+              filterType: filter.type,
+              value: filter.value
+            });
 
-          const dbField = numericFields[key];
-          params.append(dbField, String(filter.value));
-          params.append(`${dbField}_type`, filter.type);
+            const dbField = apiFieldName;
+            params.append(dbField, String(filter.value));
+            params.append(`${dbField}_type`, filter.type);
 
-          console.log('API - 数値フィルター変換後:', {
-            dbField,
-            type: filter.type,
-            params: Object.fromEntries(params.entries())
-          });
-          return;
+            console.log('API - 数値フィルター変換後:', {
+              dbField,
+              type: filter.type,
+              params: Object.fromEntries(params.entries())
+            });
+          }
         }
-
-        // テキストフィルターの場合（アカウント名、カテゴリ、ハッシュタグなど）
-        console.log('テキストフィルター処理:', { field: apiFieldName, value: filter.value });
-        params.append(apiFieldName, String(filter.value));
       });
     }
   }
