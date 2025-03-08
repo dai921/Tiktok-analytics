@@ -99,10 +99,29 @@ const Dashboard = () => {
       
       console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);
       
-      setFilters(prev => ({
-        ...prev,
-        [field]: filterQuery
-      }));
+      // 修正: ソート処理の場合は、既存のフィルター状態を維持しながらソート情報のみを更新
+      if (newFilter.type === 'sort') {
+        // 同じフィールドに対するフィルターがあれば、それを保持したままソート情報を追加
+        setFilters(prev => {
+          // 同じフィールドに対する既存のフィルター情報を取得
+          const existingFilter = prev[field];
+          
+          // 同じフィールドに対するフィルターとソートの情報をマージ
+          return {
+            ...prev,
+            // ソート用の新しいキーを作成（既存のフィルターとは別に管理）
+            [`${field}_sort`]: filterQuery,
+            // 既存のフィルターが存在する場合は維持
+            ...(existingFilter && { [field]: existingFilter })
+          };
+        });
+      } else {
+        // 通常のフィルター処理（既存のコード）
+        setFilters(prev => ({
+          ...prev,
+          [field]: filterQuery
+        }));
+      }
     }
   };
 

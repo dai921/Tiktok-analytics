@@ -399,8 +399,29 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     if (Object.keys(filters).length === 0) {
       console.log('getSheetData - フィルターなしでデータを取得');
     } else {
+      // フィルターとソートを分離して処理
+      
+      // ソートフィルターを先に処理（_sortで終わるキーを探す）
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter) return; // フィルタがnullまたはundefinedの場合はスキップ
+        if (!filter || !key.endsWith('_sort')) return;
+        
+        // ソート処理だけを行う
+        if (filter.type === 'sort') {
+          console.log('ソート設定検出（_sortキー）:', {
+            field: key,
+            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            direction: filter.value
+          });
+          
+          // ソート情報を保存
+          sortField = mapFieldToApiField(key.replace('_sort', ''));
+          sortOrder = filter.value.toString();
+        }
+      });
+      
+      // 通常のフィルターを処理
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
         
         console.log('API - フィルター処理開始:', {
           key,
@@ -411,21 +432,6 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
 
         // API用のフィールド名を取得
         const apiField = mapFieldToApiField(key);
-
-        // ソート処理の場合
-        if (filter.type === 'sort') {
-          console.log('ソート設定検出:', {
-            field: key,
-            apiField,
-            direction: filter.value
-          });
-          
-          // ソート情報を保存（パラメータには追加しない）
-          sortField = apiField;
-          sortOrder = filter.value.toString();
-          
-          return; // この反復をスキップ（フィルタパラメータには追加しない）
-        }
 
         // ハッシュタグフィルターの場合の特別な処理
         if (filter.isHashtag || key === 'hashtags') {
@@ -438,7 +444,7 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
             value: filter.value.toString(),
             queryParams: Object.fromEntries(params.entries())
           });
-        } 
+        }
         // 日付フィルターの処理 - 複数のタイプを処理
         else if (key === 'createdAt' || apiField === 'created_at') {
           console.log('日付フィルター検出:', {
@@ -448,7 +454,7 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
             value: filter.value
           });
 
-          // タイプに基づいて適切なパラメータを追加
+          // 日付フィルターのタイプに基づいて適切なパラメータを追加
           if (filter.type === 'date' || filter.type === 'equal') {
             // 等価比較（特定の日付）- バックエンドではdateタイプを期待
             params.append('created_at', filter.value.toString());
