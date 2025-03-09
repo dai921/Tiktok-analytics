@@ -118,6 +118,40 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       console.log('DataTable - columnFilters changed:', columnFilters);
     }, [columnFilters]);
 
+    // フィルター条件に基づいて選択肢を取得する関数（共通関数として抽出）
+    const loadFilterOptions = useCallback(async () => {
+      try {
+        setIsLoadingFilterOptions(true);
+        console.log('フィルター条件に基づく選択肢データの取得開始:', currentFilters);
+        
+        // 最適化されたAPIを使って選択肢のみを取得
+        const result = await getFilterOptions(currentFilters);
+        
+        if (result.success) {
+          console.log(`選択肢データの取得成功`);
+          
+          // 取得した選択肢をセット
+          setCategoryList(result.categories);
+          setAccountList(result.accounts);
+          setHashtagList(result.hashtags);
+          setAudioTitleList(result.music);
+          
+          console.log('選択肢更新完了:', {
+            カテゴリ数: result.categories.length,
+            アカウント数: result.accounts.length,
+            ハッシュタグ数: result.hashtags.length,
+            音声タイトル数: result.music.length
+          });
+        } else {
+          console.error('選択肢データの取得に失敗:', result.error || '不明なエラー');
+        }
+      } catch (error) {
+        console.error('フィルター選択肢取得中のエラー:', error);
+      } finally {
+        setIsLoadingFilterOptions(false);
+      }
+    }, [currentFilters]);
+
     // API から各種選択肢データを取得する関数
     const fetchCategoriesFromApi = async () => {
       try {
@@ -263,54 +297,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     // コンポーネント初期表示時に、選択肢データを取得
     useEffect(() => {
       console.log('初回レンダリング時のデータ取得開始');
-      // 選択肢データの初期ロード
-      fetchCategoriesFromApi();
-      fetchAccountsFromApi();
-      fetchHashtagsFromApi();
-      fetchAudioTitlesFromApi();
-    }, []);
+      // 最初の読み込みでもAPIベースのフィルターオプション取得を使用
+      loadFilterOptions();
+    }, [loadFilterOptions]);
 
-    // フィルターが変更されたときに選択肢を更新する
+    // フィルター変更時に、フィルターされたデータに基づいて選択肢を更新
     useEffect(() => {
-      const loadFilterOptions = async () => {
-        if (!hasActiveFilters) return;
-        
-        try {
-          setIsLoadingFilterOptions(true);
-          console.log('フィルター条件に基づく選択肢データの取得開始:', currentFilters);
-          
-          // 最適化されたAPIを使って選択肢のみを取得
-          const result = await getFilterOptions(currentFilters);
-          
-          if (result.success) {
-            console.log(`選択肢データの取得成功`);
-            
-            // 取得した選択肢をセット
-            setCategoryList(result.categories);
-            setAccountList(result.accounts);
-            setHashtagList(result.hashtags);
-            setAudioTitleList(result.music);
-            
-            console.log('選択肢更新完了:', {
-              カテゴリ数: result.categories.length,
-              アカウント数: result.accounts.length,
-              ハッシュタグ数: result.hashtags.length,
-              音声タイトル数: result.music.length
-            });
-          } else {
-            console.error('選択肢データの取得に失敗:', result.error || '不明なエラー');
-          }
-        } catch (error) {
-          console.error('フィルター選択肢取得中のエラー:', error);
-        } finally {
-          setIsLoadingFilterOptions(false);
-        }
-      };
-      
-      if (hasActiveFilters && Object.keys(currentFilters).length > 0) {
-        loadFilterOptions();
-      }
-    }, [currentFilters, hasActiveFilters]);
+      // 常にフィルターオプションを取得する（初期状態でも、フィルター適用時でも）
+      loadFilterOptions();
+    }, [currentFilters, loadFilterOptions]);
 
     // フィルターハンドラーを更新して現在のフィルターを保存するように
     const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
