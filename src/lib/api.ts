@@ -538,103 +538,120 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
   
   // 通常のフィルターを処理
   if (filters) {
-    Object.entries(filters).forEach(([key, filter]) => {
-      if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
-      
-      console.log('API - フィルター処理開始:', {
-        key,
-        filter,
-        type: filter.type,
-        apiFieldName: mapFieldToApiField(key)
-      });
-
-      // API用のフィールド名を取得
-      const apiField = mapFieldToApiField(key);
-
-      // ハッシュタグフィルターの場合の特別な処理
-      if (filter.isHashtag || key === 'hashtags') {
-        console.log('API - ハッシュタグのフィルタリング処理');
+    // 空のフィルターオブジェクトの場合は全てのフィルターをクリア
+    if (Object.keys(filters).length === 0) {
+      console.log('API - フィルターが完全にクリアされました');
+      // パラメータには既にページ番号とリミットが設定されているので追加のフィルターは不要
+    } else {
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
         
-        // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
-        params.append('hashtag', filter.value.toString());
-        
-        console.log('ハッシュタグフィルター設定:', {
-          value: filter.value.toString(),
-          queryParams: Object.fromEntries(params.entries())
-        });
-        return;
-      }
-
-      // アカウント名フィルターの特別な処理
-      if (key === 'accountName' || key === 'アカウント名') {
-        console.log('API - アカウント名のフィルタリング処理');
-        params.append('account_name', filter.value.toString());
-        
-        console.log('アカウント名フィルター設定:', {
-          value: filter.value.toString(),
-          queryParams: Object.fromEntries(params.entries())
-        });
-        return;
-      }
-
-      // カテゴリーフィルターの特別な処理
-      if (key === 'category' || key === 'ジャンル') {
-        console.log('API - カテゴリーのフィルタリング処理');
-        params.append('category', filter.value.toString());
-        
-        console.log('カテゴリーフィルター設定:', {
-          value: filter.value.toString(),
-          queryParams: Object.fromEntries(params.entries())
-        });
-        return;
-      }
-      
-      // 音楽情報フィルターの特別な処理
-      if (key === 'audioTitle' || key === 'BGM') {
-        console.log('API - 音楽情報のフィルタリング処理');
-        params.append('music_info', filter.value.toString());
-        
-        console.log('音楽情報フィルター設定:', {
-          type: filter.type,
-          value: filter.value.toString(),
-          queryParams: Object.fromEntries(params.entries())
-        });
-        return;
-      }
-
-      // 投稿日時フィルターの特別な処理
-      if (key === 'createdAt' || key === '投稿日時') {
-        console.log('API - 投稿日時のフィルタリング処理');
-        
-        // 日付フィルターのタイプに基づいて適切なパラメータを追加
-        if (filter.type === 'after' || filter.type === 'greater') {
-          params.append('created_at', filter.value.toString());
-          params.append('created_at_type', 'after');
-        } else if (filter.type === 'before' || filter.type === 'less') {
-          params.append('created_at', filter.value.toString());
-          params.append('created_at_type', 'before');
-        } else {
-          params.append('created_at', filter.value.toString());
-          params.append('created_at_type', 'date');
+        // clearフラグが設定されている場合はこのフィルターをスキップ
+        if (filter.clear === true) {
+          console.log(`API - フィルター「${key}」をclearフラグによりスキップします`);
+          return;
         }
         
-        console.log('投稿日時フィルター設定:', {
+        console.log('API - フィルター処理開始:', {
+          key,
+          filter,
           type: filter.type,
-          value: filter.value.toString(),
-          queryParams: Object.fromEntries(params.entries())
+          apiFieldName: mapFieldToApiField(key)
         });
-        return;
-      }
 
-      // 数値フィルターの処理
-      else if (['greater', 'less', 'equal'].includes(filter.type)) {
-        const dbField = mapFieldToApiField(key);
-        params.append(dbField, String(filter.value));
+        // API用のフィールド名を取得
+        const apiField = mapFieldToApiField(key);
+
+        // ハッシュタグフィルターの場合の特別な処理
+        if (filter.isHashtag || key === 'hashtags') {
+          console.log('API - ハッシュタグのフィルタリング処理');
+          
+          // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
+          params.append('hashtag', filter.value.toString());
+          
+          console.log('ハッシュタグフィルター設定:', {
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+          return;
+        }
+
+        // アカウント名フィルターの特別な処理
+        if (key === 'accountName' || key === 'アカウント名') {
+          console.log('API - アカウント名のフィルタリング処理');
+          params.append('account_name', filter.value.toString());
+          
+          console.log('アカウント名フィルター設定:', {
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+          return;
+        }
+
+        // カテゴリーフィルターの特別な処理
+        if (key === 'category' || key === 'ジャンル') {
+          console.log('API - カテゴリーのフィルタリング処理');
+          params.append('category', filter.value.toString());
+          
+          console.log('カテゴリーフィルター設定:', {
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+          return;
+        }
         
-        // フィルタタイプも追加
-        params.append(`${dbField}_type`, filter.type);
-      }
-    });
+        // 音楽情報フィルターの特別な処理
+        if (key === 'audioTitle' || key === 'BGM') {
+          console.log('API - 音楽情報のフィルタリング処理');
+          params.append('music_info', filter.value.toString());
+          
+          console.log('音楽情報フィルター設定:', {
+            type: filter.type,
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+          return;
+        }
+
+        // 投稿日時フィルターの特別な処理
+        if (key === 'createdAt' || key === '投稿日時') {
+          console.log('API - 投稿日時のフィルタリング処理');
+          
+          // 日付フィルターのタイプに基づいて適切なパラメータを追加
+          if (filter.type === 'after' || filter.type === 'greater') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'after');
+          } else if (filter.type === 'before' || filter.type === 'less') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'before');
+          } else {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'date');
+          }
+          
+          console.log('投稿日時フィルター設定:', {
+            type: filter.type,
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+          return;
+        }
+
+        // 数値フィルターの処理
+        else if (['greater', 'less', 'equal'].includes(filter.type)) {
+          const dbField = mapFieldToApiField(key);
+          params.append(dbField, String(filter.value));
+          
+          // フィルタタイプも追加
+          params.append(`${dbField}_type`, filter.type);
+        }
+        // クリアフィルターの特別処理
+        else if (filter.type === 'clear') {
+          // このフィールドのフィルターは送信しない（スキップする）
+          console.log(`API - フィルター '${key}' はクリアされました`);
+        }
+      });
+    }
   }
 
   // ソートパラメータを設定
@@ -1074,6 +1091,11 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
           
           // フィルタタイプも追加
           params.append(`${dbField}_type`, filter.type);
+        }
+        // クリアフィルターの特別処理
+        else if (filter.type === 'clear') {
+          // このフィールドのフィルターは送信しない（スキップする）
+          console.log(`API - フィルター '${key}' はクリアされました`);
         }
         // 音楽情報フィルターの特別な処理
         else if (key === 'audioTitle' || key === 'BGM') {

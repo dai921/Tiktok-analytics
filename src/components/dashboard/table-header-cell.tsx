@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 // FilterType定義を更新
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort';
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear';
 
 interface TableHeaderCellProps {
   title: string
@@ -251,21 +251,28 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     };
 
     const handleClear = () => {
-      console.log('TableHeaderCell - Clearing filter:', {
-        field: title,
-        previousValue: filterValue,
-        previousType: filterType
-      });
-
-      resetFilterState();  // これでisFilterActiveもリセットされる
-      onFilter?.({
-        field: title,
-        type: 'equal',
-        value: '',
-        clear: true
-      }, true)
-      setIsFilterOpen(false)
-    }
+      console.log(`${title} - フィルタークリア実行`);
+      // ローカル状態をクリア
+      setFilterValue('');
+      setIsFilterOpen(false);
+      setSortDirection(null);
+      
+      // カテゴリフィルターのクリア処理を追加
+      if (categories.length > 0) {
+        setFilteredCategories(categories);
+      }
+      
+      // 親コンポーネントに通知（より明示的な実装）
+      if (onFilter) {
+        const fieldName = typeof title === 'string' ? title : '';
+        console.log(`フィルター ${fieldName} をクリアしています`);
+        onFilter({ 
+          type: 'clear', 
+          value: '', 
+          field: fieldName 
+        });
+      }
+    };
 
     const handleFilter = (value: string, type: FilterType) => {
       if (!onFilter) return;
@@ -580,7 +587,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                 </button>
                 {(filterValue || localSortDirection) && (
                   <button
-                    onClick={handleClear}
+                    onClick={() => {
+                      console.log(`フィルタークリアボタンがクリックされました: ${title}`);
+                      handleClear();
+                    }}
                     className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
                   >
                     フィルターをクリア

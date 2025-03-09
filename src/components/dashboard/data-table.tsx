@@ -305,209 +305,57 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     // フィルターハンドラーを更新して現在のフィルターを保存するように
     const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
-      console.log('DataTable handleFilter:', { field, filterValue, shouldMerge });
-
-      // ソートフィルターの場合は最後にクリックしたフィールドを更新
-      if (filterValue.type === 'sort') {
-        setLastClickedSort(field);
-      }
-
-      // clearフラグがある場合の処理
-      if ('clear' in filterValue && filterValue.clear === true) {
-        // ソートのクリア処理（type: 'sort'の場合）
-        if (filterValue.type === 'sort') {
-          console.log('ソート情報のクリア:', { field });
-          
-          // ソート情報のみをクリア（通常のフィルターはそのまま）
-          const newFilters = { ...columnFilters };
-          // ソートフィールドの命名パターンに基づいて削除
-          const sortKey = `${field}_sort`;
-          delete newFilters[sortKey];
-          setColumnFilters(newFilters);
-          
-          // 他のフィルターがあるかどうかを確認
-          const hasOtherFilters = Object.keys(newFilters).length > 0;
-          
-          // 現在のフィルター条件からも削除
-          const newCurrentFilters = { ...currentFilters };
-          delete newCurrentFilters[`${field}_sort`];
-          setCurrentFilters(newCurrentFilters);
-          
-          // ソートリセット情報を親コンポーネントに渡す
-          onFilterChange(hasOtherFilters, {
-            field: COLUMN_MAP[field] || field,
-            type: 'sort',
-            value: ''
-          });
-          return;
-        } 
-        
-        // 通常のフィルタークリア処理
-        const newFilters = { ...columnFilters };
-        delete newFilters[field];
-        setColumnFilters(newFilters);
-        
-        // 現在のフィルター条件からも削除
-        const newCurrentFilters = { ...currentFilters };
-        delete newCurrentFilters[field];
-        setCurrentFilters(newCurrentFilters);
-        
-        // 他のフィルターがあるかどうかを確認
-        const hasOtherFilters = Object.keys(newFilters).length > 0;
-        
-        onFilterChange(hasOtherFilters, {
-          field: COLUMN_MAP[field] || field,
-          type: filterValue.type,
-          value: '',
-          clear: true
-        });
-        return;
-      }
-
-      // ソートフィルターの場合の処理（ソート情報のみを更新）
-      if (filterValue.type === 'sort') {
-        // タイムスタンプがない場合は現在時刻を追加（安全対策）
-        const timestamp = Date.now(); // 常に現在時刻を使用して確実にユニークにする
-        
-        console.log('DataTable - ソート処理開始:', {
-          field,
-          value: filterValue.value,
-          mappedApiField: field === 'createdAt' ? 'created_at' : undefined,
-          timestamp,
-          currentTime: new Date(timestamp).toISOString(),
-          isPrimarySort: filterValue.isPrimarySort,
-          lastClickedSort
-        });
-        
-        // ソート情報を更新
-        setSortField(field);
-        setSortDirection(filterValue.value as 'asc' | 'desc');
-        
-        // 現在のフィルター条件にも保存
-        const sortKey = `${field}_sort`;  // ソートフィールドの識別子を追加
-        setCurrentFilters(prev => {
-          const newFilters = { ...prev };
-          
-          // すべての既存のソートフィルターを記録
-          const existingSortFilters = Object.entries(newFilters)
-            .filter(([k]) => k.endsWith('_sort'))
-            .map(([k, v]) => ({ key: k, ...v, timestamp: v.timestamp || 0 }));
-          
-          console.log('既存のソートフィルター:', existingSortFilters);
-          
-          // 同じフィールドの以前のソートを削除
-          const sameFieldSortKey = Object.keys(newFilters).find(k => 
-            k.endsWith('_sort') && 
-            k.replace('_sort', '') === field
-          );
-          
-          if (sameFieldSortKey) {
-            delete newFilters[sameFieldSortKey];
-          }
-          
-          // 新しいソート情報を追加
-          newFilters[sortKey] = {
-            field: COLUMN_MAP[field] || field,
-            value: filterValue.value,
-            type: filterValue.type,
-            timestamp,  // 現在のタイムスタンプを使用
-            isPrimarySort: true, // 常に新しいソートを主ソートとしてマーク
-            sortField: filterValue.sortField || field
-          };
-          
-          // 最後にクリックしたソート以外のすべてのソートをセカンダリに設定
-          Object.keys(newFilters).forEach(key => {
-            if (key.endsWith('_sort') && key !== sortKey) {
-              newFilters[key].isPrimarySort = false;
-            }
-          });
-          
-          return newFilters;
-        });
-        
-        console.log('DataTable - ソート情報設定完了:', {
-          sortField: field,
-          sortDirection: filterValue.value,
-          sortKey: sortKey,
-          timestamp,
-          currentTime: new Date(timestamp).toISOString(),
-          isPrimarySort: filterValue.isPrimarySort
-        });
-        
-        setHasActiveFilters(true);
-        onFilterChange(true, {
-          field: COLUMN_MAP[field] || field,
-          value: filterValue.value,
-          type: 'sort',
-          timestamp: timestamp,  // タイムスタンプを確実に含める
-          isPrimarySort: filterValue.isPrimarySort || true,  // 常に新しいソートを主ソートとして扱う
-          sortField: filterValue.sortField || field
-        });
-        return;
-      }
-
-      // 通常のフィルター処理
-      const isHashtagFilter = field === 'hashtags';
-      setColumnFilters(prev => ({
-        ...prev,
-        [field]: true
-      }));
+      console.log(`フィルター処理: ${field}`, filterValue);
       
-      // ハッシュタグフラグが設定されているかチェック
-      if (isHashtagFilter || 'isHashtag' in filterValue) {
-        // 現在のフィルター条件にも保存
-        setCurrentFilters(prev => ({
-          ...prev,
-          [field]: {
-            field: COLUMN_MAP[field] || field,
-            value: filterValue.value,
-            type: filterValue.type,
-            isHashtag: true
+      // クリア操作を明示的に検出
+      if (filterValue.type === 'clear' || !filterValue.value) {
+        console.log(`フィルター削除: ${field}`);
+        // 型安全に処理
+        const newFilters: Record<string, FilterValue> = {};
+        // 既存のフィルターをコピー（削除対象以外）
+        Object.entries(columnFilters).forEach(([key, value]) => {
+          if (key !== field && typeof value !== 'boolean') {
+            newFilters[key] = value as FilterValue;
           }
-        }));
-        
-        setHasActiveFilters(true);
-        onFilterChange(true, {
-          field: COLUMN_MAP[field] || field,
-          value: filterValue.value,
-          type: filterValue.type,
-          isHashtag: true
         });
-      } else if (shouldMerge) {
-        // 現在のフィルター条件にも保存
-        setCurrentFilters(prev => ({
-          ...prev,
-          [field]: {
-            field: COLUMN_MAP[field] || field,
-            value: filterValue.value,
-            type: filterValue.type
-          }
-        }));
         
-        setHasActiveFilters(true);
-        onFilterChange(true, {
-          field: COLUMN_MAP[field] || field,
-          value: filterValue.value,
-          type: filterValue.type
-        });
-      } else {
-        // 現在のフィルター条件にも保存
-        setCurrentFilters(prev => ({
-          ...prev,
-          [field]: {
-            field: COLUMN_MAP[field] || field,
-            value: filterValue.value,
-            type: filterValue.type
-          }
-        }));
+        // 状態を更新
+        setColumnFilters(newFilters as unknown as Record<string, boolean>);
         
-        setHasActiveFilters(true);
-        onFilterChange(true, {
-          field: COLUMN_MAP[field] || field,
-          value: filterValue.value,
-          type: filterValue.type
+        // 親コンポーネントに変更を通知（明示的に削除されたことを伝える）
+        console.log('フィルター削除後の状態:', newFilters);
+        
+        // 親コンポーネントに明示的に削除したフィールドを伝える
+        onFilterChange(
+          Object.keys(newFilters).length > 0,
+          {
+            field: field,
+            type: 'clear',
+            value: ''
+          }
+        );
+        return;
+      }
+      
+      // フィルターをマージするか置き換えるかの処理
+      const newFilters: Record<string, FilterValue> = {};
+      
+      if (shouldMerge) {
+        // 既存のフィルターをコピー
+        Object.entries(columnFilters).forEach(([key, value]) => {
+          if (typeof value !== 'boolean') {
+            newFilters[key] = value as FilterValue;
+          }
         });
       }
+      
+      // 新しいフィルターを追加
+      newFilters[field] = filterValue;
+      
+      setColumnFilters(newFilters as unknown as Record<string, boolean>);
+      
+      // 親コンポーネントに変更を通知
+      onFilterChange(true, filterValue);
     };
 
     const handlePageChange = (page: number) => {
@@ -565,19 +413,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       {
         accessorKey: 'createdAt',
         header: ({ column }) => {
-          console.log('createdAtヘッダーの設定:', {
-            title: COLUMN_MAP['createdAt'],
-            mappedField: 'createdAt'
-          });
           return (
             <TableHeaderCell
-              title={COLUMN_MAP['createdAt']}
+              title="投稿日時"
               type="date"
-              onFilter={(value) => {
-                console.log('createdAtのフィルター呼び出し:', value);
-                return handleFilter('createdAt')(value);
-              }}
-              isActive={columnFilters['createdAt']}
+              onFilter={(value) => handleFilter('createdAt')(value)}
+              isActive={!!columnFilters['createdAt']}
               sortDirection={sortField === 'createdAt' ? sortDirection : null}
             />
           );
