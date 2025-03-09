@@ -8,7 +8,7 @@ import { TextPopup } from '@/components/ui/text-popup'
 import { COLUMN_MAP } from '@/lib/api'
 import { Pagination } from './pagination'
 import { ImageHover } from '@/components/ui/image-hover'
-import { getAllFilteredData } from '@/lib/api'
+import { getFilterOptions } from '@/lib/api'
 
 interface DataTableProps {
   initialData: VideoData[]
@@ -256,25 +256,35 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       fetchAudioTitlesFromApi();
     }, []);
 
-    // フィルターが変更されたときに全データから選択肢を生成する
+    // フィルターが変更されたときに選択肢を更新する
     useEffect(() => {
-      const loadAllFilteredOptions = async () => {
+      const loadFilterOptions = async () => {
         if (!hasActiveFilters) return;
         
         try {
           setIsLoadingFilterOptions(true);
-          console.log('フィルターによる全データ取得開始:', currentFilters);
+          console.log('フィルター条件に基づく選択肢データの取得開始:', currentFilters);
           
-          // 現在のフィルター条件で全データを取得
-          const result = await getAllFilteredData(currentFilters);
+          // 最適化されたAPIを使って選択肢のみを取得
+          const result = await getFilterOptions(currentFilters);
           
-          if (result.success && result.data.length > 0) {
-            console.log(`フィルター条件に一致する全データ取得成功: ${result.data.length}件`);
+          if (result.success) {
+            console.log(`選択肢データの取得成功`);
             
-            // 全データから選択肢を抽出
-            extractOptionsFromData(result.data);
+            // 取得した選択肢をセット
+            setCategoryList(result.categories);
+            setAccountList(result.accounts);
+            setHashtagList(result.hashtags);
+            setAudioTitleList(result.music);
+            
+            console.log('選択肢更新完了:', {
+              カテゴリ数: result.categories.length,
+              アカウント数: result.accounts.length,
+              ハッシュタグ数: result.hashtags.length,
+              音声タイトル数: result.music.length
+            });
           } else {
-            console.error('フィルターデータの取得に失敗:', result.error || '不明なエラー');
+            console.error('選択肢データの取得に失敗:', result.error || '不明なエラー');
           }
         } catch (error) {
           console.error('フィルター選択肢取得中のエラー:', error);
@@ -283,73 +293,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         }
       };
       
-      // 選択肢を抽出する共通関数
-      const extractOptionsFromData = (data: VideoData[]) => {
-        // カテゴリを抽出
-        const categories = new Set<string>();
-        data.forEach(item => {
-          if (item.category) {
-            // カテゴリが「、」や「,」で区切られている場合は分割
-            const categoryItems = typeof item.category === 'string' 
-              ? item.category.split(/[、,]/).map(cat => cat.trim())
-              : [];
-            categoryItems.forEach(cat => {
-              if (cat) categories.add(cat);
-            });
-          }
-        });
-        
-        // アカウント名を抽出
-        const accounts = new Set<string>();
-        data.forEach(item => {
-          if (item.accountName) {
-            accounts.add(item.accountName);
-          }
-        });
-        
-        // ハッシュタグを抽出
-        const hashtags = new Set<string>();
-        data.forEach(item => {
-          if (item.hashtags) {
-            // hashtagsが配列の場合はそのまま使用し、文字列の場合は分割する
-            if (Array.isArray(item.hashtags)) {
-              item.hashtags.forEach(tag => {
-                if (tag) hashtags.add(tag);
-              });
-            } else if (typeof item.hashtags === 'string') {
-              // 文字列の場合は分割して処理
-              const hashtagStr = item.hashtags;
-              hashtagStr.split(/[\s#]/).forEach(tag => {
-                if (tag) hashtags.add(tag);
-              });
-            }
-          }
-        });
-        
-        // 音声タイトルを抽出
-        const audioTitles = new Set<string>();
-        data.forEach(item => {
-          if (item.audioTitle) {
-            audioTitles.add(item.audioTitle);
-          }
-        });
-        
-        // 選択肢を更新
-        setCategoryList(Array.from(categories).filter(Boolean) as string[]);
-        setAccountList(Array.from(accounts).filter(Boolean) as string[]);
-        setHashtagList(Array.from(hashtags).filter(Boolean) as string[]);
-        setAudioTitleList(Array.from(audioTitles).filter(Boolean) as string[]);
-        
-        console.log('フィルターデータから選択肢を生成:', {
-          カテゴリ数: categories.size,
-          アカウント数: accounts.size,
-          ハッシュタグ数: hashtags.size,
-          音声タイトル数: audioTitles.size
-        });
-      };
-      
       if (hasActiveFilters && Object.keys(currentFilters).length > 0) {
-        loadAllFilteredOptions();
+        loadFilterOptions();
       }
     }, [currentFilters, hasActiveFilters]);
 

@@ -758,6 +758,177 @@ async def get_music(limit: int = 100):
             "data": []
         }
 
+@app.get("/api/filter-options")
+async def get_filter_options(
+    request: Request,
+    filter_type: str = "all",
+    account_name: Optional[str] = None,
+    category: Optional[str] = None,
+    hashtag: Optional[str] = None,
+    music_info: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_play_count: Optional[int] = None,
+    min_likes_count: Optional[int] = None,
+    created_at: Optional[str] = None,
+    created_at_type: Optional[str] = None,
+):
+    """
+    フィルター条件に基づいて選択肢データのみを返すAPIエンドポイント
+    filter_type: 取得する選択肢のタイプ (categories, accounts, hashtags, music, all)
+    その他のパラメータ: 通常のフィルター条件
+    """
+    conn = None
+    cursor = None
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # フィルター条件を構築
+        params = []
+        where_clauses = []
+        
+        # 以下、通常のフィルター条件構築処理と同じ
+        if account_name:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("account_name LIKE %s")
+            params.append(f"%{escaped_account_name}%")
+        
+        if category:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_category = category.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("category LIKE %s")
+            params.append(f"%{escaped_category}%")
+            
+        if hashtag:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("hashtags LIKE %s")
+            params.append(f"%{escaped_hashtag}%")
+            
+        if music_info:
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("music_info LIKE %s")
+            params.append(f"%{escaped_music_info}%")
+        
+        if min_play_count:
+            where_clauses.append("play_count >= %s")
+            params.append(min_play_count)
+            
+        if min_likes_count:
+            where_clauses.append("likes_count >= %s")
+            params.append(min_likes_count)
+            
+        if start_date and end_date:
+            where_clauses.append("created_at BETWEEN %s AND %s")
+            params.append(start_date)
+            params.append(end_date)
+        elif start_date:
+            where_clauses.append("created_at >= %s")
+            params.append(start_date)
+        elif end_date:
+            where_clauses.append("created_at <= %s")
+            params.append(end_date)
+            
+        if created_at:
+            if created_at_type == "after" or created_at_type == "greater":
+                where_clauses.append("created_at >= %s")
+                params.append(created_at)
+            elif created_at_type == "before" or created_at_type == "less":
+                where_clauses.append("created_at <= %s")
+                params.append(created_at)
+            else:  # exact date
+                # 日付が "YYYY-MM-DD" 形式の場合、その日の範囲を指定
+                where_clauses.append("DATE(created_at) = DATE(%s)")
+                params.append(created_at)
+        
+        # ベースとなるWHERE句を構築
+        base_where = ""
+        if where_clauses:
+            base_where = " WHERE " + " AND ".join(where_clauses)
+            
+        # 結果を格納する辞書
+        result = {
+            "success": True,
+            "filter_type": filter_type
+        }
+        
+        # filter_typeに基づいて必要なデータのみを取得
+        if filter_type in ["categories", "all"]:
+            # カテゴリ一覧を取得
+            query = f"SELECT DISTINCT category FROM frontend_data{base_where}"
+            cursor.execute(query, params)
+            categories = [row[0] for row in cursor.fetchall() if row[0]]
+            
+            # カテゴリを分割して処理
+            processed_categories = []
+            for category in categories:
+                if "、" in category or "," in category:
+                    parts = category.replace("、", ",").split(",")
+                    processed_categories.extend([part.strip() for part in parts if part.strip()])
+                else:
+                    processed_categories.append(category)
+            
+            # 重複を削除
+            unique_categories = list(set(processed_categories))
+            result["categories"] = sorted(unique_categories)
+            
+        if filter_type in ["accounts", "all"]:
+            # アカウント一覧を取得
+            query = f"SELECT DISTINCT account_name FROM frontend_data{base_where}"
+            cursor.execute(query, params)
+            accounts = [row[0] for row in cursor.fetchall() if row[0]]
+            result["accounts"] = sorted(accounts)
+            
+        if filter_type in ["hashtags", "all"]:
+            # ハッシュタグ一覧を取得
+            query = f"SELECT DISTINCT hashtags FROM frontend_data{base_where}"
+            cursor.execute(query, params)
+            
+            # ハッシュタグを処理
+            all_hashtags = []
+            for row in cursor.fetchall():
+                if row[0]:
+                    hashtags = row[0]
+                    # ハッシュタグを分割して処理
+                    tags = []
+                    if " " in hashtags:
+                        # スペースで区切られたハッシュタグの場合
+                        tags = [tag.strip() for tag in hashtags.split() if tag.strip()]
+                    else:
+                        tags = [hashtags.strip()]
+                    
+                    all_hashtags.extend(tags)
+            
+            # 重複を削除
+            unique_hashtags = list(set(all_hashtags))
+            result["hashtags"] = sorted(unique_hashtags)
+            
+        if filter_type in ["music", "all"]:
+            # 音声タイトル一覧を取得
+            query = f"SELECT DISTINCT music_info FROM frontend_data{base_where}"
+            cursor.execute(query, params)
+            music_titles = [row[0] for row in cursor.fetchall() if row[0]]
+            result["music"] = sorted(music_titles)
+            
+        return result
+        
+    except Exception as e:
+        print(f"Error in get_filter_options: {str(e)}")
+        print(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":
     print("Starting application via __main__")

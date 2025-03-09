@@ -766,4 +766,123 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
       totalCount: 0
     };
   }
+}
+
+/**
+ * フィルター条件に基づいて選択肢だけを取得する
+ * パフォーマンスが向上するように最適化されたAPI
+ */
+export async function getFilterOptions(filters?: Record<string, FilterQuery>, filterType: string = 'all') {
+  try {
+    console.log('getFilterOptions - フィルター選択肢のみ取得開始');
+    
+    // URLパラメータの構築
+    const params = new URLSearchParams({
+      filter_type: filterType
+    });
+    
+    // フィルターがある場合はクエリパラメータに追加
+    if (filters) {
+      console.log('getFilterOptions - 受け取ったフィルター:', filters);
+      
+      // 通常のフィルターを処理（ソート以外）
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
+        
+        console.log('API - フィルター処理開始:', {
+          key,
+          filter,
+          type: filter.type,
+          apiFieldName: mapFieldToApiField(key)
+        });
+
+        // API用のフィールド名を取得
+        const apiField = mapFieldToApiField(key);
+
+        // ハッシュタグフィルターの場合の特別な処理
+        if (filter.isHashtag || key === 'hashtags') {
+          params.append('hashtag', filter.value.toString());
+        }
+        // カテゴリフィルターの処理
+        else if (key === 'category' || apiField === 'category') {
+          params.append('category', filter.value.toString());
+        }
+        // 日付フィルターの処理
+        else if (key === 'createdAt' || apiField === 'created_at') {
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', getCreatedAtType(filter.type));
+        }
+        // 数値フィルターの処理
+        else if (filter.type === 'greater' || filter.type === 'less') {
+          const dbField = mapFieldToApiField(key);
+          params.append(dbField, String(filter.value));
+        }
+        // 通常のテキストフィルター処理
+        else if (filter.type === 'equal' && filter.value !== undefined && filter.value !== null && filter.value !== '') {
+          params.append(apiField, String(filter.value));
+        }
+      });
+    }
+    
+    console.log('選択肢取得URLパラメータ:', Object.fromEntries(params.entries()));
+    
+    // APIリクエスト実行
+    const apiUrl = 'http://localhost:8080';
+    const response = await fetch(`${apiUrl}/api/filter-options?${params.toString()}`);
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    console.log('選択肢取得結果:', {
+      success: result.success,
+      categoryCount: result.categories?.length || 0,
+      accountCount: result.accounts?.length || 0,
+      hashtagCount: result.hashtags?.length || 0,
+      musicCount: result.music?.length || 0
+    });
+    
+    if (result.success) {
+      return {
+        success: true,
+        categories: result.categories || [],
+        accounts: result.accounts || [],
+        hashtags: result.hashtags || [],
+        music: result.music || []
+      };
+    } else {
+      console.error('選択肢取得エラー:', result.error || '不明なエラー');
+      return {
+        success: false,
+        categories: [],
+        accounts: [],
+        hashtags: [],
+        music: [],
+        error: result.error || '不明なエラー'
+      };
+    }
+  } catch (error) {
+    console.error('選択肢取得中の例外:', error);
+    return {
+      success: false,
+      categories: [],
+      accounts: [],
+      hashtags: [],
+      music: [],
+      error: error instanceof Error ? error.message : '不明なエラー'
+    };
+  }
+}
+
+// 日付フィルタータイプの変換ヘルパー関数
+function getCreatedAtType(filterType: FilterType): string {
+  if (filterType === 'after' || filterType === 'greater') {
+    return 'after';
+  } else if (filterType === 'before' || filterType === 'less') {
+    return 'before';
+  } else {
+    return 'date';
+  }
 } 
