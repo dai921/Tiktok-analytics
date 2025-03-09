@@ -547,8 +547,9 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         )}
       >
         <div 
-          className="flex items-center cursor-pointer" 
-          onClick={handleSort}
+          className="flex items-center cursor-default" 
+          // ソート機能を削除するため、handleSortの呼び出しを削除
+          // onClick={handleSort}
         >
           <span>{title}</span>
           {localSortDirection && (
