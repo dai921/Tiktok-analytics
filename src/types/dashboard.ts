@@ -8,6 +8,7 @@ export interface FilterQuery {
   type: FilterType
   value: string | number
   isHashtag?: boolean
+  clear?: boolean
 }
 
 export interface FilterValue extends FilterQuery {
@@ -33,7 +34,7 @@ export interface VideoData {
   shares: number
   saves: number
   createdAt: string
-  hashtags: string[]
+  hashtags: string[] | string
   duration: number
   isViral: boolean
   prevFetchDate: string

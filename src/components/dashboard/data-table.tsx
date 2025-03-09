@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, forwardRef, useImperativeHandle, useEffect, ReactElement, useCallback } from 'react'
+import { useState, useRef, useEffect, forwardRef, useCallback, useImperativeHandle, ReactElement } from 'react'
 import type { VideoData, FilterValue, Column, FilterQuery } from '@/types/dashboard'
 import { TableHeaderCell } from './table-header-cell'
 import Image from 'next/image'
@@ -8,6 +8,7 @@ import { TextPopup } from '@/components/ui/text-popup'
 import { COLUMN_MAP } from '@/lib/api'
 import { Pagination } from './pagination'
 import { ImageHover } from '@/components/ui/image-hover'
+import { getAllFilteredData } from '@/lib/api'
 
 interface DataTableProps {
   initialData: VideoData[]
@@ -76,270 +77,283 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [accountList, setAccountList] = useState<string[]>([])
     const [hashtagList, setHashtagList] = useState<string[]>([])
     const [audioTitleList, setAudioTitleList] = useState<string[]>([])
+    const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({})
+    const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false)
+    
+    // API関連の設定
+    const API_BASE_URL = 'http://localhost:8080';
 
+    // 参照を設定
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
-    }))
+    }));
 
+    // フィルターをクリアする関数
     const handleClearAllFilters = useCallback(() => {
       console.log('DataTable - handleClearAllFilters called');
       console.log('DataTable - columnFilters before clear:', columnFilters);
-      setHasActiveFilters(false)
-      setColumnFilters({})
+      setHasActiveFilters(false);
+      setColumnFilters({});
+      setCurrentFilters({});
       console.log('DataTable - columnFilters after clear: {}');
-      onFilterChange(false)
-    }, [onFilterChange, columnFilters])
+      onFilterChange(false);
+    }, [onFilterChange, columnFilters]);
 
     // columnFiltersの変更を監視
     useEffect(() => {
       console.log('DataTable - columnFilters changed:', columnFilters);
-    }, [columnFilters])
+    }, [columnFilters]);
 
-    // コンポーネントマウント時にカテゴリとその他のデータを取得
-    useEffect(() => {
-      const fetchCategories = async () => {
-        try {
-          console.log('カテゴリ一覧取得開始');
-          const response = await fetch('http://localhost:8080/api/categories');
-          
-          if (!response.ok) {
-            console.error('カテゴリAPI応答エラー:', response.status, response.statusText);
-            return;
-          }
-          
-          const data = await response.json();
-          console.log('カテゴリAPIレスポンス:', data);
-          
-          if (data.success) {
-            if (Array.isArray(data.categories)) {
-              // 詳細なデバッグ: カテゴリデータの内容とコードポイントを確認
-              console.log('受信したカテゴリデータ:');
-              data.categories.forEach((category: string, index: number) => {
-                if (category && typeof category === 'string') {
-                  // 文字コードの確認（区切り文字の問題を特定するため）
-                  const charCodes = Array.from(category).map(c => c.charCodeAt(0).toString(16));
-                  console.log(`カテゴリ[${index}]: "${category}" - 文字コード: [${charCodes.join(', ')}]`);
+    // API から各種選択肢データを取得する関数
+    const fetchCategoriesFromApi = async () => {
+      try {
+        console.log('カテゴリ一覧取得開始');
+        const response = await fetch(`${API_BASE_URL}/api/categories`);
+        
+        if (!response.ok) {
+          console.error('カテゴリAPI応答エラー:', response.status, response.statusText);
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('カテゴリAPIレスポンス:', data);
+        
+        if (data.success) {
+          if (Array.isArray(data.categories)) {
+            // カテゴリを「、」で分割して個別のカテゴリとして扱う
+            const allCategories: string[] = [];
+            data.categories.forEach((category: string) => {
+              // カテゴリが「、」で区切られている場合は分割
+              if (category && typeof category === 'string') {
+                // 「、」と「,」両方をチェック（全角・半角の両方に対応）
+                const hasJapaneseComma = category.includes('、');
+                const hasEnglishComma = category.includes(',');
+                if (hasJapaneseComma || hasEnglishComma) {
+                  // 両方の区切り文字で分割（まず「、」で分割し、その後各部分を「,」で分割）
+                  let splitCategories: string[] = [];
                   
-                  // 「、」の検出と確認
-                  const commaPos = category.indexOf('、');
-                  if (commaPos >= 0) {
-                    console.log(`  「、」を検出: 位置=${commaPos}, コード=${category.charCodeAt(commaPos).toString(16)}`);
-                    console.log(`  分割結果: [${category.split('、').map(s => `"${s.trim()}"`).join(', ')}]`);
-                  }
-                }
-              });
-              
-              // カテゴリを「、」で分割して個別のカテゴリとして扱う
-              const allCategories: string[] = [];
-              data.categories.forEach((category: string) => {
-                // カテゴリが「、」で区切られている場合は分割
-                if (category && typeof category === 'string') {
-                  // 「、」と「,」両方をチェック（全角・半角の両方に対応）
-                  const hasJapaneseComma = category.includes('、');
-                  const hasEnglishComma = category.includes(',');
-                  if (hasJapaneseComma || hasEnglishComma) {
-                    // 両方の区切り文字で分割（まず「、」で分割し、その後各部分を「,」で分割）
-                    let splitCategories: string[] = [];
-                    
-                    // まず「、」で分割
-                    const japaneseCommaSplit = hasJapaneseComma ? category.split('、') : [category];
-                    
-                    // 次に各部分を「,」で分割
-                    japaneseCommaSplit.forEach((part: string) => {
-                      if (part.includes(',')) {
-                        splitCategories.push(...part.split(','));
-                      } else {
-                        splitCategories.push(part);
-                      }
-                    });
-                    
-                    // 各カテゴリの空白を削除
-                    splitCategories = splitCategories.map((cat: string) => cat.trim());
-                    console.log(`  "${category}" の分割結果: [${splitCategories.join(', ')}]`);
-                    allCategories.push(...splitCategories);
-                  } else {
-                    // hasSlashの条件を削除し、スラッシュによる分割もなし
-                    allCategories.push(category);
-                  }
-                } else {
-                  console.warn('無効なカテゴリ値:', category);
-                }
-              });
-              
-              // 重複を除去
-              const uniqueCategories = [...new Set(allCategories)];
-              setCategoryList(uniqueCategories.filter(Boolean) as string[]);
-              console.log('処理後のカテゴリ:', uniqueCategories);
-            } else {
-              console.error('カテゴリデータが配列ではありません:', data.categories);
-            }
-          } else {
-            console.error('カテゴリ取得APIエラー:', data.error);
-          }
-        } catch (error) {
-          console.error('カテゴリの取得中に例外が発生しました:', error);
-          setCategoryList([]);
-        }
-      };
-
-      const fetchAccounts = async () => {
-        try {
-          // APIエンドポイントを修正
-          const response = await fetch('http://localhost:8080/api/accounts');
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && Array.isArray(data.data)) {
-              const accounts = data.data.filter(Boolean);
-              setAccountList(accounts as string[]);
-              console.log('取得したアカウント:', accounts);
-            }
-          }
-        } catch (error) {
-          console.error('アカウントの取得中にエラーが発生しました:', error);
-          setAccountList([]);
-        }
-      };
-
-      const fetchHashtags = async () => {
-        try {
-          // APIエンドポイントを修正
-          const response = await fetch('http://localhost:8080/api/hashtags?limit=100');
-          if (response.ok) {
-            const data = await response.json();
-            console.log('ハッシュタグAPIレスポンス:', data);
-            
-            if (data.success && Array.isArray(data.data)) {
-              // ハッシュタグを抽出
-              const allHashtags: string[] = [];
-              data.data.forEach((tagObj: any) => {
-                if (tagObj && tagObj.hashtag && typeof tagObj.hashtag === 'string') {
-                  const hashtag = tagObj.hashtag;
-                  console.log(`検出されたハッシュタグ: "${hashtag}"`);
-                  
-                  // 「、」「,」などで区切られている場合は分割
-                  if (hashtag.includes('、') || hashtag.includes(',')) {
-                    // まず「、」で分割
-                    const parts = hashtag.includes('、') ? hashtag.split('、') : [hashtag];
-                    
-                    // 次に各部分を「,」で分割
-                    parts.forEach((part: string) => {
-                      if (part.includes(',')) {
-                        const commaSplit = part.split(',').map((t: string) => t.trim());
-                        allHashtags.push(...commaSplit);
-                      } else {
-                        allHashtags.push(part.trim());
-                      }
-                    });
-                  } else {
-                    // スラッシュによる分割は行わない
-                    allHashtags.push(hashtag);
-                  }
-                }
-              });
-              // 重複を除去
-              const uniqueHashtags = [...new Set(allHashtags)].filter(Boolean);
-              setHashtagList(uniqueHashtags as string[]);
-              console.log('処理後のハッシュタグ:', uniqueHashtags);
-            }
-          }
-        } catch (error) {
-          console.error('ハッシュタグの取得中にエラーが発生しました:', error);
-          setHashtagList([]);
-        }
-      };
-
-      // BGM(音声タイトル)リストの取得 - APIから取得するように変更
-      const fetchAudioTitles = async () => {
-        try {
-          console.log('BGM一覧取得開始');
-          const response = await fetch('http://localhost:8080/api/music');
-          
-          if (!response.ok) {
-            console.error('BGM API応答エラー:', response.status, response.statusText);
-            return;
-          }
-          
-          const data = await response.json();
-          console.log('BGM APIレスポンス:', data);
-          
-          if (data.success && Array.isArray(data.data)) {
-            // 音声タイトルも「、」で分割して処理
-            const allTitles: string[] = [];
-            data.data.forEach((title: string) => {
-              if (title && typeof title === 'string') {
-                console.log(`検出された音声タイトル: "${title}"`);
-                
-                // 「、」「,」などで区切られている場合は分割
-                if (title.includes('、') || title.includes(',')) {
                   // まず「、」で分割
-                  const parts = title.includes('、') ? title.split('、') : [title];
+                  const japaneseCommaSplit = hasJapaneseComma ? category.split('、') : [category];
                   
                   // 次に各部分を「,」で分割
-                  parts.forEach((part: string) => {
+                  japaneseCommaSplit.forEach((part: string) => {
                     if (part.includes(',')) {
-                      const commaSplit = part.split(',').map((t: string) => t.trim());
-                      allTitles.push(...commaSplit);
+                      splitCategories.push(...part.split(','));
                     } else {
-                      allTitles.push(part.trim());
+                      splitCategories.push(part);
                     }
                   });
+                  
+                  // 各カテゴリの空白を削除
+                  splitCategories = splitCategories.map((cat: string) => cat.trim());
+                  allCategories.push(...splitCategories);
                 } else {
-                  // スラッシュによる分割は行わない
-                  allTitles.push(title);
+                  allCategories.push(category);
                 }
               }
             });
+            
             // 重複を除去
-            const uniqueTitles = [...new Set(allTitles)].filter(Boolean);
-            setAudioTitleList(uniqueTitles as string[]);
-            console.log('処理後の音声タイトル:', uniqueTitles);
+            const uniqueCategories = [...new Set(allCategories)];
+            setCategoryList(uniqueCategories.filter(Boolean) as string[]);
+            console.log('処理後のカテゴリ:', uniqueCategories);
           } else {
-            console.error('BGMデータの取得に失敗:', data);
-            // 失敗した場合はデータからの抽出を試みる
-            extractAudioTitlesFromData();
+            console.error('カテゴリデータが配列ではありません:', data.categories);
+          }
+        } else {
+          console.error('カテゴリ取得APIエラー:', data.error);
+        }
+      } catch (error) {
+        console.error('カテゴリの取得中に例外が発生しました:', error);
+        setCategoryList([]);
+      }
+    };
+
+    const fetchAccountsFromApi = async () => {
+      try {
+        // APIエンドポイントを修正
+        const response = await fetch(`${API_BASE_URL}/api/accounts`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && Array.isArray(data.data)) {
+            const accounts = data.data.filter(Boolean);
+            setAccountList(accounts as string[]);
+            console.log('取得したアカウント:', accounts);
+          }
+        }
+      } catch (error) {
+        console.error('アカウントの取得中にエラーが発生しました:', error);
+        setAccountList([]);
+      }
+    };
+
+    const fetchHashtagsFromApi = async () => {
+      try {
+        // APIエンドポイントを修正
+        const response = await fetch(`${API_BASE_URL}/api/hashtags?limit=100`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('ハッシュタグAPIレスポンス:', data);
+          
+          if (data.success && Array.isArray(data.data)) {
+            // ハッシュタグを抽出
+            const allHashtags: string[] = [];
+            data.data.forEach((tagObj: any) => {
+              if (tagObj && tagObj.hashtag && typeof tagObj.hashtag === 'string') {
+                const hashtag = tagObj.hashtag;
+                
+                // 「、」「,」などで区切られている場合は分割
+                if (hashtag.includes('、') || hashtag.includes(',')) {
+                  const splitTags = hashtag.split(/[、,]/).map((tag: string) => tag.trim()).filter(Boolean);
+                  allHashtags.push(...splitTags);
+                } else {
+                  allHashtags.push(hashtag);
+                }
+              }
+            });
+            
+            const uniqueHashtags = [...new Set(allHashtags)].filter(Boolean);
+            // 型キャストを使用してエラーを解決
+            setHashtagList(uniqueHashtags as string[]);
+            console.log('処理後のハッシュタグ:', uniqueHashtags);
+          }
+        }
+      } catch (error) {
+        console.error('ハッシュタグの取得中にエラーが発生しました:', error);
+        setHashtagList([]);
+      }
+    };
+
+    const fetchAudioTitlesFromApi = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/music?limit=100`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && Array.isArray(data.data)) {
+            const audioTitles = data.data
+              .filter((item: any) => item && item.audio_title)
+              .map((item: any) => item.audio_title)
+              .filter(Boolean);
+            
+            const uniqueTitles = [...new Set(audioTitles)];
+            setAudioTitleList(uniqueTitles as string[]);
+            console.log('取得した音声タイトル:', uniqueTitles);
+          }
+        }
+      } catch (error) {
+        console.error('音声タイトルの取得中にエラーが発生しました:', error);
+        setAudioTitleList([]);
+      }
+    };
+
+    // コンポーネント初期表示時に、選択肢データを取得
+    useEffect(() => {
+      console.log('初回レンダリング時のデータ取得開始');
+      // 選択肢データの初期ロード
+      fetchCategoriesFromApi();
+      fetchAccountsFromApi();
+      fetchHashtagsFromApi();
+      fetchAudioTitlesFromApi();
+    }, []);
+
+    // フィルターが変更されたときに全データから選択肢を生成する
+    useEffect(() => {
+      const loadAllFilteredOptions = async () => {
+        if (!hasActiveFilters) return;
+        
+        try {
+          setIsLoadingFilterOptions(true);
+          console.log('フィルターによる全データ取得開始:', currentFilters);
+          
+          // 現在のフィルター条件で全データを取得
+          const result = await getAllFilteredData(currentFilters);
+          
+          if (result.success && result.data.length > 0) {
+            console.log(`フィルター条件に一致する全データ取得成功: ${result.data.length}件`);
+            
+            // 全データから選択肢を抽出
+            extractOptionsFromData(result.data);
+          } else {
+            console.error('フィルターデータの取得に失敗:', result.error || '不明なエラー');
           }
         } catch (error) {
-          console.error('音声タイトルの取得中に例外が発生しました:', error);
-          // 失敗した場合はデータからの抽出を試みる
-          extractAudioTitlesFromData();
-        }
-      };
-
-      // データから音声タイトルを抽出するフォールバック処理
-      const extractAudioTitlesFromData = () => {
-        if (Array.isArray(initialData) && initialData.length > 0) {
-          const titles = initialData
-            .map(item => item.audioTitle)
-            .filter(Boolean);
-          
-          // 重複を除去
-          const uniqueTitles = [...new Set(titles)];
-          setAudioTitleList(uniqueTitles);
-          console.log('データから抽出した音声タイトル:', uniqueTitles);
+          console.error('フィルター選択肢取得中のエラー:', error);
+        } finally {
+          setIsLoadingFilterOptions(false);
         }
       };
       
-      // 取得処理の後にデバッグ出力を追加
-      const logAvailableData = () => {
-        // コンポーネントマウント後、遅延してデータ設定完了を確認
-        setTimeout(() => {
-          console.log('=== 利用可能なフィルターデータの確認 ===');
-          console.log('カテゴリリスト:', categoryList);
-          console.log('アカウントリスト:', accountList);
-          console.log('ハッシュタグリスト:', hashtagList);
-          console.log('BGMリスト:', audioTitleList);
-          console.log('===============================');
-        }, 1000);
+      // 選択肢を抽出する共通関数
+      const extractOptionsFromData = (data: VideoData[]) => {
+        // カテゴリを抽出
+        const categories = new Set<string>();
+        data.forEach(item => {
+          if (item.category) {
+            // カテゴリが「、」や「,」で区切られている場合は分割
+            const categoryItems = typeof item.category === 'string' 
+              ? item.category.split(/[、,]/).map(cat => cat.trim())
+              : [];
+            categoryItems.forEach(cat => {
+              if (cat) categories.add(cat);
+            });
+          }
+        });
+        
+        // アカウント名を抽出
+        const accounts = new Set<string>();
+        data.forEach(item => {
+          if (item.accountName) {
+            accounts.add(item.accountName);
+          }
+        });
+        
+        // ハッシュタグを抽出
+        const hashtags = new Set<string>();
+        data.forEach(item => {
+          if (item.hashtags) {
+            // hashtagsが配列の場合はそのまま使用し、文字列の場合は分割する
+            if (Array.isArray(item.hashtags)) {
+              item.hashtags.forEach(tag => {
+                if (tag) hashtags.add(tag);
+              });
+            } else if (typeof item.hashtags === 'string') {
+              // 文字列の場合は分割して処理
+              const hashtagStr = item.hashtags;
+              hashtagStr.split(/[\s#]/).forEach(tag => {
+                if (tag) hashtags.add(tag);
+              });
+            }
+          }
+        });
+        
+        // 音声タイトルを抽出
+        const audioTitles = new Set<string>();
+        data.forEach(item => {
+          if (item.audioTitle) {
+            audioTitles.add(item.audioTitle);
+          }
+        });
+        
+        // 選択肢を更新
+        setCategoryList(Array.from(categories).filter(Boolean) as string[]);
+        setAccountList(Array.from(accounts).filter(Boolean) as string[]);
+        setHashtagList(Array.from(hashtags).filter(Boolean) as string[]);
+        setAudioTitleList(Array.from(audioTitles).filter(Boolean) as string[]);
+        
+        console.log('フィルターデータから選択肢を生成:', {
+          カテゴリ数: categories.size,
+          アカウント数: accounts.size,
+          ハッシュタグ数: hashtags.size,
+          音声タイトル数: audioTitles.size
+        });
       };
       
-      fetchCategories();
-      fetchAccounts();
-      fetchHashtags();
-      fetchAudioTitles(); // extractAudioTitlesの代わりにfetchAudioTitlesを呼び出す
-      
-      logAvailableData();
-    }, [initialData]);
+      if (hasActiveFilters && Object.keys(currentFilters).length > 0) {
+        loadAllFilteredOptions();
+      }
+    }, [currentFilters, hasActiveFilters]);
 
+    // フィルターハンドラーを更新して現在のフィルターを保存するように
     const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
       console.log('DataTable handleFilter:', { field, filterValue, shouldMerge });
 
@@ -359,6 +373,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           // 他のフィルターがあるかどうかを確認
           const hasOtherFilters = Object.keys(newFilters).length > 0;
           
+          // 現在のフィルター条件からも削除
+          const newCurrentFilters = { ...currentFilters };
+          delete newCurrentFilters[`${field}_sort`];
+          setCurrentFilters(newCurrentFilters);
+          
           // ソートリセット情報を親コンポーネントに渡す
           onFilterChange(hasOtherFilters, {
             field: COLUMN_MAP[field] || field,
@@ -373,56 +392,113 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         delete newFilters[field];
         setColumnFilters(newFilters);
         
+        // 現在のフィルター条件からも削除
+        const newCurrentFilters = { ...currentFilters };
+        delete newCurrentFilters[field];
+        setCurrentFilters(newCurrentFilters);
+        
         // 他のフィルターがあるかどうかを確認
         const hasOtherFilters = Object.keys(newFilters).length > 0;
         
         onFilterChange(hasOtherFilters, {
           field: COLUMN_MAP[field] || field,
-          type: 'equal',
-          value: ''
+          type: filterValue.type,
+          value: '',
+          clear: true
         });
         return;
       }
 
-      // 以下は通常のフィルター設定処理（変更なし）
+      // ソートフィルターの場合の処理（ソート情報のみを更新）
+      if (filterValue.type === 'sort') {
+        const sortKey = `${field}_sort`;
+        setColumnFilters(prev => ({
+          ...prev,
+          [sortKey]: true
+        }));
+        
+        // 現在のフィルター条件にも保存
+        setCurrentFilters(prev => ({
+          ...prev,
+          [sortKey]: {
+            field: COLUMN_MAP[field] || field,
+            type: 'sort',
+            value: filterValue.value
+          }
+        }));
+        
+        // ソート情報を親コンポーネントに渡す
+        onFilterChange(true, {
+          field: COLUMN_MAP[field] || field,
+          type: 'sort',
+          value: filterValue.value
+        });
+        return;
+      }
+
+      // 通常のフィルター処理
+      const isHashtagFilter = field === 'hashtags';
       setColumnFilters(prev => ({
         ...prev,
         [field]: true
       }));
       
-      // ハッシュタグの場合は専用フラグを設定
-      const isHashtagFilter = field === 'hashtags';
-      
-      // ジャンルフィールドの場合の特別処理
-      if (field === 'category') {
-        // 通常のフィルター処理を使用
-        // 内部ロジックでジャンルの特別処理を行う
+      // ハッシュタグフラグが設定されているかチェック
+      if (isHashtagFilter || 'isHashtag' in filterValue) {
+        // 現在のフィルター条件にも保存
+        setCurrentFilters(prev => ({
+          ...prev,
+          [field]: {
+            field: COLUMN_MAP[field] || field,
+            value: filterValue.value,
+            type: filterValue.type,
+            isHashtag: true
+          }
+        }));
+        
+        setHasActiveFilters(true);
         onFilterChange(true, {
-          field,
+          field: COLUMN_MAP[field] || field,
+          value: filterValue.value,
+          type: filterValue.type,
+          isHashtag: true
+        });
+      } else if (shouldMerge) {
+        // 現在のフィルター条件にも保存
+        setCurrentFilters(prev => ({
+          ...prev,
+          [field]: {
+            field: COLUMN_MAP[field] || field,
+            value: filterValue.value,
+            type: filterValue.type
+          }
+        }));
+        
+        setHasActiveFilters(true);
+        onFilterChange(true, {
+          field: COLUMN_MAP[field] || field,
           value: filterValue.value,
           type: filterValue.type
         });
-        
-        return;
-      }
-      
-      // その他のフィールドの通常の処理
-      if (shouldMerge) {
-        setHasActiveFilters(true)
-        onFilterChange(true, {
-          field,
-          value: filterValue.value,
-          type: filterValue.type
-        })
       } else {
-        setHasActiveFilters(true)
+        // 現在のフィルター条件にも保存
+        setCurrentFilters(prev => ({
+          ...prev,
+          [field]: {
+            field: COLUMN_MAP[field] || field,
+            value: filterValue.value,
+            type: filterValue.type
+          }
+        }));
+        
+        setHasActiveFilters(true);
         onFilterChange(true, {
-          field,
+          field: COLUMN_MAP[field] || field,
           value: filterValue.value,
           type: filterValue.type
-        })
+        });
       }
-    }
+    };
 
     const handlePageChange = (page: number) => {
       onPageChange(page)

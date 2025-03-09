@@ -593,4 +593,177 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       error: error instanceof Error ? error.message : '不明なエラーが発生しました'
     };
   }
+}
+
+/**
+ * フィルター条件に一致する全データを取得する（ページングなし）
+ * フィルター選択肢生成用のデータ取得
+ */
+export async function getAllFilteredData(filters?: Record<string, FilterQuery>) {
+  try {
+    console.log('getAllFilteredData - フィルター選択肢用の全データ取得開始');
+    
+    // ページングを無効化して全件取得するパラメータを設定
+    const params = new URLSearchParams({
+      page: '1',
+      limit: '-1' // 全件取得を示す特別な値
+    });
+    
+    let sortField = 'created_at';
+    let sortOrder = 'desc';
+    
+    // フィルターがある場合はクエリパラメータに追加
+    if (filters) {
+      console.log('getAllFilteredData - 受け取ったフィルター:', filters);
+      
+      // ソートフィルターの処理
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || !key.endsWith('_sort')) return;
+        
+        // ソートフィルター検出
+        if (filter.type === 'sort') {
+          console.log('API - ソートフィルター検出:', {
+            key,
+            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            direction: filter.value
+          });
+          
+          // ソート情報を保存
+          sortField = mapFieldToApiField(key.replace('_sort', ''));
+          sortOrder = filter.value.toString();
+        }
+      });
+      
+      // 通常のフィルターを処理
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
+        
+        console.log('API - フィルター処理開始:', {
+          key,
+          filter,
+          type: filter.type,
+          apiFieldName: mapFieldToApiField(key)
+        });
+
+        // API用のフィールド名を取得
+        const apiField = mapFieldToApiField(key);
+
+        // ハッシュタグフィルターの場合の特別な処理
+        if (filter.isHashtag || key === 'hashtags') {
+          console.log('API - ハッシュタグのフィルタリング処理');
+          
+          // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
+          params.append('hashtag', filter.value.toString());
+          
+          console.log('ハッシュタグフィルター設定:', {
+            value: filter.value.toString(),
+            queryParams: Object.fromEntries(params.entries())
+          });
+        }
+        // カテゴリフィルターの処理
+        else if (key === 'category' || apiField === 'category') {
+          console.log('API - カテゴリフィルタリング処理');
+          
+          // カテゴリは部分一致で検索する
+          if (filter.type === 'contains') {
+            // 部分一致検索のための処理
+            params.append('category', filter.value.toString());
+          } else {
+            // 従来の完全一致検索
+            params.append('category', filter.value.toString());
+          }
+          
+          console.log('カテゴリフィルター設定:', {
+            value: filter.value.toString(),
+            type: filter.type,
+            queryParams: Object.fromEntries(params.entries())
+          });
+        }
+        // 日付フィルターの処理
+        else if (key === 'createdAt' || apiField === 'created_at') {
+          console.log('日付フィルター検出:', {
+            key,
+            apiField,
+            type: filter.type,
+            value: filter.value
+          });
+
+          // 日付フィルターのタイプに基づいて適切なパラメータを追加
+          if (filter.type === 'date' || filter.type === 'equal') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'date');
+          } else if (filter.type === 'after' || filter.type === 'greater') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'after');
+          } else if (filter.type === 'before' || filter.type === 'less') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'before');
+          } else {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'date');
+          }
+        }
+        // 数値フィルターの処理
+        else if (filter.type === 'greater' || filter.type === 'less') {
+          const dbField = mapFieldToApiField(key);
+          params.append(dbField, String(filter.value));
+          params.append(`${dbField}_type`, filter.type);
+        }
+        // 通常のテキストフィルター処理
+        else if (filter.type === 'equal' && filter.value !== undefined && filter.value !== null && filter.value !== '') {
+          // 通常のテキストフィルターはそのままパラメータとして追加
+          params.append(apiField, String(filter.value));
+        }
+        // その他のタイプのフィルター（念のため）
+        else if (filter.value !== undefined && filter.value !== null && filter.value !== '') {
+          params.append(apiField, String(filter.value));
+        }
+      });
+    }
+
+    // ソートパラメータを適切に追加
+    params.append('sort_by', sortField);
+    params.append('sort_order', sortOrder);
+    
+    console.log('全データ取得URLパラメータ:', Object.fromEntries(params.entries()));
+    
+    // APIリクエスト実行
+    const apiUrl = 'http://localhost:8080';
+    const response = await fetch(`${apiUrl}/api/videos?${params.toString()}`);
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    console.log('全データ取得結果:', {
+      success: result.success,
+      dataCount: result.data?.length || 0
+    });
+    
+    if (result.success) {
+      return {
+        success: true,
+        data: result.data.map(convertToVideoData),
+        totalCount: result.total || result.data.length
+      };
+    } else {
+      console.error('全データ取得エラー:', result.error || '不明なエラー');
+      return {
+        success: false,
+        data: [],
+        error: result.error || '不明なエラー',
+        totalCount: 0
+      };
+    }
+  } catch (error) {
+    console.error('全データ取得中の例外:', error);
+    return {
+      success: false,
+      data: [],
+      error: error instanceof Error ? error.message : '不明なエラー',
+      totalCount: 0
+    };
+  }
 } 

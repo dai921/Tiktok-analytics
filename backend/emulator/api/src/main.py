@@ -203,9 +203,14 @@ async def get_videos(
         filter_params = params.copy()
 
         # ページネーション用にLIMIT/OFFSETを追加
-        query += " LIMIT %s OFFSET %s"
         offset = (page - 1) * limit
-        params.extend([limit, offset])
+        
+        # limit=-1の場合は全件取得（ページングなし）
+        if limit == -1:
+            print("全件取得モードが指定されました - ページングを無効化")
+        else:
+            query += " LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
 
         # デバッグ用にクエリとパラメータを出力
         print(f"Executing query: {query}")
@@ -393,9 +398,14 @@ async def get_videos_alt(
         filter_params = params.copy()
 
         # ページネーション用にLIMIT/OFFSETを追加
-        query += " LIMIT %s OFFSET %s"
         offset = (page - 1) * limit
-        params.extend([limit, offset])
+        
+        # limit=-1の場合は全件取得（ページングなし）
+        if limit == -1:
+            print("全件取得モードが指定されました - ページングを無効化")
+        else:
+            query += " LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
 
         print(f"Executing query: {query}")
         print(f"With params: {params}")
