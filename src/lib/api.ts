@@ -46,8 +46,18 @@ export const fetchVideosFromBackend = async (options: {
   if (accountName) params.append('account_name', accountName);
   if (category) params.append('category', category);
   if (hashtag) params.append('hashtag', hashtag);
-  if (startDate) params.append('start_date', startDate);
-  if (endDate) params.append('end_date', endDate);
+  
+  // 日付フィルターの処理
+  // 注意: バックエンドAPIの現在の実装では、startDateとendDateの両方を同時に処理できません
+  // 現在のワークアラウンドとして、endDateを優先します
+  if (startDate && !endDate) {
+    params.append('created_at', startDate);
+    params.append('created_at_type', 'after');
+  } else if (endDate) {
+    params.append('created_at', endDate);
+    params.append('created_at_type', 'before');
+  }
+  
   if (minPlayCount) params.append('min_play_count', minPlayCount.toString());
   if (minLikesCount) params.append('min_likes_count', minLikesCount.toString());
 
@@ -582,14 +592,33 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       // 音楽情報フィルターの特別な処理
       if (key === 'audioTitle' || key === 'BGM') {
         console.log('API - 音楽情報のフィルタリング処理');
-        // フィルタータイプを確認して適切なパラメータを設定
-        if (filter.type === 'contains') {
-          params.append('music_info', filter.value.toString());
-        } else {
-          params.append('music_info', filter.value.toString());
-        }
+        params.append('music_info', filter.value.toString());
         
         console.log('音楽情報フィルター設定:', {
+          type: filter.type,
+          value: filter.value.toString(),
+          queryParams: Object.fromEntries(params.entries())
+        });
+        return;
+      }
+
+      // 投稿日時フィルターの特別な処理
+      if (key === 'createdAt' || key === '投稿日時') {
+        console.log('API - 投稿日時のフィルタリング処理');
+        
+        // 日付フィルターのタイプに基づいて適切なパラメータを追加
+        if (filter.type === 'after' || filter.type === 'greater') {
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', 'after');
+        } else if (filter.type === 'before' || filter.type === 'less') {
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', 'before');
+        } else {
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', 'date');
+        }
+        
+        console.log('投稿日時フィルター設定:', {
           type: filter.type,
           value: filter.value.toString(),
           queryParams: Object.fromEntries(params.entries())
@@ -601,7 +630,8 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       switch (filter.type) {
         case 'after':
           console.log('API - 日付範囲（開始）のフィルタリング処理');
-          params.append('start_date', filter.value.toString());
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', 'after');
           
           console.log('日付範囲（開始）フィルター設定:', {
             field: key,
@@ -612,7 +642,8 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
           
         case 'before':
           console.log('API - 日付範囲（終了）のフィルタリング処理');
-          params.append('end_date', filter.value.toString());
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', 'before');
           
           console.log('日付範囲（終了）フィルター設定:', {
             field: key,
@@ -940,7 +971,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           });
         }
         // 日付フィルターの処理
-        else if (key === 'createdAt' || apiField === 'created_at') {
+        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日時') {
           console.log('日付フィルター検出:', {
             key,
             apiField,
@@ -968,6 +999,15 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           const dbField = mapFieldToApiField(key);
           params.append(dbField, String(filter.value));
           params.append(`${dbField}_type`, filter.type);
+        }
+        // 音楽情報フィルターの特別な処理
+        else if (key === 'audioTitle' || key === 'BGM') {
+          // フィルタータイプを確認して適切なパラメータを設定
+          if (filter.type === 'contains') {
+            params.append('music_info', filter.value.toString());
+          } else {
+            params.append('music_info', filter.value.toString());
+          }
         }
         // 通常のテキストフィルター処理
         else if ((filter.type === 'equal' || filter.type === 'contains') && 
@@ -1091,14 +1131,27 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
           params.append('category', filter.value.toString());
         }
         // 日付フィルターの処理
-        else if (key === 'createdAt' || apiField === 'created_at') {
-          params.append('created_at', filter.value.toString());
-          params.append('created_at_type', getCreatedAtType(filter.type));
+        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日時') {
+          // 日付フィルターのタイプに基づいて適切なパラメータを追加
+          if (filter.type === 'after' || filter.type === 'greater') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'after');
+          } else if (filter.type === 'before' || filter.type === 'less') {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'before');
+          } else {
+            params.append('created_at', filter.value.toString());
+            params.append('created_at_type', 'date');
+          }
         }
         // 数値フィルターの処理
         else if (filter.type === 'greater' || filter.type === 'less') {
           const dbField = mapFieldToApiField(key);
           params.append(dbField, String(filter.value));
+        }
+        // 音楽情報フィルターの特別な処理
+        else if (key === 'audioTitle' || key === 'BGM') {
+          params.append('music_info', filter.value.toString());
         }
         // 通常のテキストフィルター処理
         else if ((filter.type === 'equal' || filter.type === 'contains') && 
@@ -1158,16 +1211,5 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       music: [],
       error: error instanceof Error ? error.message : '不明なエラー'
     };
-  }
-}
-
-// 日付フィルタータイプの変換ヘルパー関数
-function getCreatedAtType(filterType: FilterType): string {
-  if (filterType === 'after' || filterType === 'greater') {
-    return 'after';
-  } else if (filterType === 'before' || filterType === 'less') {
-    return 'before';
-  } else {
-    return 'date';
   }
 } 
