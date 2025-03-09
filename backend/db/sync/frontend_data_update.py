@@ -47,6 +47,26 @@ class FrontendDataUpdater:
             self.connect()
             logger.info("video_masterからfrontend_dataの更新を開始")
             
+            # 問題のあるレコードを特定するためのデバッグクエリ
+            debug_query = """
+            SELECT 
+                id, created_at
+            FROM 
+                video_master
+            WHERE 
+                created_at IS NULL
+            LIMIT 5
+            """
+            
+            try:
+                self.cursor.execute(debug_query)
+                empty_date_records = self.cursor.fetchall()
+                logger.info(f"NULL日付を持つレコード数: {len(empty_date_records)}")
+                for record in empty_date_records:
+                    logger.info(f"NULL日付を持つレコード: id={record['id']}, created_at={record['created_at']}")
+            except Exception as e:
+                logger.error(f"デバッグクエリの実行中にエラーが発生: {str(e)}")
+            
             # 更新が必要なレコードを取得するクエリ
             select_query = """
             SELECT 
@@ -71,10 +91,22 @@ class FrontendDataUpdater:
             LEFT JOIN frontend_data fd ON vm.id = fd.id
             WHERE 
                 vm.status != 'deleted'
+                AND vm.created_at IS NOT NULL
+                AND STR_TO_DATE(vm.created_at, '%Y-%m-%d') IS NOT NULL
+                AND vm.created_at >= '2023-12-01'
             """
+            
+            logger.info(f"実行するSELECTクエリ: {select_query}")
             
             self.cursor.execute(select_query)
             rows_to_update = self.cursor.fetchall()
+            
+            # 取得したデータの検証
+            logger.info(f"取得したレコード数: {len(rows_to_update)}")
+            
+            # 最初の数件のレコードをログに出力
+            for i, row in enumerate(rows_to_update[:5]):
+                logger.info(f"レコード{i+1}: id={row['id']}, created_at={row['created_at']}, type={type(row['created_at'])}")
             
             if not rows_to_update:
                 logger.info("更新が必要なデータはありません")
@@ -118,11 +150,28 @@ class FrontendDataUpdater:
                         # カンマ区切りの文字列として処理
                         hashtags = ','.join([tag.strip() for tag in hashtags.split(',') if tag.strip()])
                     
+                    # created_atの処理 - 確実に有効な日付形式であることを確認
+                    created_at = row['created_at']
+                    if created_at is None:
+                        logger.warning(f"NULLの日付を検出しました (id: {row['id']})")
+                        continue  # 日付がNULLのレコードはスキップ
+                    
+                    # created_atが文字列の場合、日付オブジェクトに変換してから適切な形式に戻す
+                    try:
+                        if isinstance(created_at, str):
+                            # 文字列から日付オブジェクトへ変換
+                            date_obj = datetime.strptime(created_at, '%Y-%m-%d')
+                            # 日付オブジェクトから適切な形式の文字列へ戻す
+                            created_at = date_obj.strftime('%Y-%m-%d')
+                    except ValueError as e:
+                        logger.warning(f"日付変換エラー (id: {row['id']}): {created_at} - {str(e)}")
+                        continue  # 変換できない日付はスキップ
+                    
                     params = (
                         row['id'],
                         row['url'],
                         row['thumbnail_url'],
-                        row['created_at'],
+                        created_at,
                         row['play_count'],
                         row['play_count_increase'],
                         row['account_name'],
@@ -133,6 +182,9 @@ class FrontendDataUpdater:
                         row['caption'],
                         row['category'],
                     )
+                    
+                    # パラメータのデバッグ出力
+                    logger.debug(f"UPSERTパラメータ: id={row['id']}, created_at={created_at}, type={type(created_at)}")
                     
                     self.cursor.execute(update_query, params)
                     updated_count += 1
