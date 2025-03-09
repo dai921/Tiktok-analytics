@@ -97,12 +97,21 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const handleClearAllFilters = useCallback(() => {
       console.log('DataTable - handleClearAllFilters called');
       console.log('DataTable - columnFilters before clear:', columnFilters);
+      
+      // 状態をリセット
       setHasActiveFilters(false);
       setColumnFilters({});
       setCurrentFilters({});
+      setSortField(null);
+      setSortDirection(null);
+      
       console.log('DataTable - columnFilters after clear: {}');
+      
+      // 親コンポーネントに通知
       onFilterChange(false);
-    }, [onFilterChange, columnFilters]);
+      
+      // 遅延実行は無限ループの原因になる可能性があるため削除
+    }, [onFilterChange]);
 
     // columnFiltersの変更を監視
     useEffect(() => {

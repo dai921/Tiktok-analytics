@@ -77,15 +77,21 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       setFilterValue('')
       setFilterType('equal')
       setSortDirection(null)
+      
+      // 親コンポーネントへの通知は以下に移動（この関数から削除）
     }, [title])
 
     // isActiveの変更を監視
     useEffect(() => {
       console.log(`TableHeaderCell(${title}) - isActive changed:`, { isActive });
       if (!isActive) {
-        resetFilterState()
+        // isActiveがfalseになったときだけ内部状態をリセット
+        // 親への通知は行わない（無限ループ防止）
+        setFilterValue('')
+        setFilterType('equal')
+        setSortDirection(null)
       }
-    }, [isActive, resetFilterState, title])
+    }, [isActive, title])
 
     // ポップアップの位置を計算する関数
     const calculatePopupPosition = useCallback(() => {
@@ -266,10 +272,23 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       if (onFilter) {
         const fieldName = typeof title === 'string' ? title : '';
         console.log(`フィルター ${fieldName} をクリアしています`);
+        
+        // フィールド名のマッピング
+        let actualFieldName = fieldName;
+        if (title === '投稿日時') {
+          actualFieldName = 'createdAt';
+        } else if (title === '再生数') {
+          actualFieldName = 'views';
+        } else if (title === 'いいね数') {
+          actualFieldName = 'likes';
+        } else if (title === 'コメント数') {
+          actualFieldName = 'comments';
+        }
+        
         onFilter({ 
           type: 'clear', 
           value: '', 
-          field: fieldName 
+          field: actualFieldName 
         });
       }
     };
@@ -309,8 +328,14 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // 外部からアクセスできるようにする
     useImperativeHandle(ref, () => ({
-      clearFilter: resetFilterState
-    }), [resetFilterState])
+      clearFilter: () => {
+        // ローカル状態のみリセット（親への通知は行わない）
+        setFilterValue('')
+        setFilterType('equal')
+        setSortDirection(null)
+        console.log(`TableHeaderCell(${title}) - 外部からのclearFilter呼び出し`);
+      }
+    }), [title])
 
     const renderFilterInput = () => {
       switch (type) {
@@ -536,7 +561,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           <button 
             ref={buttonRef}
             onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500' : ''}`}
+            className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500 font-bold' : ''}`}
+            data-active={isActive}
           >
             <svg 
               className="w-4 h-4"

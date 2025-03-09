@@ -170,20 +170,21 @@ const Dashboard = () => {
   const handleClearAllFilters = () => {
     console.log('すべてのフィルターをクリア');
     
+    // 重要: 状態更新の順序を整理して無限ループを防ぐ
+    // 1. API呼び出しを最初に行わないようにする
+    // 2. 一度の更新で複数の状態を変更する
+    
+    // DataTableのフィルターをクリア
+    if (tableRef.current && tableRef.current.clearAllFilters) {
+      console.log('DataTableのclearAllFiltersを呼び出し');
+      tableRef.current.clearAllFilters();
+    }
+    
     // すべてのフィルターをクリア
     setFilters({});
     setCurrentPage(1); // ページもリセット
     
-    // ヘッダーセルの参照からもクリア
-    headerRefs.current.forEach(ref => {
-      if (ref && ref.clearFilter) {
-        console.log('ヘッダーセルのフィルターをクリア');
-        ref.clearFilter();
-      }
-    });
-    
-    // データを再取得（空のフィルターを明示的に渡す）
-    console.log('フィルタークリア後のAPI呼び出し');
+    // 最後にデータを再取得
     fetchData(1, {});
   };
 
