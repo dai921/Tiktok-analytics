@@ -1,16 +1,23 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 'equal' | 'greater' | 'less' | 'after' | 'before' | 'sort' | 'date';
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear';
 
 export interface FilterQuery {
   field: string
   type: FilterType
   value: string | number
+  isHashtag?: boolean
+  clear?: boolean
+  sortDirection?: 'asc' | 'desc' | null
+  timestamp?: number  // ソート操作の順序を特定するためのタイムスタンプ
+  isPrimarySort?: boolean  // このソートが主ソートかどうかを示すフラグ
+  sortField?: string  // ソート対象のフィールド名（明示的に指定）
 }
 
 export interface FilterValue extends FilterQuery {
   clear?: boolean
+  isHashtag?: boolean
 }
 
 // データ型
@@ -31,7 +38,7 @@ export interface VideoData {
   shares: number
   saves: number
   createdAt: string
-  hashtags: string[]
+  hashtags: string[] | string
   duration: number
   isViral: boolean
   prevFetchDate: string
@@ -68,10 +75,13 @@ export interface PaginatedResponse {
 export interface TableHeaderCellProps {
   title: ReactNode
   type?: 'text' | 'number' | 'date'
-  align?: 'left' | 'right'
-  onFilter?: (value: FilterValue) => void
+  align?: 'left' | 'right' | 'center'
+  onFilter?: (value: FilterValue, shouldMerge?: boolean) => void
   style?: React.CSSProperties
-  field?: string
+  currentFilters?: Record<string, FilterValue>
+  isActive?: boolean
+  categoryData?: string[]
+  sortDirection?: 'asc' | 'desc' | null
 }
 
 export interface DataTableProps {

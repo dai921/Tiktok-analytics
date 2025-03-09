@@ -1,9 +1,15 @@
 'use client'
 //テスト用に変更
 import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react'
-import type { FilterValue, FilterType } from '@/types/dashboard'
+import type { FilterValue } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 import { cn } from '@/lib/utils'
+import { fetchCategories } from '@/lib/api'  // カテゴリ取得用のAPIを追加
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+
+// FilterType定義を更新
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear';
 
 interface TableHeaderCellProps {
   title: string
@@ -12,6 +18,9 @@ interface TableHeaderCellProps {
   onFilter?: (value: FilterValue, shouldMerge?: boolean) => void
   style?: React.CSSProperties
   currentFilters?: Record<string, FilterValue>
+  isActive?: boolean
+  categoryData?: string[]  // カテゴリデータの型を追加
+  sortDirection?: 'asc' | 'desc' | null  // ソート方向を追加
 }
 
 export interface TableHeaderCellRef {
@@ -47,17 +56,42 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
-    const [filterType, setFilterType] = useState<FilterType>(type === 'date' ? 'equal' : 'equal')
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-    const [isActive, setIsActive] = useState(false)
+    const [filterType, setFilterType] = useState<FilterType>('equal')
+    const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+    const [categories, setCategories] = useState<string[]>([])
+    const [filteredCategories, setFilteredCategories] = useState<string[]>([]) // フィルタリングされたカテゴリリスト
+    const [isLoadingCategories, setIsLoadingCategories] = useState(false)
 
+    // フィルターまたはソートがアクティブかどうかを判定
     const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
     const buttonRef = useRef<HTMLButtonElement>(null)
     const popupRef = useRef<HTMLDivElement>(null)
+
+    // フィルターの状態をリセットする関数を更新
+    const resetFilterState = useCallback(() => {
+      console.log(`TableHeaderCell(${title}) - resetFilterState called`);
+      setFilterValue('')
+      setFilterType('equal')
+      setSortDirection(null)
+      
+      // 親コンポーネントへの通知は以下に移動（この関数から削除）
+    }, [title])
+
+    // isActiveの変更を監視
+    useEffect(() => {
+      console.log(`TableHeaderCell(${title}) - isActive changed:`, { isActive });
+      if (!isActive) {
+        // isActiveがfalseになったときだけ内部状態をリセット
+        // 親への通知は行わない（無限ループ防止）
+        setFilterValue('')
+        setFilterType('equal')
+        setSortDirection(null)
+      }
+    }, [isActive, title])
 
     // ポップアップの位置を計算する関数
     const calculatePopupPosition = useCallback(() => {
@@ -149,7 +183,15 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       };
     }, [isFilterOpen]);
 
-    const handleSort = () => {
+    // 外部からのsortDirectionプロップと内部ステートを同期させる
+    useEffect(() => {
+      if (sortDirection !== localSortDirection) {
+        setSortDirection(sortDirection);
+      }
+    }, [sortDirection, localSortDirection]);
+
+    // 昇順・降順ソート用の新しい関数を追加
+    const handleSortDirection = (direction: 'asc' | 'desc') => {
       // ソートの状態のみをリセット（data-sort-active属性のみ）
       document.querySelectorAll('[data-header-cell]').forEach(el => {
         if (el !== buttonRef.current?.closest('[data-header-cell]')) {
@@ -159,121 +201,141 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           }
         }
       });
-
-      const newDirection = sortDirection === null ? 'desc' : 
-                          sortDirection === 'desc' ? 'asc' : null;
-      setSortDirection(newDirection);
-      setIsActive(!!newDirection || !!filterValue);
-
-      if (newDirection) {
-        onFilter?.({
-          field: title,
-          type: 'sort',
-          value: newDirection
-        });
-      } else {
-        handleClear();
-      }
+      
+      setSortDirection(direction);
       setIsFilterOpen(false);
+
+      // 現在のミリ秒タイムスタンプを取得
+      const currentTimestamp = Date.now();
+
+      console.log('TableHeaderCell - ソート実行:', {
+        title,
+        direction, 
+        internalFieldMapping: title === '投稿日時' ? 'createdAt' : undefined,
+        timestamp: currentTimestamp,
+        currentTime: new Date(currentTimestamp).toISOString()
+      });
+
+      // 特定のフィールドは直接内部フィールド名を使用
+      let fieldName = title;
+      if (title === '投稿日時') {
+        fieldName = 'createdAt';  // 日本語名から内部フィールド名へ直接マッピング
+      } else if (title === '再生数') {
+        fieldName = 'views';
+      } else if (title === 'いいね数') {
+        fieldName = 'likes';
+      } else if (title === 'コメント数') {
+        fieldName = 'comments';
+      }
+
+      // ソート情報を親コンポーネントに渡す際に、明示的に新しいソートであることを示すフラグを追加
+      onFilter?.({
+        field: fieldName,  // 内部フィールド名を使用
+        type: 'sort',
+        value: direction,
+        timestamp: currentTimestamp,  // 現在のタイムスタンプを追加
+        isPrimarySort: true,  // このソートを主ソートとして扱うフラグ
+        sortField: fieldName  // ソート対象のフィールド名を明示的に含める
+      });
+    };
+
+    const handleSort = () => {
+      if (!isFilterOpen) {
+        setIsFilterOpen(true);
+      }
+      
+      // 昇順ソート
+      if (localSortDirection === null || localSortDirection === 'desc') {
+        handleSortDirection('asc');
+        setIsFilterOpen(false);
+      } 
+      // 降順ソート
+      else if (localSortDirection === 'asc') {
+        handleSortDirection('desc');
+        setIsFilterOpen(false);
+      }
     };
 
     const handleClear = () => {
-      console.log('TableHeaderCell - Clearing filter:', {
-        field: title,
-        previousValue: filterValue,
-        previousType: filterType
-      });
-
-      // 全体リセットを削除し、個別のセルの状態のみをリセット
-      setFilterValue('')
-      setSortDirection(null)
-      setFilterType('equal')
-      setIsActive(false)
-      onFilter?.({
-        field: title,
-        type: 'equal',
-        value: '',
-        clear: true
-      }, true)
-      setIsFilterOpen(false)
-    }
+      console.log(`${title} - フィルタークリア実行`);
+      // ローカル状態をクリア
+      setFilterValue('');
+      setIsFilterOpen(false);
+      setSortDirection(null);
+      
+      // カテゴリフィルターのクリア処理を追加
+      if (categories.length > 0) {
+        setFilteredCategories(categories);
+      }
+      
+      // 親コンポーネントに通知（より明示的な実装）
+      if (onFilter) {
+        const fieldName = typeof title === 'string' ? title : '';
+        console.log(`フィルター ${fieldName} をクリアしています`);
+        
+        // フィールド名のマッピング
+        let actualFieldName = fieldName;
+        if (title === '投稿日時') {
+          actualFieldName = 'createdAt';
+        } else if (title === '再生数') {
+          actualFieldName = 'views';
+        } else if (title === 'いいね数') {
+          actualFieldName = 'likes';
+        } else if (title === 'コメント数') {
+          actualFieldName = 'comments';
+        }
+        
+        onFilter({ 
+          type: 'clear', 
+          value: '', 
+          field: actualFieldName 
+        });
+      }
+    };
 
     const handleFilter = (value: string, type: FilterType) => {
-      console.log('=== TableHeaderCell handleFilter 開始 ===');
-      console.log('受け取ったパラメータ:', {
-        value,
-        type,
-        title,
-        componentType: type  // コンポーネントに渡されたtype prop
-      });
-
-      setIsActive(true);
-
-      // 日付フィルターの場合の処理
-      if (title === '投稿日時') {
-        console.log('投稿日時のフィルター処理を開始');
-        const dateValue = new Date(value);
-        console.log('変換された日付:', dateValue);
-
-        if (!isNaN(dateValue.getTime())) {
-          const formattedDate = dateValue.toISOString().split('T')[0];
-          console.log('フォーマットされた日付:', formattedDate);
-          
-          const filterValue = {
-            field: '投稿日時',
-            type: type === 'equal' ? 'date' : type,
-            value: formattedDate
-          };
-          console.log('親コンポーネントに送信するフィルター値:', filterValue);
-          
-          // 親コンポーネントにフィルター変更を通知
-          onFilter?.(filterValue);
-          console.log('onFilter関数の呼び出し完了');
-          
-          setIsFilterOpen(false);
-        } else {
-          console.warn('無効な日付形式:', value);
-        }
-      } else {
-        console.log('通常のフィルター処理');
-        const filterValue = {
+      if (!onFilter) return;
+      
+      // カテゴリフィールドの場合は特別な処理
+      if (title === 'ジャンル') {
+        // 既存の型に合わせて渡すデータを調整
+        onFilter({
           field: title,
-          type,
-          value
-        };
-        console.log('親コンポーネントに送信するフィルター値:', filterValue);
-        
-        onFilter?.(filterValue);
-        console.log('onFilter関数の呼び出し完了');
-        
-        setIsFilterOpen(false);
+          value: value,
+          type: type
+        }, true);
+      } else {
+        // 他のフィールドは通常通り
+        onFilter({
+          field: title,
+          value: value,
+          type: type
+        }, true);
       }
-      console.log('=== TableHeaderCell handleFilter 終了 ===');
     };
 
     const getSortLabel = () => {
       // 数値フィールドの場合
       if (type === 'number') {
-        return sortDirection === null ? '▼ 大きい順に並び替え' :
-               sortDirection === 'desc' ? '▲ 小さい順に並び替え' : 
-               '▼ 大きい順に並び替え';
+        // descとascの表示を反転: descが降順、ascが昇順
+        return localSortDirection === 'desc' ? '▼ 小さい順に並び替え' : '▲ 大きい順に並び替え';
       }
       
-      // その他のフィールド
-      return sortDirection === null ? '▼ 降順に並び替え' :
-             sortDirection === 'desc' ? '▲ 昇順に並び替え' : 
-             '▼ 降順に並び替え';
+      // テキストフィールドの場合（日付やアルファベット順など）
+      // descとascの表示を反転: descが降順、ascが昇順
+      return localSortDirection === 'desc' ? '▼ 昇順に並び替え' : '▲ 降順に並び替え';
     };
 
     // 外部からアクセスできるようにする
     useImperativeHandle(ref, () => ({
-      clearFilter: handleClear
-    }))
-
-    // isFilterOpenの状態変更を処理
-    const toggleFilter = () => {
-      setIsFilterOpen(!isFilterOpen);
-    };
+      clearFilter: () => {
+        // ローカル状態のみリセット（親への通知は行わない）
+        setFilterValue('')
+        setFilterType('equal')
+        setSortDirection(null)
+        console.log(`TableHeaderCell(${title}) - 外部からのclearFilter呼び出し`);
+      }
+    }), [title])
 
     const renderFilterInput = () => {
       switch (type) {
@@ -335,7 +397,13 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <input
               type="text"
               value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                setFilterValue(newValue);
+                
+                // ジャンルの場合は即時フィルタリングのみ行う（フィルタは適用しない）
+                // onChange内では e.key は存在しないため参照しない
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   handleFilter(filterValue, filterType);
@@ -348,7 +416,125 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     }
 
-    const hasFilter = !!onFilter
+    // propsから受け取ったcategoryDataを使用
+    useEffect(() => {
+      if (categoryData && categoryData.length > 0) {
+        console.log(`TableHeaderCell(${title}) - カテゴリデータを受け取りました:`, {
+          count: categoryData.length,
+          sample: categoryData.slice(0, 3)
+        });
+        setCategories(categoryData);
+        // フィルタリングされた値も更新
+        if (filterValue === '') {
+          setFilteredCategories(categoryData);
+        } else {
+          const filtered = categoryData.filter(category => 
+            category.toLowerCase().includes(filterValue.toLowerCase())
+          );
+          setFilteredCategories(filtered);
+        }
+      }
+    }, [categoryData, title, filterValue]);
+
+    // カテゴリを選択する処理
+    const handleCategorySelect = (category: string) => {
+      console.log(`カテゴリ選択: ${category}`);
+      
+      if (onFilter) {
+        // カテゴリ選択時の処理
+        // 部分一致によるフィルタリングを実装
+        onFilter({
+          type: 'contains', // 'equals'から'contains'に変更して部分一致検索に
+          value: category,
+          field: title
+        });
+        
+        // UI状態を更新
+        setFilterValue(category);
+        setIsFilterOpen(false);
+      }
+    };
+
+    // カテゴリリストを描画する関数を改善
+    const renderCategoryList = () => {
+      // カテゴリーデータが関連するカラムにのみ表示
+      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title) || filteredCategories.length === 0) {
+        return null;
+      }
+
+      return (
+        <div className="p-2 border-t">
+          <div className="mb-2">
+            <input
+              type="text"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              placeholder={`${getTitleLabel()}を検索...`}
+              className="w-full px-2 py-1 border rounded text-xs"
+            />
+          </div>
+          
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs font-medium text-gray-700">利用可能な{getTitleLabel()}:</p>
+            <span className="text-xs text-gray-500">{filteredCategories.length}件</span>
+          </div>
+
+          {filteredCategories.length > 0 ? (
+            <ul className="space-y-1 max-h-60 overflow-y-auto">
+              {filteredCategories.map((category, index) => (
+                <li key={index}>
+                  <button
+                    className="w-full text-left px-2 py-1 text-xs hover:bg-gray-50 rounded"
+                    onClick={() => handleCategorySelect(category)}
+                  >
+                    {category}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-gray-500 p-2">
+              {filterValue ? "一致する項目がありません" : "項目がありません"}
+            </p>
+          )}
+        </div>
+      );
+    };
+
+    // タイトルに応じたラベルを取得
+    const getTitleLabel = () => {
+      switch (title) {
+        case 'ジャンル':
+          return 'カテゴリ';
+        case 'アカウント名':
+          return 'アカウント';
+        case 'ハッシュタグ':
+          return 'ハッシュタグ';
+        case 'BGM':
+          return '音声タイトル';
+        default:
+          return '項目';
+      }
+    };
+
+    // 昇順/降順のラベルを取得する関数
+    const getAscSortLabel = () => {
+      // 数値フィールドの場合
+      if (type === 'number') {
+        return '▲ 小さい順に並び替え';
+      }
+      // テキストフィールドの場合（日付やアルファベット順など）
+      return '▲ 昇順に並び替え';
+    };
+
+    const getDescSortLabel = () => {
+      // 数値フィールドの場合
+      if (type === 'number') {
+        return '▼ 大きい順に並び替え';
+      }
+      // テキストフィールドの場合（日付やアルファベット順など）
+      return '▼ 降順に並び替え';
+    };
 
     return (
       <div 
@@ -357,23 +543,34 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           "flex items-center gap-1 whitespace-nowrap",
           "px-2 py-1 text-gray-700 text-sm",
           align === 'center' ? 'justify-center' : '',
-          isActive ? "text-blue-600 font-medium" : ""
+          isActive || localSortDirection ? "text-blue-600 font-medium" : ""
         )}
       >
-        <span>{title}</span>
-        {hasFilter && (
+        <div 
+          className="flex items-center cursor-default" 
+          // ソート機能を削除するため、handleSortの呼び出しを削除
+          // onClick={handleSort}
+        >
+          <span>{title}</span>
+          {localSortDirection && (
+            <span className="ml-1 text-blue-600">
+              {localSortDirection === 'asc' ? '↑' : '↓'}
+            </span>
+          )}
+        </div>
+        {onFilter && (
           <button 
             ref={buttonRef}
-            onClick={toggleFilter}
-            data-sort-active={!!sortDirection}
-            className={`p-1 hover:bg-gray-100 rounded ${(sortDirection || filterValue) ? 'text-sky-500' : ''}`}
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500 font-bold' : ''}`}
+            data-active={isActive}
           >
             <svg 
               className="w-4 h-4"
               viewBox="0 0 24 24" 
               fill="none" 
               stroke="currentColor"
-              strokeWidth={(sortDirection || filterValue) ? "3" : "2"}
+              strokeWidth={isActive ? "3" : "2"}
             >
               <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
             </svg>
@@ -415,21 +612,35 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                 >
                   フィルターを適用
                 </button>
-                {(filterValue || sortDirection) && (
+                {(filterValue || localSortDirection) && (
                   <button
-                    onClick={handleClear}
+                    onClick={() => {
+                      console.log(`フィルタークリアボタンがクリックされました: ${title}`);
+                      handleClear();
+                    }}
                     className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
                   >
                     フィルターをクリア
                   </button>
                 )}
               </div>
+              
+              {/* カテゴリリストを表示 */}
+              {renderCategoryList()}
+              
               <div className="p-2 border-t">
+                <p className="text-xs font-medium mb-1 text-gray-700">並び替え:</p>
                 <button 
-                  onClick={handleSort}
-                  className="w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs"
+                  onClick={() => handleSortDirection('desc')}
+                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs mb-1 ${localSortDirection === 'desc' ? 'bg-gray-100 font-semibold' : ''}`}
                 >
-                  {getSortLabel()}
+                  {getDescSortLabel()}
+                </button>
+                <button 
+                  onClick={() => handleSortDirection('asc')}
+                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs ${localSortDirection === 'asc' ? 'bg-gray-100 font-semibold' : ''}`}
+                >
+                  {getAscSortLabel()}
                 </button>
               </div>
             </div>

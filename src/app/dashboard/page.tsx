@@ -36,6 +36,15 @@ const Dashboard = () => {
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
 
   const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
+    // ハッシュタグ用のフラグを引き継ぐ
+    if (filter.isHashtag) {
+      return {
+        field: filter.field,
+        type: filter.type,
+        value: filter.value,
+        isHashtag: true
+      }
+    }
     return {
       field: filter.field,
       type: filter.type,
@@ -44,45 +53,77 @@ const Dashboard = () => {
   }
 
   const handleFilter = (newFilter: FilterValue) => {
-    console.log('Dashboard - Filter received:', {
-      newFilter,
-      currentFilters: filters,
-      isClearing: newFilter.clear
+    console.log('Dashboard - フィルター受信:', newFilter);
+    
+    // クリア操作を明示的に検出
+    if (newFilter.type === 'clear' || !newFilter.value) {
+      console.log(`Dashboard - フィルター削除: ${newFilter.field}`);
+      
+      // フィールドが存在する場合のみ削除（エラー防止）
+      if (newFilter.field && filters[newFilter.field]) {
+        const updatedFilters = { ...filters };
+        delete updatedFilters[newFilter.field];
+        setFilters(updatedFilters);
+        
+        // 更新後のフィルターでデータを再取得
+        console.log('Dashboard - 更新後のフィルター:', updatedFilters);
+        fetchData(1, updatedFilters);
+      } else {
+        console.log(`Dashboard - 削除するフィールド ${newFilter.field} が見つからないか空です`);
+        // 念のためすべてのフィルターで再取得
+        fetchData(1, filters);
+      }
+      return;
+    }
+    
+    // フィールド名を英語に逆変換
+    let field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
+    
+    // ハッシュタグの場合は特別に処理
+    if (newFilter.field === 'ハッシュタグ') {
+      field = 'hashtags';
+    }
+    
+    console.log('Dashboard - フィールド変換:', {
+      originalField: newFilter.field,
+      convertedField: field,
+      type: newFilter.type,
+      value: newFilter.value,
+      isHashtag: newFilter.isHashtag,
+      timestamp: newFilter.timestamp,
+      isPrimarySort: newFilter.isPrimarySort
     });
 
-    if (newFilter.clear) {
-      console.log('Dashboard - Clearing filter for field:', newFilter.field);
+    const filterQuery: FilterQuery = {
+      field: field,
+      type: newFilter.type,
+      value: newFilter.value,
+      ...(newFilter.isHashtag && { isHashtag: true }),
+      ...(newFilter.timestamp !== undefined && { timestamp: newFilter.timestamp }),
+      ...(newFilter.isPrimarySort !== undefined && { isPrimarySort: newFilter.isPrimarySort }),
+      ...(newFilter.sortField !== undefined && { sortField: newFilter.sortField })
+    };
+    
+    console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);
+    
+    // 修正: ソート処理の場合は、既存のフィルター状態を維持しながらソート情報のみを更新
+    if (newFilter.type === 'sort') {
+      // 同じフィールドに対するフィルターがあれば、それを保持したままソート情報を追加
       setFilters(prev => {
-        const updated = { ...prev };
-        delete updated[newFilter.field];
-        console.log('Updated filters after clear:', updated);
+        // 同じフィールドに対する既存のフィルター情報を取得
+        const existingFilter = prev[field];
         
-        // フィルターが全てクリアされた場合は、データを再取得
-        if (Object.keys(updated).length === 0) {
-          fetchData(1, {});
-        }
-        
-        return updated;
+        // 同じフィールドに対するフィルターとソートの情報をマージ
+        return {
+          ...prev,
+          // ソート用の新しいキーを作成（既存のフィルターとは別に管理）
+          [`${field}_sort`]: filterQuery,
+          // 既存のフィルターが存在する場合は維持
+          ...(existingFilter && { [field]: existingFilter })
+        };
       });
     } else {
-      // フィールド名を英語に逆変換
-      const field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
-      
-      console.log('Dashboard - フィールド変換:', {
-        originalField: newFilter.field,
-        convertedField: field,
-        type: newFilter.type,
-        value: newFilter.value
-      });
-
-      const filterQuery: FilterQuery = {
-        field: field,
-        type: newFilter.type,
-        value: newFilter.value
-      };
-      
-      console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);
-      
+      // 通常のフィルター処理（既存のコード）
       setFilters(prev => ({
         ...prev,
         [field]: filterQuery
@@ -127,11 +168,25 @@ const Dashboard = () => {
   }, [filters, currentPage]);
 
   const handleClearAllFilters = () => {
-    headerRefs.current.forEach(ref => {
-      ref?.clearFilter()
-    })
-    setFilters({})
-  }
+    console.log('すべてのフィルターをクリア');
+    
+    // 重要: 状態更新の順序を整理して無限ループを防ぐ
+    // 1. API呼び出しを最初に行わないようにする
+    // 2. 一度の更新で複数の状態を変更する
+    
+    // DataTableのフィルターをクリア
+    if (tableRef.current && tableRef.current.clearAllFilters) {
+      console.log('DataTableのclearAllFiltersを呼び出し');
+      tableRef.current.clearAllFilters();
+    }
+    
+    // すべてのフィルターをクリア
+    setFilters({});
+    setCurrentPage(1); // ページもリセット
+    
+    // 最後にデータを再取得
+    fetchData(1, {});
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">

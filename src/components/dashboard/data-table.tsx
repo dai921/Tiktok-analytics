@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, forwardRef, useImperativeHandle, useEffect, ReactElement } from 'react'
+import { useState, useRef, useEffect, forwardRef, useCallback, useImperativeHandle, ReactElement } from 'react'
 import type { VideoData, FilterValue, Column, FilterQuery } from '@/types/dashboard'
 import { TableHeaderCell } from './table-header-cell'
 import Image from 'next/image'
@@ -8,6 +8,7 @@ import { TextPopup } from '@/components/ui/text-popup'
 import { COLUMN_MAP } from '@/lib/api'
 import { Pagination } from './pagination'
 import { ImageHover } from '@/components/ui/image-hover'
+import { getFilterOptions } from '@/lib/api'
 
 interface DataTableProps {
   initialData: VideoData[]
@@ -62,52 +63,324 @@ const formatNumber = (num: number): ReactElement => {
   )
 }
 
+// カテゴリ型の追加
+interface CategoryItem {
+  category: string;
+}
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
+    const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
+    const [categoryList, setCategoryList] = useState<string[]>([])
+    const [accountList, setAccountList] = useState<string[]>([])
+    const [hashtagList, setHashtagList] = useState<string[]>([])
+    const [audioTitleList, setAudioTitleList] = useState<string[]>([])
+    const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({})
+    const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false)
+    const [sortField, setSortField] = useState<string | null>(null)
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+    
+    // API関連の設定
+    const API_BASE_URL = 'http://localhost:8080';
 
+    // 最後にクリックしたソートフィールドを追跡
+    const [lastClickedSort, setLastClickedSort] = useState<string | null>(null);
+
+    // 参照を設定
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
-    }))
+    }));
 
-    const handleClearAllFilters = () => {
-      setHasActiveFilters(false)
-      onFilterChange(false)
-    }
+    // フィルターをクリアする関数
+    const handleClearAllFilters = useCallback(() => {
+      console.log('DataTable - handleClearAllFilters called');
+      console.log('DataTable - columnFilters before clear:', columnFilters);
+      
+      // 状態をリセット
+      setHasActiveFilters(false);
+      setColumnFilters({});
+      setCurrentFilters({});
+      setSortField(null);
+      setSortDirection(null);
+      
+      console.log('DataTable - columnFilters after clear: {}');
+      
+      // 親コンポーネントに通知
+      onFilterChange(false);
+      
+      // 遅延実行は無限ループの原因になる可能性があるため削除
+    }, [onFilterChange]);
 
-    const handleFilter = (field: string) => (filterValue: FilterValue) => {
-      console.log('=== DataTable handleFilter 開始 ===');
-      console.log('受け取ったパラメータ:', {
-        field,
-        filterValue,
-        mappedField: COLUMN_MAP[field]  // フィールド名のマッピング結果も確認
-      });
+    // columnFiltersの変更を監視
+    useEffect(() => {
+      console.log('DataTable - columnFilters changed:', columnFilters);
+    }, [columnFilters]);
 
-      if ('clear' in filterValue) {
-        console.log('クリア処理を実行');
-        onFilterChange(true, {
-          field: COLUMN_MAP[field],
-          type: 'equal',
-          value: ''
-        });
+    // フィルター条件に基づいて選択肢を取得する関数（共通関数として抽出）
+    const loadFilterOptions = useCallback(async () => {
+      try {
+        setIsLoadingFilterOptions(true);
+        console.log('フィルター条件に基づく選択肢データの取得開始:', currentFilters);
+        
+        // 最適化されたAPIを使って選択肢のみを取得
+        const result = await getFilterOptions(currentFilters);
+        
+        if (result.success) {
+          console.log(`選択肢データの取得成功`);
+          
+          // 取得した選択肢をセット
+          setCategoryList(result.categories);
+          setAccountList(result.accounts);
+          setHashtagList(result.hashtags);
+          setAudioTitleList(result.music);
+          
+          console.log('選択肢更新完了:', {
+            カテゴリ数: result.categories.length,
+            アカウント数: result.accounts.length,
+            ハッシュタグ数: result.hashtags.length,
+            音声タイトル数: result.music.length
+          });
+        } else {
+          console.error('選択肢データの取得に失敗:', result.error || '不明なエラー');
+        }
+      } catch (error) {
+        console.error('フィルター選択肢取得中のエラー:', error);
+      } finally {
+        setIsLoadingFilterOptions(false);
+      }
+    }, [currentFilters]);
+
+    // API から各種選択肢データを取得する関数
+    const fetchCategoriesFromApi = async () => {
+      try {
+        console.log('カテゴリ一覧取得開始');
+        const response = await fetch(`${API_BASE_URL}/api/categories`);
+        
+        if (!response.ok) {
+          console.error('カテゴリAPI応答エラー:', response.status, response.statusText);
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('カテゴリAPIレスポンス:', data);
+        
+        if (data.success) {
+          if (Array.isArray(data.categories)) {
+            // カテゴリを「、」で分割して個別のカテゴリとして扱う
+            const allCategories: string[] = [];
+            data.categories.forEach((category: string) => {
+              // カテゴリが「、」で区切られている場合は分割
+              if (category && typeof category === 'string') {
+                // 「、」と「,」両方をチェック（全角・半角の両方に対応）
+                const hasJapaneseComma = category.includes('、');
+                const hasEnglishComma = category.includes(',');
+                if (hasJapaneseComma || hasEnglishComma) {
+                  // 両方の区切り文字で分割（まず「、」で分割し、その後各部分を「,」で分割）
+                  let splitCategories: string[] = [];
+                  
+                  // まず「、」で分割
+                  const japaneseCommaSplit = hasJapaneseComma ? category.split('、') : [category];
+                  
+                  // 次に各部分を「,」で分割
+                  japaneseCommaSplit.forEach((part: string) => {
+                    if (part.includes(',')) {
+                      splitCategories.push(...part.split(','));
+                    } else {
+                      splitCategories.push(part);
+                    }
+                  });
+                  
+                  // 各カテゴリの空白を削除
+                  splitCategories = splitCategories.map((cat: string) => cat.trim());
+                  allCategories.push(...splitCategories);
+                } else {
+                  allCategories.push(category);
+                }
+              }
+            });
+            
+            // 重複を除去
+            const uniqueCategories = [...new Set(allCategories)];
+            setCategoryList(uniqueCategories.filter(Boolean) as string[]);
+            console.log('処理後のカテゴリ:', uniqueCategories);
+          } else {
+            console.error('カテゴリデータが配列ではありません:', data.categories);
+          }
+        } else {
+          console.error('カテゴリ取得APIエラー:', data.error);
+        }
+      } catch (error) {
+        console.error('カテゴリの取得中に例外が発生しました:', error);
+        setCategoryList([]);
+      }
+    };
+
+    const fetchAccountsFromApi = async () => {
+      try {
+        // APIエンドポイントを修正
+        const response = await fetch(`${API_BASE_URL}/api/accounts`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && Array.isArray(data.data)) {
+            const accounts = data.data.filter(Boolean);
+            setAccountList(accounts as string[]);
+            console.log('取得したアカウント:', accounts);
+          }
+        }
+      } catch (error) {
+        console.error('アカウントの取得中にエラーが発生しました:', error);
+        setAccountList([]);
+      }
+    };
+
+    const fetchHashtagsFromApi = async () => {
+      try {
+        // APIエンドポイントを修正 - limit指定なしで全てのハッシュタグを取得
+        const response = await fetch(`${API_BASE_URL}/api/hashtags`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('ハッシュタグAPIレスポンス:', data);
+          
+          if (data.success && Array.isArray(data.data)) {
+            // ハッシュタグを抽出
+            const allHashtags: string[] = [];
+            data.data.forEach((tagObj: any) => {
+              if (tagObj && tagObj.hashtag && typeof tagObj.hashtag === 'string') {
+                const hashtag = tagObj.hashtag;
+                
+                // 「、」「,」などで区切られている場合は分割
+                if (hashtag.includes('、') || hashtag.includes(',')) {
+                  const splitTags = hashtag.split(/[、,]/).map((tag: string) => tag.trim()).filter(Boolean);
+                  allHashtags.push(...splitTags);
+                } else {
+                  allHashtags.push(hashtag);
+                }
+              }
+            });
+            
+            const uniqueHashtags = [...new Set(allHashtags)].filter(Boolean);
+            // 型キャストを使用してエラーを解決
+            setHashtagList(uniqueHashtags as string[]);
+            console.log('処理後のハッシュタグ:', uniqueHashtags);
+          }
+        }
+      } catch (error) {
+        console.error('ハッシュタグの取得中にエラーが発生しました:', error);
+        setHashtagList([]);
+      }
+    };
+
+    const fetchAudioTitlesFromApi = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/music?limit=100`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && Array.isArray(data.data)) {
+            const audioTitles = data.data
+              .filter((item: any) => item && item.audio_title)
+              .map((item: any) => item.audio_title)
+              .filter(Boolean);
+            
+            const uniqueTitles = [...new Set(audioTitles)];
+            setAudioTitleList(uniqueTitles as string[]);
+            console.log('取得した音声タイトル:', uniqueTitles);
+          }
+        }
+      } catch (error) {
+        console.error('音声タイトルの取得中にエラーが発生しました:', error);
+        setAudioTitleList([]);
+      }
+    };
+
+    // コンポーネント初期表示時に、選択肢データを取得
+    useEffect(() => {
+      console.log('初回レンダリング時のデータ取得開始');
+      // 最初の読み込みでもAPIベースのフィルターオプション取得を使用
+      loadFilterOptions();
+    }, [loadFilterOptions]);
+
+    // フィルター変更時に、フィルターされたデータに基づいて選択肢を更新
+    useEffect(() => {
+      // 常にフィルターオプションを取得する（初期状態でも、フィルター適用時でも）
+      loadFilterOptions();
+    }, [currentFilters, loadFilterOptions]);
+
+    // フィルターハンドラーを更新して現在のフィルターを保存するように
+    const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
+      console.log(`フィルター処理: ${field}`, filterValue);
+      
+      // クリア操作を明示的に検出
+      if (filterValue.type === 'clear' || !filterValue.value) {
+        console.log(`フィルター削除: ${field}`);
+        
+        // 既存のフィルターをコピー（削除対象以外）
+        const newFilters = { ...columnFilters };
+        delete newFilters[field];
+        
+        // 状態を更新
+        setColumnFilters(newFilters);
+        
+        // 親コンポーネントに変更を通知（明示的に削除されたことを伝える）
+        console.log('フィルター削除後の状態:', newFilters);
+        
+        // 親コンポーネントに明示的に削除したフィールドを伝える
+        onFilterChange(
+          Object.keys(newFilters).length > 0,
+          {
+            field: field,
+            type: 'clear',
+            value: ''
+          }
+        );
         return;
       }
-
-      const filterQuery = {
-        field: COLUMN_MAP[field],
-        type: filterValue.type,
-        value: filterValue.value
-      };
-
-      console.log('Dashboardに送信するフィルター値:', filterQuery);
-      onFilterChange(true, filterQuery);
-      console.log('=== DataTable handleFilter 終了 ===');
-    }
+      
+      // 新しいフィルターを追加（既存のフィルターは保持）
+      const newFilters = { ...columnFilters, [field]: filterValue };
+      
+      setColumnFilters(newFilters);
+      setCurrentFilters(prev => ({ ...prev, [field]: filterValue }));
+      
+      // 親コンポーネントに変更を通知
+      onFilterChange(true, filterValue);
+    };
 
     const handlePageChange = (page: number) => {
       onPageChange(page)
     }
+
+    // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
+    const getFilteredOptions = useCallback((columnName: string) => {
+      // APIで取得した全データの選択肢を使用
+      switch (columnName) {
+        case 'ジャンル':
+          // APIから取得したカテゴリリストを使用（「カテゴリ」を削除し、「その他」を最後にソート）
+          return [...categoryList]
+            .filter(category => category !== 'カテゴリ') // 「カテゴリ」を除外
+            .sort((a, b) => {
+              if (a === 'その他') return 1;  // 「その他」を最後に
+              if (b === 'その他') return -1; // 「その他」を最後に
+              return a.localeCompare(b);     // それ以外は通常のソート
+            });
+          
+        case 'アカウント名':
+          // APIから取得したアカウントリストを使用
+          return accountList;
+          
+        case 'ハッシュタグ':
+          // APIから取得したハッシュタグリストを使用
+          return hashtagList;
+          
+        case 'BGM':
+          // APIから取得したBGMリストを使用
+          return audioTitleList;
+          
+        default:
+          return [];
+      }
+    }, [categoryList, accountList, hashtagList, audioTitleList]);
 
     const columns: Column[] = [
       {
@@ -129,18 +402,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       {
         accessorKey: 'createdAt',
         header: ({ column }) => {
-          console.log('createdAtヘッダーの設定:', {
-            title: COLUMN_MAP['createdAt'],
-            mappedField: 'createdAt'
-          });
           return (
             <TableHeaderCell
-              title={COLUMN_MAP['createdAt']}
+              title="投稿日時"
               type="date"
-              onFilter={(value) => {
-                console.log('createdAtのフィルター呼び出し:', value);
-                return handleFilter('createdAt')(value);
-              }}
+              onFilter={(value) => handleFilter('createdAt')(value)}
+              isActive={Boolean(columnFilters['createdAt'])}
+              sortDirection={sortField === 'createdAt' ? sortDirection : null}
             />
           );
         },
@@ -153,6 +421,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('views')(value)}
+            isActive={Boolean(columnFilters['views'])}
+            sortDirection={sortField === 'views' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.views)
@@ -177,7 +447,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="ジャンル"
+            type="text"
             onFilter={(value) => handleFilter('category')(value)}
+            isActive={Boolean(columnFilters['category'])}
+            categoryData={getFilteredOptions('ジャンル')}
+            sortDirection={sortField === 'category' ? sortDirection : null}
           />
         ),
       },
@@ -187,6 +461,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="URL"
             onFilter={(value: FilterValue) => handleFilter('url')(value)}
+            isActive={Boolean(columnFilters['url'])}
           />
         ),
         cell: ({ row }) => (
@@ -213,7 +488,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="アカウント名"
+            type="text"
             onFilter={(value) => handleFilter('accountName')(value)}
+            isActive={Boolean(columnFilters['accountName'])}
+            categoryData={getFilteredOptions('アカウント名')}
+            sortDirection={sortField === 'accountName' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => (
@@ -232,6 +511,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('likes')(value)}
+            isActive={Boolean(columnFilters['likes'])}
+            sortDirection={sortField === 'likes' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.likes)
@@ -244,6 +525,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('comments')(value)}
+            isActive={Boolean(columnFilters['comments'])}
+            sortDirection={sortField === 'comments' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.comments)
@@ -255,6 +538,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="ハッシュタグ"
             type="text"
             onFilter={(value) => handleFilter('hashtags')(value)}
+            isActive={Boolean(columnFilters['hashtags'])}
+            categoryData={getFilteredOptions('ハッシュタグ')}
+            sortDirection={sortField === 'hashtags' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => {
@@ -296,7 +582,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="BGM"
+            type="text"
             onFilter={(value) => handleFilter('audioTitle')(value)}
+            isActive={Boolean(columnFilters['audioTitle'])}
+            categoryData={getFilteredOptions('BGM')}
+            sortDirection={sortField === 'audioTitle' ? sortDirection : null}
           />
         ),
       },
@@ -306,6 +596,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="キャプション"
             onFilter={(value) => handleFilter('description')(value)}
+            isActive={Boolean(columnFilters['description'])}
           />
         ),
         cell: ({ row }) => (
@@ -350,7 +641,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         key={column.accessorKey} 
                         className="px-4 py-3 font-medium text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
-                          minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px'
+                          minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px',
+                          color: Boolean(columnFilters[column.accessorKey]) ? 'var(--color-sky-500)' : undefined
                         }}
                       >
                         {column.header({ column })}
