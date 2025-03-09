@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import pathlib
 import json
+import re
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -664,17 +665,22 @@ async def get_accounts():
         return {"success": False, "error": str(e)}
 
 @app.get("/api/hashtags")
-async def get_hashtags(limit: int = 100):
+async def get_hashtags(limit: int = None):
     """ハッシュタグ一覧を取得するエンドポイント"""
     try:
         connection = get_db_connection()
         cursor = connection.cursor()
         
         # ハッシュタグ一覧の取得
-        cursor.execute(
-            "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
-            (limit,)
-        )
+        if limit:
+            cursor.execute(
+                "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
+                (limit,)
+            )
+        else:
+            cursor.execute(
+                "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != ''"
+            )
         hashtags_rows = cursor.fetchall()
         
         # ハッシュタグはJSONとして保存されている可能性があるため、パースして個別のハッシュタグを抽出
@@ -918,16 +924,34 @@ async def get_filter_options(
             all_hashtags = []
             for row in cursor.fetchall():
                 if row[0]:
-                    hashtags = row[0]
-                    # ハッシュタグを分割して処理
-                    tags = []
-                    if " " in hashtags:
-                        # スペースで区切られたハッシュタグの場合
-                        tags = [tag.strip() for tag in hashtags.split() if tag.strip()]
-                    else:
-                        tags = [hashtags.strip()]
-                    
-                    all_hashtags.extend(tags)
+                    try:
+                        # JSON形式の場合はパース
+                        hashtags_json = json.loads(row[0])
+                        if isinstance(hashtags_json, list):
+                            all_hashtags.extend(hashtags_json)
+                        else:
+                            hashtags = row[0]
+                            # ハッシュタグを分割して処理
+                            tags = []
+                            if " " in hashtags or "、" in hashtags or "," in hashtags:
+                                # スペース、「、」、「,」で区切られたハッシュタグの場合
+                                tags = [tag.strip() for tag in re.split(r'[\s、,]', hashtags) if tag.strip()]
+                            else:
+                                tags = [hashtags.strip()]
+                            
+                            all_hashtags.extend(tags)
+                    except json.JSONDecodeError:
+                        # JSON形式でない場合
+                        hashtags = row[0]
+                        # ハッシュタグを分割して処理
+                        tags = []
+                        if " " in hashtags or "、" in hashtags or "," in hashtags:
+                            # スペース、「、」、「,」で区切られたハッシュタグの場合
+                            tags = [tag.strip() for tag in re.split(r'[\s、,]', hashtags) if tag.strip()]
+                        else:
+                            tags = [hashtags.strip()]
+                        
+                        all_hashtags.extend(tags)
             
             # 重複を削除
             unique_hashtags = list(set(all_hashtags))

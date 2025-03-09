@@ -199,9 +199,13 @@ export async function fetchCategories(): Promise<CategoriesResponse> {
 /**
  * ハッシュタグ一覧を取得する
  */
-export async function fetchHashtags(limit: number = 50): Promise<ApiResponse<HashtagData>> {
+export async function fetchHashtags(limit: number | null = null): Promise<ApiResponse<HashtagData>> {
   try {
-    const response = await fetch(`${apiUrl}/api/hashtags?limit=${limit}`);
+    const url = limit !== null
+      ? `${apiUrl}/api/hashtags?limit=${limit}`
+      : `${apiUrl}/api/hashtags`;
+    
+    const response = await fetch(url);
     
     if (!response.ok) {
       throw new Error(`API request failed with status ${response.status}`);

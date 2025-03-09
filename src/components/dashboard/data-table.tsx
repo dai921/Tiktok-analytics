@@ -203,8 +203,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     const fetchHashtagsFromApi = async () => {
       try {
-        // APIエンドポイントを修正
-        const response = await fetch(`${API_BASE_URL}/api/hashtags?limit=100`);
+        // APIエンドポイントを修正 - limit指定なしで全てのハッシュタグを取得
+        const response = await fetch(`${API_BASE_URL}/api/hashtags`);
         if (response.ok) {
           const data = await response.json();
           console.log('ハッシュタグAPIレスポンス:', data);
