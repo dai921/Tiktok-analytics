@@ -79,6 +79,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [audioTitleList, setAudioTitleList] = useState<string[]>([])
     const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({})
     const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false)
+    const [sortField, setSortField] = useState<string | null>(null)
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     
     // API関連の設定
     const API_BASE_URL = 'http://localhost:8080';
@@ -356,27 +358,25 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
       // ソートフィルターの場合の処理（ソート情報のみを更新）
       if (filterValue.type === 'sort') {
-        const sortKey = `${field}_sort`;
-        setColumnFilters(prev => ({
-          ...prev,
-          [sortKey]: true
-        }));
+        // ソート情報を更新
+        setSortField(field);
+        setSortDirection(filterValue.value as 'asc' | 'desc');
         
         // 現在のフィルター条件にも保存
         setCurrentFilters(prev => ({
           ...prev,
-          [sortKey]: {
+          [field]: {
             field: COLUMN_MAP[field] || field,
-            type: 'sort',
-            value: filterValue.value
+            value: filterValue.value,
+            type: filterValue.type
           }
         }));
         
-        // ソート情報を親コンポーネントに渡す
+        setHasActiveFilters(true);
         onFilterChange(true, {
           field: COLUMN_MAP[field] || field,
-          type: 'sort',
-          value: filterValue.value
+          value: filterValue.value,
+          type: 'sort'
         });
         return;
       }
@@ -513,6 +513,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 return handleFilter('createdAt')(value);
               }}
               isActive={columnFilters['createdAt']}
+              sortDirection={sortField === 'createdAt' ? sortDirection : null}
             />
           );
         },
@@ -526,6 +527,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('views')(value)}
             isActive={columnFilters['views']}
+            sortDirection={sortField === 'views' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.views)
@@ -554,6 +556,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilter={(value) => handleFilter('category')(value)}
             isActive={!!columnFilters['category']}
             categoryData={getFilteredOptions('ジャンル')}
+            sortDirection={sortField === 'category' ? sortDirection : null}
           />
         ),
       },
@@ -594,6 +597,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilter={(value) => handleFilter('accountName')(value)}
             isActive={!!columnFilters['accountName']}
             categoryData={getFilteredOptions('アカウント名')}
+            sortDirection={sortField === 'accountName' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => (
@@ -613,6 +617,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('likes')(value)}
             isActive={columnFilters['likes']}
+            sortDirection={sortField === 'likes' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.likes)
@@ -626,6 +631,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('comments')(value)}
             isActive={columnFilters['comments']}
+            sortDirection={sortField === 'comments' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.comments)
@@ -639,6 +645,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilter={(value) => handleFilter('hashtags')(value)}
             isActive={!!columnFilters['hashtags']}
             categoryData={getFilteredOptions('ハッシュタグ')}
+            sortDirection={sortField === 'hashtags' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => {
@@ -684,6 +691,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilter={(value) => handleFilter('audioTitle')(value)}
             isActive={!!columnFilters['audioTitle']}
             categoryData={getFilteredOptions('BGM')}
+            sortDirection={sortField === 'audioTitle' ? sortDirection : null}
           />
         ),
       },

@@ -9,6 +9,7 @@ export interface FilterQuery {
   value: string | number
   isHashtag?: boolean
   clear?: boolean
+  sortDirection?: 'asc' | 'desc' | null
 }
 
 export interface FilterValue extends FilterQuery {
@@ -71,10 +72,13 @@ export interface PaginatedResponse {
 export interface TableHeaderCellProps {
   title: ReactNode
   type?: 'text' | 'number' | 'date'
-  align?: 'left' | 'right'
-  onFilter?: (value: FilterValue) => void
+  align?: 'left' | 'right' | 'center'
+  onFilter?: (value: FilterValue, shouldMerge?: boolean) => void
   style?: React.CSSProperties
-  field?: string
+  currentFilters?: Record<string, FilterValue>
+  isActive?: boolean
+  categoryData?: string[]
+  sortDirection?: 'asc' | 'desc' | null
 }
 
 export interface DataTableProps {

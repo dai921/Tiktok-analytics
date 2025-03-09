@@ -20,6 +20,7 @@ interface TableHeaderCellProps {
   currentFilters?: Record<string, FilterValue>
   isActive?: boolean
   categoryData?: string[]  // カテゴリデータの型を追加
+  sortDirection?: 'asc' | 'desc' | null  // ソート方向を追加
 }
 
 export interface TableHeaderCellRef {
@@ -55,11 +56,11 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [] }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterType>('equal')
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+    const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
     const [categories, setCategories] = useState<string[]>([])
     const [filteredCategories, setFilteredCategories] = useState<string[]>([]) // フィルタリングされたカテゴリリスト
@@ -176,6 +177,13 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       };
     }, [isFilterOpen]);
 
+    // 外部からのsortDirectionプロップと内部ステートを同期させる
+    useEffect(() => {
+      if (sortDirection !== localSortDirection) {
+        setSortDirection(sortDirection);
+      }
+    }, [sortDirection, localSortDirection]);
+
     // 昇順・降順ソート用の新しい関数を追加
     const handleSortDirection = (direction: 'asc' | 'desc') => {
       // ソートの状態のみをリセット（data-sort-active属性のみ）
@@ -199,20 +207,20 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     };
 
     const handleSort = () => {
-      // 元の関数を残しておくが、実際には使用しない
-      // ソートのサイクルを変更: null→desc→asc→descのループになるように
-      const newDirection = sortDirection === null ? 'desc' : 
-                          sortDirection === 'desc' ? 'asc' : 'desc';
+      if (!isFilterOpen) {
+        setIsFilterOpen(true);
+      }
       
-      setSortDirection(newDirection);
-      setIsFilterOpen(false);
-
-      // 常にソート方向が存在するので条件分岐は不要
-      onFilter?.({
-        field: title,
-        type: 'sort',
-        value: newDirection
-      });
+      // 昇順ソート
+      if (localSortDirection === null || localSortDirection === 'desc') {
+        handleSortDirection('asc');
+        setIsFilterOpen(false);
+      } 
+      // 降順ソート
+      else if (localSortDirection === 'asc') {
+        handleSortDirection('desc');
+        setIsFilterOpen(false);
+      }
     };
 
     const handleClear = () => {
@@ -257,12 +265,12 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       // 数値フィールドの場合
       if (type === 'number') {
         // descとascの表示を反転: descが降順、ascが昇順
-        return sortDirection === 'desc' ? '▼ 小さい順に並び替え' : '▲ 大きい順に並び替え';
+        return localSortDirection === 'desc' ? '▼ 小さい順に並び替え' : '▲ 大きい順に並び替え';
       }
       
       // テキストフィールドの場合（日付やアルファベット順など）
       // descとascの表示を反転: descが降順、ascが昇順
-      return sortDirection === 'desc' ? '▼ 昇順に並び替え' : '▲ 降順に並び替え';
+      return localSortDirection === 'desc' ? '▼ 昇順に並び替え' : '▲ 降順に並び替え';
     };
 
     // 外部からアクセスできるようにする
@@ -476,10 +484,20 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           "flex items-center gap-1 whitespace-nowrap",
           "px-2 py-1 text-gray-700 text-sm",
           align === 'center' ? 'justify-center' : '',
-          isActive ? "text-blue-600 font-medium" : ""
+          isActive || localSortDirection ? "text-blue-600 font-medium" : ""
         )}
       >
-        <span>{title}</span>
+        <div 
+          className="flex items-center cursor-pointer" 
+          onClick={handleSort}
+        >
+          <span>{title}</span>
+          {localSortDirection && (
+            <span className="ml-1 text-blue-600">
+              {localSortDirection === 'asc' ? '↑' : '↓'}
+            </span>
+          )}
+        </div>
         {onFilter && (
           <button 
             ref={buttonRef}
@@ -533,7 +551,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                 >
                   フィルターを適用
                 </button>
-                {(filterValue || sortDirection) && (
+                {(filterValue || localSortDirection) && (
                   <button
                     onClick={handleClear}
                     className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
@@ -550,13 +568,13 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                 <p className="text-xs font-medium mb-1 text-gray-700">並び替え:</p>
                 <button 
                   onClick={() => handleSortDirection('desc')}
-                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs mb-1 ${sortDirection === 'desc' ? 'bg-gray-100 font-semibold' : ''}`}
+                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs mb-1 ${localSortDirection === 'desc' ? 'bg-gray-100 font-semibold' : ''}`}
                 >
                   {getDescSortLabel()}
                 </button>
                 <button 
                   onClick={() => handleSortDirection('asc')}
-                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs ${sortDirection === 'asc' ? 'bg-gray-100 font-semibold' : ''}`}
+                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs ${localSortDirection === 'asc' ? 'bg-gray-100 font-semibold' : ''}`}
                 >
                   {getAscSortLabel()}
                 </button>
