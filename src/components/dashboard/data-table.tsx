@@ -71,7 +71,7 @@ interface CategoryItem {
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
-    const [columnFilters, setColumnFilters] = useState<Record<string, boolean>>({})
+    const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
     const [categoryList, setCategoryList] = useState<string[]>([])
     const [accountList, setAccountList] = useState<string[]>([])
@@ -310,17 +310,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       // クリア操作を明示的に検出
       if (filterValue.type === 'clear' || !filterValue.value) {
         console.log(`フィルター削除: ${field}`);
-        // 型安全に処理
-        const newFilters: Record<string, FilterValue> = {};
+        
         // 既存のフィルターをコピー（削除対象以外）
-        Object.entries(columnFilters).forEach(([key, value]) => {
-          if (key !== field && typeof value !== 'boolean') {
-            newFilters[key] = value as FilterValue;
-          }
-        });
+        const newFilters = { ...columnFilters };
+        delete newFilters[field];
         
         // 状態を更新
-        setColumnFilters(newFilters as unknown as Record<string, boolean>);
+        setColumnFilters(newFilters);
         
         // 親コンポーネントに変更を通知（明示的に削除されたことを伝える）
         console.log('フィルター削除後の状態:', newFilters);
@@ -337,22 +333,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         return;
       }
       
-      // フィルターをマージするか置き換えるかの処理
-      const newFilters: Record<string, FilterValue> = {};
+      // 新しいフィルターを追加（既存のフィルターは保持）
+      const newFilters = { ...columnFilters, [field]: filterValue };
       
-      if (shouldMerge) {
-        // 既存のフィルターをコピー
-        Object.entries(columnFilters).forEach(([key, value]) => {
-          if (typeof value !== 'boolean') {
-            newFilters[key] = value as FilterValue;
-          }
-        });
-      }
-      
-      // 新しいフィルターを追加
-      newFilters[field] = filterValue;
-      
-      setColumnFilters(newFilters as unknown as Record<string, boolean>);
+      setColumnFilters(newFilters);
+      setCurrentFilters(prev => ({ ...prev, [field]: filterValue }));
       
       // 親コンポーネントに変更を通知
       onFilterChange(true, filterValue);
@@ -418,7 +403,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               title="投稿日時"
               type="date"
               onFilter={(value) => handleFilter('createdAt')(value)}
-              isActive={!!columnFilters['createdAt']}
+              isActive={Boolean(columnFilters['createdAt'])}
               sortDirection={sortField === 'createdAt' ? sortDirection : null}
             />
           );
@@ -432,7 +417,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('views')(value)}
-            isActive={columnFilters['views']}
+            isActive={Boolean(columnFilters['views'])}
             sortDirection={sortField === 'views' ? sortDirection : null}
           />
         ),
@@ -460,7 +445,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="ジャンル"
             type="text"
             onFilter={(value) => handleFilter('category')(value)}
-            isActive={!!columnFilters['category']}
+            isActive={Boolean(columnFilters['category'])}
             categoryData={getFilteredOptions('ジャンル')}
             sortDirection={sortField === 'category' ? sortDirection : null}
           />
@@ -472,7 +457,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="URL"
             onFilter={(value: FilterValue) => handleFilter('url')(value)}
-            isActive={columnFilters['url']}
+            isActive={Boolean(columnFilters['url'])}
           />
         ),
         cell: ({ row }) => (
@@ -501,7 +486,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="アカウント名"
             type="text"
             onFilter={(value) => handleFilter('accountName')(value)}
-            isActive={!!columnFilters['accountName']}
+            isActive={Boolean(columnFilters['accountName'])}
             categoryData={getFilteredOptions('アカウント名')}
             sortDirection={sortField === 'accountName' ? sortDirection : null}
           />
@@ -522,7 +507,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('likes')(value)}
-            isActive={columnFilters['likes']}
+            isActive={Boolean(columnFilters['likes'])}
             sortDirection={sortField === 'likes' ? sortDirection : null}
           />
         ),
@@ -536,7 +521,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('comments')(value)}
-            isActive={columnFilters['comments']}
+            isActive={Boolean(columnFilters['comments'])}
             sortDirection={sortField === 'comments' ? sortDirection : null}
           />
         ),
@@ -549,7 +534,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="ハッシュタグ"
             type="text"
             onFilter={(value) => handleFilter('hashtags')(value)}
-            isActive={!!columnFilters['hashtags']}
+            isActive={Boolean(columnFilters['hashtags'])}
             categoryData={getFilteredOptions('ハッシュタグ')}
             sortDirection={sortField === 'hashtags' ? sortDirection : null}
           />
@@ -595,7 +580,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             title="BGM"
             type="text"
             onFilter={(value) => handleFilter('audioTitle')(value)}
-            isActive={!!columnFilters['audioTitle']}
+            isActive={Boolean(columnFilters['audioTitle'])}
             categoryData={getFilteredOptions('BGM')}
             sortDirection={sortField === 'audioTitle' ? sortDirection : null}
           />
@@ -607,7 +592,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="キャプション"
             onFilter={(value) => handleFilter('description')(value)}
-            isActive={columnFilters['description']}
+            isActive={Boolean(columnFilters['description'])}
           />
         ),
         cell: ({ row }) => (
@@ -653,7 +638,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         className="px-4 py-3 font-medium text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
                           minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px',
-                          color: columnFilters[column.accessorKey] ? 'var(--color-sky-500)' : undefined
+                          color: Boolean(columnFilters[column.accessorKey]) ? 'var(--color-sky-500)' : undefined
                         }}
                       >
                         {column.header({ column })}
