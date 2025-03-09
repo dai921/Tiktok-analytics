@@ -626,92 +626,13 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
         return;
       }
 
-      // フィルタータイプに応じた処理
-      switch (filter.type) {
-        case 'after':
-          console.log('API - 日付範囲（開始）のフィルタリング処理');
-          params.append('created_at', filter.value.toString());
-          params.append('created_at_type', 'after');
-          
-          console.log('日付範囲（開始）フィルター設定:', {
-            field: key,
-            value: filter.value.toString(),
-            params: Object.fromEntries(params.entries())
-          });
-          break;
-          
-        case 'before':
-          console.log('API - 日付範囲（終了）のフィルタリング処理');
-          params.append('created_at', filter.value.toString());
-          params.append('created_at_type', 'before');
-          
-          console.log('日付範囲（終了）フィルター設定:', {
-            field: key,
-            value: filter.value.toString(),
-            params: Object.fromEntries(params.entries())
-          });
-          break;
-          
-        case 'greater':
-          if (apiField === 'play_count') {
-            console.log('API - 再生数の下限フィルタリング処理');
-            params.append('play_count', filter.value.toString());
-            params.append('play_count_type', 'greater');
-          } else if (apiField === 'likes_count') {
-            console.log('API - いいね数の下限フィルタリング処理');
-            params.append('likes_count', filter.value.toString());
-            params.append('likes_count_type', 'greater');
-          } else if (apiField === 'comment_count') {
-            console.log('API - コメント数の下限フィルタリング処理');
-            params.append('comment_count', filter.value.toString());
-            params.append('comment_count_type', 'greater');
-          } else {
-            console.log('API - 不明なフィールドの下限フィルタリング:', { field: key, apiField });
-          }
-          
-          console.log('下限フィルター設定:', {
-            field: key,
-            apiField,
-            type: filter.type,
-            value: filter.value,
-            params: Object.fromEntries(params.entries())
-          });
-          break;
-          
-        case 'less':
-          if (apiField === 'play_count') {
-            console.log('API - 再生数の上限フィルタリング処理');
-            params.append('play_count', filter.value.toString());
-            params.append('play_count_type', 'less');
-          } else if (apiField === 'likes_count') {
-            console.log('API - いいね数の上限フィルタリング処理');
-            params.append('likes_count', filter.value.toString());
-            params.append('likes_count_type', 'less');
-          } else if (apiField === 'comment_count') {
-            console.log('API - コメント数の上限フィルタリング処理');
-            params.append('comment_count', filter.value.toString());
-            params.append('comment_count_type', 'less');
-          } else {
-            console.log('API - 不明なフィールドの上限フィルタリング:', { field: key, apiField });
-          }
-          
-          console.log('上限フィルター設定:', {
-            field: key,
-            apiField,
-            type: filter.type,
-            value: filter.value,
-            params: Object.fromEntries(params.entries())
-          });
-          break;
-          
-        default:
-          console.log('API - デフォルトのフィルタリング処理:', {
-            field: key,
-            type: filter.type,
-            value: filter.value,
-            params: Object.fromEntries(params.entries())
-          });
-          break;
+      // 数値フィルターの処理
+      else if (['greater', 'less', 'equal'].includes(filter.type)) {
+        const dbField = mapFieldToApiField(key);
+        params.append(dbField, String(filter.value));
+        
+        // フィルタタイプも追加
+        params.append(`${dbField}_type`, filter.type);
       }
     });
   }
@@ -995,9 +916,11 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           }
         }
         // 数値フィルターの処理
-        else if (filter.type === 'greater' || filter.type === 'less') {
+        else if (['greater', 'less', 'equal'].includes(filter.type)) {
           const dbField = mapFieldToApiField(key);
           params.append(dbField, String(filter.value));
+          
+          // フィルタタイプも追加
           params.append(`${dbField}_type`, filter.type);
         }
         // 音楽情報フィルターの特別な処理
@@ -1145,9 +1068,12 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
           }
         }
         // 数値フィルターの処理
-        else if (filter.type === 'greater' || filter.type === 'less') {
+        else if (['greater', 'less', 'equal'].includes(filter.type)) {
           const dbField = mapFieldToApiField(key);
           params.append(dbField, String(filter.value));
+          
+          // フィルタタイプも追加
+          params.append(`${dbField}_type`, filter.type);
         }
         // 音楽情報フィルターの特別な処理
         else if (key === 'audioTitle' || key === 'BGM') {
