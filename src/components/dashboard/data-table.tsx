@@ -85,6 +85,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     // API関連の設定
     const API_BASE_URL = 'http://localhost:8080';
 
+    // 最後にクリックしたソートフィールドを追跡
+    const [lastClickedSort, setLastClickedSort] = useState<string | null>(null);
+
     // 参照を設定
     useImperativeHandle(ref, () => ({
       clearAllFilters: handleClearAllFilters
@@ -304,6 +307,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
       console.log('DataTable handleFilter:', { field, filterValue, shouldMerge });
 
+      // ソートフィルターの場合は最後にクリックしたフィールドを更新
+      if (filterValue.type === 'sort') {
+        setLastClickedSort(field);
+      }
+
       // clearフラグがある場合の処理
       if ('clear' in filterValue && filterValue.clear === true) {
         // ソートのクリア処理（type: 'sort'の場合）
@@ -358,25 +366,82 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
       // ソートフィルターの場合の処理（ソート情報のみを更新）
       if (filterValue.type === 'sort') {
+        // タイムスタンプがない場合は現在時刻を追加（安全対策）
+        const timestamp = Date.now(); // 常に現在時刻を使用して確実にユニークにする
+        
+        console.log('DataTable - ソート処理開始:', {
+          field,
+          value: filterValue.value,
+          mappedApiField: field === 'createdAt' ? 'created_at' : undefined,
+          timestamp,
+          currentTime: new Date(timestamp).toISOString(),
+          isPrimarySort: filterValue.isPrimarySort,
+          lastClickedSort
+        });
+        
         // ソート情報を更新
         setSortField(field);
         setSortDirection(filterValue.value as 'asc' | 'desc');
         
         // 現在のフィルター条件にも保存
-        setCurrentFilters(prev => ({
-          ...prev,
-          [field]: {
+        const sortKey = `${field}_sort`;  // ソートフィールドの識別子を追加
+        setCurrentFilters(prev => {
+          const newFilters = { ...prev };
+          
+          // すべての既存のソートフィルターを記録
+          const existingSortFilters = Object.entries(newFilters)
+            .filter(([k]) => k.endsWith('_sort'))
+            .map(([k, v]) => ({ key: k, ...v, timestamp: v.timestamp || 0 }));
+          
+          console.log('既存のソートフィルター:', existingSortFilters);
+          
+          // 同じフィールドの以前のソートを削除
+          const sameFieldSortKey = Object.keys(newFilters).find(k => 
+            k.endsWith('_sort') && 
+            k.replace('_sort', '') === field
+          );
+          
+          if (sameFieldSortKey) {
+            delete newFilters[sameFieldSortKey];
+          }
+          
+          // 新しいソート情報を追加
+          newFilters[sortKey] = {
             field: COLUMN_MAP[field] || field,
             value: filterValue.value,
-            type: filterValue.type
-          }
-        }));
+            type: filterValue.type,
+            timestamp,  // 現在のタイムスタンプを使用
+            isPrimarySort: true, // 常に新しいソートを主ソートとしてマーク
+            sortField: filterValue.sortField || field
+          };
+          
+          // 最後にクリックしたソート以外のすべてのソートをセカンダリに設定
+          Object.keys(newFilters).forEach(key => {
+            if (key.endsWith('_sort') && key !== sortKey) {
+              newFilters[key].isPrimarySort = false;
+            }
+          });
+          
+          return newFilters;
+        });
+        
+        console.log('DataTable - ソート情報設定完了:', {
+          sortField: field,
+          sortDirection: filterValue.value,
+          sortKey: sortKey,
+          timestamp,
+          currentTime: new Date(timestamp).toISOString(),
+          isPrimarySort: filterValue.isPrimarySort
+        });
         
         setHasActiveFilters(true);
         onFilterChange(true, {
           field: COLUMN_MAP[field] || field,
           value: filterValue.value,
-          type: 'sort'
+          type: 'sort',
+          timestamp: timestamp,  // タイムスタンプを確実に含める
+          isPrimarySort: filterValue.isPrimarySort || true,  // 常に新しいソートを主ソートとして扱う
+          sortField: filterValue.sortField || field
         });
         return;
       }

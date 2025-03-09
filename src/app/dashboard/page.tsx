@@ -56,7 +56,10 @@ const Dashboard = () => {
     console.log('Dashboard - Filter received:', {
       newFilter,
       currentFilters: filters,
-      isClearing: newFilter.clear
+      isClearing: newFilter.clear,
+      hasTimestamp: newFilter.timestamp !== undefined,
+      timestamp: newFilter.timestamp,
+      time: newFilter.timestamp ? new Date(newFilter.timestamp).toISOString() : undefined
     });
 
     if (newFilter.clear) {
@@ -87,14 +90,19 @@ const Dashboard = () => {
         convertedField: field,
         type: newFilter.type,
         value: newFilter.value,
-        isHashtag: newFilter.isHashtag
+        isHashtag: newFilter.isHashtag,
+        timestamp: newFilter.timestamp,
+        isPrimarySort: newFilter.isPrimarySort
       });
 
       const filterQuery: FilterQuery = {
         field: field,
         type: newFilter.type,
         value: newFilter.value,
-        ...(newFilter.isHashtag && { isHashtag: true })
+        ...(newFilter.isHashtag && { isHashtag: true }),
+        ...(newFilter.timestamp !== undefined && { timestamp: newFilter.timestamp }),
+        ...(newFilter.isPrimarySort !== undefined && { isPrimarySort: newFilter.isPrimarySort }),
+        ...(newFilter.sortField !== undefined && { sortField: newFilter.sortField })
       };
       
       console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);

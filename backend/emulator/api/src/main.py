@@ -85,6 +85,8 @@ async def get_videos(
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
+    sort_by_secondary: Optional[str] = None,  # 二次ソートカラム
+    sort_order_secondary: Optional[str] = "desc",  # 二次ソート順序
     play_count: Optional[int] = None,
     play_count_type: Optional[str] = None,
     likes_count: Optional[int] = None,
@@ -197,7 +199,17 @@ async def get_videos(
         actual_sort_by = column_mapping.get(sort_by, sort_by)
         
         # ソートの適用
-        query += f" ORDER BY {actual_sort_by} {sort_order}"
+        sort_clause = f" ORDER BY {actual_sort_by} {sort_order}"
+        
+        # 二次ソートがある場合は追加
+        if sort_by_secondary:
+            actual_sort_by_secondary = column_mapping.get(sort_by_secondary, sort_by_secondary)
+            sort_clause += f", {actual_sort_by_secondary} {sort_order_secondary}"
+            print(f"Applied secondary sort: {actual_sort_by_secondary} {sort_order_secondary}")
+        
+        query += sort_clause
+        
+        print(f"Sort clause: {sort_clause}")
 
         # フィルタパラメータを保持
         filter_params = params.copy()
@@ -265,6 +277,8 @@ async def get_videos_alt(
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
+    sort_by_secondary: Optional[str] = None,  # 二次ソートカラム
+    sort_order_secondary: Optional[str] = "desc",  # 二次ソート順序
     play_count: Optional[int] = None,
     play_count_type: Optional[str] = None,
     likes_count: Optional[int] = None,
@@ -389,7 +403,19 @@ async def get_videos_alt(
             
             # マッピングされたフィールド名を使用
             db_field = field_mapping.get(sort_by, sort_by)
-            query += f" ORDER BY {db_field} {sort_order.upper()}"
+            sort_clause = f" ORDER BY {db_field} {sort_order.upper()}"
+            
+            # 二次ソートの適用
+            if sort_by_secondary:
+                db_field_secondary = field_mapping.get(sort_by_secondary, sort_by_secondary)
+                sort_clause += f", {db_field_secondary} {sort_order_secondary.upper()}"
+                print(f"Applied secondary sort: {db_field_secondary} {sort_order_secondary.upper()}")
+            
+            query += sort_clause
+            print(f"Sort clause: {sort_clause}")
+        else:
+            # デフォルトのソート順
+            query += " ORDER BY created_at DESC"
 
         # 基本クエリを保存（LIMIT/OFFSET なし）
         base_query = query

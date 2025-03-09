@@ -199,10 +199,37 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       setSortDirection(direction);
       setIsFilterOpen(false);
 
+      // 現在のミリ秒タイムスタンプを取得
+      const currentTimestamp = Date.now();
+
+      console.log('TableHeaderCell - ソート実行:', {
+        title,
+        direction, 
+        internalFieldMapping: title === '投稿日時' ? 'createdAt' : undefined,
+        timestamp: currentTimestamp,
+        currentTime: new Date(currentTimestamp).toISOString()
+      });
+
+      // 特定のフィールドは直接内部フィールド名を使用
+      let fieldName = title;
+      if (title === '投稿日時') {
+        fieldName = 'createdAt';  // 日本語名から内部フィールド名へ直接マッピング
+      } else if (title === '再生数') {
+        fieldName = 'views';
+      } else if (title === 'いいね数') {
+        fieldName = 'likes';
+      } else if (title === 'コメント数') {
+        fieldName = 'comments';
+      }
+
+      // ソート情報を親コンポーネントに渡す際に、明示的に新しいソートであることを示すフラグを追加
       onFilter?.({
-        field: title,
+        field: fieldName,  // 内部フィールド名を使用
         type: 'sort',
-        value: direction
+        value: direction,
+        timestamp: currentTimestamp,  // 現在のタイムスタンプを追加
+        isPrimarySort: true,  // このソートを主ソートとして扱うフラグ
+        sortField: fieldName  // ソート対象のフィールド名を明示的に含める
       });
     };
 

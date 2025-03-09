@@ -238,6 +238,13 @@ Object.entries(COLUMN_MAP).forEach(([key, value]) => {
   REVERSE_COLUMN_MAP[value] = key;
 });
 
+// デバッグ用：REVERSE_COLUMN_MAPの内容を出力
+console.log('REVERSE_COLUMN_MAP初期化:', {
+  '投稿日時': REVERSE_COLUMN_MAP['投稿日時'],
+  '再生数': REVERSE_COLUMN_MAP['再生数'],
+  'いいね数': REVERSE_COLUMN_MAP['いいね数']
+});
+
 // フィルタータイプの変換関数
 const convertFilterType = (type: FilterType, field: string): string => {
   switch (type) {
@@ -258,8 +265,15 @@ const convertFilterType = (type: FilterType, field: string): string => {
 
 // フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
 const mapFieldToApiField = (field: string): string => {
+  console.log('mapFieldToApiField - 入力フィールド:', field);
+  
   // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
   const internalField = REVERSE_COLUMN_MAP[field] || field;
+  console.log('mapFieldToApiField - 内部フィールド変換結果:', {
+    input: field,
+    internalField: internalField,
+    isInReverseMap: field in REVERSE_COLUMN_MAP
+  });
   
   // 内部名をバックエンドのカラム名に変換
   const fieldMapping: Record<string, string> = {
@@ -273,7 +287,13 @@ const mapFieldToApiField = (field: string): string => {
     // 他のフィールドも必要に応じて追加
   };
   
-  return fieldMapping[internalField] || internalField;
+  const result = fieldMapping[internalField] || internalField;
+  console.log('mapFieldToApiField - 最終変換結果:', {
+    internalField,
+    apiField: result
+  });
+  
+  return result;
 }
 
 // バックエンドのレスポンスとVideoDataのマッピング
@@ -382,174 +402,312 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
     limit: '50'
   });
 
-  // ソート情報の初期化
-  let sortField = "created_at"; // デフォルトのソートフィールド
-  let sortOrder = "desc";       // デフォルトのソート順
+  // メインソートとサブソートの設定を初期化
+  let mainSortField = 'created_at';
+  let mainSortOrder = 'desc';
+  let subSortField: string | null = null;
+  let subSortOrder = 'desc';
+
+  // ソートフィルターを保持する配列を初期化
+  const sortFilters: Array<{
+    key: string;
+    field: string;
+    apiField: string;
+    direction: string | number;
+    timestamp: number;
+    isPrimarySort: boolean;
+  }> = [];
 
   if (filters) {
-    console.log('getSheetData - 受け取ったフィルター:', filters);
-    
-    // フィルターが空オブジェクトの場合は、フィルターなしとして扱う
-    if (Object.keys(filters).length === 0) {
-      console.log('getSheetData - フィルターなしでデータを取得');
-    } else {
-      // フィルターとソートを分離して処理
-      
-      // ソートフィルターを先に処理（_sortで終わるキーを探す）
-      Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || !key.endsWith('_sort')) return;
-        
-        // ソート処理だけを行う
-        if (filter.type === 'sort') {
-          console.log('ソート設定検出（_sortキー）:', {
-            field: key,
-            apiField: mapFieldToApiField(key.replace('_sort', '')),
-            direction: filter.value
-          });
+    // ソートフィルターを抽出し、主ソートを最優先にする
+    const extractedSortFilters = Object.entries(filters)
+      .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+      .map(([key, filter]) => {
+        // タイムスタンプが0または未定義の場合は、現在時刻を使用
+        const timestamp = filter.timestamp && filter.timestamp > 0 
+          ? Number(filter.timestamp) 
+          : Date.now();
           
-          // ソート情報を保存
-          sortField = mapFieldToApiField(key.replace('_sort', ''));
-          sortOrder = filter.value.toString();
-        }
+        return {
+          key,
+          field: key.replace('_sort', ''),
+          apiField: mapFieldToApiField(key.replace('_sort', '')),
+          direction: filter.value,
+          timestamp,
+          isPrimarySort: !!filter.isPrimarySort
+        };
+      })
+      // isPrimarySort が true のものを先頭に、それ以外はタイムスタンプ降順
+      .sort((a, b) => {
+        // isPrimarySort フラグが設定されている場合はそれを優先
+        if (a.isPrimarySort && !b.isPrimarySort) return -1;
+        if (!a.isPrimarySort && b.isPrimarySort) return 1;
+        
+        // どちらもisPrimarySortが同じ場合はタイムスタンプで降順ソート
+        // 新しいソートを先頭に配置するため「b - a」の順
+        return b.timestamp - a.timestamp;
+      });
+    
+    // 抽出したフィルターをsortFilters配列に追加
+    sortFilters.push(...extractedSortFilters);
+
+    console.log('API - 抽出されたソートフィルター:', JSON.stringify(
+      sortFilters.map(f => ({
+        ...f, 
+        time: new Date(f.timestamp).toISOString(),
+        isCreatedAt: f.field === 'createdAt' || f.field.includes('投稿日時')
+      })), null, 2)
+    );
+    
+    // メインソートとサブソートの設定
+    if (sortFilters.length > 0) {
+      // 最新のソートを主ソートとして使用（配列の先頭）
+      const primarySort = sortFilters[0];
+      console.log('API - 主ソートに使用:', {
+        field: primarySort.field,
+        apiField: primarySort.apiField,
+        direction: primarySort.direction,
+        timestamp: primarySort.timestamp,
+        time: new Date(primarySort.timestamp).toISOString(),
+        isPrimarySort: primarySort.isPrimarySort
       });
       
-      // 通常のフィルターを処理
-      Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
-        
-        console.log('API - フィルター処理開始:', {
-          key,
-          filter,
-          type: filter.type,
-          apiFieldName: mapFieldToApiField(key)
+      // 主ソートの設定
+      if (primarySort.field === 'createdAt' || primarySort.field.includes('投稿日時')) {
+        mainSortField = 'created_at';
+      } else if (primarySort.field === 'views') {
+        mainSortField = 'play_count';
+      } else if (primarySort.field === 'likes') {
+        mainSortField = 'likes_count';
+      } else if (primarySort.field === 'comments') {
+        mainSortField = 'comment_count';
+      } else {
+        mainSortField = primarySort.apiField;
+      }
+      mainSortOrder = primarySort.direction.toString();
+      
+      // 2番目のソートがあれば二次ソートとして使用
+      if (sortFilters.length > 1) {
+        const secondarySort = sortFilters[1];
+        console.log('API - 二次ソートに使用:', {
+          field: secondarySort.field,
+          apiField: secondarySort.apiField,
+          direction: secondarySort.direction,
+          timestamp: secondarySort.timestamp,
+          time: new Date(secondarySort.timestamp).toISOString()
         });
-
-        // API用のフィールド名を取得
-        const apiField = mapFieldToApiField(key);
-
-        // ハッシュタグフィルターの場合の特別な処理
-        if (filter.isHashtag || key === 'hashtags') {
-          console.log('API - ハッシュタグのフィルタリング処理');
-          
-          // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
-          params.append('hashtag', filter.value.toString());
-          
-          console.log('ハッシュタグフィルター設定:', {
-            value: filter.value.toString(),
-            queryParams: Object.fromEntries(params.entries())
-          });
+        
+        // 二次ソートの設定
+        if (secondarySort.field === 'createdAt' || secondarySort.field.includes('投稿日時')) {
+          subSortField = 'created_at';
+        } else if (secondarySort.field === 'views') {
+          subSortField = 'play_count';
+        } else if (secondarySort.field === 'likes') {
+          subSortField = 'likes_count';
+        } else if (secondarySort.field === 'comments') {
+          subSortField = 'comment_count';
+        } else {
+          subSortField = secondarySort.apiField;
         }
-        // カテゴリフィルターの処理
-        else if (key === 'category' || apiField === 'category') {
-          console.log('API - カテゴリフィルタリング処理');
+        subSortOrder = secondarySort.direction.toString();
+      }
+    }
+    
+    console.log('全データ取得 - 最終的なソート設定:', {
+      primary: {
+        field: mainSortField,
+        order: mainSortOrder
+      },
+      secondary: subSortField ? {
+        field: subSortField,
+        order: subSortOrder
+      } : 'なし'
+    });
+  }
+  
+  // 通常のフィルターを処理
+  if (filters) {
+    Object.entries(filters).forEach(([key, filter]) => {
+      if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
+      
+      console.log('API - フィルター処理開始:', {
+        key,
+        filter,
+        type: filter.type,
+        apiFieldName: mapFieldToApiField(key)
+      });
+
+      // API用のフィールド名を取得
+      const apiField = mapFieldToApiField(key);
+
+      // ハッシュタグフィルターの場合の特別な処理
+      if (filter.isHashtag || key === 'hashtags') {
+        console.log('API - ハッシュタグのフィルタリング処理');
+        
+        // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
+        params.append('hashtag', filter.value.toString());
+        
+        console.log('ハッシュタグフィルター設定:', {
+          value: filter.value.toString(),
+          queryParams: Object.fromEntries(params.entries())
+        });
+        return;
+      }
+
+      // アカウント名フィルターの特別な処理
+      if (key === 'accountName' || key === 'アカウント名') {
+        console.log('API - アカウント名のフィルタリング処理');
+        params.append('account_name', filter.value.toString());
+        
+        console.log('アカウント名フィルター設定:', {
+          value: filter.value.toString(),
+          queryParams: Object.fromEntries(params.entries())
+        });
+        return;
+      }
+
+      // カテゴリーフィルターの特別な処理
+      if (key === 'category' || key === 'ジャンル') {
+        console.log('API - カテゴリーのフィルタリング処理');
+        params.append('category', filter.value.toString());
+        
+        console.log('カテゴリーフィルター設定:', {
+          value: filter.value.toString(),
+          queryParams: Object.fromEntries(params.entries())
+        });
+        return;
+      }
+      
+      // 音楽情報フィルターの特別な処理
+      if (key === 'audioTitle' || key === 'BGM') {
+        console.log('API - 音楽情報のフィルタリング処理');
+        params.append('music_info', filter.value.toString());
+        
+        console.log('音楽情報フィルター設定:', {
+          value: filter.value.toString(),
+          queryParams: Object.fromEntries(params.entries())
+        });
+        return;
+      }
+
+      // フィルタータイプに応じた処理
+      switch (filter.type) {
+        case 'after':
+          console.log('API - 日付範囲（開始）のフィルタリング処理');
+          params.append('start_date', filter.value.toString());
           
-          // カテゴリは部分一致で検索する
-          if (filter.type === 'contains') {
-            // 部分一致検索のための処理
-            params.append('category', filter.value.toString());
+          console.log('日付範囲（開始）フィルター設定:', {
+            field: key,
+            value: filter.value.toString(),
+            params: Object.fromEntries(params.entries())
+          });
+          break;
+          
+        case 'before':
+          console.log('API - 日付範囲（終了）のフィルタリング処理');
+          params.append('end_date', filter.value.toString());
+          
+          console.log('日付範囲（終了）フィルター設定:', {
+            field: key,
+            value: filter.value.toString(),
+            params: Object.fromEntries(params.entries())
+          });
+          break;
+          
+        case 'greater':
+          if (apiField === 'play_count') {
+            console.log('API - 再生数の下限フィルタリング処理');
+            params.append('play_count', filter.value.toString());
+            params.append('play_count_type', 'greater');
+          } else if (apiField === 'likes_count') {
+            console.log('API - いいね数の下限フィルタリング処理');
+            params.append('likes_count', filter.value.toString());
+            params.append('likes_count_type', 'greater');
+          } else if (apiField === 'comment_count') {
+            console.log('API - コメント数の下限フィルタリング処理');
+            params.append('comment_count', filter.value.toString());
+            params.append('comment_count_type', 'greater');
           } else {
-            // 従来の完全一致検索
-            params.append('category', filter.value.toString());
+            console.log('API - 不明なフィールドの下限フィルタリング:', { field: key, apiField });
           }
           
-          console.log('カテゴリフィルター設定:', {
-            value: filter.value.toString(),
-            type: filter.type,
-            queryParams: Object.fromEntries(params.entries())
-          });
-        }
-        // 日付フィルターの処理 - 複数のタイプを処理
-        else if (key === 'createdAt' || apiField === 'created_at') {
-          console.log('日付フィルター検出:', {
-            key,
+          console.log('下限フィルター設定:', {
+            field: key,
             apiField,
             type: filter.type,
-            value: filter.value
+            value: filter.value,
+            params: Object.fromEntries(params.entries())
           });
-
-          // 日付フィルターのタイプに基づいて適切なパラメータを追加
-          if (filter.type === 'date' || filter.type === 'equal') {
-            // 等価比較（特定の日付）- バックエンドではdateタイプを期待
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'date'); // exactからdateに修正
-          } else if (filter.type === 'after' || filter.type === 'greater') {
-            // 以降の日付
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'after'); // afterを使用
-          } else if (filter.type === 'before' || filter.type === 'less') {
-            // 以前の日付
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'before'); // beforeを使用
+          break;
+          
+        case 'less':
+          if (apiField === 'play_count') {
+            console.log('API - 再生数の上限フィルタリング処理');
+            params.append('play_count', filter.value.toString());
+            params.append('play_count_type', 'less');
+          } else if (apiField === 'likes_count') {
+            console.log('API - いいね数の上限フィルタリング処理');
+            params.append('likes_count', filter.value.toString());
+            params.append('likes_count_type', 'less');
+          } else if (apiField === 'comment_count') {
+            console.log('API - コメント数の上限フィルタリング処理');
+            params.append('comment_count', filter.value.toString());
+            params.append('comment_count_type', 'less');
           } else {
-            // その他のケース - 一般的な等価比較としてフォールバック
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'date'); // デフォルトはdate
+            console.log('API - 不明なフィールドの上限フィルタリング:', { field: key, apiField });
           }
           
-          console.log('日付フィルター設定完了:', {
-            type: filter.type,
-            value: filter.value.toString(),
-            params: Object.fromEntries(params.entries())
-          });
-        } 
-        // 数値フィルターの処理
-        else if (filter.type === 'greater' || filter.type === 'less') {
-          console.log('API - 数値フィルター変換前:', {
-            originalKey: key,
-            mappedField: mapFieldToApiField(key),
-            filterType: filter.type,
-            value: filter.value
-          });
-
-          const dbField = mapFieldToApiField(key);
-          params.append(dbField, String(filter.value));
-          params.append(`${dbField}_type`, filter.type);
-
-          console.log('API - 数値フィルター変換後:', {
-            dbField,
-            type: filter.type,
-            params: Object.fromEntries(params.entries())
-          });
-        }
-        // 通常のテキストフィルター処理
-        else if (filter.type === 'equal' && filter.value !== undefined && filter.value !== null && filter.value !== '') {
-          // 通常のテキストフィルターはそのままパラメータとして追加
-          params.append(apiField, String(filter.value));
-          
-          console.log('テキストフィルター設定:', {
+          console.log('上限フィルター設定:', {
             field: key,
-            apiField: apiField,
-            value: filter.value,
-            params: Object.fromEntries(params.entries())
-          });
-        }
-        // その他のタイプのフィルター（念のため）
-        else if (filter.value !== undefined && filter.value !== null && filter.value !== '') {
-          params.append(apiField, String(filter.value));
-          
-          console.log('その他のフィルター設定:', {
-            field: key,
-            apiField: apiField,
+            apiField,
             type: filter.type,
             value: filter.value,
             params: Object.fromEntries(params.entries())
           });
-        }
+          break;
+          
+        default:
+          console.log('API - デフォルトのフィルタリング処理:', {
+            field: key,
+            type: filter.type,
+            value: filter.value,
+            params: Object.fromEntries(params.entries())
+          });
+          break;
+      }
+    });
+  }
+
+  // ソートパラメータを設定
+  // 重要: 新しく追加されたソートが主ソートとなるよう、以前のメインソートを二次ソートとして扱う
+  if (mainSortField) {
+    // 新しく追加されたソートが主ソートになる
+    params.append('sort_by', mainSortField);
+    params.append('sort_order', mainSortOrder);
+    
+    console.log('API - 主ソート設定:', {
+      sort_by: mainSortField,
+      sort_order: mainSortOrder,
+      timestamp: sortFilters.length > 0 ? sortFilters[0].timestamp : 0,
+      currentTime: new Date().toISOString()
+    });
+
+    // 以前のメインソートがある場合は二次ソートとして追加
+    if (subSortField) {
+      params.append('sort_by_secondary', subSortField);
+      params.append('sort_order_secondary', subSortOrder);
+      console.log('API - 二次ソートパラメータを追加:', { 
+        sort_by_secondary: subSortField, 
+        sort_order_secondary: subSortOrder,
+        timestamp: sortFilters.length > 1 ? sortFilters[1].timestamp : 0,
+        currentTime: new Date().toISOString()
       });
     }
   }
 
-  // ソートパラメータを適切に追加
-  params.append('sort_by', sortField);
-  params.append('sort_order', sortOrder);
-  
-  console.log('ソート設定完了:', {
-    field: sortField,
-    order: sortOrder
-  });
-
   const url = `${apiUrl}/videos?${params}`;
   console.log('APIリクエストURL:', url);
+  console.log('APIリクエストパラメータ完全一覧:', Object.fromEntries(params.entries()));
   
   try {
     const response = await fetch(url);
@@ -590,7 +748,7 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       data: [],
       currentPage: 1,
       totalPages: 1,
-      error: error instanceof Error ? error.message : '不明なエラーが発生しました'
+      error: error instanceof Error ? error.message : '不明なエラー'
     };
   }
 }
@@ -600,38 +758,133 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
  * フィルター選択肢生成用のデータ取得
  */
 export async function getAllFilteredData(filters?: Record<string, FilterQuery>) {
+  const params = new URLSearchParams();
+  
+  // デフォルトのソート設定
+  let sortField = 'created_at';
+  let sortOrder = 'desc';
+  let secondarySortField: string | null = null;
+  let secondarySortOrder = 'desc';
+  
+  // ソートフィルターの初期化
+  const sortFilters: Array<{
+    key: string;
+    field: string;
+    apiField: string;
+    direction: string | number;
+    timestamp: number;
+    isPrimarySort: boolean;
+  }> = [];
+  
   try {
-    console.log('getAllFilteredData - フィルター選択肢用の全データ取得開始');
-    
-    // ページングを無効化して全件取得するパラメータを設定
-    const params = new URLSearchParams({
-      page: '1',
-      limit: '-1' // 全件取得を示す特別な値
-    });
-    
-    let sortField = 'created_at';
-    let sortOrder = 'desc';
-    
     // フィルターがある場合はクエリパラメータに追加
     if (filters) {
       console.log('getAllFilteredData - 受け取ったフィルター:', filters);
-      
-      // ソートフィルターの処理
-      Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || !key.endsWith('_sort')) return;
+      console.log('getAllFilteredData - フィルターのキー:', Object.keys(filters));
         
-        // ソートフィルター検出
-        if (filter.type === 'sort') {
-          console.log('API - ソートフィルター検出:', {
+      // ソートフィルターを抽出し、主ソートを最優先にする
+      const extractedSortFilters = Object.entries(filters)
+        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .map(([key, filter]) => {
+          // タイムスタンプが0または未定義の場合は、現在時刻を使用
+          const timestamp = filter.timestamp && filter.timestamp > 0 
+            ? Number(filter.timestamp) 
+            : Date.now();
+          
+          return {
             key,
+            field: key.replace('_sort', ''),
             apiField: mapFieldToApiField(key.replace('_sort', '')),
-            direction: filter.value
+            direction: filter.value,
+            timestamp,
+            isPrimarySort: !!filter.isPrimarySort
+          };
+        })
+        // isPrimarySort が true のものを先頭に、それ以外はタイムスタンプ降順
+        .sort((a, b) => {
+          // isPrimarySort フラグが設定されている場合はそれを優先
+          if (a.isPrimarySort && !b.isPrimarySort) return -1;
+          if (!a.isPrimarySort && b.isPrimarySort) return 1;
+          
+          // どちらもisPrimarySortが同じ場合はタイムスタンプで降順ソート
+          // 新しいソートを先頭に配置するため「b - a」の順
+          return b.timestamp - a.timestamp;
+        });
+      
+      // 抽出したソートフィルターをsortFilters配列に追加
+      sortFilters.push(...extractedSortFilters);
+      
+      console.log('抽出されたソートフィルター:', JSON.stringify(
+        sortFilters.map(f => ({
+          ...f, 
+          time: new Date(f.timestamp).toISOString(),
+          isCreatedAt: f.field === 'createdAt' || f.field.includes('投稿日時')
+        })), null, 2)
+      );
+      
+      // メインソートとサブソートの設定
+      if (sortFilters.length > 0) {
+        // 最新のソートを主ソートとして使用（配列の先頭）
+        const primarySort = sortFilters[0];
+        console.log('API - 主ソートに使用:', {
+          field: primarySort.field,
+          apiField: primarySort.apiField,
+          direction: primarySort.direction,
+          timestamp: primarySort.timestamp,
+          time: new Date(primarySort.timestamp).toISOString(),
+          isPrimarySort: primarySort.isPrimarySort
+        });
+        
+        // 主ソートの設定
+        if (primarySort.field === 'createdAt' || primarySort.field.includes('投稿日時')) {
+          sortField = 'created_at';
+        } else if (primarySort.field === 'views') {
+          sortField = 'play_count';
+        } else if (primarySort.field === 'likes') {
+          sortField = 'likes_count';
+        } else if (primarySort.field === 'comments') {
+          sortField = 'comment_count';
+        } else {
+          sortField = primarySort.apiField;
+        }
+        sortOrder = primarySort.direction.toString();
+        
+        // 2番目のソートがあれば二次ソートとして使用
+        if (sortFilters.length > 1) {
+          const secondarySort = sortFilters[1];
+          console.log('API - 二次ソートに使用:', {
+            field: secondarySort.field,
+            apiField: secondarySort.apiField,
+            direction: secondarySort.direction,
+            timestamp: secondarySort.timestamp,
+            time: new Date(secondarySort.timestamp).toISOString()
           });
           
-          // ソート情報を保存
-          sortField = mapFieldToApiField(key.replace('_sort', ''));
-          sortOrder = filter.value.toString();
+          // 二次ソートの設定
+          if (secondarySort.field === 'createdAt' || secondarySort.field.includes('投稿日時')) {
+            secondarySortField = 'created_at';
+          } else if (secondarySort.field === 'views') {
+            secondarySortField = 'play_count';
+          } else if (secondarySort.field === 'likes') {
+            secondarySortField = 'likes_count';
+          } else if (secondarySort.field === 'comments') {
+            secondarySortField = 'comment_count';
+          } else {
+            secondarySortField = secondarySort.apiField;
+          }
+          secondarySortOrder = secondarySort.direction.toString();
         }
+      }
+      
+      console.log('全データ取得 - 最終的なソート設定:', {
+        primary: {
+          field: sortField,
+          order: sortOrder
+        },
+        secondary: secondarySortField ? {
+          field: secondarySortField,
+          order: secondarySortOrder
+        } : 'なし'
       });
       
       // 通常のフィルターを処理
@@ -722,9 +975,31 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
     }
 
     // ソートパラメータを適切に追加
-    params.append('sort_by', sortField);
-    params.append('sort_order', sortOrder);
-    
+    // 重要: 新しく追加されたソートを主ソートとして、以前のソートを二次ソートとして扱う
+    if (sortField) {
+      params.append('sort_by', sortField);
+      params.append('sort_order', sortOrder);
+      
+      console.log('全データ取得 - 主ソート設定:', {
+        sort_by: sortField,
+        sort_order: sortOrder,
+        timestamp: sortFilters.length > 0 ? sortFilters[0].timestamp : 0,
+        currentTime: new Date().toISOString()
+      });
+      
+      // 二次ソートパラメータを追加（存在する場合）
+      if (secondarySortField) {
+        params.append('sort_by_secondary', secondarySortField);
+        params.append('sort_order_secondary', secondarySortOrder);
+        console.log('全データ取得 - 二次ソートパラメータを追加:', { 
+          sort_by_secondary: secondarySortField, 
+          sort_order_secondary: secondarySortOrder,
+          timestamp: sortFilters.length > 1 ? sortFilters[1].timestamp : 0,
+          currentTime: new Date().toISOString()
+        });
+      }
+    }
+
     console.log('全データ取得URLパラメータ:', Object.fromEntries(params.entries()));
     
     // APIリクエスト実行
@@ -819,6 +1094,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         }
         // 通常のテキストフィルター処理
         else if (filter.type === 'equal' && filter.value !== undefined && filter.value !== null && filter.value !== '') {
+          // 通常のテキストフィルターはそのままパラメータとして追加
           params.append(apiField, String(filter.value));
         }
       });

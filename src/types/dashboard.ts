@@ -10,6 +10,9 @@ export interface FilterQuery {
   isHashtag?: boolean
   clear?: boolean
   sortDirection?: 'asc' | 'desc' | null
+  timestamp?: number  // ソート操作の順序を特定するためのタイムスタンプ
+  isPrimarySort?: boolean  // このソートが主ソートかどうかを示すフラグ
+  sortField?: string  // ソート対象のフィールド名（明示的に指定）
 }
 
 export interface FilterValue extends FilterQuery {
