@@ -284,6 +284,7 @@ const mapFieldToApiField = (field: string): string => {
     'accountName': 'account_name',
     'description': 'caption',
     'hashtags': 'hashtag', // hashtag（単数形）に変換
+    'audioTitle': 'music_info', // audioTitleをmusic_infoに変換
     // 他のフィールドも必要に応じて追加
   };
   
@@ -581,9 +582,15 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
       // 音楽情報フィルターの特別な処理
       if (key === 'audioTitle' || key === 'BGM') {
         console.log('API - 音楽情報のフィルタリング処理');
-        params.append('music_info', filter.value.toString());
+        // フィルタータイプを確認して適切なパラメータを設定
+        if (filter.type === 'contains') {
+          params.append('music_info', filter.value.toString());
+        } else {
+          params.append('music_info', filter.value.toString());
+        }
         
         console.log('音楽情報フィルター設定:', {
+          type: filter.type,
           value: filter.value.toString(),
           queryParams: Object.fromEntries(params.entries())
         });
@@ -963,7 +970,8 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           params.append(`${dbField}_type`, filter.type);
         }
         // 通常のテキストフィルター処理
-        else if (filter.type === 'equal' && filter.value !== undefined && filter.value !== null && filter.value !== '') {
+        else if ((filter.type === 'equal' || filter.type === 'contains') && 
+                filter.value !== undefined && filter.value !== null && filter.value !== '') {
           // 通常のテキストフィルターはそのままパラメータとして追加
           params.append(apiField, String(filter.value));
         }
@@ -1093,7 +1101,8 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
           params.append(dbField, String(filter.value));
         }
         // 通常のテキストフィルター処理
-        else if (filter.type === 'equal' && filter.value !== undefined && filter.value !== null && filter.value !== '') {
+        else if ((filter.type === 'equal' || filter.type === 'contains') && 
+                filter.value !== undefined && filter.value !== null && filter.value !== '') {
           // 通常のテキストフィルターはそのままパラメータとして追加
           params.append(apiField, String(filter.value));
         }
