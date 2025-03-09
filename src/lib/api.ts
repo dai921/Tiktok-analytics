@@ -220,7 +220,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'likes': 'いいね数',
   'comments': 'コメント数',
   'accountName': 'アカウント名',
-  'category': 'カテゴリ',
+  'category': 'ジャンル',
   'hashtags': 'ハッシュタグ',
   'description': '説明',
   'audioTitle': '音声タイトル',
@@ -277,6 +277,15 @@ const convertFilterType = (type: FilterType, field: string): string => {
 const mapFieldToApiField = (field: string): string => {
   console.log('mapFieldToApiField - 入力フィールド:', field);
   
+  // 「ジャンル」を「category」に直接マッピング
+  if (field === 'ジャンル') {
+    console.log('mapFieldToApiField - ジャンルを特別処理:', {
+      input: field,
+      internalField: 'category'
+    });
+    return 'category';
+  }
+  
   // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
   const internalField = REVERSE_COLUMN_MAP[field] || field;
   console.log('mapFieldToApiField - 内部フィールド変換結果:', {
@@ -295,6 +304,7 @@ const mapFieldToApiField = (field: string): string => {
     'description': 'caption',
     'hashtags': 'hashtag', // hashtag（単数形）に変換
     'audioTitle': 'music_info', // audioTitleをmusic_infoに変換
+    'category': 'category',    // categoryをそのまま保持
     // 他のフィールドも必要に応じて追加
   };
   
