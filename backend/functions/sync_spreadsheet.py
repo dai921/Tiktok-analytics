@@ -4,6 +4,10 @@ import sys
 import mysql.connector
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import functions_framework
+import logging
+from datetime import datetime
+from google.cloud import pubsub_v1
 
 # .envファイルのサポートを追加
 try:
@@ -14,12 +18,41 @@ except ImportError:
     print("python-dotenvがインストールされていないため、.envファイルは使用されません")
     print("必要な場合は `pip install python-dotenv` でインストールしてください")
 
-def sync_spreadsheet(request):
+# ログ設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@functions_framework.http
+def scheduled_job(request):
+    """
+    アカウント管理スプレッドシートの同期を行うCloud Function
+    Args:
+        request (flask.Request): HTTPリクエストオブジェクト
+    Returns:
+        tuple: (レスポンスメッセージ, HTTPステータスコード)
+    """
+    start_time = datetime.now()
+    logger.info(f"====== アカウント同期処理開始：{start_time.isoformat()} ======")
+    
+    try:
+        result, status_code = sync_spreadsheet()
+        execution_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"同期処理完了: 実行時間 {execution_time}秒, 結果: {result}")
+        return result, status_code
+    except Exception as e:
+        logger.error(f"同期処理エラー: {str(e)}")
+        return str(e), 500
+
+def sync_spreadsheet():
+    """スプレッドシートとデータベースの同期処理"""
     try:
         # Googleスプレッドシートの設定
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
         SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
+
+        # 環境変数の検証
+        validate_env_vars()
 
         credentials = service_account.Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -90,10 +123,27 @@ def sync_spreadsheet(request):
         cursor.close()
         conn.close()
 
+        # 同期完了後、Pub/Subにメッセージを送信
+        publisher = pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(os.getenv('GCP_PROJECT'), 'spreadsheet-completion')
+        
+        completion_message = {
+            'timestamp': datetime.now().isoformat(),
+            'status': 'success',
+            'inserted_count': inserted_count
+        }
+        
+        future = publisher.publish(
+            topic_path,
+            json.dumps(completion_message).encode('utf-8')
+        )
+        message_id = future.result()
+        logger.info(f"完了通知を送信しました: {message_id}")
+
         return f'Successfully inserted {inserted_count} new accounts', 200
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         if 'conn' in locals() and conn.is_connected():
             conn.close()
         return str(e), 500
@@ -102,29 +152,28 @@ def sync_spreadsheet(request):
         if 'conn' in locals() and conn.is_connected():
             conn.close()
 
-# 手動実行用のメイン関数
-if __name__ == "__main__":
-    class DummyRequest:
-        def __init__(self):
-            self.method = "GET"
-            self.path = "/sync-spreadsheet"
-            self.headers = {}
-            self.get_json = lambda: None
-    
-    # 環境変数の確認
-    required_envs = ['GOOGLE_APPLICATION_CREDENTIALS', 'SPREADSHEET_ID', 
-                     'MYSQL_HOST', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DATABASE']
-    
+def validate_env_vars():
+    """必要な環境変数が設定されているか確認"""
+    required_envs = [
+        'GOOGLE_APPLICATION_CREDENTIALS',
+        'SPREADSHEET_ID',
+        'MYSQL_HOST',
+        'MYSQL_USER',
+        'MYSQL_PASSWORD',
+        'MYSQL_DATABASE'
+    ]
     missing_envs = [env for env in required_envs if not os.getenv(env)]
     if missing_envs:
-        print(f"警告: 以下の環境変数が設定されていません: {', '.join(missing_envs)}")
-        print("必要な環境変数を設定してから再実行してください")
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_envs)}")
+
+if __name__ == "__main__":
+    # ローカルテスト用
+    logger.info("ローカル環境でスプレッドシートの同期を開始します...")
+    try:
+        validate_env_vars()
+        result, status_code = sync_spreadsheet()
+        logger.info(f"実行結果 (ステータスコード: {status_code}):")
+        logger.info(result)
+    except Exception as e:
+        logger.error(f"実行エラー: {str(e)}")
         sys.exit(1)
-    
-    # 関数を実行
-    print("スプレッドシートの同期を開始します...")
-    dummy_request = DummyRequest()
-    result, status_code = sync_spreadsheet(dummy_request)
-    
-    print(f"実行結果 (ステータスコード: {status_code}):")
-    print(result)

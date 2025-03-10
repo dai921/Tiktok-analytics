@@ -1,4 +1,10 @@
-.env
+# ローカル開発用
+.env.local
+
+# 機密情報を含む環境設定
+.env.*.yaml
+!.env.example.yaml
+
 service-account-key.json
 node_modules/
 dist/ 

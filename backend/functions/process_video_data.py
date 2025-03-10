@@ -5,6 +5,7 @@ import mysql.connector
 from datetime import datetime
 import time
 import sys
+import functions_framework
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
@@ -367,6 +368,18 @@ def setup_subscription():
         logger.error(traceback.format_exc())
         return None
 
+@functions_framework.cloud_event
+def process_pubsub(cloud_event):
+    """
+    GKEからのPub/Subメッセージを処理するCloud Function
+    Args:
+        cloud_event (CloudEvent): Pub/Subからのメッセージを含むCloudEvent
+    Returns:
+        dict: 処理結果
+    """
+    logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
+    return process_video_data(cloud_event)
+
 if __name__ == "__main__":
     logger.info("スタンドアロンモードで動画処理プロセッサーを起動しています...")
     try:
@@ -396,7 +409,4 @@ if __name__ == "__main__":
         logger.error(traceback.format_exc())
         sys.exit(1)
 else:
-    logger.info("Functions Frameworkモードで準備完了")
-    future = setup_subscription()
-    if future:
-        logger.info("サブスクリプションの設定が完了しました") 
+    logger.info("Functions Frameworkモードで準備完了") 

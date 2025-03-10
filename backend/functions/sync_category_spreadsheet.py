@@ -3,8 +3,30 @@ from dotenv import load_dotenv
 import mysql.connector
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import functions_framework
+from datetime import datetime
+import logging
 
-def sync_category_spreadsheet(request):
+logger = logging.getLogger(__name__)
+
+@functions_framework.http
+def scheduled_job(request):
+    """
+    カテゴリスプレッドシートの同期を行うCloud Function
+    Args:
+        request (flask.Request): HTTPリクエストオブジェクト
+    Returns:
+        tuple: (レスポンスメッセージ, HTTPステータスコード)
+    """
+    logger.info(f"====== カテゴリ同期処理開始：{datetime.now().isoformat()} ======")
+    try:
+        return sync_category_spreadsheet()
+    except Exception as e:
+        logger.error(f"同期処理エラー: {str(e)}")
+        return str(e), 500
+
+def sync_category_spreadsheet():
+    """スプレッドシートとデータベースの同期処理"""
     try:
         # Googleスプレッドシートの設定
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
@@ -113,7 +135,7 @@ def sync_category_spreadsheet(request):
             return str(e), 500
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        logger.error(f"Error: {str(e)}")
         return str(e), 500
 
     finally:
@@ -123,13 +145,7 @@ def sync_category_spreadsheet(request):
             conn.close()
 
 if __name__ == "__main__":
-    # ローカル実行用の環境変数設定
+    # ローカルテスト用
     load_dotenv()
-    
-    # Cloud Function用のリクエストオブジェクトのダミー
-    class DummyRequest:
-        pass
-    
-    # 関数を直接実行
-    result = sync_category_spreadsheet(DummyRequest())
+    result = sync_category_spreadsheet()
     print(result) 

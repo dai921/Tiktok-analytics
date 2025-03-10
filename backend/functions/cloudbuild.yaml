@@ -1,0 +1,48 @@
+functions:
+  - name: crawl-processor
+    source: crawl_processor.py
+    entry_point: process_pubsub
+    trigger:
+      topic: crawl-processor-topic
+
+  - name: frontend-update
+    source: frontend_data_update.py
+    entry_point: scheduled_job
+    trigger:
+      schedule: "0 0 */2 * *"
+
+  - name: url-collector
+    source: url_collector.py
+    entry_point: process_pubsub
+    trigger:
+      topic: spreadsheet-completion
+
+  - name: process-video-data
+    source: process_video_data.py
+    entry_point: process_pubsub
+    trigger:
+      topic: video-data-topic
+
+  - name: sync-category-spreadsheet
+    source: sync_category_spreadsheet.py
+    entry_point: scheduled_job
+    trigger:
+      schedule: "0 0 */2 * *"  # 2日に1回実行
+
+  - name: sync-spreadsheet
+    source: sync_spreadsheet.py
+    entry_point: scheduled_job
+    trigger:
+      schedule: "0 0 */2 * *"  # 2日に1回実行
+
+  - name: video-collector
+    source: video_collector.py
+    entry_point: collect_videos  # 既存のHTTPトリガー関数を使用
+    trigger:
+      http: true  # HTTPトリガーとして設定
+
+  - name: video-url-data-updater
+    source: video_url_data_updater.py
+    entry_point: process_pubsub
+    trigger:
+      topic: crawl-processor-complete  # crawl_processorの完了を通知するトピック

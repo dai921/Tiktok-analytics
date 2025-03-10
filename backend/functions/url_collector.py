@@ -10,6 +10,7 @@ import concurrent.futures
 import functions_framework
 import sys
 from typing import List, Dict, Any, Tuple
+import base64
 
 # 環境変数を取得
 environment = os.getenv('ENVIRONMENT', 'development')
@@ -138,12 +139,31 @@ class CursorManager:
             if conn:
                 conn.close()
 
-@functions_framework.http
-def collect_urls(request):
-    """カーソルベースでneeds_updateフラグが立っているアカウントを取得しPub/Subに送信する"""
+@functions_framework.cloud_event
+def process_pubsub(cloud_event):
+    """
+    スプレッドシート同期完了後のURL収集を行うCloud Function
+    Args:
+        cloud_event (CloudEvent): Pub/Subからのメッセージを含むCloudEvent
+    Returns:
+        dict: 処理結果
+    """
+    logger.info(f"====== URL収集処理開始：{datetime.now().isoformat()} ======")
+    try:
+        # Pub/Subメッセージからデータを取得
+        if hasattr(cloud_event, 'data'):
+            message_data = base64.b64decode(cloud_event.data).decode('utf-8')
+            trigger_data = json.loads(message_data)
+            logger.info(f"トリガー情報: {trigger_data}")
+        
+        return collect_urls()
+    except Exception as e:
+        logger.error(f"URL収集処理エラー: {str(e)}")
+        return {"error": str(e)}, 500
+
+def collect_urls() -> Tuple[Dict[str, Any], int]:
+    """URLの収集処理を実行"""
     logger.info("==== collect_urls関数の実行開始 ====")
-    logger.info(f"リクエストメソッド: {request.method}")
-    
     conn = None
     try:
         # カーソル管理の初期化
@@ -311,4 +331,71 @@ def process_crawl_complete(event, context):
         print(f"Error: {str(e)}")
         if 'conn' in locals() and conn.is_connected():
             conn.close()
-        return str(e), 500 
+        return str(e), 500
+    
+
+def setup_subscription():
+    """Pub/Subサブスクリプションを設定する"""
+    try:
+        from google.cloud import pubsub_v1
+        subscriber = pubsub_v1.SubscriberClient()
+        subscription_name = "spreadsheet-completion"  # 既存のサブスクリプション名を使用
+        subscription_path = subscriber.subscription_path(project_id, subscription_name)
+        
+        logger.info(f"Pub/Subサブスクリプション: {subscription_path}")
+        
+        def callback(message):
+            try:
+                logger.info(f"メッセージ受信: {message.message_id}")
+                logger.info(f"メッセージデータ: {message.data}")
+                pubsub_data = message.data.decode('utf-8')
+                data = json.loads(pubsub_data)
+                process_pubsub(data)
+                logger.info("メッセージ処理完了")
+            except Exception as e:
+                logger.error(f"メッセージ処理エラー: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+            finally:
+                message.ack()
+        
+        streaming_pull_future = subscriber.subscribe(subscription_path, callback)
+        logger.info(f"サブスクリプションを開始しました: {subscription_path}")
+        return streaming_pull_future
+        
+    except Exception as e:
+        logger.error(f"サブスクリプション設定エラー: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+if __name__ == "__main__":
+    logger.info("スタンドアロンモードで動画処理プロセッサーを起動しています...")
+    try:
+        # データベース接続テスト
+        connection = get_db_connection()
+        logger.info("データベース接続テスト成功")
+        
+        # サブスクリプション設定
+        future = setup_subscription()
+        
+        if future:
+            try:
+                logger.info("メッセージを待機中...")
+                future.result()
+            except KeyboardInterrupt:
+                future.cancel()
+                logger.info("キーボード割り込みにより停止しました")
+            except Exception as e:
+                future.cancel()
+                logger.error(f"エラーが発生しました: {e}")
+        else:
+            logger.error("サブスクリプションの設定に失敗しました")
+            
+    except Exception as e:
+        logger.error(f"初期化中にエラーが発生: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)
+else:
+    logger.info("Functions Frameworkモードで準備完了") 

@@ -5,6 +5,7 @@ import pymysql
 from datetime import datetime
 import time
 import sys
+import functions_framework
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
@@ -43,6 +44,18 @@ def get_db_connection():
     except Exception as e:
         logger.error(f"データベース接続エラー: {e}")
         raise
+
+@functions_framework.cloud_event
+def process_pubsub(cloud_event):
+    """
+    Pub/Subメッセージを処理するCloud Function
+    Args:
+        cloud_event (CloudEvent): Pub/Subからのメッセージを含むCloudEvent
+    Returns:
+        dict: 処理結果
+    """
+    logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
+    return process_crawl_complete(cloud_event)
 
 def process_crawl_complete(cloud_event):
     """クロール完了通知を処理"""
@@ -233,9 +246,5 @@ if __name__ == "__main__":
         logger.error(traceback.format_exc())
         sys.exit(1)
 else:
-    # Cloud Functions Frameworkによって呼び出される場合の準備
-    logger.info("Functions Frameworkモードで準備完了")
-    # サブスクリプション設定
-    future = setup_subscription()
-    if future:
-        logger.info("サブスクリプションの設定が完了しました") 
+    # Cloud Functions用の設定のみ残し、サブスクリプション設定は削除
+    logger.info("Functions Frameworkモードで準備完了") 
