@@ -70,71 +70,21 @@ class CursorManager:
         self.processor_name = processor_name
         self.target_table = target_table
 
-    def get_cursor_state(self) -> Dict[str, Any]:
-        """カーソルの状態を取得"""
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                sql = """
-                SELECT last_cursor_id, last_reset_time, batch_size, 
-                       reset_interval, batch_number
-                FROM processing_cursors
-                WHERE processor_name = %s AND target_table = %s
-                """
-                cursor.execute(sql, (self.processor_name, self.target_table))
-                result = cursor.fetchone()
-                if not result:
-                    raise ValueError(f"Cursor state not found for {self.processor_name}")
-                return result
-        finally:
-            if conn:
-                conn.close()
-
-    def update_cursor(self, cursor_id: int):
-        """カーソル位置を更新"""
+    def update_last_processed_time(self):
+        """最終処理時間を更新"""
         conn = None
         try:
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 sql = """
                 UPDATE processing_cursors
-                SET last_cursor_id = %s,
+                SET last_reset_time = NOW(),
                     updated_at = NOW()
                 WHERE processor_name = %s AND target_table = %s
                 """
-                cursor.execute(sql, (cursor_id, self.processor_name, self.target_table))
+                cursor.execute(sql, (self.processor_name, self.target_table))
                 conn.commit()
-                logger.info(f"カーソル位置を更新: {cursor_id}")
-        finally:
-            if conn:
-                conn.close()
-
-    def reset_if_needed(self) -> bool:
-        """必要に応じてカーソルをリセット"""
-        conn = None
-        try:
-            # カーソル状態を取得
-            state = self.get_cursor_state()
-            current_time = datetime.now()
-            time_diff = (current_time - state['last_reset_time']).total_seconds()
-            
-            if time_diff >= state['reset_interval']:
-                # リセットが必要な場合は新しい接続を作成
-                conn = get_db_connection()
-                with conn.cursor() as cursor:
-                    sql = """
-                    UPDATE processing_cursors
-                    SET last_cursor_id = 0,
-                        last_reset_time = NOW(),
-                        updated_at = NOW()
-                    WHERE processor_name = %s AND target_table = %s
-                    """
-                    cursor.execute(sql, (self.processor_name, self.target_table))
-                    conn.commit()
-                    logger.info("カーソルをリセットしました")
-                return True
-            return False
+                logger.info("最終処理時間を更新しました")
         finally:
             if conn:
                 conn.close()
@@ -162,21 +112,18 @@ def process_pubsub(cloud_event):
         return {"error": str(e)}, 500
 
 def collect_urls() -> Tuple[Dict[str, Any], int]:
-    """URLの収集処理を実行"""
+    """URLの収集処理を実行 - バッチ処理なしですべてのアカウントを一度に処理"""
     logger.info("==== collect_urls関数の実行開始 ====")
     conn = None
     try:
-        # カーソル管理の初期化
+        # 処理時間管理のみに使用
         cursor_manager = CursorManager('url_collector', 'account_list')
-        cursor_state = cursor_manager.get_cursor_state()
-        batch_size = cursor_state['batch_size']
-        current_batch = cursor_state.get('batch_number', 0)  # batch_numberも取得
         
         conn = get_db_connection()
         logger.info("==== データベースからアカウント取得開始 ====")
         
         with conn.cursor() as cursor:
-            # 更新が必要な総数を取得
+            # 更新が必要なアカウントをすべて取得
             cursor.execute("""
                 SELECT COUNT(*) as total
                 FROM account_list 
@@ -188,36 +135,22 @@ def collect_urls() -> Tuple[Dict[str, Any], int]:
                 logger.info("更新が必要なアカウントが見つかりませんでした")
                 return {"message": "No accounts to update found"}, 200
             
-            # 未処理のアカウントを取得（batch_size分）
+            # 更新が必要なアカウントをすべて取得（バッチなし）
             sql = """
             SELECT id, account_url, account_name, is_new_account 
             FROM account_list 
             WHERE needs_update = TRUE
-            AND id > %s  -- last_cursor_idより大きいIDのレコードを取得
-            LIMIT %s
             """
-            cursor.execute(sql, (cursor_state['last_cursor_id'], batch_size))
+            cursor.execute(sql)
             accounts = cursor.fetchall()
             
             if not accounts:
                 return {"message": "No accounts to process"}, 200
 
-            # 新しいバッチ番号を計算
-            new_batch = current_batch + 1
-            processed_total = (new_batch - 1) * batch_size + len(accounts)
-            is_final_batch = processed_total >= total_needs_update
+            # 最終処理時間を更新
+            cursor_manager.update_last_processed_time()
             
-            # カーソル位置とバッチ番号を一度に更新
-            cursor.execute("""
-                UPDATE processing_cursors
-                SET last_cursor_id = %s,
-                    batch_number = %s,
-                    updated_at = NOW()
-                WHERE processor_name = 'url_collector' 
-                AND target_table = 'account_list'
-            """, (accounts[-1]['id'], new_batch))
-            
-            # message_dataの構造を修正
+            # message_dataの構造
             message_data = {
                 "accounts": [
                     {
@@ -226,25 +159,13 @@ def collect_urls() -> Tuple[Dict[str, Any], int]:
                         "is_new_account": bool(account["is_new_account"]),
                         "account_id": account["id"]
                     } for account in accounts
-                ]
-            }
-
-            # 最後のアカウントの場合のみprocessing_infoを追加
-            if is_final_batch and accounts:  # accountsが空でないことを確認
-                message_data["processing_info"] = {
+                ],
+                "processing_info": {
                     "is_final_batch": True,
-                    "batch_number": new_batch,
+                    "total_accounts": len(accounts),
                     "total_needs_update": total_needs_update,
-                    "last_account_id": accounts[-1]["id"]
                 }
-                
-                # 最後のバッチの場合はbatch_numberをリセット
-                cursor.execute("""
-                    UPDATE processing_cursors
-                    SET batch_number = 0
-                    WHERE processor_name = 'url_collector' 
-                    AND target_table = 'account_list'
-                """)
+            }
             
             conn.commit()
             
@@ -270,14 +191,14 @@ def collect_urls() -> Tuple[Dict[str, Any], int]:
                 return {
                     "message": f"Processed {len(accounts)} accounts",
                     "message_id": message_id,
-                    "next_cursor": accounts[-1]['id']
+                    "total_accounts": len(accounts)
                 }, 200
                 
             except Exception as e:
                 logger.error(f"Pub/Sub送信エラー: {type(e).__name__}: {str(e)}")
                 return {
                     "message": f"Processed {len(accounts)} accounts (Pub/Sub error: {str(e)})",
-                    "next_cursor": accounts[-1]['id']
+                    "total_accounts": len(accounts)
                 }, 200
             
     except Exception as e:
