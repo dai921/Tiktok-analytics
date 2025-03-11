@@ -39,75 +39,26 @@ def get_db_connection():
         logger.error(traceback.format_exc())
         raise
 
-class CursorManager:
+class ProcessingManager:
     def __init__(self, processor_name: str, target_table: str):
         self.processor_name = processor_name
         self.target_table = target_table
 
-    def get_cursor_state(self) -> Dict[str, Any]:
-        """カーソルの状態を取得"""
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                sql = """
-                SELECT last_cursor_id, last_reset_time, batch_size, reset_interval
-                FROM processing_cursors
-                WHERE processor_name = %s AND target_table = %s
-                """
-                cursor.execute(sql, (self.processor_name, self.target_table))
-                result = cursor.fetchone()
-                if not result:
-                    raise ValueError(f"Cursor state not found for {self.processor_name}")
-                return result
-        finally:
-            if conn:
-                conn.close()
-
-    def update_cursor(self, cursor_id: int):
-        """カーソル位置を更新"""
+    def update_last_processed_time(self):
+        """最終処理時間を更新"""
         conn = None
         try:
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 sql = """
                 UPDATE processing_cursors
-                SET last_cursor_id = %s,
+                SET last_reset_time = NOW(),
                     updated_at = NOW()
                 WHERE processor_name = %s AND target_table = %s
                 """
-                cursor.execute(sql, (cursor_id, self.processor_name, self.target_table))
+                cursor.execute(sql, (self.processor_name, self.target_table))
                 conn.commit()
-                logger.info(f"カーソル位置を更新: {cursor_id}")
-        finally:
-            if conn:
-                conn.close()
-
-    def reset_if_needed(self) -> bool:
-        """必要に応じてカーソルをリセット"""
-        conn = None
-        try:
-            # カーソル状態を取得
-            state = self.get_cursor_state()
-            current_time = datetime.now()
-            time_diff = (current_time - state['last_reset_time']).total_seconds()
-            
-            if time_diff >= state['reset_interval']:
-                # リセットが必要な場合は新しい接続を作成
-                conn = get_db_connection()
-                with conn.cursor() as cursor:
-                    sql = """
-                    UPDATE processing_cursors
-                    SET last_cursor_id = 0,
-                        last_reset_time = NOW(),
-                        updated_at = NOW()
-                    WHERE processor_name = %s AND target_table = %s
-                    """
-                    cursor.execute(sql, (self.processor_name, self.target_table))
-                    conn.commit()
-                    logger.info("カーソルをリセットしました")
-                return True
-            return False
+                logger.info("最終処理時間を更新しました")
         finally:
             if conn:
                 conn.close()
@@ -123,16 +74,11 @@ class VideoCollector:
         self.topic_path = self.publisher.topic_path(
             self.project_id, 'video-processing'
         )
-        self.cursor_manager = CursorManager('video_collector', 'video_url_data')
+        self.processing_manager = ProcessingManager('video_collector', 'video_url_data')
 
-    def get_videos_to_update(self, cursor_id: int = 0) -> Tuple[List[Dict[str, Any]], int]:
-        """カーソルベースでneeds_updateがTrueのビデオデータを取得"""
+    def get_videos_to_update(self) -> List[Dict[str, Any]]:
+        """更新が必要なすべてのビデオデータを一度に取得"""
         try:
-            # カーソルのリセットチェックと状態取得
-            self.cursor_manager.reset_if_needed()
-            cursor_state = self.cursor_manager.get_cursor_state()
-            batch_size = cursor_state['batch_size']
-
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 query = """
@@ -147,23 +93,15 @@ class VideoCollector:
                         video_url_data
                     WHERE 
                         needs_update = TRUE
-                        AND id > %s
                     ORDER BY 
                         id
-                    LIMIT %s
                 """
-                cursor.execute(query, (cursor_id, batch_size))
+                cursor.execute(query)
                 results = cursor.fetchall()
                 
-                if results:
-                    next_cursor = results[-1]['id']
-                    self.cursor_manager.update_cursor(next_cursor)
-                else:
-                    next_cursor = cursor_id
-
-                logger.info(f"取得した動画数: {len(results)}, 次のカーソル: {next_cursor}")
+                logger.info(f"取得した動画数: {len(results)}")
                 
-                return results, next_cursor
+                return results
         except Exception as e:
             logger.error(f"データ取得エラー: {str(e)}")
             raise
@@ -187,17 +125,16 @@ class VideoCollector:
             logger.error(f"メッセージの送信に失敗: {str(e)}")
             raise
 
-    def process_videos(self, cursor_id: int = 0) -> Dict[str, Any]:
-        """カーソルベースで動画データを取得してPub/Subに送信"""
+    def process_videos(self) -> Dict[str, Any]:
+        """すべての更新が必要な動画データを取得してPub/Subに送信"""
         try:
-            # 更新が必要な動画を取得
-            videos, next_cursor = self.get_videos_to_update(cursor_id)
+            # 更新が必要な動画をすべて取得
+            videos = self.get_videos_to_update()
             
             if not videos:
                 return {
                     "success": True,
                     "message": "処理対象の動画がありません",
-                    "next_cursor": cursor_id,
                     "processed_count": 0
                 }
             
@@ -211,10 +148,12 @@ class VideoCollector:
                 })
                 logger.info(f"動画ID {video['video_id']} のデータを送信しました")
             
+            # 処理完了後に最終処理時間を更新
+            self.processing_manager.update_last_processed_time()
+            
             return {
                 "success": True,
                 "message": f"{len(videos)}件の動画を処理しました",
-                "next_cursor": next_cursor,
                 "processed_count": len(processed_videos),
                 "processed_videos": processed_videos
             }
@@ -224,7 +163,6 @@ class VideoCollector:
             return {
                 "success": False,
                 "error": str(e),
-                "next_cursor": cursor_id,
                 "processed_count": 0
             }
 
@@ -235,13 +173,9 @@ def collect_videos(request):
     logger.info(f"リクエストメソッド: {request.method}")
     
     try:
-        # リクエストからカーソル値を取得
-        cursor_id = int(request.args.get('cursor', 0))
-        logger.info(f"リクエスト受信: cursor={cursor_id}")
-        
         # VideoCollectorのインスタンスを作成し、処理を実行
         collector = VideoCollector()
-        result = collector.process_videos(cursor_id)
+        result = collector.process_videos()
         
         # 結果をログ出力
         status_code = 200 if result.get("success", False) else 500
@@ -251,12 +185,11 @@ def collect_videos(request):
         return result, status_code
         
     except ValueError as e:
-        # カーソル値のパース失敗など
+        # パラメータのパース失敗など
         logger.error(f"不正なリクエスト: {str(e)}")
         return {
             "success": False,
-            "error": f"Invalid request: {str(e)}",
-            "next_cursor": 0
+            "error": f"Invalid request: {str(e)}"
         }, 400
         
     except Exception as e:
@@ -266,36 +199,21 @@ def collect_videos(request):
         logger.error(traceback.format_exc())
         return {
             "success": False,
-            "error": str(e),
-            "next_cursor": cursor_id if 'cursor_id' in locals() else 0
+            "error": str(e)
         }, 500
     finally:
         logger.info("==== collect_videos関数の実行終了 ====")
 
 if __name__ == "__main__":
-    logger.info("==== バッチ処理開始 ====")
+    logger.info("==== 処理開始 ====")
     try:
         collector = VideoCollector()
-        cursor = 0
-        total_processed = 0
+        result = collector.process_videos()
         
-        while True:
-            logger.info(f"現在のカーソル位置: {cursor}")
-            result = collector.process_videos(cursor)
-            
-            if not result["success"]:
-                logger.error(f"エラーが発生しました: {result.get('error')}")
-                break
-                
-            total_processed += result["processed_count"]
-            logger.info(f"現在までの処理件数: {total_processed}")
-            
-            if result["processed_count"] == 0:
-                logger.info(f"全ての動画の処理が完了しました（合計: {total_processed}件）")
-                break
-                
-            cursor = result["next_cursor"]
-            logger.info(f"次のバッチを処理します。カーソル: {cursor}")
+        if result["success"]:
+            logger.info(f"処理が成功しました: {result['processed_count']}件の動画を処理")
+        else:
+            logger.error(f"処理中にエラーが発生しました: {result.get('error')}")
             
     except Exception as e:
         logger.error(f"予期せぬエラーが発生しました: {str(e)}")
@@ -303,4 +221,4 @@ if __name__ == "__main__":
         logger.error(traceback.format_exc())
         raise
     finally:
-        logger.info("==== バッチ処理終了 ====")
+        logger.info("==== 処理終了 ====")

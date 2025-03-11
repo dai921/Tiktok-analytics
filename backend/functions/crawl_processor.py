@@ -134,9 +134,9 @@ def process_crawl_complete(cloud_event):
                 # 更新トリガーメッセージを作成
                 trigger_message = {
                     'trigger_time': datetime.now().isoformat(),
-                    'trigger_type': 'batch_completion',
-                    'batch_info': {
-                        'batch_number': processing_info.get('batch_number'),
+                    'trigger_type': 'accounts_processed',
+                    'accounts_info': {
+                        'total_accounts': processing_info.get('total_accounts'),
                         'total_needs_update': processing_info.get('total_needs_update')
                     }
                 }
