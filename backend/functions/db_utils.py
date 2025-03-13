@@ -1,3 +1,4 @@
+import os  # 完全なosモジュールをインポート
 import pymysql
 import logging
 from typing import Dict, Any, List, Optional, Callable
@@ -17,6 +18,7 @@ class DatabaseError(Exception):
 def get_connection():
     """
     データベース接続を提供するコンテキストマネージャー
+    Unixソケットを使用してCloud SQLに接続
     
     Yields:
         Connection: データベース接続オブジェクト
@@ -24,24 +26,44 @@ def get_connection():
     Raises:
         DatabaseError: 接続の確立に失敗した場合
     """
+    connection = None
     try:
         config = get_db_config()
-        # cursorclassが重複しないように設定
-        config_copy = config.copy()
-        if 'cursorclass' in config_copy:
-            del config_copy['cursorclass']
         
-        connection = pymysql.connect(
-            **config_copy,
-            cursorclass=DictCursor
-        )
+        # インスタンス接続名を取得
+        instance_connection_name = os.environ.get('INSTANCE_CONNECTION_NAME')
+        logger.info(f"DB接続を試みます: {instance_connection_name}")
+        
+        if instance_connection_name:
+            # Cloud FunctionからのUnixソケット接続
+            unix_socket = f'/cloudsql/{instance_connection_name}'
+            
+            # 接続パラメータから不要な設定を削除
+            connection_params = {k: v for k, v in config.items() if k not in ['host', 'port']}
+            
+            # 必要なパラメータのみ設定
+            connection_params.update({
+                'unix_socket': unix_socket,
+                'cursorclass': pymysql.cursors.DictCursor
+            })
+            
+            logger.info(f"Unixソケット接続パラメータ: {connection_params}")
+            connection = pymysql.connect(**connection_params)
+        else:
+            # 開発環境での接続
+            logger.info("通常接続を使用します")
+            connection = pymysql.connect(
+                **config,
+                cursorclass=DictCursor
+            )
+        
         yield connection
-    except ConfigError as e:
-        raise DatabaseError(f"Failed to get database configuration: {str(e)}")
-    except pymysql.Error as e:
-        raise DatabaseError(f"Database connection error: {str(e)}")
+        
+    except Exception as e:
+        logger.error(f"データベース接続エラー: {str(e)}", exc_info=True)
+        raise DatabaseError(f"データベース接続に失敗しました: {str(e)}")
     finally:
-        if 'connection' in locals() and connection.open:
+        if connection and connection.open:
             connection.close()
 
 def execute_query(query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:

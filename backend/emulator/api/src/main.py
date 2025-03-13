@@ -41,10 +41,6 @@ origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()
 logger.info(f"設定されたCORSオリジン: {origins}")
 print(f"設定されたCORSオリジン: {origins}")
 
-# 安全対策：originsが空の場合はデフォルト値を設定
-if not origins:
-    logger.warning("有効なオリジンが指定されていません。デフォルト設定を使用します。")
-    origins = ["http://localhost:3000"]  # 開発環境用デフォルト値
 
 app.add_middleware(
     CORSMiddleware,

@@ -27,8 +27,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
-
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
   # frontend-update
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-frontend-update'
@@ -48,7 +47,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # frontend-update のスケジュール設定
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -108,7 +107,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # process-video-data
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -128,7 +127,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # sync-category-spreadsheet
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -148,7 +147,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_CATEGORY_ID=1u7Q2HQ0x5KDmuwn3MLFCurXrx-ysWaaD3sSz695tjFk'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_CATEGORY_ID=1u7Q2HQ0x5KDmuwn3MLFCurXrx-ysWaaD3sSz695tjFk,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # sync-category-spreadsheet のスケジュール設定
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -206,10 +205,10 @@ steps:
       - '--entry-point=sync_spreadsheet_job'
       - '--trigger-http'
       - '--no-allow-unauthenticated'
-      - '--memory=512MB'
+      - '--memory=512MB' 
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_ID=1Ijjvk2jNKcKUUUhhzB5TtkjrsN_okhon30N83yXfIiA'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_ID=1Ijjvk2jNKcKUUUhhzB5TtkjrsN_okhon30N83yXfIiA,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # sync-spreadsheet のスケジュール設定
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -267,7 +266,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # video-url-data-updater
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -287,7 +286,7 @@ steps:
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
-      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
   # batch-scheduler
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -311,3 +310,4 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+

@@ -30,7 +30,7 @@ def initialize_config() -> None:
     if _is_initialized:
         return
         
-    env = os.getenv('ENVIRONMENT', 'development')
+    env = os.getenv('ENVIRONMENT')
     if env not in ['development', 'production']:
         raise ConfigError(f"Invalid environment: {env}")
         
@@ -87,16 +87,28 @@ def get_db_config() -> Dict[str, Any]:
         ConfigError: 必要な設定の取得に失敗した場合
     """
     try:
-        if get_environment() == 'production':
-            # 本番環境: Secret Managerから取得
+        # INSTANCE_CONNECTION_NAMEが環境変数にある場合はUnixソケット接続を使用
+        instance_connection_name = os.environ.get('INSTANCE_CONNECTION_NAME')
+        if instance_connection_name:
+            logger.info(f"Unixソケット接続を使用: {instance_connection_name}")
             return {
-                'host': get_secret('MYSQL_HOST'),
-                'port': int(get_secret('MYSQL_PORT')),
-                'user': get_secret('MYSQL_USER'),
-                'password': get_secret('MYSQL_PASSWORD'),
-                'database': get_secret('MYSQL_DATABASE'),
-                'charset': 'utf8mb4',
-                'cursorclass': 'DictCursor'
+                'user': 'tiktok-user',
+                'password': 'tiktok_pass',
+                'database': 'tiktok_data',
+                'charset': 'utf8mb4'
+                # cursorclassは削除（db_utils.pyで設定する）
+            }
+        
+        if get_environment() == 'production':
+            # 本番環境: 提供された固定設定を使用
+            return {
+                'host': '127.0.0.1',
+                'user': 'tiktok-user',
+                'password': 'tiktok_pass',
+                'database': 'tiktok_data',
+                'port': 3306,
+                'charset': 'utf8mb4'
+                # cursorclassは削除（db_utils.pyで設定する）
             }
         else:
             # 開発環境: 環境変数から取得
@@ -106,8 +118,8 @@ def get_db_config() -> Dict[str, Any]:
                 'user': os.getenv('MYSQL_USER', 'tiktok_user'),
                 'password': os.getenv('MYSQL_PASSWORD', 'tiktok_pass'),
                 'database': os.getenv('MYSQL_DATABASE', 'tiktok_data'),
-                'charset': 'utf8mb4',
-                'cursorclass': 'DictCursor'
+                'charset': 'utf8mb4'
+                # cursorclassは削除（db_utils.pyで設定する）
             }
     except ValueError as e:
         raise ConfigError(f"Invalid database configuration: {str(e)}")
