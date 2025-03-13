@@ -48,13 +48,13 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
         onClick={handleOpen}
         className="cursor-zoom-in"
       >
-        <div className="w-[160px] h-[90px] relative bg-gray-100 rounded">
+        <div className="w-[120px] h-[120px] relative bg-gray-100 rounded flex items-center justify-center overflow-hidden">
           <Image
             src={src}
             alt={alt}
             fill
-            sizes="160px"
-            className="object-cover rounded"
+            sizes="120px"
+            className="object-cover"
             unoptimized
           />
         </div>
