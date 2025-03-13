@@ -2,7 +2,7 @@ import type { VideoData, PaginatedResponse, FilterQuery, FilterType } from '@/ty
 
 // 環境変数からAPI設定を取得
 const useBackendApi = process.env.NEXT_PUBLIC_USE_BACKEND_API === 'true';
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const apiUrl = process.env.NEXT_PUBLIC_API_URL 
 
 /**
  * TikTok動画データを取得する
@@ -1005,7 +1005,6 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
     console.log('全データ取得URLパラメータ:', Object.fromEntries(params.entries()));
     
     // APIリクエスト実行
-    const apiUrl = 'http://localhost:8080';
     const response = await fetch(`${apiUrl}/api/videos?${params.toString()}`);
     
     if (!response.ok) {
@@ -1127,7 +1126,6 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
     console.log('選択肢取得URLパラメータ:', Object.fromEntries(params.entries()));
     
     // APIリクエスト実行
-    const apiUrl = 'http://localhost:8080';
     const response = await fetch(`${apiUrl}/api/filter-options?${params.toString()}`);
     
     if (!response.ok) {
