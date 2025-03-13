@@ -1,48 +1,313 @@
-functions:
-  - name: crawl-processor
-    source: crawl_processor.py
-    entry_point: process_pubsub
-    trigger:
-      topic: crawl-processor-topic
+# Cloud Functionsデプロイ用のCloud Build構成
+steps:
+  # 共通ユーティリティファイルのコピー（後続のすべてのデプロイで使用）
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'prepare-environment'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "ENVIRONMENT=production" > .env
 
-  - name: frontend-update
-    source: frontend_data_update.py
-    entry_point: scheduled_job
-    trigger:
-      schedule: "0 0 */2 * *"
+  # crawl-processor
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-crawl-processor'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'crawl-processor'
+      - '--gen2' 
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=crawl_processor_pubsub'
+      - '--trigger-topic=crawl-complete'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
 
-  - name: url-collector
-    source: url_collector.py
-    entry_point: process_pubsub
-    trigger:
-      topic: spreadsheet-completion
+  # frontend-update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend-update'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'frontend-update'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=frontend_update_job'
+      - '--trigger-http'
+      - '--no-allow-unauthenticated'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
 
-  - name: process-video-data
-    source: process_video_data.py
-    entry_point: process_pubsub
-    trigger:
-      topic: video-data-topic
+  # frontend-update のスケジュール設定
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-frontend-update-schedule'
+    waitFor: ['deploy-frontend-update']
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        # デプロイされた関数の情報を取得
+        FUNCTION_URL=$$(gcloud functions describe frontend-update --gen2 --region=asia-northeast1 --format='value(serviceConfig.uri)' --project=tiktok-analytics-prod-451609)
+        if [ -z "$$FUNCTION_URL" ]; then
+          echo "エラー: frontend-update 関数のURLを取得できませんでした"
+          exit 1
+        fi
+        
+        echo "frontend-update 関数のURL: $$FUNCTION_URL"
+        
+        # ジョブが存在するか確認
+        if gcloud scheduler jobs describe frontend-update-schedule --location=asia-northeast1 --project=tiktok-analytics-prod-451609 2>/dev/null; then
+          echo "スケジュールジョブ frontend-update-schedule は既に存在します。更新します。"
+          gcloud scheduler jobs update http frontend-update-schedule \
+            --location=asia-northeast1 \
+            --schedule="0 0 */2 * *" \
+            --uri="$$FUNCTION_URL" \
+            --http-method=POST \
+            --time-zone="Asia/Tokyo" \
+            --attempt-deadline=540s \
+            --project=tiktok-analytics-prod-451609
+        else
+          echo "スケジュールジョブ frontend-update-schedule を新規作成します。"
+          gcloud scheduler jobs create http frontend-update-schedule \
+            --location=asia-northeast1 \
+            --schedule="0 0 */2 * *" \
+            --uri="$$FUNCTION_URL" \
+            --http-method=POST \
+            --time-zone="Asia/Tokyo" \
+            --attempt-deadline=540s \
+            --project=tiktok-analytics-prod-451609
+        fi
 
-  - name: sync-category-spreadsheet
-    source: sync_category_spreadsheet.py
-    entry_point: scheduled_job
-    trigger:
-      schedule: "0 0 */2 * *"  # 2日に1回実行
+  # url-collector
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-url-collector'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'url-collector'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=url_collector_pubsub'
+      - '--trigger-topic=spreadsheet-completion'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
 
-  - name: sync-spreadsheet
-    source: sync_spreadsheet.py
-    entry_point: scheduled_job
-    trigger:
-      schedule: "0 0 */2 * *"  # 2日に1回実行
+  # process-video-data
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-process-video-data'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'process-video-data'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=process_pubsub'
+      - '--trigger-topic=video-data'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
 
-  - name: video-collector
-    source: video_collector.py
-    entry_point: collect_videos  # 既存のHTTPトリガー関数を使用
-    trigger:
-      http: true  # HTTPトリガーとして設定
+  # sync-category-spreadsheet
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-category-spreadsheet'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'sync-category-spreadsheet'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_category_job'
+      - '--trigger-http'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_CATEGORY_ID=1u7Q2HQ0x5KDmuwn3MLFCurXrx-ysWaaD3sSz695tjFk'
 
-  - name: video-url-data-updater
-    source: video_url_data_updater.py
-    entry_point: process_pubsub
-    trigger:
-      topic: crawl-processor-complete  # crawl_processorの完了を通知するトピック
+  # sync-category-spreadsheet のスケジュール設定
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-sync-category-schedule'
+    waitFor: ['deploy-sync-category-spreadsheet']
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        # デプロイされた関数の情報を取得
+        FUNCTION_URL=$$(gcloud functions describe sync-category-spreadsheet --gen2 --region=asia-northeast1 --format='value(serviceConfig.uri)' --project=tiktok-analytics-prod-451609)
+        if [ -z "$$FUNCTION_URL" ]; then
+          echo "エラー: sync-category-spreadsheet 関数のURLを取得できませんでした"
+          exit 1
+        fi
+        
+        echo "sync-category-spreadsheet 関数のURL: $$FUNCTION_URL"
+        
+        # ジョブが存在するか確認
+        if gcloud scheduler jobs describe sync-category-schedule --location=asia-northeast1 --project=tiktok-analytics-prod-451609 2>/dev/null; then
+          echo "スケジュールジョブ sync-category-schedule は既に存在します。更新します。"
+          gcloud scheduler jobs update http sync-category-schedule \
+            --location=asia-northeast1 \
+            --schedule="0 0 */2 * *" \
+            --uri="$$FUNCTION_URL" \
+            --http-method=POST \
+            --time-zone="Asia/Tokyo" \
+            --attempt-deadline=540s \
+            --project=tiktok-analytics-prod-451609
+        else
+          echo "スケジュールジョブ sync-category-schedule を新規作成します。"
+          gcloud scheduler jobs create http sync-category-schedule \
+            --location=asia-northeast1 \
+            --schedule="0 0 */2 * *" \
+            --uri="$$FUNCTION_URL" \
+            --http-method=POST \
+            --time-zone="Asia/Tokyo" \
+            --attempt-deadline=540s \
+            --project=tiktok-analytics-prod-451609
+        fi
+
+  # sync-spreadsheet
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-spreadsheet'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'sync-spreadsheet'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_spreadsheet_job'
+      - '--trigger-http'
+      - '--no-allow-unauthenticated'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_ID=1Ijjvk2jNKcKUUUhhzB5TtkjrsN_okhon30N83yXfIiA'
+
+  # sync-spreadsheet のスケジュール設定
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-sync-spreadsheet-schedule'
+    waitFor: ['deploy-sync-spreadsheet']
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        # Cloud Scheduler APIが処理するための待機時間を入れる
+        echo "Cloud Schedulerの処理のために10秒待機します..."
+        sleep 10
+        
+        # デプロイされた関数の情報を取得
+        FUNCTION_URL=$$(gcloud functions describe sync-spreadsheet --gen2 --region=asia-northeast1 --format='value(serviceConfig.uri)' --project=tiktok-analytics-prod-451609)
+        if [ -z "$$FUNCTION_URL" ]; then
+          echo "エラー: sync-spreadsheet 関数のURLを取得できませんでした"
+          exit 1
+        fi
+        
+        echo "sync-spreadsheet 関数のURL: $$FUNCTION_URL"
+        
+        # ジョブが存在するか確認し、存在する場合は先に削除
+        if gcloud scheduler jobs describe sync-spreadsheet-schedule --location=asia-northeast1 --project=tiktok-analytics-prod-451609 2>/dev/null; then
+          echo "スケジュールジョブ sync-spreadsheet-schedule は既に存在します。一度削除してから再作成します。"
+          gcloud scheduler jobs delete sync-spreadsheet-schedule --location=asia-northeast1 --project=tiktok-analytics-prod-451609 --quiet
+          sleep 5
+        fi
+        
+        echo "スケジュールジョブ sync-spreadsheet-schedule を新規作成します。"
+        gcloud scheduler jobs create http sync-spreadsheet-schedule \
+          --location=asia-northeast1 \
+          --schedule="0 1 */2 * *" \
+          --uri="$$FUNCTION_URL" \
+          --http-method=POST \
+          --time-zone="Asia/Tokyo" \
+          --attempt-deadline=540s \
+          --project=tiktok-analytics-prod-451609
+
+  # video-collector
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-video-collector'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'video-collector'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=video_collector_function'
+      - '--trigger-topic=trigger-video-collector'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+
+  # video-url-data-updater
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-video-url-data-updater'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'video-url-data-updater'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=video_url_data_updater'
+      - '--trigger-topic=video-url-data-update'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+
+  # batch-scheduler
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-batch-scheduler'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'batch-scheduler'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=batch_scheduler_function'
+      - '--trigger-topic=frontend-update-status'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

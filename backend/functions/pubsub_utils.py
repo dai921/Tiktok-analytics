@@ -3,19 +3,17 @@ from google.cloud import pubsub_v1
 import logging
 from typing import Optional
 import json
-from log import logger
 
 logger = logging.getLogger(__name__)
 
 def get_pubsub_client() -> pubsub_v1.PublisherClient:
     """環境に応じたPub/Subクライアントを取得"""
-    if os.getenv('ENVIRONMENT') == 'development':
-        # 開発環境: エミュレータを使用
-        os.environ['PUBSUB_EMULATOR_HOST'] = os.getenv('PUBSUB_EMULATOR_HOST', '127.0.0.1:8681')
-        logger.info(f"開発環境: Pub/Subエミュレータを使用")
-    else:
+    if os.getenv('ENVIRONMENT') == 'production':
         # 本番環境: GCPのPub/Subを使用
         logger.info("本番環境: GCP Pub/Subを使用")
+    else:      # 開発環境: エミュレータを使用
+        os.environ['PUBSUB_EMULATOR_HOST'] = os.getenv('PUBSUB_EMULATOR_HOST', '127.0.0.1:8681')
+        logger.info(f"開発環境: Pub/Subエミュレータを使用")
     
     return pubsub_v1.PublisherClient()
 

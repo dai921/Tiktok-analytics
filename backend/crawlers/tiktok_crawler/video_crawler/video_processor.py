@@ -22,7 +22,14 @@ logger = logging.getLogger(__name__)
 
 class VideoProcessor:
     def __init__(self):
+        # ロガー設定を先に行う
         self.logger = logger  # 既存のロガーを使用
+        
+        # 環境設定
+        self.environment = os.getenv('ENVIRONMENT', 'development')
+        self.is_production = self.environment == 'production'
+        self.logger.info(f"起動環境: {self.environment}")
+        
         self.semaphore = asyncio.Semaphore(1)  # 同時処理を1つに制限
         # User-Agent一覧
         self.user_agents = [
@@ -33,7 +40,7 @@ class VideoProcessor:
         ]
 
         # PubSub設定
-        if not os.getenv('PUBSUB_EMULATOR_HOST'):
+        if os.getenv('ENVIRONMENT') == 'development' and not os.getenv('PUBSUB_EMULATOR_HOST'):
             os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'
         
         self.project_id = os.getenv('PROJECT_ID', 'local-project')
@@ -63,20 +70,30 @@ class VideoProcessor:
 
         self.bucket_name = os.getenv('BUCKET_NAME', 'tiktok-data-bucket')
         
-        # バケットが存在しない場合は作成
+        # 環境に応じたバケット取得ロジック
         try:
             self.bucket = self.storage_client.bucket(self.bucket_name)
             if not self.bucket.exists():
-                self.bucket = self.storage_client.create_bucket(self.bucket_name)
-                self.logger.info(f"バケットを作成しました: {self.bucket_name}")
+                if os.getenv('ENVIRONMENT') == 'development':
+                    # 開発環境のみバケット自動作成
+                    self.bucket = self.storage_client.create_bucket(self.bucket_name)
+                    self.logger.info(f"開発環境用バケットを作成しました: {self.bucket_name}")
+                else:
+                    # 本番環境では事前作成されているはず
+                    self.logger.error(f"バケット {self.bucket_name} が存在しません")
+                    raise ValueError(f"バケット {self.bucket_name} が事前に作成されていません")
         except Exception as e:
-            self.logger.error(f"バケットの作成に失敗: {str(e)}")
+            self.logger.error(f"バケット接続エラー: {str(e)}")
             raise
 
-        # 保存先ディレクトリの設定
-        self.temp_dir = "temp_downloads"
-        self.storage_dir = "storage"
-        
+        # 環境変数から保存パスを取得またはデフォルト設定
+        self.temp_dir = os.getenv('TEMP_DIR', "temp_downloads")
+        self.storage_dir = os.getenv('STORAGE_DIR', "storage")
+
+        # ディレクトリパスのログ出力
+        self.logger.info(f"一時ディレクトリ: {self.temp_dir}")
+        self.logger.info(f"ストレージディレクトリ: {self.storage_dir}")
+
         # ディレクトリの作成
         for directory in [self.temp_dir, self.storage_dir]:
             if not os.path.exists(directory):
@@ -431,7 +448,7 @@ class VideoProcessor:
 
                                     result = {
                                         **base_result,
-                                        "status": "success" if saved_images else "error",
+                                        "status": "success",
                                         "folder_path": carousel_dir if saved_images else None,
                                         "image_count": len(saved_images),
                                         "type": "carousel"

@@ -368,7 +368,10 @@ async def process_message(message) -> None:
         
         crawler = AccountCrawler()  # クローラーインスタンスを作成
         
-        for account in accounts:
+        # アカウントリストの全件数を取得
+        total_accounts = len(accounts)
+        
+        for i, account in enumerate(accounts):
             try:
                 # クローリング処理
                 result = await crawler.crawl_account(account)
@@ -385,7 +388,7 @@ async def process_message(message) -> None:
                 }
                 
                 # 最後のアカウントの場合、processing_infoを含める
-                if processing_info and account["account_id"] == processing_info["last_account_id"]:
+                if i == total_accounts - 1 and processing_info:
                     complete_message["processing_info"] = processing_info
                 
                 # Pub/Subにメッセージを送信
@@ -412,7 +415,8 @@ async def process_message(message) -> None:
                     "timestamp": datetime.now().isoformat()
                 }
                 
-                if processing_info and account["account_id"] == processing_info["last_account_id"]:
+                # 最後のアカウントの場合、processing_infoを含める
+                if i == total_accounts - 1 and processing_info:
                     error_message["processing_info"] = processing_info
                 
                 publisher = pubsub_v1.PublisherClient()
@@ -440,13 +444,15 @@ def setup_subscription():
         logger.info(f"サブスクリプション設定開始: {subscription_path}")
         logger.info(f"Pub/Subエミュレータ接続: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
         
-        # 非同期処理用のイベントループを取得
-        loop = asyncio.get_event_loop()
-        
-        # コールバックラッパー
+        # 非同期処理用の新しいイベントループを作成する代わりに、直接asyncioコールバックを使用
         def callback(message):
             try:
+                # 新しいイベントループを作成して実行
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                # process_messageを実行し、完了を待つ
                 loop.run_until_complete(process_message(message))
+                loop.close()
             except Exception as e:
                 logger.error(f"メッセージ処理エラー: {e}")
                 message.nack()

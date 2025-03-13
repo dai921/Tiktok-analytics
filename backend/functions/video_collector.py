@@ -1,43 +1,26 @@
 import os
-import mysql.connector
 import logging
-from google.cloud import pubsub_v1
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 import functions_framework
-import pymysql
+import json
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
+import base64
+
+# 設定の初期化
+initialize_config()
+
+# 環境情報を取得
+environment = get_environment()
+project_id = os.getenv('PROJECT_ID', 'local-project')
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_db_connection():
-    """データベース接続を取得する"""
-    host = "localhost"
-    port = 3306
-    user = "tiktok_user"
-    password = "tiktok_pass"
-    database = "tiktok_data"
-    
-    try:
-        logger.info(f"データベース接続試行: '{host}':{port}/{database} ユーザー: '{user}'")
-        connection = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            charset='utf8mb4',
-            cursorclass=pymysql.cursors.DictCursor,
-            connect_timeout=5
-        )
-        logger.info("データベース接続成功!")
-        return connection
-    except Exception as e:
-        logger.error(f"データベース接続エラー: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        raise
+# Pub/Sub設定を追加
 
 class ProcessingManager:
     def __init__(self, processor_name: str, target_table: str):
@@ -46,79 +29,61 @@ class ProcessingManager:
 
     def update_last_processed_time(self):
         """最終処理時間を更新"""
-        conn = None
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                sql = """
-                UPDATE processing_cursors
-                SET last_reset_time = NOW(),
-                    updated_at = NOW()
-                WHERE processor_name = %s AND target_table = %s
-                """
-                cursor.execute(sql, (self.processor_name, self.target_table))
-                conn.commit()
-                logger.info("最終処理時間を更新しました")
-        finally:
-            if conn:
-                conn.close()
+            sql = """
+            UPDATE processing_cursors
+            SET last_reset_time = NOW(),
+                updated_at = NOW()
+            WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s
+            """
+            params = {
+                'processor_name': self.processor_name,
+                'target_table': self.target_table
+            }
+            execute_write_query(sql, params)
+            logger.info("最終処理時間を更新しました")
+        except DatabaseError as e:
+            logger.error(f"処理時間更新エラー: {str(e)}")
+            raise
 
 class VideoCollector:
     def __init__(self):
-        # PubSub設定
-        if not os.getenv('PUBSUB_EMULATOR_HOST'):
-            os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'
-        
-        self.project_id = os.getenv('PROJECT_ID', 'local-project')
-        self.publisher = pubsub_v1.PublisherClient()
-        self.topic_path = self.publisher.topic_path(
-            self.project_id, 'video-processing'
-        )
+        # 処理管理クラスの初期化
         self.processing_manager = ProcessingManager('video_collector', 'video_url_data')
 
     def get_videos_to_update(self) -> List[Dict[str, Any]]:
         """更新が必要なすべてのビデオデータを一度に取得"""
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
-                query = """
-                    SELECT 
-                        id,
-                        video_url,
-                        username,
-                        video_id,
-                        is_new_video,
-                        content_type
-                    FROM 
-                        video_url_data
-                    WHERE 
-                        needs_update = TRUE
-                    ORDER BY 
-                        id
-                """
-                cursor.execute(query)
-                results = cursor.fetchall()
-                
-                logger.info(f"取得した動画数: {len(results)}")
-                
-                return results
-        except Exception as e:
+            query = """
+                SELECT 
+                    id,
+                    video_url,
+                    username,
+                    video_id,
+                    is_new_video,
+                    content_type
+                FROM 
+                    video_url_data
+                WHERE 
+                    needs_update = TRUE
+                ORDER BY 
+                    id
+                LIMIT 5
+            """
+            results = execute_query(query)
+            
+            logger.info(f"取得した動画数: {len(results)}")
+            
+            return results
+        except DatabaseError as e:
             logger.error(f"データ取得エラー: {str(e)}")
             raise
-        finally:
-            if 'conn' in locals() and conn:
-                conn.close()
 
     def publish_video_data(self, video_data: Dict[str, Any]) -> str:
         """動画データをPub/Subに送信"""
         try:
-            # メッセージデータを文字列に変換
-            import json
-            message_data = json.dumps(video_data).encode('utf-8')
-            
-            # メッセージを送信
-            future = self.publisher.publish(self.topic_path, message_data)
-            message_id = future.result()
+            # pubsub_utilsのpublish_message関数を使用してメッセージを送信
+            message_id = publish_message('video-processing', video_data)
             logger.info(f"メッセージを送信しました。Message ID: {message_id}")
             return message_id
         except Exception as e:
@@ -166,13 +131,61 @@ class VideoCollector:
                 "processed_count": 0
             }
 
-@functions_framework.http
-def collect_videos(request):
-    """HTTPリクエストハンドラ"""
+def setup_subscription():
+    """Pub/Subサブスクリプションを設定する"""
+    try:
+        from google.cloud import pubsub_v1
+        subscriber = pubsub_v1.SubscriberClient()
+        subscription_name = "trigger-video-collector"  # 既存のサブスクリプション名を使用   
+        subscription_path = subscriber.subscription_path(project_id, subscription_name)
+        
+        logger.info(f"Pub/Subサブスクリプション: {subscription_path}")
+        
+        def callback(message):
+            try:
+                logger.info(f"メッセージ受信: {message.message_id}")
+                logger.info(f"メッセージデータ: {message.data}")
+                pubsub_data = message.data.decode('utf-8')
+                data = json.loads(pubsub_data)
+                
+                # Cloud Eventオブジェクトをシミュレート
+                class MockCloudEvent:
+                    def __init__(self, data):
+                        self.data = {"message": {"data": base64.b64encode(json.dumps(data).encode()).decode()}}
+                
+                cloud_event = MockCloudEvent(data)
+                collect_videos(cloud_event)
+                
+                # メッセージを確認応答
+                message.ack()
+                
+                logger.info("メッセージ処理完了")
+            except Exception as e:
+                logger.error(f"メッセージ処理エラー: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        
+        streaming_pull_future = subscriber.subscribe(subscription_path, callback)
+        logger.info(f"サブスクリプションを開始しました: {subscription_path}")
+        return streaming_pull_future
+        
+    except Exception as e:
+        logger.error(f"サブスクリプション設定エラー: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+@functions_framework.cloud_event
+def collect_videos(cloud_event):
+    """Pub/Subメッセージで実行される関数"""
     logger.info("==== collect_videos関数の実行開始 ====")
-    logger.info(f"リクエストメソッド: {request.method}")
     
     try:
+        # Pub/Subメッセージの処理（必要な場合）
+        if cloud_event.data:
+            data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
+            logger.info(f"Pub/Subメッセージを受信: {data}")
+        
         # VideoCollectorのインスタンスを作成し、処理を実行
         collector = VideoCollector()
         result = collector.process_videos()
@@ -205,20 +218,37 @@ def collect_videos(request):
         logger.info("==== collect_videos関数の実行終了 ====")
 
 if __name__ == "__main__":
-    logger.info("==== 処理開始 ====")
+    import sys
+    
+    logger.info("スタンドアロンモードで動画収集プロセッサーを起動しています...")
+    
     try:
-        collector = VideoCollector()
-        result = collector.process_videos()
-        
-        if result["success"]:
-            logger.info(f"処理が成功しました: {result['processed_count']}件の動画を処理")
-        else:
-            logger.error(f"処理中にエラーが発生しました: {result.get('error')}")
+
+            with get_connection() as connection:
+                logger.info("データベース接続テスト成功")
             
+            # サブスクリプション設定
+            future = setup_subscription()
+            
+            if future:
+                try:
+                    # 処理が継続するよう結果を待機
+                    logger.info("メッセージを待機中...")
+                    future.result()  # このコールはブロッキング
+                except KeyboardInterrupt:
+                    future.cancel()
+                    logger.info("キーボード割り込みにより停止しました")
+                except Exception as e:
+                    future.cancel()
+                    logger.error(f"エラーが発生しました: {e}")
+            else:
+                logger.error("サブスクリプションの設定に失敗しました")
     except Exception as e:
         logger.error(f"予期せぬエラーが発生しました: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
-        raise
+        sys.exit(1)
     finally:
         logger.info("==== 処理終了 ====")
+else:
+    logger.info("Functions Frameworkモードで準備完了")

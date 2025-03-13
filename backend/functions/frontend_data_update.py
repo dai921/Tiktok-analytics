@@ -3,240 +3,308 @@ import base64
 import json
 import logging
 from datetime import datetime
-import mysql.connector
-from mysql.connector import Error
-from datetime import datetime
 import logging
 import os
 from typing import Dict, Any
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class FrontendDataUpdater:
-    def __init__(self):
-        # MySQL接続設定
-        self.config = {
-            'host': os.environ.get('MYSQL_HOST', 'localhost'),
-            'user': os.environ.get('MYSQL_USER', 'tiktok_user'),
-            'password': os.environ.get('MYSQL_PASSWORD', 'tiktok_pass'),
-            'database': os.environ.get('MYSQL_DATABASE', 'tiktok_data'),
-            'port': int(os.environ.get('MYSQL_PORT', 3306))
+# 設定の初期化
+initialize_config()
+
+def update_frontend_from_master() -> Dict[str, Any]:
+    """
+    video_masterからfrontend_dataを更新（カーソルベースのバッチ処理）
+    """
+    try:
+        logger.info("video_masterからfrontend_dataの更新を開始")
+        
+        # カーソル情報の取得または初期化
+        cursor_info = get_or_initialize_cursor("frontend_data_update", "frontend_data")
+        processor_name = cursor_info["processor_name"]
+        target_table = cursor_info["target_table"]
+        last_cursor_id = cursor_info["last_cursor_id"]
+        batch_size = cursor_info["batch_size"]
+        batch_number = cursor_info["batch_number"]
+        
+        logger.info(f"バッチ処理情報: processor={processor_name}, target={target_table}, " 
+                   f"last_id={last_cursor_id}, batch_size={batch_size}, batch_number={batch_number}")
+        
+        # 基本クエリでデータ確認
+        debug_query = """
+        SELECT id, created_at, status
+        FROM video_master
+        LIMIT 5
+        """
+        
+        debug_data = execute_query(debug_query)
+        logger.info(f"デバッグ: video_masterテーブルからのサンプルデータ ({len(debug_data)}件)")
+        for row in debug_data:
+            logger.info(f"サンプル: id={row['id']}, created_at={row['created_at']} ({type(row['created_at']).__name__}), status={row['status']}")
+        
+        # パラメータ化されたクエリに変更
+        min_date = '2023-12-01'
+        select_query = """
+        SELECT 
+            vm.id,
+            vm.url,
+            vm.cover_image_url as thumbnail_url,
+            vm.created_at,
+            vm.play_count,
+            vm.playCountIncrease as play_count_increase,
+            vm.username as account_name,
+            vm.likes_count,
+            vm.comment_count,
+            COALESCE(vm.hashtags, '') as hashtags,
+            vm.music_title as music_info,
+            vm.description as caption,
+            vm.category,
+            vm.product,
+            vm.content_type,
+            vm.status
+        FROM 
+            video_master vm
+        LEFT JOIN frontend_data fd ON vm.id = fd.id
+        WHERE 
+            vm.status != 'deleted'
+            AND vm.created_at IS NOT NULL
+            AND vm.created_at >= %(min_date)s
+            AND vm.id > %(last_id)s
+        ORDER BY 
+            vm.id
+        LIMIT %(batch_size)s
+        """
+        
+        params = {
+            'min_date': min_date,
+            'last_id': last_cursor_id,
+            'batch_size': batch_size
         }
-        self.conn = None
-        self.cursor = None
-
-    def connect(self):
-        """データベース接続を確立"""
-        try:
-            self.conn = mysql.connector.connect(**self.config)
-            self.cursor = self.conn.cursor(dictionary=True)
-            logger.info("MySQLデータベースに接続しました")
-        except Error as e:
-            logger.error(f"MySQL接続エラー: {str(e)}")
-            raise
-
-    def close(self):
-        """データベース接続を閉じる"""
-        if self.cursor:
-            self.cursor.close()
-        if self.conn:
-            self.conn.close()
-            logger.info("MySQLデータベース接続を閉じました")
-
-    def update_frontend_from_master(self) -> Dict[str, Any]:
+        
+        logger.info(f"実行するバッチクエリ: {select_query}")
+        logger.info(f"クエリパラメータ: {params}")
+        
+        batch_rows = execute_query(select_query, params)
+        
+        # このバッチの最大IDを取得
+        max_id = batch_rows[-1]['id'] if batch_rows else last_cursor_id
+        
+        # 残りのレコード数を確認するクエリを修正
+        count_query = """
+        SELECT 
+            COUNT(*) as remaining_count
+        FROM 
+            video_master vm
+        LEFT JOIN frontend_data fd ON vm.id = fd.id
+        WHERE 
+            vm.status != 'deleted'
+            AND vm.created_at IS NOT NULL
+            AND vm.created_at >= %(min_date)s
+            AND vm.id > %(max_id)s  /* 現在のバッチの最大IDより大きいものをカウント */
         """
-        video_masterからfrontend_dataを更新
-        """
-        try:
-            self.connect()
-            logger.info("video_masterからfrontend_dataの更新を開始")
+        
+        # 残り件数のクエリ実行
+        remaining_data = execute_query(count_query, {
+            'min_date': min_date, 
+            'max_id': max_id  # 前回の最終IDではなく、今回のバッチの最大IDを使用
+        })
+        remaining_count = remaining_data[0]['remaining_count'] if remaining_data else 0
+        
+        # 取得したデータの検証
+        batch_size = len(batch_rows)
+        logger.info(f"バッチ#{batch_number}: 取得したレコード数: {batch_size}, 残り: {remaining_count}")
+        
+        if not batch_rows:
+            logger.info("処理すべきデータがありません。バッチ処理を完了します。")
             
-            # 問題のあるレコードを特定するためのデバッグクエリ
-            debug_query = """
-            SELECT 
-                id, created_at
-            FROM 
-                video_master
-            WHERE 
-                created_at IS NULL
-            LIMIT 5
-            """
+            # カーソルをリセット（次回は最初から）
+            reset_cursor(processor_name, target_table)
             
-            try:
-                self.cursor.execute(debug_query)
-                empty_date_records = self.cursor.fetchall()
-                logger.info(f"NULL日付を持つレコード数: {len(empty_date_records)}")
-                for record in empty_date_records:
-                    logger.info(f"NULL日付を持つレコード: id={record['id']}, created_at={record['created_at']}")
-            except Exception as e:
-                logger.error(f"デバッグクエリの実行中にエラーが発生: {str(e)}")
-            
-            # 更新が必要なレコードを取得するクエリ
-            select_query = """
-            SELECT 
-                vm.id,
-                vm.url,
-                vm.cover_image_url as thumbnail_url,
-                vm.created_at,
-                vm.play_count,
-                vm.playCountIncrease as play_count_increase,
-                vm.username as account_name,
-                vm.likes_count,
-                vm.comment_count,
-                COALESCE(vm.hashtags, '') as hashtags,
-                vm.music_title as music_info,
-                vm.description as caption,
-                vm.category,
-                vm.product,
-                vm.content_type,
-                vm.status
-            FROM 
-                video_master vm
-            LEFT JOIN frontend_data fd ON vm.id = fd.id
-            WHERE 
-                vm.status != 'deleted'
-                AND vm.created_at IS NOT NULL
-                AND STR_TO_DATE(vm.created_at, '%Y-%m-%d') IS NOT NULL
-                AND vm.created_at >= '2023-12-01'
-            """
-            
-            logger.info(f"実行するSELECTクエリ: {select_query}")
-            
-            self.cursor.execute(select_query)
-            rows_to_update = self.cursor.fetchall()
-            
-            # 取得したデータの検証
-            logger.info(f"取得したレコード数: {len(rows_to_update)}")
-            
-            # 最初の数件のレコードをログに出力
-            for i, row in enumerate(rows_to_update[:5]):
-                logger.info(f"レコード{i+1}: id={row['id']}, created_at={row['created_at']}, type={type(row['created_at'])}")
-            
-            if not rows_to_update:
-                logger.info("更新が必要なデータはありません")
-                return {
-                    "status": "success",
-                    "updated_count": 0,
-                    "execution_time": datetime.now().isoformat()
-                }
-
-            logger.info(f"更新対象のレコード数: {len(rows_to_update)}")
-
-            # REPLACE文を使用してUPSERT操作を実行
-            update_query = """
-            REPLACE INTO frontend_data (
-                id,
-                url,
-                thumbnail_url,
-                created_at,
-                play_count,
-                play_count_increase,
-                account_name,
-                likes_count,
-                comment_count,
-                hashtags,
-                music_info,
-                caption,
-                category
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
-            """
-            
-            updated_count = 0
-            for row in rows_to_update:
-                try:
-                    # ハッシュタグの処理
-                    hashtags = row['hashtags']
-                    if hashtags is None or hashtags == '' or hashtags == '[]':
-                        hashtags = ''
-                    else:
-                        # カンマ区切りの文字列として処理
-                        hashtags = ','.join([tag.strip() for tag in hashtags.split(',') if tag.strip()])
-                    
-                    # created_atの処理 - 確実に有効な日付形式であることを確認
-                    created_at = row['created_at']
-                    if created_at is None:
-                        logger.warning(f"NULLの日付を検出しました (id: {row['id']})")
-                        continue  # 日付がNULLのレコードはスキップ
-                    
-                    # created_atが文字列の場合、日付オブジェクトに変換してから適切な形式に戻す
-                    try:
-                        if isinstance(created_at, str):
-                            # 文字列から日付オブジェクトへ変換
-                            date_obj = datetime.strptime(created_at, '%Y-%m-%d')
-                            # 日付オブジェクトから適切な形式の文字列へ戻す
-                            created_at = date_obj.strftime('%Y-%m-%d')
-                    except ValueError as e:
-                        logger.warning(f"日付変換エラー (id: {row['id']}): {created_at} - {str(e)}")
-                        continue  # 変換できない日付はスキップ
-                    
-                    params = (
-                        row['id'],
-                        row['url'],
-                        row['thumbnail_url'],
-                        created_at,
-                        row['play_count'],
-                        row['play_count_increase'],
-                        row['account_name'],
-                        row['likes_count'],
-                        row['comment_count'],
-                        hashtags,  # 処理済みのハッシュタグ
-                        row['music_info'],
-                        row['caption'],
-                        row['category'],
-                    )
-                    
-                    # パラメータのデバッグ出力
-                    logger.debug(f"UPSERTパラメータ: id={row['id']}, created_at={created_at}, type={type(created_at)}")
-                    
-                    self.cursor.execute(update_query, params)
-                    updated_count += 1
-                    
-                except Error as e:
-                    logger.error(f"レコード更新エラー (id: {row['id']}): {str(e)}")
-                    continue
-
-            self.conn.commit()
-            logger.info(f"更新完了: {updated_count}件のレコードを更新")
+            # Pub/Subにバッチ処理完了のメッセージを送信
+            publish_message("frontend-update-status", {
+                "status": "completed",
+                "message": "全バッチの処理が完了しました",
+                "timestamp": datetime.now().isoformat()
+            })
             
             return {
                 "status": "success",
-                "updated_count": updated_count,
+                "message": "バッチ処理完了",
+                "batch_number": batch_number,
+                "updated_count": 0,
+                "is_complete": True,
                 "execution_time": datetime.now().isoformat()
             }
-            
-        except Exception as e:
-            if self.conn:
-                self.conn.rollback()
-            logger.error(f"更新処理中にエラーが発生: {str(e)}")
-            return {
-                "status": "error",
-                "error": str(e),
-                "execution_time": datetime.now().isoformat()
-            }
-            
-        finally:
-            self.close()
 
+        # バッチ処理の実行
+        updated_count = 0
+        batch_start_time = datetime.now()
+        
+        for row in batch_rows:
+            try:
+                # ハッシュタグの処理
+                hashtags = row['hashtags']
+                if hashtags is None or hashtags == '' or hashtags == '[]':
+                    hashtags = ''
+                else:
+                    # カンマ区切りの文字列として処理
+                    hashtags = ','.join([tag.strip() for tag in hashtags.split(',') if tag.strip()])
+                
+                # created_atの処理
+                created_at = row['created_at']
+                if created_at is None:
+                    continue
+                
+                try:
+                    if isinstance(created_at, str):
+                        date_obj = datetime.strptime(created_at, '%Y-%m-%d')
+                        created_at = date_obj.strftime('%Y-%m-%d')
+                except ValueError:
+                    continue
+                
+                update_query = """
+                REPLACE INTO frontend_data (
+                    id, url, thumbnail_url, created_at, play_count, 
+                    play_count_increase, account_name, likes_count, comment_count, 
+                    hashtags, music_info, caption, category
+                ) VALUES (
+                    %(id)s, %(url)s, %(thumbnail_url)s, %(created_at)s, %(play_count)s, 
+                    %(play_count_increase)s, %(account_name)s, %(likes_count)s, %(comment_count)s, 
+                    %(hashtags)s, %(music_info)s, %(caption)s, %(category)s
+                )
+                """
+                
+                params = {
+                    'id': row['id'],
+                    'url': row['url'],
+                    'thumbnail_url': row['thumbnail_url'],
+                    'created_at': created_at,
+                    'play_count': row['play_count'],
+                    'play_count_increase': row['play_count_increase'],
+                    'account_name': row['account_name'],
+                    'likes_count': row['likes_count'],
+                    'comment_count': row['comment_count'],
+                    'hashtags': hashtags,
+                    'music_info': row['music_info'],
+                    'caption': row['caption'],
+                    'category': row['category'],
+                }
+                
+                execute_write_query(update_query, params)
+                updated_count += 1
+                
+            except DatabaseError as e:
+                logger.error(f"レコード更新エラー (id: {row['id']}): {str(e)}")
+                continue
+        
+        # カーソル情報の更新
+        update_cursor(processor_name, target_table, max_id, batch_number + 1)
+        
+        batch_execution_time = (datetime.now() - batch_start_time).total_seconds()
+        logger.info(f"バッチ#{batch_number}完了: {updated_count}/{batch_size}件更新、実行時間: {batch_execution_time}秒")
+        
+        # 処理が終了していない場合、Pub/Subに継続メッセージを送信
+        if remaining_count > 0:
+            publish_message("frontend-update-status", {
+                "status": "in_progress",
+                "message": f"バッチ#{batch_number}完了、残り{remaining_count}件",
+                "batch_number": batch_number,
+                "remaining": remaining_count,
+                "timestamp": datetime.now().isoformat()
+            })
+        else:
+            # 処理完了
+            publish_message("frontend-update-status", {
+                "status": "completed",
+                "message": "全バッチの処理が完了しました",
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # カーソルをリセット（次回は最初から）
+            reset_cursor(processor_name, target_table)
+        
+        return {
+            "status": "success",
+            "batch_number": batch_number,
+            "updated_count": updated_count,
+            "batch_size": batch_size,
+            "remaining_count": remaining_count,
+            "is_complete": remaining_count == 0,
+            "execution_time": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"更新処理中にエラーが発生: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "execution_time": datetime.now().isoformat()
+        }
+
+# カーソル管理用の関数
+def get_or_initialize_cursor(processor_name, target_table, default_batch_size=1000):
+    """カーソル情報を取得、存在しない場合は初期化"""
+    query = """
+    SELECT id, processor_name, target_table, last_cursor_id, 
+           batch_size, batch_number, updated_at
+    FROM processing_cursors
+    WHERE processor_name = %s AND target_table = %s
+    """
+    
+    result = execute_query(query, (processor_name, target_table))
+    
+    if result:
+        return result[0]
+    else:
+        # 新しいカーソルを作成
+        insert_query = """
+        INSERT INTO processing_cursors 
+        (processor_name, target_table, last_cursor_id, batch_size, reset_interval, batch_number, created_at, updated_at)
+        VALUES (%s, %s, 0, %s, 172800, 1, NOW(), NOW())
+        """
+        
+        execute_write_query(insert_query, (processor_name, target_table, default_batch_size))
+        
+        # 作成したカーソル情報を取得
+        return execute_query(query, (processor_name, target_table))[0]
+
+def update_cursor(processor_name, target_table, last_cursor_id, batch_number):
+    """カーソル情報を更新"""
+    query = """
+    UPDATE processing_cursors
+    SET last_cursor_id = %s, batch_number = %s, updated_at = NOW()
+    WHERE processor_name = %s AND target_table = %s
+    """
+    
+    execute_write_query(query, (last_cursor_id, batch_number, processor_name, target_table))
+
+def reset_cursor(processor_name, target_table):
+    """カーソル情報をリセット"""
+    query = """
+    UPDATE processing_cursors
+    SET last_cursor_id = 0, batch_number = 1, last_reset_time = NOW(), updated_at = NOW()
+    WHERE processor_name = %s AND target_table = %s
+    """
+    
+    execute_write_query(query, (processor_name, target_table))
+
+# Cloud Functions エントリーポイント
 @functions_framework.http
 def scheduled_job(request):
     """
     定期実行用のCloud Function
-    Args:
-        request (flask.Request): HTTPリクエストオブジェクト
-    Returns:
-        dict: 実行結果
     """
     start_time = datetime.now()
     logger.info(f"定期実行開始: {start_time}")
 
     try:
         # データ更新の実行
-        updater = FrontendDataUpdater()
-        result = updater.update_frontend_from_master()
+        result = update_frontend_from_master()
         
         execution_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"定期実行完了: 実行時間 {execution_time}秒, 結果: {result}")
@@ -246,13 +314,12 @@ def scheduled_job(request):
     except Exception as e:
         error_message = f"予期せぬエラーが発生: {str(e)}"
         logger.error(error_message)
-        raise  # Cloud Functionsが自動的に再試行を処理
+        raise
 
 if __name__ == "__main__":
     # ローカルテスト用
     try:
-        updater = FrontendDataUpdater()
-        result = updater.update_frontend_from_master()
+        result = update_frontend_from_master()
         print("実行結果:", result)
     except Exception as e:
         print(f"エラーが発生しました: {str(e)}")

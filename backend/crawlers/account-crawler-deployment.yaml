@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: account-crawler
+  namespace: crawlers  # 名前空間を追加
+spec:
+  replicas: 2  # 必要に応じて調整
+  selector:
+    matchLabels:
+      app: account-crawler
+  template:
+    metadata:
+      labels:
+        app: account-crawler
+    spec:
+      serviceAccountName: crawler-ksa  # Kubernetes ServiceAccountを指定
+      containers:
+      - name: account-crawler
+        image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/account-crawler:v1
+        env:
+        - name: CRAWLER_TYPE
+          value: "account_crawler"
+        - name: PROJECT_ID
+          value: "tiktok-analytics-prod-451609"  # 実際のプロジェクトID
+        # MySQLの接続情報（Secret経由で設定することを推奨）
+        - name: MYSQL_HOST
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: host
+        - name: MYSQL_PORT
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: port
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: user
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: password
+        - name: MYSQL_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: database
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "300m"
+      volumes:
+      - name: google-cloud-key
+        secret:
+          secretName: pubsub-key 

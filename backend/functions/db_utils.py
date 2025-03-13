@@ -1,4 +1,3 @@
-# db_utils.py
 import pymysql
 import logging
 from typing import Dict, Any, List, Optional, Callable
@@ -27,8 +26,13 @@ def get_connection():
     """
     try:
         config = get_db_config()
+        # cursorclassが重複しないように設定
+        config_copy = config.copy()
+        if 'cursorclass' in config_copy:
+            del config_copy['cursorclass']
+        
         connection = pymysql.connect(
-            **config,
+            **config_copy,
             cursorclass=DictCursor
         )
         yield connection

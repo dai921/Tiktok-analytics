@@ -1,13 +1,18 @@
 import os
 from dotenv import load_dotenv
-import mysql.connector
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import functions_framework
 from datetime import datetime
 import logging
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
 
 logger = logging.getLogger(__name__)
+
+# 設定の初期化
+initialize_config()
 
 @functions_framework.http
 def scheduled_job(request):
@@ -31,14 +36,14 @@ def sync_category_spreadsheet():
         # Googleスプレッドシートの設定
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
         SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
+        SPREADSHEET_ID = os.getenv('SPREADSHEET_CATEGORY_ID')
 
         credentials = service_account.Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE, scopes=SCOPES)
         service = build('sheets', 'v4', credentials=credentials)
 
         # スプレッドシートからデータを読み取る
-        range_name = 'ハッシュタグキーワード!A2:C'  # A列：カテゴリ、B列：キーワード（カンマ区切り）、C列：商品名（カンマ区切り）
+        range_name = 'カテゴリキーワードマッピング!B2:D'  # B列：カテゴリ、C列：キーワード（カンマ区切り）、D列：商品名（カンマ区切り）
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=range_name
@@ -48,16 +53,7 @@ def sync_category_spreadsheet():
         if not values:
             return 'No data found', 200
 
-        print(f"Found {len(values)} rows in spreadsheet")
-
-        # データベース接続
-        conn = mysql.connector.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE')
-        )
-        cursor = conn.cursor()
+        logger.info(f"Found {len(values)} rows in spreadsheet")
 
         try:
             # カテゴリマスターの更新
@@ -65,8 +61,9 @@ def sync_category_spreadsheet():
             category_ids = {}  # カテゴリ名とIDの対応を保存
 
             # 既存のカテゴリを取得
-            cursor.execute("SELECT category_id, category_name FROM category_master")
-            existing_categories = {row[1]: row[0] for row in cursor.fetchall()}
+            category_query = "SELECT category_id, category_name FROM category_master"
+            existing_categories_data = execute_query(category_query)
+            existing_categories = {row['category_name']: row['category_id'] for row in existing_categories_data}
 
             for row in values:
                 category_name = row[0].strip() if len(row) > 0 else None
@@ -77,19 +74,29 @@ def sync_category_spreadsheet():
                         category_ids[category_name] = existing_categories[category_name]
                     else:
                         # 新しいカテゴリを登録
-                        cursor.execute('''
+                        insert_category_query = '''
                             INSERT INTO category_master (category_name)
-                            VALUES (%s)
-                        ''', (category_name,))
-                        category_id = cursor.lastrowid
+                            VALUES (%(category_name)s)
+                        '''
+                        insert_params = {'category_name': category_name}
+                        
+                        # 実行して新しいカテゴリIDを取得する必要があります
+                        with get_connection() as conn:
+                            with conn.cursor() as cursor:
+                                cursor.execute(insert_category_query, insert_params)
+                                category_id = cursor.lastrowid
+                                conn.commit()
+                                
                         category_ids[category_name] = category_id
                         category_inserted += 1
 
             # キーワードの更新
             keyword_inserted = 0
+            
             # 既存のキーワードを取得
-            cursor.execute("SELECT category_id, keyword, is_product FROM category_keywords")
-            existing_keywords = {(row[0], row[1], row[2]) for row in cursor.fetchall()}
+            keyword_query = "SELECT category_id, keyword, is_product FROM category_keywords"
+            existing_keywords_data = execute_query(keyword_query)
+            existing_keywords = {(row['category_id'], row['keyword'], row['is_product']) for row in existing_keywords_data}
 
             for row in values:
                 if len(row) >= 1:  # カテゴリ名があれば処理
@@ -103,11 +110,16 @@ def sync_category_spreadsheet():
                             for keyword in keywords:
                                 # 重複チェック
                                 if (category_id, keyword, False) not in existing_keywords:
-                                    cursor.execute('''
+                                    keyword_query = '''
                                         INSERT INTO category_keywords 
                                         (category_id, keyword, is_product)
-                                        VALUES (%s, %s, FALSE)
-                                    ''', (category_id, keyword))
+                                        VALUES (%(category_id)s, %(keyword)s, FALSE)
+                                    '''
+                                    keyword_params = {
+                                        'category_id': category_id,
+                                        'keyword': keyword
+                                    }
+                                    execute_write_query(keyword_query, keyword_params)
                                     keyword_inserted += 1
 
                         # C列（商品名）の処理
@@ -116,33 +128,28 @@ def sync_category_spreadsheet():
                             for product in products:
                                 # 重複チェック
                                 if (category_id, product, True) not in existing_keywords:
-                                    cursor.execute('''
+                                    product_query = '''
                                         INSERT INTO category_keywords 
                                         (category_id, keyword, is_product)
-                                        VALUES (%s, %s, TRUE)
-                                    ''', (category_id, product))
+                                        VALUES (%(category_id)s, %(keyword)s, TRUE)
+                                    '''
+                                    product_params = {
+                                        'category_id': category_id,
+                                        'keyword': product
+                                    }
+                                    execute_write_query(product_query, product_params)
                                     keyword_inserted += 1
 
-            # 変更を確定
-            conn.commit()
-            print(f"Successfully inserted {category_inserted} categories and {keyword_inserted} keywords")
-
+            logger.info(f"Successfully inserted {category_inserted} categories and {keyword_inserted} keywords")
             return f'Successfully inserted {category_inserted} categories and {keyword_inserted} keywords', 200
 
-        except Exception as e:
-            conn.rollback()
-            print(f"Database error: {str(e)}")
+        except DatabaseError as e:
+            logger.error(f"Database error: {str(e)}")
             return str(e), 500
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         return str(e), 500
-
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals() and conn.is_connected():
-            conn.close()
 
 if __name__ == "__main__":
     # ローカルテスト用

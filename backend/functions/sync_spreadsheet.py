@@ -1,13 +1,14 @@
 import os
 import json
 import sys
-import mysql.connector
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import functions_framework
 import logging
 from datetime import datetime
-from google.cloud import pubsub_v1
+from db_utils import get_connection, execute_query, execute_write_query, batch_insert, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
 
 # .envファイルのサポートを追加
 try:
@@ -21,6 +22,9 @@ except ImportError:
 # ログ設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# 設定の初期化
+initialize_config()
 
 @functions_framework.http
 def scheduled_job(request):
@@ -69,24 +73,15 @@ def sync_spreadsheet():
         if not values:
             return 'No data found', 200
 
-        print(f"Found {len(values)} rows in spreadsheet")  # デバッグ用
-
-        # データベース接続
-        conn = mysql.connector.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE')
-        )
-        cursor = conn.cursor()
+        logger.info(f"Found {len(values)} rows in spreadsheet")  # デバッグ用
 
         # データをMySQLに保存
         inserted_count = 0
         for row in values:
             try:
                 # 行の長さを確認してデバッグ出力
-                print(f"Row length: {len(row)}")
-                print(f"Row content: {row}")
+                logger.debug(f"Row length: {len(row)}")
+                logger.debug(f"Row content: {row}")
 
                 account_url = row[0].strip() if len(row) > 0 else None      # C列：URL
                 account_name = row[2].strip() if len(row) > 2 else None     # E列：アカウント名
@@ -95,62 +90,52 @@ def sync_spreadsheet():
 
                 # URLとアカウント名が存在する場合のみ処理
                 if account_url and account_name:
-                    print(f"Processing: URL={account_url}, Name={account_name}, Flag={under_100k_flag}, Type={content_type}")
+                    logger.debug(f"Processing: URL={account_url}, Name={account_name}, Flag={under_100k_flag}, Type={content_type}")
                     
                     # needs_updateの設定
                     # 条件1: 10万未満フラグが'o'の場合はFALSE、それ以外の場合はTRUE
                     # 条件2: content_typeが'affi'以外の場合はFALSE
                     needs_update = under_100k_flag != 'o' and (content_type == 'affi' if content_type else False)
                     
-                    cursor.execute('''
+                    insert_query = '''
                         INSERT INTO account_list 
                         (account_url, account_name, under_100k_flag, is_new_account, needs_update, content_type)
-                        VALUES (%s, %s, %s, TRUE, %s, %s)
-                    ''', (account_url, account_name, under_100k_flag, needs_update, content_type))
+                        VALUES (%(account_url)s, %(account_name)s, %(under_100k_flag)s, TRUE, %(needs_update)s, %(content_type)s)
+                    '''
+                    insert_params = {
+                        'account_url': account_url,
+                        'account_name': account_name,
+                        'under_100k_flag': under_100k_flag,
+                        'needs_update': needs_update,
+                        'content_type': content_type
+                    }
                     
-                    inserted_count += cursor.rowcount
+                    affected_rows = execute_write_query(insert_query, insert_params)
+                    inserted_count += affected_rows
 
-            except Exception as row_error:
-                print(f"Error processing row: {row}")
-                print(f"Error details: {str(row_error)}")
+            except DatabaseError as row_error:
+                logger.error(f"Error processing row: {row}")
+                logger.error(f"Error details: {str(row_error)}")
                 continue
 
-        # 変更を確定
-        conn.commit()
-        print(f"Successfully inserted {inserted_count} new accounts")
+        logger.info(f"Successfully inserted {inserted_count} new accounts")
 
-        # 接続を閉じる
-        cursor.close()
-        conn.close()
-
-        # 同期完了後、Pub/Subにメッセージを送信
-        publisher = pubsub_v1.PublisherClient()
-        topic_path = publisher.topic_path(os.getenv('GCP_PROJECT'), 'spreadsheet-completion')
-        
+        # 同期完了後、通知メッセージを送信
         completion_message = {
             'timestamp': datetime.now().isoformat(),
             'status': 'success',
             'inserted_count': inserted_count
         }
         
-        future = publisher.publish(
-            topic_path,
-            json.dumps(completion_message).encode('utf-8')
-        )
-        message_id = future.result()
-        logger.info(f"完了通知を送信しました: {message_id}")
+        # Pub/Subユーティリティを使用してメッセージを送信
+        publish_message('spreadsheet-completion', completion_message)
+        logger.info(f"完了通知を送信しました")
 
         return f'Successfully inserted {inserted_count} new accounts', 200
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
-        if 'conn' in locals() and conn.is_connected():
-            conn.close()
         return str(e), 500
-
-    finally:
-        if 'conn' in locals() and conn.is_connected():
-            conn.close()
 
 def validate_env_vars():
     """必要な環境変数が設定されているか確認"""
