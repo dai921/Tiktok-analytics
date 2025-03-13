@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Logo } from '@/components/ui/logo'
 import { Button } from "@/components/ui/button"
@@ -18,13 +18,13 @@ interface ApiError {
 
 export default function Register() {
   const router = useRouter()
-  const { login } = useAuth()
-  const [isLoading, setIsLoading] = useState(false)
+  const { login, user, isAdmin, isLoading } = useAuth()
+  const [formLoading, setFormLoading] = useState(false)
   const [error, setError] = useState('')
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setIsLoading(true)
+    setFormLoading(true)
     setError('')
 
     const formData = new FormData(event.currentTarget)
@@ -36,19 +36,19 @@ export default function Register() {
     // バリデーション
     if (!email || !email.includes('@')) {
       setError('有効なメールアドレスを入力してください')
-      setIsLoading(false)
+      setFormLoading(false)
       return
     }
 
     if (!password || password.length < 8) {
       setError('パスワードは8文字以上である必要があります')
-      setIsLoading(false)
+      setFormLoading(false)
       return
     }
 
     if (password !== confirmPassword) {
       setError('パスワードが一致しません')
-      setIsLoading(false)
+      setFormLoading(false)
       return
     }
 
@@ -85,7 +85,7 @@ export default function Register() {
 
       if (loginResponse.ok) {
         const data = await loginResponse.json()
-        login(data.access_token, data.token_type)
+        login(data.access_token, data.token_type, false)
         router.push('/dashboard')
       } else {
         // 登録は成功したがログインに失敗した場合
@@ -94,7 +94,7 @@ export default function Register() {
     } catch (error) {
       setError(error instanceof Error ? error.message : '登録に失敗しました')
     } finally {
-      setIsLoading(false)
+      setFormLoading(false)
     }
   }
 
@@ -117,19 +117,19 @@ export default function Register() {
                 type="email"
                 required
                 className="h-12"
-                disabled={isLoading}
+                disabled={formLoading}
                 autoComplete="email"
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="name" className="text-sky-900">名前（任意）</Label>
+              <Label htmlFor="name" className="text-sky-900">名前</Label>
               <Input
                 id="name"
                 name="name"
                 type="text"
                 placeholder="表示名"
                 className="h-12"
-                disabled={isLoading}
+                disabled={formLoading}
                 autoComplete="name"
               />
             </div>
@@ -141,7 +141,7 @@ export default function Register() {
                 type="password"
                 required
                 className="h-12"
-                disabled={isLoading}
+                disabled={formLoading}
                 minLength={8}
                 autoComplete="new-password"
               />
@@ -157,7 +157,7 @@ export default function Register() {
                 type="password"
                 required
                 className="h-12"
-                disabled={isLoading}
+                disabled={formLoading}
                 minLength={8}
                 autoComplete="new-password"
               />
@@ -173,16 +173,16 @@ export default function Register() {
               <Button 
                 type="submit"
                 className="w-full h-12 text-lg bg-sky-600 hover:bg-sky-700"
-                disabled={isLoading}
+                disabled={formLoading}
               >
-                {isLoading ? '登録中...' : '新規登録'}
+                {formLoading ? '登録中...' : '新規登録'}
               </Button>
               <Button 
                 type="button" 
                 variant="outline" 
                 className="w-full h-12 text-lg text-sky-600 border-sky-600 hover:bg-sky-50"
                 onClick={() => router.replace('/login')}
-                disabled={isLoading}
+                disabled={formLoading}
               >
                 ログインへ戻る
               </Button>

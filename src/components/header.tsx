@@ -17,7 +17,8 @@ export function Header({ hasFilters, onClearFilters }: HeaderProps) {
 
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('auth_token')
+      console.log(token)
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
         method: 'POST',
         headers: {

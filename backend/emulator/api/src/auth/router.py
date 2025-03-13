@@ -120,10 +120,10 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         )
         conn.commit()
         
-        # アクセストークンの生成
-        access_token = create_access_token(data={"sub": user["email"]})
+        # アクセストークンの生成（is_adminを含める）
+        access_token = create_access_token(data={"sub": user["email"], "is_admin": bool(user.get("is_admin", 0))})
         
-        return {"access_token": access_token, "token_type": "bearer"}
+        return {"access_token": access_token, "token_type": "bearer", "is_admin": bool(user.get("is_admin", 0))}
         
     finally:
         cursor.close()

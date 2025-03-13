@@ -14,8 +14,10 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+# Next.jsのキャッシュをクリア
+RUN rm -rf .next
 # Next.jsアプリケーションのビルド（ESLintと型チェックをスキップ）
-RUN pnpm build
+RUN npm run build && find .next -type d | sort
 
 # 実行ステージ
 FROM node:18-alpine AS runner
