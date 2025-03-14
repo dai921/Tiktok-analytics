@@ -19,14 +19,17 @@ export default function AdminLogin() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    console.log('フォーム送信開始')
     setIsLoading(true)
     setError('')
 
     const formData = new FormData(event.currentTarget)
     const email = formData.get('email') as string
     const password = formData.get('password') as string
+    console.log('入力値取得:', { email: email ? '入力あり' : '空', password: password ? '入力あり' : '空' })
 
     try {
+      console.log('APIリクエスト開始', `${API_BASE_URL}/api/auth/token`)
       const loginData = new URLSearchParams()
       loginData.append('username', email)
       loginData.append('password', password)

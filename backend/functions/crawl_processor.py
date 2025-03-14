@@ -8,6 +8,7 @@ import functions_framework
 from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
 from config import initialize_config, get_environment, get_db_config
 from pubsub_utils import publish_message
+import base64
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
@@ -34,7 +35,19 @@ def process_pubsub(cloud_event):
         dict: 処理結果
     """
     logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
-    return process_crawl_complete(cloud_event)
+    
+    try:
+        # Pub/Subメッセージからデータを取得
+        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
+        message_data = json.loads(pubsub_message)
+        logger.info(f"受信したメッセージ: {message_data}")
+        
+        return process_crawl_complete(message_data)
+    except Exception as e:
+        logger.error(f"処理中にエラーが発生しました: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
 
 def process_crawl_complete(cloud_event):
     """クロール完了通知を処理"""
@@ -46,9 +59,7 @@ def process_crawl_complete(cloud_event):
         if isinstance(cloud_event, dict):
             if 'data' in cloud_event:
                 # Cloud Functions形式のメッセージ
-                import base64
-                pubsub_message = base64.b64decode(cloud_event['data']).decode('utf-8')
-                message_data = json.loads(pubsub_message)
+                message_data = cloud_event
             else:
                 # 直接のJSONメッセージ
                 message_data = cloud_event

@@ -67,10 +67,9 @@ def process_pubsub(cloud_event):
     logger.info(f"====== URL収集処理開始：{datetime.now().isoformat()} ======")
     try:
         # Pub/Subメッセージからデータを取得
-        if hasattr(cloud_event, 'data'):
-            message_data = base64.b64decode(cloud_event.data).decode('utf-8')
-            trigger_data = json.loads(message_data)
-            logger.info(f"トリガー情報: {trigger_data}")
+        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
+        trigger_data = json.loads(pubsub_message)
+        logger.info(f"トリガー情報: {trigger_data}")
         
         return collect_urls()
     except Exception as e:
@@ -104,7 +103,6 @@ def collect_urls() -> Tuple[Dict[str, Any], int]:
         SELECT id, account_url, account_name, is_new_account 
         FROM account_list 
         WHERE needs_update = 1
-        LIMIT 5
         """
         accounts = execute_query(accounts_query)
         

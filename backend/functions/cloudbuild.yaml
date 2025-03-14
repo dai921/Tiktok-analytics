@@ -171,7 +171,7 @@ steps:
           echo "スケジュールジョブ sync-category-schedule は既に存在します。更新します。"
           gcloud scheduler jobs update http sync-category-schedule \
             --location=asia-northeast1 \
-            --schedule="0 0 */2 * *" \
+            --schedule="0 0 */30 * *" \
             --uri="$$FUNCTION_URL" \
             --http-method=POST \
             --time-zone="Asia/Tokyo" \

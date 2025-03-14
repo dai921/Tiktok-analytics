@@ -8,7 +8,10 @@ import logging
 from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
 from config import initialize_config, get_environment, get_db_config
 from pubsub_utils import publish_message
+from google.cloud import secretmanager
+import json
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 設定の初期化
@@ -30,16 +33,67 @@ def scheduled_job(request):
         logger.error(f"同期処理エラー: {str(e)}")
         return str(e), 500
 
+def validate_env_vars():
+    """必要な環境変数が設定されているか確認"""
+    # 必須の環境変数（DB関連の環境変数を削除）
+    required_envs = [
+        'SPREADSHEET_CATEGORY_ID',
+    ]
+    
+    # 認証に関連する環境変数（どちらか一方があればOK）
+    auth_envs = ['GOOGLE_APPLICATION_CREDENTIALS', 'PROJECT_ID']
+    
+    missing_envs = [env for env in required_envs if not os.getenv(env)]
+    if missing_envs:
+        raise ValueError(f"必須の環境変数が設定されていません: {', '.join(missing_envs)}")
+    
+    # 認証関連の環境変数をチェック
+    if not any(os.getenv(env) for env in auth_envs):
+        raise ValueError(f"認証に必要な環境変数が設定されていません。{' または '.join(auth_envs)}のいずれかが必要です")
+    
+    logger.info("環境変数の検証が完了しました")
+
 def sync_category_spreadsheet():
     """スプレッドシートとデータベースの同期処理"""
     try:
+        # 環境変数の検証
+        validate_env_vars()
+        
         # Googleスプレッドシートの設定
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-        SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         SPREADSHEET_ID = os.getenv('SPREADSHEET_CATEGORY_ID')
-
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        
+        # 認証情報の取得処理をより安全に
+        try:
+            # Secret Managerからサービスアカウントの認証情報を取得
+            secret_client = secretmanager.SecretManagerServiceClient()
+            secret_name = os.getenv('SHEET_CREDENTIALS_SECRET', 'sheet-credentials')
+            project_id = os.getenv('PROJECT_ID')
+            
+            if not project_id:
+                raise ValueError("GCP_PROJECT環境変数が設定されていません")
+            
+            secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+            logger.info(f"Secret Managerから認証情報を取得しています: {secret_path}")
+            
+            response = secret_client.access_secret_version(name=secret_path)
+            service_account_info = json.loads(response.payload.data.decode('UTF-8'))
+            
+            # 取得した認証情報を使用
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info, scopes=SCOPES)
+            
+            logger.info("Secret Managerからサービスアカウント認証情報の取得に成功しました")
+        except Exception as auth_error:
+            logger.error(f"認証情報の取得に失敗しました: {str(auth_error)}")
+            # フォールバック: 従来の方法を試す
+            if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+                logger.info("フォールバック: GOOGLE_APPLICATION_CREDENTIALSを使用します")
+                credentials = service_account.Credentials.from_service_account_file(
+                    os.getenv('GOOGLE_APPLICATION_CREDENTIALS'), scopes=SCOPES)
+            else:
+                raise Exception(f"サービスアカウント認証情報を取得できません: {str(auth_error)}")
+        
         service = build('sheets', 'v4', credentials=credentials)
 
         # スプレッドシートからデータを読み取る

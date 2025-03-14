@@ -42,6 +42,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
   
+  console.log('Middleware実行:', {
+    path,
+    hasToken: !!token, 
+    isAdmin,
+    cookies: request.cookies.getAll().map(c => `${c.name}=${c.value}`).join('; ')
+  });
+  
   return NextResponse.next()
 }
 

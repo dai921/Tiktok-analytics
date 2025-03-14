@@ -26,22 +26,88 @@ class ProcessingManager:
     def __init__(self, processor_name: str, target_table: str):
         self.processor_name = processor_name
         self.target_table = target_table
+        self.last_cursor_id = self.get_last_cursor_id()
+        self.batch_number = self.get_batch_number()
 
-    def update_last_processed_time(self):
-        """最終処理時間を更新"""
+    def get_last_cursor_id(self) -> int:
+        """最後に処理したカーソルIDを取得"""
         try:
             sql = """
-            UPDATE processing_cursors
-            SET last_reset_time = NOW(),
-                updated_at = NOW()
+            SELECT last_cursor_id 
+            FROM processing_cursors
             WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s
             """
             params = {
                 'processor_name': self.processor_name,
                 'target_table': self.target_table
             }
+            result = execute_query(sql, params)
+            return result[0]['last_cursor_id'] if result else 0
+        except DatabaseError as e:
+            logger.error(f"カーソルID取得エラー: {str(e)}")
+            return 0
+            
+    def get_batch_number(self) -> int:
+        """現在のバッチ番号を取得"""
+        try:
+            sql = """
+            SELECT batch_number 
+            FROM processing_cursors
+            WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s
+            """
+            params = {
+                'processor_name': self.processor_name,
+                'target_table': self.target_table
+            }
+            result = execute_query(sql, params)
+            return result[0]['batch_number'] if result and 'batch_number' in result[0] else 0
+        except DatabaseError as e:
+            logger.error(f"バッチ番号取得エラー: {str(e)}")
+            return 0
+
+    def update_last_processed_time(self, last_cursor_id: int = None, batch_number: int = None, reset_cursor: bool = False):
+        """最終処理時間を更新"""
+        try:
+            sql = """
+            UPDATE processing_cursors
+            SET last_reset_time = NOW(),
+                updated_at = NOW()
+            """
+            
+            params = {
+                'processor_name': self.processor_name,
+                'target_table': self.target_table
+            }
+            
+            # カーソルをリセットする場合
+            if reset_cursor:
+                sql += ", last_cursor_id = 0, batch_number = 0"
+                logger.info("カーソル値をリセットします")
+            else:
+                # カーソルIDが指定されている場合は更新
+                if last_cursor_id is not None:
+                    sql += ", last_cursor_id = %(last_cursor_id)s"
+                    params['last_cursor_id'] = last_cursor_id
+                
+                # バッチ番号が指定されている場合は更新
+                if batch_number is not None:
+                    sql += ", batch_number = %(batch_number)s"
+                    params['batch_number'] = batch_number
+                
+            sql += " WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s"
+            
             execute_write_query(sql, params)
-            logger.info("最終処理時間を更新しました")
+            
+            log_message = "最終処理時間を更新しました"
+            if last_cursor_id is not None:
+                log_message += f" (カーソルID: {last_cursor_id})"
+            if batch_number is not None:
+                log_message += f" (バッチ番号: {batch_number})"
+            if reset_cursor:
+                log_message += " (カーソルをリセットしました)"
+                
+            logger.info(log_message)
+            
         except DatabaseError as e:
             logger.error(f"処理時間更新エラー: {str(e)}")
             raise
@@ -51,9 +117,28 @@ class VideoCollector:
         # 処理管理クラスの初期化
         self.processing_manager = ProcessingManager('video_collector', 'video_url_data')
 
+    def get_total_videos_to_update(self) -> int:
+        """更新が必要な動画の総数を取得"""
+        try:
+            query = """
+                SELECT COUNT(*) as total
+                FROM video_url_data
+                WHERE needs_update = TRUE
+            """
+            result = execute_query(query)
+            total = result[0]['total'] if result else 0
+            logger.info(f"更新が必要な動画の総数: {total}")
+            return total
+        except DatabaseError as e:
+            logger.error(f"総数取得エラー: {str(e)}")
+            return 0
+
     def get_videos_to_update(self) -> List[Dict[str, Any]]:
         """更新が必要なすべてのビデオデータを一度に取得"""
         try:
+            # 前回のカーソルIDを取得
+            last_cursor_id = self.processing_manager.last_cursor_id
+            
             query = """
                 SELECT 
                     id,
@@ -66,11 +151,13 @@ class VideoCollector:
                     video_url_data
                 WHERE 
                     needs_update = TRUE
+                    AND id > %(last_cursor_id)s
                 ORDER BY 
                     id
-                LIMIT 5
+                LIMIT 5000
             """
-            results = execute_query(query)
+            params = {'last_cursor_id': last_cursor_id}
+            results = execute_query(query, params)
             
             logger.info(f"取得した動画数: {len(results)}")
             
@@ -93,34 +180,73 @@ class VideoCollector:
     def process_videos(self) -> Dict[str, Any]:
         """すべての更新が必要な動画データを取得してPub/Subに送信"""
         try:
-            # 更新が必要な動画をすべて取得
+            # 更新が必要な動画の総数を取得
+            total_videos = self.get_total_videos_to_update()
+            
+            # 更新が必要な動画をバッチで取得
             videos = self.get_videos_to_update()
+            
+            # 現在のバッチ番号を取得
+            current_batch = self.processing_manager.batch_number
+            next_batch = current_batch + 1
             
             if not videos:
                 return {
                     "success": True,
                     "message": "処理対象の動画がありません",
-                    "processed_count": 0
+                    "processed_count": 0,
+                    "total_videos": total_videos,
+                    "batch_number": current_batch
                 }
             
             # 各動画データをPub/Subに送信
             processed_videos = []
+            
+            # 処理したビデオがある場合のみ最大IDを更新するため、初期値はNoneに
+            last_cursor_id = None
+            
             for video in videos:
                 message_id = self.publish_video_data(video)
                 processed_videos.append({
                     "video_id": video['video_id'],
                     "message_id": message_id
                 })
+                
+                # 最初のビデオならそのIDを、それ以降は最大値を記録
+                if last_cursor_id is None:
+                    last_cursor_id = video['id']
+                else:
+                    last_cursor_id = max(last_cursor_id, video['id'])
+                    
                 logger.info(f"動画ID {video['video_id']} のデータを送信しました")
             
-            # 処理完了後に最終処理時間を更新
-            self.processing_manager.update_last_processed_time()
+            # このバッチで処理した件数
+            processed_count = len(processed_videos)
+            
+            # すべての動画を処理したかどうかを確認
+            remaining_videos = total_videos - processed_count
+            is_last_batch = remaining_videos <= 0 or len(videos) < 5000
+            
+            # 処理完了後に最終処理時間とカーソルIDを更新
+            if last_cursor_id is not None:
+                # すべての動画を処理した場合はカーソルをリセット
+                if is_last_batch:
+                    logger.info("すべての動画処理が完了しました。カーソルをリセットします。")
+                    self.processing_manager.update_last_processed_time(reset_cursor=True)
+                else:
+                    # まだ処理すべき動画が残っている場合は、カーソルとバッチ番号を更新
+                    self.processing_manager.update_last_processed_time(last_cursor_id, next_batch)
             
             return {
                 "success": True,
-                "message": f"{len(videos)}件の動画を処理しました",
-                "processed_count": len(processed_videos),
-                "processed_videos": processed_videos
+                "message": f"{processed_count}件の動画を処理しました",
+                "processed_count": processed_count,
+                "total_videos": total_videos,
+                "remaining_videos": max(0, remaining_videos),
+                "batch_number": next_batch if not is_last_batch else 0,
+                "is_last_batch": is_last_batch,
+                "processed_videos": processed_videos,
+                "last_cursor_id": last_cursor_id if not is_last_batch else 0
             }
             
         except Exception as e:
@@ -181,10 +307,10 @@ def collect_videos(cloud_event):
     logger.info("==== collect_videos関数の実行開始 ====")
     
     try:
-        # Pub/Subメッセージの処理（必要な場合）
-        if cloud_event.data:
-            data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
-            logger.info(f"Pub/Subメッセージを受信: {data}")
+        # Pub/Subメッセージの処理
+        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
+        message_data = json.loads(pubsub_message)
+        logger.info(f"Pub/Subメッセージを受信: {message_data}")
         
         # VideoCollectorのインスタンスを作成し、処理を実行
         collector = VideoCollector()

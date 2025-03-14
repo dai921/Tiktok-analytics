@@ -19,6 +19,8 @@ export const fetchVideosFromBackend = async (options: {
   minLikesCount?: number;
   sortBy?: string;
   sortOrder?: string;
+  sortBySecondary?: string;  // 二次ソート用のフィールドを追加
+  sortOrderSecondary?: string;  // 二次ソート順序を追加
 }) => {
   const {
     page = 1,
@@ -31,7 +33,9 @@ export const fetchVideosFromBackend = async (options: {
     minPlayCount,
     minLikesCount,
     sortBy = 'created_at',
-    sortOrder = 'desc'
+    sortOrder = 'desc',
+    sortBySecondary = 'play_count',  // デフォルトの二次ソートフィールド
+    sortOrderSecondary = 'desc',  // デフォルトの二次ソート順序
   } = options;
 
   // クエリパラメータの構築
@@ -39,7 +43,9 @@ export const fetchVideosFromBackend = async (options: {
     page: page.toString(),
     limit: limit.toString(),
     sort_by: sortBy,
-    sort_order: sortOrder
+    sort_order: sortOrder,
+    sort_by_secondary: sortBySecondary,  // 二次ソートフィールドを初期パラメータに追加
+    sort_order_secondary: sortOrderSecondary  // 二次ソート順序を初期パラメータに追加
   });
 
   // オプションパラメータの追加

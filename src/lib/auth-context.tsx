@@ -66,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const IS_ADMIN_KEY = 'is_admin';
 
   const login = (newToken: string, tokenType: string, admin = false) => {
+    console.log('ログイン実行:', { token: !!newToken, isAdmin: admin });
+    
     localStorage.setItem(TOKEN_KEY, newToken);
     localStorage.setItem(TOKEN_TYPE_KEY, tokenType);
     localStorage.setItem(IS_ADMIN_KEY, String(admin));
@@ -73,8 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     document.cookie = `${TOKEN_KEY}=${newToken}; path=/`;
     document.cookie = `${TOKEN_TYPE_KEY}=${tokenType}; path=/`;
+    document.cookie = `is_admin=${String(admin)}; path=/`;
     
     fetchUser(newToken, tokenType, admin);
+    
+    return true; // 処理完了を明示的に返す
   };
 
   const logout = async () => {

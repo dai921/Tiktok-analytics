@@ -8,6 +8,8 @@ import functions_framework
 from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
 from config import initialize_config, get_environment, get_db_config
 from pubsub_utils import publish_message
+import base64
+from cloudevents.http import CloudEvent
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +20,7 @@ initialize_config()
 
 # 環境情報を取得
 environment = get_environment()
-project_id = os.getenv('PROJECT_ID', 'local-project')
+project_id = os.getenv('PROJECT_ID')
 
 # 環境情報をログ出力
 logger.info(f"実行環境: {environment}")
@@ -38,7 +40,6 @@ def process_video_data(cloud_event):
     try:
         # Pub/Subメッセージからデータを取得
         if isinstance(data, dict) and 'data' in data:
-            import base64
             pubsub_message = base64.b64decode(data['data']).decode('utf-8')
             message_data = json.loads(pubsub_message)
         else:
@@ -346,7 +347,7 @@ def setup_subscription():
         return None
 
 @functions_framework.cloud_event
-def process_pubsub(cloud_event):
+def process_pubsub(cloud_event: CloudEvent):
     """
     GKEからのPub/Subメッセージを処理するCloud Function
     Args:
@@ -355,7 +356,20 @@ def process_pubsub(cloud_event):
         dict: 処理結果
     """
     logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
-    return process_video_data(cloud_event)
+    logger.info(f"受信したcloudEvent: {cloud_event}")
+    
+    try:
+        # Pub/Subメッセージデータの取得
+        pubsub_data = base64.b64decode(cloud_event.data["message"]["data"]).decode("utf-8")
+        message_data = json.loads(pubsub_data)
+        logger.info(f"デコード後のメッセージ: {message_data}")
+        
+        return process_video_data(message_data)
+    except Exception as e:
+        logger.error(f"Pub/Subメッセージ処理エラー: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     logger.info("スタンドアロンモードで動画処理プロセッサーを起動しています...")

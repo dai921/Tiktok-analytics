@@ -79,9 +79,9 @@ def update_video_url_data(cloud_event):
 
     try:
         # Pub/Subメッセージの処理
-        if cloud_event.data:
-            data = base64.b64decode(cloud_event.data["message"]["data"]).decode()
-            logger.info(f"Pub/Subメッセージを受信: {data}")
+        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
+        message_data = json.loads(pubsub_message)
+        logger.info(f"Pub/Subメッセージを受信: {message_data}")
 
         logger.info(f"同期処理開始: {start_time}")
 
