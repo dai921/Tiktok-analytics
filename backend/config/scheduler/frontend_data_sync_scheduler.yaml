@@ -1,9 +1,0 @@
-name: frontend-data-sync-job
-description: "2日に1回video_masterからfrontend_dataへデータを同期"
-schedule: "0 0 */2 * *"  # 2日に1回、00:00に実行
-time_zone: "Asia/Tokyo"
-http_target:
-  http_method: POST
-  url: [YOUR_CLOUD_FUNCTION_URL]  # デプロイ後のCloud FunctionのURLを設定
-  oidc_token:
-    service_account_email: [YOUR_SERVICE_ACCOUNT]  # サービスアカウントのメールアドレス

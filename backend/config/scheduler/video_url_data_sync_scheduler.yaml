@@ -1,9 +1,0 @@
-name: video-url-data-sync-job
-description: "video_masterとvideo_url_dataの同期処理"
-schedule: "0 0 */2 * *"  # 2日に1回、00:00に実行
-time_zone: "Asia/Tokyo"
-http_target:
-  http_method: POST
-  url: [YOUR_CLOUD_FUNCTION_URL]
-  oidc_token:
-    service_account_email: [YOUR_SERVICE_ACCOUNT]

@@ -14,8 +14,10 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+# Next.jsのキャッシュをクリア
+RUN rm -rf .next
 # Next.jsアプリケーションのビルド（ESLintと型チェックをスキップ）
-RUN pnpm build
+RUN npm run build && find .next -type d | sort
 
 # 実行ステージ
 FROM node:18-alpine AS runner
@@ -34,11 +36,11 @@ RUN adduser --system --uid 1001 nextjs
 RUN chown -R nextjs:nodejs /app
 USER nextjs
 
-# ポート設定（ローカル開発では3030、Cloud Runでは8080を使用）
-EXPOSE 3030 8080
+# ポート設定（Cloud Run用に8080に修正）
+EXPOSE 8080
 
-# 環境変数PORT が設定されていればそれを使用、なければ3030をデフォルトとする
-ENV PORT=3030
+# Cloud Run用にポートを8080に固定
+ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
 
 # アプリケーションの起動

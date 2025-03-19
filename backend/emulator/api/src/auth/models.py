@@ -38,6 +38,7 @@ class VerificationToken(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    is_admin: bool = False
 
 class TokenData(BaseModel):
     email: Optional[str] = None 

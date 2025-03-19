@@ -31,8 +31,16 @@ app = FastAPI(
     description="TikTok Analytics API Service",
 )
 
-# 環境変数からオリジンを取得
-origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+# 環境変数からオリジンを取得してログ出力
+origins_env = os.getenv("ALLOWED_ORIGINS", "")
+logger.info(f"ALLOWED_ORIGINS環境変数の値: '{origins_env}'")
+print(f"ALLOWED_ORIGINS環境変数の値: '{origins_env}'")
+
+# 分割して空の要素を除去
+origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+logger.info(f"設定されたCORSオリジン: {origins}")
+print(f"設定されたCORSオリジン: {origins}")
+
 
 app.add_middleware(
     CORSMiddleware,

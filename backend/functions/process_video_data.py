@@ -1,39 +1,30 @@
 import os
 import json
 import logging
-import mysql.connector
 from datetime import datetime
 import time
 import sys
+import functions_framework
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
+import base64
+from cloudevents.http import CloudEvent
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 環境変数を明示的に設定
-os.environ['PUBSUB_EMULATOR_HOST'] = '127.0.0.1:8681'
-environment = os.getenv('ENVIRONMENT', 'development')
-project_id = os.getenv('PROJECT_ID', 'local-project')
+# 設定の初期化
+initialize_config()
+
+# 環境情報を取得
+environment = get_environment()
+project_id = os.getenv('PROJECT_ID')
 
 # 環境情報をログ出力
 logger.info(f"実行環境: {environment}")
-logger.info(f"Pub/Subエミュレータ: {os.environ['PUBSUB_EMULATOR_HOST']}")
 logger.info(f"プロジェクトID: {project_id}")
-
-def get_db_connection():
-    """データベース接続を取得する"""
-    try:
-        conn = mysql.connector.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER', 'tiktok_user'),
-            password=os.getenv('MYSQL_PASSWORD', 'tiktok_pass'),
-            database=os.getenv('MYSQL_DATABASE', 'tiktok_data')
-        )
-        logger.info(f"データベース接続成功: {conn.server_host}")
-        return conn
-    except Exception as e:
-        logger.error(f"データベース接続エラー: {e}")
-        raise
 
 def process_video_data(cloud_event):
     """動画データを処理する"""
@@ -49,81 +40,94 @@ def process_video_data(cloud_event):
     try:
         # Pub/Subメッセージからデータを取得
         if isinstance(data, dict) and 'data' in data:
-            import base64
             pubsub_message = base64.b64decode(data['data']).decode('utf-8')
             message_data = json.loads(pubsub_message)
         else:
             message_data = data
 
         logger.info(f"受信したメッセージ: {message_data}")
+        
+        # 必須フィールドの検証
+        required_fields = ['video_id', 'username']
+        missing_required = [field for field in required_fields if field not in message_data]
+        if missing_required:
+            error_msg = f"必須フィールドがありません: {', '.join(missing_required)}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+            
+        # video_urlフィールドの検証
+        if 'video_url' not in message_data and 'url' in message_data:
+            message_data['video_url'] = message_data['url']
+        elif 'video_url' not in message_data and 'url' not in message_data:
+            error_msg = "必須フィールドがありません: video_url または url"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+            
+        # account_urlの自動補完
+        if 'account_url' not in message_data:
+            message_data['account_url'] = f"https://www.tiktok.com/@{message_data['username']}"
+            logger.info(f"account_urlを自動生成しました: {message_data['account_url']}")
+            
+        # statusのデフォルト値設定
+        if 'status' not in message_data:
+            message_data['status'] = 'normal'
+            logger.info("statusをデフォルト値'normal'に設定しました")
 
         # 真っ先にステータスをチェック
-        status = message_data.get('status', 'unknown')
+        status = message_data.get('status', 'normal')
         if status in ['error', 'deleted']:
-            # データベース接続
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
-            
             try:
                 # video_masterの更新（INSERT ... ON DUPLICATE KEY UPDATE）
                 error_upsert_query = """
                     INSERT INTO video_master (
                         url, video_id, username, status, currentFetchDate
                     ) VALUES (
-                        %s, %s, %s, %s, %s
+                        %(video_url)s, %(video_id)s, %(username)s, %(status)s, %(current_date)s
                     ) ON DUPLICATE KEY UPDATE
                         status = VALUES(status),
                         currentFetchDate = VALUES(currentFetchDate)
                 """
-                error_values = (
-                    message_data['video_url'],
-                    message_data['video_id'],
-                    message_data['username'],
-                    status,
-                    datetime.now().isoformat()
-                )
+                error_params = {
+                    'video_url': message_data['video_url'],
+                    'video_id': message_data['video_id'],
+                    'username': message_data['username'],
+                    'status': status,
+                    'current_date': datetime.now().isoformat()
+                }
                 
                 # video_url_dataのフラグを更新
                 update_flag_query = """
                     UPDATE video_url_data 
                     SET is_new_video = FALSE,
                         needs_update = FALSE
-                    WHERE video_id = %s
+                    WHERE video_id = %(video_id)s
                 """
+                update_params = {
+                    'video_id': message_data['video_id']
+                }
                 
-                cursor.execute(error_upsert_query, error_values)
-                cursor.execute(update_flag_query, (message_data['video_id'],))
+                # db_utilsの関数を使用して実行
+                execute_write_query(error_upsert_query, error_params)
+                execute_write_query(update_flag_query, update_params)
                 
-                conn.commit()
                 logger.info(f"Updated status and flags for video {message_data['video_id']}")
                 return {"success": True, "execution_time": time.time() - start_time}
             
-            except Exception as e:
-                conn.rollback()
+            except DatabaseError as e:
                 logger.error(f"Error storing error/deleted status: {str(e)}")
                 return {"success": False, "error": str(e)}
-            
-            finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    conn.close()
 
         # 以降は通常の処理（status が normal の場合）
         is_new_video = message_data.get('is_new_video')
 
-        # データベース接続
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
         try:
             # カテゴリキーワードの取得
-            cursor.execute("""
+            category_query = """
                 SELECT ck.keyword, ck.is_product, cm.category_name, cm.category_id
                 FROM category_keywords ck
                 JOIN category_master cm ON ck.category_id = cm.category_id
-            """)
-            keywords_data = cursor.fetchall()
+            """
+            keywords_data = execute_query(category_query)
 
             # カテゴリの判定
             categories = set()
@@ -173,16 +177,18 @@ def process_video_data(cloud_event):
 
             if not is_new_video:
                 # 既存動画の場合、前回のデータを取得
-                cursor.execute("""
+                prev_data_query = """
                     SELECT currentFetchDate, play_count, likes_count
                     FROM video_master
-                    WHERE video_id = %s
+                    WHERE video_id = %(video_id)s
                     ORDER BY currentFetchDate DESC
                     LIMIT 1
-                """, (message_data['video_id'],))
-                prev_data = cursor.fetchone()
-
-                if prev_data:
+                """
+                prev_data_params = {'video_id': message_data['video_id']}
+                prev_data_results = execute_query(prev_data_query, prev_data_params)
+                
+                if prev_data_results:
+                    prev_data = prev_data_results[0]
                     message_data['prevFetchDate'] = prev_data['currentFetchDate']
                     message_data['prevPlayCount'] = prev_data['play_count']
                     message_data['prevLikesCount'] = prev_data['likes_count']
@@ -205,10 +211,14 @@ def process_video_data(cloud_event):
                         comment_count, share_count, save_count, created_at,
                         hashtags, duration, isViral, currentFetchDate,
                         music_id, music_title, music_artist, category, product,
-                        status, content_type, file_path, folder_path, image_count  # 新しいフィールド
+                        status, content_type, file_path, folder_path, image_count
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %(url)s, %(video_id)s, %(username)s, %(display_name)s, 
+                        %(cover_image_url)s, %(description)s, %(likes_count)s, %(play_count)s,
+                        %(comment_count)s, %(share_count)s, %(save_count)s, %(created_at)s,
+                        %(hashtags)s, %(duration)s, %(isViral)s, %(currentFetchDate)s,
+                        %(music_id)s, %(music_title)s, %(music_artist)s, %(category)s, %(product)s,
+                        %(status)s, %(content_type)s, %(file_path)s, %(folder_path)s, %(image_count)s
                     )
                 """
                 
@@ -217,114 +227,101 @@ def process_video_data(cloud_event):
                 folder_path = message_data.get('folder_path')
                 image_count = message_data.get('image_count', 0)
 
-                values = (
-                    message_data['url'],
-                    message_data['video_id'],
-                    message_data['username'],
-                    message_data['display_name'],
-                    message_data['cover_image_url'],
-                    message_data['description'],
-                    message_data['likes_count'],
-                    message_data['play_count'],
-                    message_data['comment_count'],
-                    message_data['share_count'],
-                    message_data['save_count'],
-                    message_data['created_at'],
-                    hashtags_str,  # JSONではなくカンマ区切りの文字列として保存
-                    message_data['duration'],
-                    message_data['isViral'],
-                    message_data['currentFetchDate'],
-                    message_data['music_id'],
-                    message_data['music_title'],
-                    message_data['music_artist'],
-                    category_names,
-                    product_names,
-                    status,                     # 新規: ステータス
-                    content_type,               # コンテンツタイプを追加
-                    file_path,                  # 新規: ファイルパス
-                    folder_path,                # 新規: フォルダパス（カルーセル用）
-                    image_count                 # 新規: 画像数（カルーセル用）
-                )
+                insert_params = {
+                    'url': message_data['url'],
+                    'video_id': message_data['video_id'],
+                    'username': message_data['username'],
+                    'display_name': message_data['display_name'],
+                    'cover_image_url': message_data['cover_image_url'],
+                    'description': message_data['description'],
+                    'likes_count': message_data['likes_count'],
+                    'play_count': message_data['play_count'],
+                    'comment_count': message_data['comment_count'],
+                    'share_count': message_data['share_count'],
+                    'save_count': message_data['save_count'],
+                    'created_at': message_data['created_at'],
+                    'hashtags': hashtags_str,
+                    'duration': message_data['duration'],
+                    'isViral': message_data['isViral'],
+                    'currentFetchDate': message_data['currentFetchDate'],
+                    'music_id': message_data['music_id'],
+                    'music_title': message_data['music_title'],
+                    'music_artist': message_data['music_artist'],
+                    'category': category_names,
+                    'product': product_names,
+                    'status': status,
+                    'content_type': content_type,
+                    'file_path': file_path,
+                    'folder_path': folder_path,
+                    'image_count': image_count
+                }
+                
+                execute_write_query(insert_query, insert_params)
             else:
                 # 既存動画の更新クエリ
                 update_query = """
                     UPDATE video_master 
-                    SET likes_count = %s,
-                        play_count = %s,
-                        comment_count = %s,
-                        share_count = %s,
-                        save_count = %s,
-                        isViral = %s,
-                        currentFetchDate = %s,
-                        prevFetchDate = %s,
-                        prevLikesCount = %s,
-                        prevPlayCount = %s,
-                        playCountIncrease = %s,
-                        likesCountIncrease = %s,
-                        status = %s,
-                        hashtags = %s,
-                        category = %s,
-                        product = %s,
-                        content_type = %s
-                    WHERE video_id = %s
+                    SET likes_count = %(likes_count)s,
+                        play_count = %(play_count)s,
+                        comment_count = %(comment_count)s,
+                        share_count = %(share_count)s,
+                        save_count = %(save_count)s,
+                        isViral = %(isViral)s,
+                        currentFetchDate = %(currentFetchDate)s,
+                        prevFetchDate = %(prevFetchDate)s,
+                        prevLikesCount = %(prevLikesCount)s,
+                        prevPlayCount = %(prevPlayCount)s,
+                        playCountIncrease = %(playCountIncrease)s,
+                        likesCountIncrease = %(likesCountIncrease)s,
+                        status = %(status)s,
+                        hashtags = %(hashtags)s,
+                        category = %(category)s,
+                        product = %(product)s,
+                        content_type = %(content_type)s
+                    WHERE video_id = %(video_id)s
                 """
                 
-                values = (
-                    message_data['likes_count'],
-                    message_data['play_count'],
-                    message_data['comment_count'],
-                    message_data['share_count'],
-                    message_data['save_count'],
-                    message_data['isViral'],
-                    message_data['currentFetchDate'],
-                    message_data.get('prevFetchDate'),
-                    message_data.get('prevLikesCount'),
-                    message_data.get('prevPlayCount'),
-                    play_count_increase,
-                    likes_count_increase,
-                    status,
-                    hashtags_str,          # 追加: ハッシュタグ
-                    category_names,        # 追加: カテゴリ
-                    product_names,         # 追加: プロダクト
-                    content_type,          # 追加: コンテンツタイプ
-                    message_data['video_id']
-                )
+                update_params = {
+                    'likes_count': message_data['likes_count'],
+                    'play_count': message_data['play_count'],
+                    'comment_count': message_data['comment_count'],
+                    'share_count': message_data['share_count'],
+                    'save_count': message_data['save_count'],
+                    'isViral': message_data['isViral'],
+                    'currentFetchDate': message_data['currentFetchDate'],
+                    'prevFetchDate': message_data.get('prevFetchDate'),
+                    'prevLikesCount': message_data.get('prevLikesCount'),
+                    'prevPlayCount': message_data.get('prevPlayCount'),
+                    'playCountIncrease': play_count_increase,
+                    'likesCountIncrease': likes_count_increase,
+                    'status': status,
+                    'hashtags': hashtags_str,
+                    'category': category_names,
+                    'product': product_names,
+                    'content_type': content_type,
+                    'video_id': message_data['video_id']
+                }
+                
+                execute_write_query(update_query, update_params)
 
-            try:
-                # video_masterへの保存
-                cursor.execute(insert_query if is_new_video else update_query, values)
+            # 新規動画も既存動画も、video_url_dataのフラグを更新
+            update_flag_query = """
+                UPDATE video_url_data 
+                SET is_new_video = FALSE,
+                    needs_update = FALSE
+                WHERE video_id = %(video_id)s
+            """
+            update_flag_params = {'video_id': message_data['video_id']}
+            
+            execute_write_query(update_flag_query, update_flag_params)
+            logger.info(f"Updated flags for video_id: {message_data['video_id']}")
+            
+            logger.info(f"Successfully processed video {message_data['video_id']}")
+            return {"success": True, "execution_time": time.time() - start_time}
 
-                # 新規動画も既存動画も、video_url_dataのフラグを更新
-                update_flag_query = """
-                    UPDATE video_url_data 
-                    SET is_new_video = FALSE,
-                        needs_update = FALSE
-                    WHERE video_id = %s
-                """
-                cursor.execute(update_flag_query, (message_data['video_id'],))
-                logger.info(f"Updated flags for video_id: {message_data['video_id']}")
-
-                conn.commit()
-                logger.info(f"Successfully processed video {message_data['video_id']}")
-                return {"success": True, "execution_time": time.time() - start_time}
-
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"SQL実行エラー: {str(e)}")
-                logger.error(f"実行したクエリ: {insert_query if is_new_video else update_query}")
-                logger.error(f"使用した値: {values}")
-                return {"success": False, "error": str(e)}
-
-        except Exception as e:
-            conn.rollback()
+        except DatabaseError as e:
             logger.error(f"Database error: {str(e)}")
             return {"success": False, "error": str(e)}
-
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
@@ -348,7 +345,15 @@ def setup_subscription():
                 logger.info(f"メッセージデータ: {message.data}")
                 pubsub_data = message.data.decode('utf-8')
                 data = json.loads(pubsub_data)
-                process_video_data(data)
+                
+                # Cloud Eventオブジェクトをシミュレート
+                class MockCloudEvent:
+                    def __init__(self, data):
+                        self.data = data
+                
+                cloud_event = MockCloudEvent(data)
+                process_video_data(cloud_event)
+                
                 logger.info("メッセージ処理完了")
             except Exception as e:
                 logger.error(f"メッセージ処理エラー: {e}")
@@ -367,12 +372,41 @@ def setup_subscription():
         logger.error(traceback.format_exc())
         return None
 
+def process_pubsub(event, context):
+    """
+    GKEからのPub/Subメッセージを処理するCloud Function
+    Args:
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
+    Returns:
+        dict: 処理結果
+    """
+    logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
+    
+    try:
+        # Pub/Subメッセージデータの取得
+        if 'data' in event:
+            pubsub_data = base64.b64decode(event['data']).decode("utf-8")
+            message_data = json.loads(pubsub_data)
+            logger.info(f"デコード後のメッセージ: {message_data}")
+            
+            return process_video_data(message_data)
+        else:
+            logger.error("イベントデータがありません")
+            return {"success": False, "error": "イベントデータがありません"}
+    except Exception as e:
+        logger.error(f"Pub/Subメッセージ処理エラー: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+
 if __name__ == "__main__":
     logger.info("スタンドアロンモードで動画処理プロセッサーを起動しています...")
     try:
         # データベース接続テスト
-        connection = get_db_connection()
-        logger.info("データベース接続テスト成功")
+        with get_connection() as connection:
+            logger.info("データベース接続テスト成功")
         
         # サブスクリプション設定
         future = setup_subscription()
@@ -396,7 +430,4 @@ if __name__ == "__main__":
         logger.error(traceback.format_exc())
         sys.exit(1)
 else:
-    logger.info("Functions Frameworkモードで準備完了")
-    future = setup_subscription()
-    if future:
-        logger.info("サブスクリプションの設定が完了しました") 
+    logger.info("Functions Frameworkモードで準備完了") 

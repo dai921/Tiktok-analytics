@@ -1,0 +1,43 @@
+# .gitignoreファイルを無視するか設定
+# 通常は.gitignoreの内容も反映されますが、ここでは明示的に指定します
+#!include:.gitignore
+
+# Python関連
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 環境ファイル
+.env
+.env.*
+*.env
+
+
+# その他除外したいファイル
+.git
+.github
+.vscode
+node_modules
+test/
+tests/
+*.md
+*.log
+*.tmp
+*.bak 

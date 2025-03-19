@@ -392,11 +392,20 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         ),
         cell: ({ row }) => {
-          if (!row.thumbnail?.url) {
+          if (!row.thumbnail) {
             return <NoThumbnail />
           }
 
-          return <ImageHover src={row.thumbnail.url} alt="サムネイル" />
+          // サムネイルが文字列またはオブジェクトかを判定して適切に処理
+          const imageUrl = typeof row.thumbnail === 'string' 
+           ? row.thumbnail  // 文字列の場合はそのまま使用
+           : row.thumbnail.url;  // オブジェクトの場合はurl属性を取得
+
+          // 有効なURLがない場合はNoThumbnailを返す
+          if (!imageUrl) {
+            return <NoThumbnail />
+          }
+          return <ImageHover src={imageUrl} alt="サムネイル" />
         }
       },
       {

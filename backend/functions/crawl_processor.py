@@ -1,63 +1,70 @@
 import os
 import json
 import logging
-import pymysql
 from datetime import datetime
 import time
 import sys
+import functions_framework
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
+import base64
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 環境変数を明示的に設定
-os.environ['PUBSUB_EMULATOR_HOST'] = '127.0.0.1:8681'  # 明示的に設定
-environment = os.getenv('ENVIRONMENT', 'development')
+# 設定の初期化
+initialize_config()
+
+# 環境情報を取得
+environment = get_environment()
 project_id = os.getenv('PROJECT_ID', 'local-project')
 
 # 環境情報をログ出力
 logger.info(f"実行環境: {environment}")
-logger.info(f"Pub/Subエミュレータ: {os.environ['PUBSUB_EMULATOR_HOST']}")  # 設定した値を確認
 logger.info(f"プロジェクトID: {project_id}")
 
-def get_db_connection():
-    """データベース接続を取得する"""
-    host = os.getenv('MYSQL_HOST')  # 明示的IPアドレスを使用
-    port = int(os.environ.get("MYSQL_PORT", 3306))
-    user = os.environ.get("MYSQL_USER", "tiktok_user")
-    password = os.environ.get("MYSQL_PASSWORD", "tiktok_pass")
-    database = os.environ.get("MYSQL_DATABASE", "tiktok_data")
+
+def process_pubsub(event,context):
+    """
+    Pub/Subメッセージを処理するCloud Function
+    Args:
+        cloud_event (CloudEvent): Pub/Subからのメッセージを含むCloudEvent
+    Returns:
+        dict: 処理結果
+    """
+    logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
     
     try:
-        connection = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            charset='utf8mb4',
-            cursorclass=pymysql.cursors.DictCursor
-        )
-        logger.info(f"データベース接続成功: {host}:{port}/{database}")
-        return connection
+        # Pub/Subメッセージからデータを取得
+        if 'data' in event:
+            # Base64でエンコードされたデータをデコード
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            message_data = json.loads(message_data)
+            logger.info(f"受信したメッセージ: {message_data}")
+        
+            return process_crawl_complete(message_data)
+        else:
+            logger.error("イベントデータがありません")
+            return {"success": False, "error": "イベントデータがありません"}
     except Exception as e:
-        logger.error(f"データベース接続エラー: {e}")
-        raise
+        logger.error(f"処理中にエラーが発生しました: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
 
 def process_crawl_complete(cloud_event):
     """クロール完了通知を処理"""
     start_time = time.time()
     logger.info(f"====== process_crawl_complete 開始：{datetime.now().isoformat()} ======")
     
-    connection = None
     try:
         # Pub/Subメッセージからデータを取得
         if isinstance(cloud_event, dict):
             if 'data' in cloud_event:
                 # Cloud Functions形式のメッセージ
-                import base64
-                pubsub_message = base64.b64decode(cloud_event['data']).decode('utf-8')
-                message_data = json.loads(pubsub_message)
+                message_data = cloud_event
             else:
                 # 直接のJSONメッセージ
                 message_data = cloud_event
@@ -77,22 +84,29 @@ def process_crawl_complete(cloud_event):
         
         if not account_url or not status:
             logger.error("必須フィールドがありません: account_url または status")
-            return
+            return {'success': False, 'error': '必須フィールドがありません'}
         
-        # データベースに結果を保存
-        connection = get_db_connection()
-        with connection.cursor() as cursor:
-            # アカウントの更新状態を更新
+        # アカウントの更新状態を更新
+        try:
             if status == "deleted_account":
                 # 削除済みアカウントの場合のみneeds_updateをFALSEに設定
                 update_sql = """
                 UPDATE account_list 
                 SET is_new_account = FALSE,
                     last_crawl_date = CURRENT_TIMESTAMP,
-                    last_video_count = %s,
-                    status = %s,
+                    last_video_count = %(video_count)s,
+                    status = %(status)s,
                     needs_update = FALSE
-                WHERE account_url = %s
+                WHERE account_url = %(account_url)s
+                """
+            elif status == "error":
+                # エラーステータスの場合は、is_new_accountを更新しない
+                update_sql = """
+                UPDATE account_list 
+                SET last_crawl_date = CURRENT_TIMESTAMP,
+                    last_video_count = %(video_count)s,
+                    status = %(status)s
+                WHERE account_url = %(account_url)s
                 """
             else:
                 # その他のステータスの場合は既存の更新内容のみ
@@ -100,46 +114,46 @@ def process_crawl_complete(cloud_event):
                 UPDATE account_list 
                 SET is_new_account = FALSE,
                     last_crawl_date = CURRENT_TIMESTAMP,
-                    last_video_count = %s,
-                    status = %s
-                WHERE account_url = %s
+                    last_video_count = %(video_count)s,
+                    status = %(status)s
+                WHERE account_url = %(account_url)s
                 """
             
-            cursor.execute(update_sql, (video_count, status, account_url))
-            connection.commit()
+            params = {
+                'video_count': video_count,
+                'status': status,
+                'account_url': account_url
+            }
+            
+            execute_write_query(update_sql, params)
             logger.info(f"アカウント {account_url} の状態を更新しました（ステータス: {status}）")
 
             # 最後のアカウントの処理が完了した場合、video-url-data-updateトピックにメッセージを送信
             if processing_info and processing_info.get('is_final_batch'):
                 logger.info("最後のアカウントの処理が完了しました。video-url-data-updateトリガーを送信します。")
                 
-                # Pub/Subクライアントを初期化
-                from google.cloud import pubsub_v1
-                publisher = pubsub_v1.PublisherClient()
-                topic_path = publisher.topic_path(project_id, 'video-url-data-update')
-                
                 # 更新トリガーメッセージを作成
                 trigger_message = {
                     'trigger_time': datetime.now().isoformat(),
-                    'trigger_type': 'batch_completion',
-                    'batch_info': {
-                        'batch_number': processing_info.get('batch_number'),
+                    'trigger_type': 'accounts_processed',
+                    'accounts_info': {
+                        'total_accounts': processing_info.get('total_accounts'),
                         'total_needs_update': processing_info.get('total_needs_update')
                     }
                 }
                 
-                # メッセージを送信
-                future = publisher.publish(
-                    topic_path,
-                    json.dumps(trigger_message).encode('utf-8')
-                )
-                message_id = future.result()
+                # Pub/Subユーティリティを使用してメッセージを送信
+                message_id = publish_message('video-url-data-update', trigger_message)
                 logger.info(f"video-url-data-update トリガーを送信しました。Message ID: {message_id}")
-        
-        # 処理完了
-        total_time = time.time() - start_time
-        logger.info(f"処理が完了しました （合計時間: {total_time:.2f}秒）")
-        return {"success": True, "execution_time": total_time}
+            
+            # 処理完了
+            total_time = time.time() - start_time
+            logger.info(f"処理が完了しました （合計時間: {total_time:.2f}秒）")
+            return {"success": True, "execution_time": total_time}
+                
+        except DatabaseError as e:
+            logger.error(f"データベース操作中にエラーが発生しました: {e}")
+            return {"success": False, "error": str(e)}
         
     except Exception as e:
         logger.error(f"処理中にエラーが発生しました: {e}")
@@ -148,12 +162,6 @@ def process_crawl_complete(cloud_event):
         return {"success": False, "error": str(e)}
     finally:
         total_time = time.time() - start_time
-        if connection and hasattr(connection, 'close'):
-            try:
-                connection.close()
-                logger.info("データベース接続をクローズしました")
-            except Exception as e:
-                logger.warning(f"接続クローズ時にエラーが発生: {e}")
         logger.info(f"====== process_crawl_complete 終了: {total_time:.2f}秒 ======")
 
 # スタンドアロン実行用
@@ -168,7 +176,6 @@ def setup_subscription():
         subscription_path = subscriber.subscription_path(project_id, subscription_name)
         
         logger.info(f"Pub/Subサブスクリプション: {subscription_path}")
-        logger.info(f"PUBSUB_EMULATOR_HOST: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
         logger.info(f"PROJECT_ID: {project_id}")
         
         # コールバック関数
@@ -178,7 +185,7 @@ def setup_subscription():
                 logger.info(f"メッセージデータ: {message.data}")
                 pubsub_data = message.data.decode('utf-8')
                 data = json.loads(pubsub_data)
-                process_crawl_complete(data)  # {"data": data}ではなく、直接dataを渡す
+                process_pubsub(data)  # {"data": data}ではなく、直接dataを渡す
                 logger.info("メッセージ処理完了")
             except Exception as e:
                 logger.error(f"メッセージ処理エラー: {e}")
@@ -207,8 +214,8 @@ if __name__ == "__main__":
     logger.info("スタンドアロンモードでクロール完了プロセッサーを起動しています...")
     try:
         # データベース接続テスト
-        connection = get_db_connection()
-        logger.info("データベース接続テスト成功")
+        with get_connection() as connection:
+            logger.info("データベース接続テスト成功")
         
         # サブスクリプション設定
         future = setup_subscription()
@@ -233,9 +240,5 @@ if __name__ == "__main__":
         logger.error(traceback.format_exc())
         sys.exit(1)
 else:
-    # Cloud Functions Frameworkによって呼び出される場合の準備
-    logger.info("Functions Frameworkモードで準備完了")
-    # サブスクリプション設定
-    future = setup_subscription()
-    if future:
-        logger.info("サブスクリプションの設定が完了しました") 
+    # Cloud Functions用の設定のみ残し、サブスクリプション設定は削除
+    logger.info("Functions Frameworkモードで準備完了") 

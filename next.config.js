@@ -29,6 +29,13 @@ const nextConfig = {
   
   // Cloud Runでの実行のためにスタンドアロンモードを有効化
   output: 'standalone',
+ 
+  // 実行時の環境変数を優先して使用
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  },
 }
+
+console.log("Next.js config:", JSON.stringify(nextConfig, null, 2));
 
 module.exports = nextConfig 

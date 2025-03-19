@@ -127,6 +127,12 @@ VALUES
 ('video_collector', 'video_url_data', 10, 172800);  -- バッチサイズ10、リセット間隔48時間（172800秒）
 
 
+INSERT INTO processing_cursors 
+(processor_name, target_table, batch_size, reset_interval) 
+VALUES 
+('frontend_data_update', 'frontend_data', 17000, 172800); 
+
+
 -- カテゴリーマスターテーブル
 CREATE TABLE category_master (
   category_id INT NOT NULL AUTO_INCREMENT,
@@ -157,48 +163,76 @@ COLLATE = utf8mb4_0900_ai_ci;
 
 -- フロントエンドデータテーブル
 CREATE TABLE frontend_data (
-    id VARCHAR(10) PRIMARY KEY,
-    url VARCHAR(255) UNIQUE,
-    thumbnail_url VARCHAR(255),
-    created_at DATE,
-    play_count INT UNSIGNED,
-    play_count_increase INT UNSIGNED,
-    account_name VARCHAR(50),
-    likes_count INT UNSIGNED,
-    comment_count INT UNSIGNED,
-    hashtags TEXT,
-    music_info TEXT,
-    caption TEXT
-);
+  id INT NOT NULL AUTO_INCREMENT,
+  url VARCHAR(255) NOT NULL,
+  thumbnail_url VARCHAR(255) DEFAULT NULL,
+  created_at DATE DEFAULT NULL,
+  play_count INT UNSIGNED DEFAULT NULL,
+  play_count_increase INT UNSIGNED DEFAULT NULL,
+  account_name VARCHAR(50) DEFAULT NULL,
+  likes_count INT UNSIGNED DEFAULT NULL,
+  comment_count INT UNSIGNED DEFAULT NULL,
+  hashtags TEXT,
+  music_info TEXT,
+  caption TEXT,
+  category VARCHAR(255) DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY url (url)
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
 
 -- ユーザーテーブル
-CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(255) PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    name VARCHAR(255),
-    email_verified DATETIME,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+CREATE TABLE users (
+  id VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  is_admin TINYINT(1) DEFAULT 0,
+  name VARCHAR(255) DEFAULT NULL,
+  email_verified DATETIME DEFAULT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY email (email)
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
 
 -- セッションテーブル
-CREATE TABLE IF NOT EXISTS sessions (
-    id VARCHAR(255) PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    session_token VARCHAR(255) UNIQUE NOT NULL,
-    expires DATETIME NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+CREATE TABLE sessions (
+  id VARCHAR(255) NOT NULL,
+  user_id VARCHAR(255) NOT NULL,
+  session_token VARCHAR(255) NOT NULL,
+  expires DATETIME NOT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY session_token (session_token),
+  KEY user_id (user_id),
+  CONSTRAINT sessions_ibfk_1
+    FOREIGN KEY (user_id)
+    REFERENCES users (id)
+    ON DELETE CASCADE
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
 
 -- パスワードリセット用トークンテーブル
-CREATE TABLE IF NOT EXISTS verification_tokens (
-    id VARCHAR(255) PRIMARY KEY,
-    email VARCHAR(255) NOT NULL,
-    token VARCHAR(255) NOT NULL,
-    expires DATETIME NOT NULL,
-    type ENUM('RESET_PASSWORD', 'VERIFY_EMAIL') NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY token_unique (token)
-); 
+CREATE TABLE verification_tokens (
+  id VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  expires DATETIME NOT NULL,
+  type ENUM('RESET_PASSWORD','VERIFY_EMAIL') NOT NULL,
+  created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY token_unique (token)
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;

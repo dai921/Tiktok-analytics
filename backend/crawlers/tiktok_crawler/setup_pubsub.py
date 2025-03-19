@@ -26,7 +26,10 @@ def setup_pubsub():
         'crawl-batch-complete': 'process-crawl-batch-complete-sub',
         'video-processing': 'video-processing-sub',  # 動画処理用を追加
         'video-data': 'video-data-sub',  # 処理済みデータ用を追加
-        'video-url-data-update': 'trigger-video-url-data-update' #Account-crawler終了通知
+        'video-url-data-update': 'trigger-video-url-data-update', #Account-crawler終了通知
+        'spreadsheet-completion': 'spreadsheet-completion', #スプレッドシート同期完了通知
+        'trigger-video-collector': 'trigger-video-collector', #video-collector関数トリガー
+        'frontend-update-status': 'frontend-update-status' #frontend-update-status関数トリガー
     }
     
     # 各トピックとサブスクリプションを作成
