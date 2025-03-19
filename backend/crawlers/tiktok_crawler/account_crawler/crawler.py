@@ -14,6 +14,9 @@ import threading
 import socket
 import sys
 from typing import Dict, Any
+from flask import Flask, request, Response
+import jwt
+import time
 
 # ロギングの設定を強化
 logging.basicConfig(
@@ -30,11 +33,11 @@ logger.info(f"Current Directory: {os.getcwd()}")
 logger.info(f"PYTHONPATH: {os.environ.get('PYTHONPATH', 'Not set')}")
 
 # 環境変数の設定（Docker環境用）
-pubsub_host = os.environ.get('PUBSUB_EMULATOR_HOST', 'pubsub:8681')  # Dockerサービス名を使用
-project_id = os.environ.get('PROJECT_ID', 'local-project')
+# pubsub_host = os.environ.get('PUBSUB_EMULATOR_HOST', 'pubsub:8681')  # コメントアウト: ローカル環境用
+project_id = os.environ.get('PROJECT_ID','tiktok-analytics-prod-451609')
 
 # デバッグ情報の表示
-logger.info(f"環境変数: PUBSUB_EMULATOR_HOST={pubsub_host}")
+# logger.info(f"環境変数: PUBSUB_EMULATOR_HOST={pubsub_host}")  # コメントアウト: ローカル環境用
 logger.info(f"環境変数: PROJECT_ID={project_id}")
 
 # ホスト名の解決をテスト
@@ -42,6 +45,9 @@ try:
     logger.info(f"localhost IPアドレス: {socket.gethostbyname('localhost')}")
 except Exception as e:
     logger.error(f"localhost名前解決エラー: {e}")
+
+# Flaskアプリケーションの初期化
+app = Flask(__name__)
 
 class AccountCrawler:
     def __init__(self):
@@ -78,7 +84,8 @@ class AccountCrawler:
                 logger.info(f"アカウントにアクセス: {account_url} (新規アカウント: {is_new_account})")
                 await page.goto(account_url, timeout=30000)
                 await page.wait_for_load_state('domcontentloaded', timeout=30000)
-                await asyncio.sleep(5)
+                # より長い待機時間を設定
+                await asyncio.sleep(5)  # get_video_urlsと同じ5秒待機
                 
                 # デッドリンクチェック
                 dead_link_texts = [
@@ -86,81 +93,116 @@ class AccountCrawler:
                     "Couldn't find this account"
                 ]
                 
-                logger.info("デッドリンクチェックを開始します")  # デバッグ用
+                logger.info("デッドリンクチェックを開始します")
                 try:
                     # セレクタでデッドリンクを確認
-                    selector = 'p.css-1y4x9xk-PTitle'
-                    element = await page.wait_for_selector(selector, timeout=1000)
-                    if element:
-                        text = await element.text_content()
-                        logger.info(f"セレクタのテキスト: {text}")  # デバッグ用
-                        if any(dead_text in text for dead_text in dead_link_texts):
-                            logger.info(f"削除済みアカウントを検出（セレクタ）: {account_url}")
-                            return {
-                                "success": False,
-                                "account_url": account_url,
-                                "status": "deleted_account",
-                                "video_count": 0,
-                                "is_new_account": is_new_account,
-                                "videos": []
-                            }
-                except TimeoutError:
-                    logger.debug("デッドリンク確認用のセレクタが見つかりませんでした")
+                    selectors = ['p.css-1y4x9xk-PTitle', 'p.css-1ovqurc-PTitle.emuynwa1']
+                    for selector in selectors:
+                        try:
+                            element = await page.wait_for_selector(selector, timeout=1000)
+                            if element:
+                                text = await element.text_content()
+                                logger.info(f"セレクタのテキスト: {text}")
+                                if any(dead_text in text for dead_text in dead_link_texts):
+                                    logger.info(f"削除済みアカウントを検出（セレクタ）: {account_url}")
+                                    return {
+                                        "success": False,
+                                        "account_url": account_url,
+                                        "status": "deleted_account",
+                                        "video_count": 0,
+                                        "is_new_account": is_new_account,
+                                        "videos": []
+                                    }
+                        except TimeoutError:
+                            continue
                 except Exception as e:
                     logger.warning(f"デッドリンク確認中に予期せぬエラー: {e}")
 
-                # 動画要素の確認
+                # 動画要素の確認 - get_video_urlsのような粘り強い待機
                 try:
                     await page.wait_for_selector('div[data-e2e="user-post-item"]', timeout=10000)
                 except TimeoutError:
                     logger.info("動画要素の読み込みに時間がかかっています。さらに待機します。")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(5)  # さらに5秒待機
+                
+                # 新規アカウントの場合は全件取得、既存アカウントは制限付き
+                max_videos = float('inf') if is_new_account else 8  # 既存アカウントでも少し多めに
+                
+                logger.info(f"動画収集を開始: {account_url}")
                 
                 videos = []
                 processed_videos = []
                 previous_height = 0
                 retry_count = 0
-                max_videos = float('inf') if is_new_account else 8
                 
                 while retry_count < 3 and len(videos) < max_videos:
-                    video_elements = await page.query_selector_all('div[data-e2e="user-post-item"] a')
-                    
-                    for elem in video_elements:
-                        if len(videos) >= max_videos:
+                    try:
+                        # 動画要素の取得
+                        video_elements = await page.query_selector_all('div[data-e2e="user-post-item"] a')
+                        
+                        for elem in video_elements:
+                            if len(videos) >= max_videos:
+                                break
+                                
+                            href = await elem.get_attribute('href')
+                            if href and ('/video/' in href or '/photo/' in href):
+                                # 重複チェック
+                                    if not href.startswith('http'):
+                                        href = f'https://www.tiktok.com{href}'
+                                        
+                                    # video_idの抽出
+                                    video_id = None
+                                    if '/video/' in href:
+                                        video_id = href.split('/video/')[-1].split('?')[0]
+                                    elif '/photo/' in href:
+                                        video_id = href.split('/photo/')[-1].split('?')[0]
+                                        
+                                    video_info = {
+                                        'url': href,
+                                        'video_id': video_id,
+                                        'type': 'video' if '/video/' in href else 'photo'
+                                    }
+                                    videos.append(video_info)
+                                    processed_videos.append(video_info)
+                        if not is_new_account and len(videos) >= max_videos:
                             break
+                        # スクロールの制御と終了条件のチェック
+                        current_height = await page.evaluate('document.body.scrollHeight')
+                        if current_height == previous_height:
+                            retry_count += 1
+                            # 同じ高さでも少し待機を長くして追加読み込みのチャンスを与える
+                            await asyncio.sleep(3)
                             
-                        href = await elem.get_attribute('href')
-                        if href and ('/video/' in href or '/photo/' in href) and href not in videos:
-                            if not href.startswith('http'):
-                                href = f'https://www.tiktok.com{href}'
-                                
-                            # video_idの抽出
-                            video_id = None
-                            if '/video/' in href:
-                                video_id = href.split('/video/')[-1].split('?')[0]
-                            elif '/photo/' in href:
-                                video_id = href.split('/photo/')[-1].split('?')[0]
-                                
-                            video_info = {
-                                'url': href,
-                                'video_id': video_id,
-                                'type': 'video' if '/video/' in href else 'photo'
-                            }
-                            videos.append(video_info)
-                            processed_videos.append(video_info)
-                    
-                    if not is_new_account and len(videos) >= max_videos:
-                        break
-                    
-                    current_height = await page.evaluate('document.body.scrollHeight')
-                    if current_height == previous_height:
+                            # スクロール位置を少し上下させてTikTokのロード検出を促進
+                            await page.evaluate('window.scrollBy(0, -100)')
+                            await asyncio.sleep(1)
+                            await page.evaluate('window.scrollBy(0, 150)')
+                        else:
+                            retry_count = 0
+                        
+                        previous_height = current_height
+                        
+                        # スクロール方法の改善 - より確実に下部まで移動させる
+                        await page.evaluate('''
+                            window.scrollTo({
+                                top: document.body.scrollHeight,
+                                behavior: 'smooth'
+                            });
+                        ''')
+                        
+                        # スクロール待機時間を延長
+                        await asyncio.sleep(5)  # 3秒から5秒に延長
+                        
+                        # 追加：30件以上収集できた場合はログを出力
+                        if len(videos) > 30 and len(videos) % 10 == 0:
+                            logger.info(f"現在 {len(videos)} 件の動画を収集中...")
+                        
+                    except Exception as e:
+                        logger.error(f"スクロール中にエラー: {e}")
                         retry_count += 1
-                    else:
-                        retry_count = 0
-                    
-                    previous_height = current_height
-                    await page.evaluate('window.scrollBy(0, document.body.scrollHeight)')
-                    await asyncio.sleep(2)
+                        await asyncio.sleep(2)
+                
+                logger.info(f"動画収集完了: {len(videos)}件")
 
                 # アカウントURLからユーザー名を抽出
                 try:
@@ -193,6 +235,9 @@ class AccountCrawler:
                     "is_new_account": is_new_account,
                     "videos": []
                 }
+            finally:
+                await context.close()
+                await browser.close()
 
     async def crawl_account(self, account_info: dict):
         """アカウントのクローリングを実行"""
@@ -281,13 +326,13 @@ def get_db_connection():
     try:
         logger.info(f"データベース接続試行: {os.environ.get('MYSQL_HOST')}:{os.environ.get('MYSQL_PORT')}/{os.environ.get('MYSQL_DATABASE')}")
         
-        # Docker環境用のホスト設定
+        # Docker環境用のホスト設定から本番環境用に修正
         connection = pymysql.connect(
-            host=os.environ.get('MYSQL_HOST', 'host.docker.internal'),  # Docker環境用のホスト
+            host=os.environ.get('MYSQL_HOST'),  # デフォルト値を削除
             port=int(os.environ.get('MYSQL_PORT', 3306)),
-            user=os.environ.get('MYSQL_USER', 'tiktok_user'),
-            password=os.environ.get('MYSQL_PASSWORD', 'tiktok_pass'),
-            database=os.environ.get('MYSQL_DATABASE', 'tiktok_data'),
+            user=os.environ.get('MYSQL_USER'),  # デフォルト値を削除
+            password=os.environ.get('MYSQL_PASSWORD'),  # デフォルト値を削除
+            database=os.environ.get('MYSQL_DATABASE'),  # デフォルト値を削除
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )
@@ -435,39 +480,142 @@ async def process_message(message) -> None:
         message.nack()
         raise
 
-def setup_subscription():
-    """サブスクリプションをセットアップする"""
+def verify_pubsub_token(request):
+    """Pub/Subメッセージの認証を検証"""
     try:
+        # リクエストヘッダーからBearerトークンを取得
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            logger.error("Authorization Bearerトークンがありません")
+            return False
+            
+        token = auth_header.split('Bearer ')[1]
+        
+        # JWTトークンを検証
+        decoded_token = jwt.decode(token, options={"verify_signature": False})
+        
+        # トークンの有効期限と発行元を確認
+        now = time.time()
+        if decoded_token.get('exp', 0) < now:
+            logger.error("トークンの有効期限切れ")
+            return False
+            
+        # 発行元が期待するサービスアカウントか確認
+        expected_email = "pubsub-to-cloudrun-invoker@tiktok-analytics-prod-451609.iam.gserviceaccount.com"
+        if decoded_token.get('email') != expected_email:
+            logger.error(f"不正なサービスアカウント: {decoded_token.get('email')}")
+            return False
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"トークン検証エラー: {str(e)}")
+        return False
+
+@app.route('/pubsub', methods=['POST'])
+def handle_pubsub_message():
+    """Pub/Subプッシュメッセージを処理"""
+    try:
+        # 認証チェック
+        if not verify_pubsub_token(request):
+            return Response('認証失敗', status=401)
+            
+        # リクエストボディを解析
+        envelope = request.get_json()
+        if not envelope:
+            logger.error("リクエストボディがありません")
+            return Response('無効なリクエスト', status=400)
+            
+        if not isinstance(envelope, dict) or 'message' not in envelope:
+            logger.error("無効なPub/Subメッセージ形式")
+            return Response('無効なPub/Subメッセージ', status=400)
+            
+        pubsub_message = envelope['message']
+        
+        # メッセージデータが存在するか確認
+        if 'data' not in pubsub_message:
+            logger.error("Pub/Subメッセージにデータがありません")
+            return Response('データなし', status=400)
+            
+        # Base64エンコードされたデータをデコード
+        data_str = base64.b64decode(pubsub_message['data']).decode('utf-8')
+        data = json.loads(data_str)
+        
+        logger.info(f"Pub/Subから受信したメッセージ: {json.dumps(data)}")
+        
+        # 別スレッドで処理を実行
+        def run_async():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            # 受信データの形式に変換
+            message_data = {}
+            if "accounts" in data:
+                message_data = data
+            else:
+                # 単一のアカウント情報の場合
+                message_data = {
+                    "accounts": [{
+                        "account_url": data.get("account_url"),
+                        "account_name": data.get("account_name"),
+                        "account_id": data.get("account_id", "unknown"),
+                        "is_new_account": data.get("is_new_account", True)
+                    }],
+                    "processing_info": data.get("processing_info", {})
+                }
+            
+            # メッセージオブジェクトを作成
+            message = type('PubSubMessage', (), {
+                'data': json.dumps(message_data).encode('utf-8'),
+                'ack': lambda: None,
+                'nack': lambda: None
+            })
+            
+            # 処理関数を実行
+            loop.run_until_complete(process_message(message))
+            loop.close()
+        
+        # 別スレッドで処理を開始
+        threading.Thread(target=run_async).start()
+        
+        # Pub/Subに成功を返す
+        return Response('', status=204)
+        
+    except Exception as e:
+        logger.error(f"Pub/Subメッセージ処理エラー: {str(e)}")
+        return Response(f'エラー: {str(e)}', status=500)
+
+
+def setup_subscription():
+    """サブスクリプションをセットアップする（プル型に統一）"""
+    try:
+        logger.info(f"プル型サブスクリプションを設定します (Project ID: {project_id})")
+        
         subscriber = pubsub_v1.SubscriberClient()
-        subscription_path = subscriber.subscription_path(project_id, "process-account-list")
+        # サブスクリプション名は環境変数で指定可能にする
+        subscription_name = os.environ.get('PUBSUB_SUBSCRIPTION', "process-account-list-sub")
+        subscription_path = subscriber.subscription_path(project_id, subscription_name)
         
-        logger.info(f"サブスクリプション設定開始: {subscription_path}")
-        logger.info(f"Pub/Subエミュレータ接続: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
-        
-        # 非同期処理用の新しいイベントループを作成する代わりに、直接asyncioコールバックを使用
         def callback(message):
             try:
-                # 新しいイベントループを作成して実行
+                logger.info(f"メッセージを受信しました: {message.message_id}")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                # process_messageを実行し、完了を待つ
                 loop.run_until_complete(process_message(message))
                 loop.close()
             except Exception as e:
                 logger.error(f"メッセージ処理エラー: {e}")
                 message.nack()
         
-        # サブスクリプションの設定
         streaming_pull_future = subscriber.subscribe(
             subscription_path,
             callback=callback
         )
         
-        logger.info("サブスクリプション設定完了 - メッセージ待機中...")
-        
-        # メッセージ待機
+        logger.info(f"プル型サブスクリプション '{subscription_name}' の設定完了 - メッセージ待機中...")
+        # メッセージを待機（ブロッキング呼び出し）
         streaming_pull_future.result()
-        
+            
     except Exception as e:
         logger.error(f"サブスクリプション設定エラー: {e}")
         import traceback
@@ -477,8 +625,8 @@ def setup_subscription():
 if __name__ == "__main__":
     logger.info("=== Account Crawler 起動 ===")
     logger.info(f"環境変数:")
-    logger.info(f"- PUBSUB_EMULATOR_HOST: {os.environ.get('PUBSUB_EMULATOR_HOST')}")
     logger.info(f"- PROJECT_ID: {os.environ.get('PROJECT_ID')}")
+    logger.info(f"- PUBSUB_SUBSCRIPTION: {os.environ.get('PUBSUB_SUBSCRIPTION', 'process-account-list-sub')}")
     
     try:
         setup_subscription()

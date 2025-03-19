@@ -1,0 +1,13 @@
+# account-crawler用のPVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: account-crawler-data-pvc
+  namespace: crawlers
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard-rwo
