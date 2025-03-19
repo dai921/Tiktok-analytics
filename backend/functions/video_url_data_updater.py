@@ -9,6 +9,7 @@ import requests
 from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
 from config import initialize_config, get_environment, get_db_config
 from pubsub_utils import publish_message
+import argparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -70,8 +71,7 @@ def update_needs_update_flag() -> Dict[str, Any]:
             "execution_time": datetime.now().isoformat()
         }
 
-@functions_framework.cloud_event
-def update_video_url_data(cloud_event):
+def update_video_url_data(event, context):
     """
     Pub/Subメッセージで実行される関数
     """
@@ -79,9 +79,13 @@ def update_video_url_data(cloud_event):
 
     try:
         # Pub/Subメッセージの処理
-        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
-        message_data = json.loads(pubsub_message)
-        logger.info(f"Pub/Subメッセージを受信: {message_data}")
+        if 'data' in event:
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            message_data = json.loads(message_data)
+            logger.info(f"Pub/Subメッセージを受信: {message_data}")
+        else:
+            logger.info("データなしのトリガー実行")
+            message_data = {}
 
         logger.info(f"同期処理開始: {start_time}")
 
@@ -105,6 +109,8 @@ def update_video_url_data(cloud_event):
             "error": error_message,
             "execution_time": datetime.now().isoformat()
         }), 500
+
+
 
 def notify_completion():
     """
@@ -142,13 +148,13 @@ def setup_subscription():
                 pubsub_data = message.data.decode('utf-8')
                 data = json.loads(pubsub_data)
                 
-                # Cloud Eventオブジェクトをシミュレート
-                class MockCloudEvent:
-                    def __init__(self, data):
-                        self.data = {"message": {"data": base64.b64encode(json.dumps(data).encode()).decode()}}
+                # 2引数形式に合わせたイベントオブジェクトを作成
+                event = {
+                    'data': base64.b64encode(json.dumps(data).encode())
+                }
+                context = None
                 
-                cloud_event = MockCloudEvent(data)
-                update_video_url_data(cloud_event)
+                update_video_url_data(event, context)
                 
                 logger.info("メッセージ処理完了")
             except Exception as e:
@@ -157,6 +163,7 @@ def setup_subscription():
                 logger.error(traceback.format_exc())
             finally:
                 message.ack()
+  
         
         streaming_pull_future = subscriber.subscribe(subscription_path, callback)
         logger.info(f"サブスクリプションを開始しました: {subscription_path}")
@@ -170,16 +177,29 @@ def setup_subscription():
 
 if __name__ == "__main__":
     import sys
+    import argparse
+    
+    # コマンドライン引数パーサーの追加
+    parser = argparse.ArgumentParser(description='video_url_data更新プロセッサー')
+    parser.add_argument('--test', action='store_true', help='テストモードで直接実行（Pub/Subを待たずに処理を実行）')
+    args = parser.parse_args()
     
     logger.info("スタンドアロンモードでvideo_url_data更新プロセッサーを起動しています...")
     
     try:
-
-            # サブスクリプションモード
-            # データベース接続テスト
-            with get_connection() as connection:
-                logger.info("データベース接続テスト成功")
-            
+        # データベース接続テスト
+        with get_connection() as connection:
+            logger.info("データベース接続テスト成功")
+        
+        # テストモードの場合は直接処理を実行
+        if args.test:
+            logger.info("テストモードで直接実行します")
+            # 空のイベントとコンテキストを作成して関数を呼び出す
+            empty_event = {'data': base64.b64encode(json.dumps({}).encode())}
+            result, status_code = update_video_url_data(empty_event, None)
+            logger.info(f"テスト実行結果: {result}, ステータスコード: {status_code}")
+        else:
+            # 通常のサブスクリプションモード
             # サブスクリプション設定
             future = setup_subscription()
             

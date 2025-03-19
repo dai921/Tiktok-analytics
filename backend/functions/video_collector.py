@@ -8,6 +8,7 @@ from db_utils import get_connection, execute_query, execute_write_query, Databas
 from config import initialize_config, get_environment, get_db_config
 from pubsub_utils import publish_message
 import base64
+import argparse
 
 # 設定の初期化
 initialize_config()
@@ -301,16 +302,26 @@ def setup_subscription():
         logger.error(traceback.format_exc())
         return None
 
-@functions_framework.cloud_event
-def collect_videos(cloud_event):
-    """Pub/Subメッセージで実行される関数"""
+def collect_videos(event,context):
+    """
+    Pub/Subメッセージで実行される関数
+    Args:
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
+    Returns:
+        tuple: (結果データ, HTTPステータスコード)
+    """
     logger.info("==== collect_videos関数の実行開始 ====")
     
     try:
         # Pub/Subメッセージの処理
-        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
-        message_data = json.loads(pubsub_message)
-        logger.info(f"Pub/Subメッセージを受信: {message_data}")
+        if 'data' in event:
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            message_data = json.loads(message_data)
+            logger.info(f"Pub/Subメッセージを受信: {message_data}")
+        else:
+            logger.info("データなしのトリガー実行")
+            message_data = {}
         
         # VideoCollectorのインスタンスを作成し、処理を実行
         collector = VideoCollector()
@@ -342,18 +353,29 @@ def collect_videos(cloud_event):
         }, 500
     finally:
         logger.info("==== collect_videos関数の実行終了 ====")
-
+      
 if __name__ == "__main__":
     import sys
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='動画収集プロセッサー')
+    parser.add_argument('--test-run', action='store_true', help='テスト実行モード（Pub/Sub待機なし）')
+    args = parser.parse_args()
     
     logger.info("スタンドアロンモードで動画収集プロセッサーを起動しています...")
     
     try:
-
-            with get_connection() as connection:
-                logger.info("データベース接続テスト成功")
-            
-            # サブスクリプション設定
+        with get_connection() as connection:
+            logger.info("データベース接続テスト成功")
+        
+        if args.test_run:
+            # テスト実行モード - Pub/Sub待機なしで直接処理を実行
+            logger.info("テスト実行モードで処理を開始します")
+            collector = VideoCollector()
+            result = collector.process_videos()
+            logger.info(f"処理結果: {result}")
+        else:
+            # 通常モード - Pub/Subサブスクリプション設定
             future = setup_subscription()
             
             if future:

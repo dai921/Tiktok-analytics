@@ -13,18 +13,22 @@ PROJECT_ID = os.getenv('PROJECT_ID', 'tiktok-analytics-prod-451609')
 LOCATION = 'asia-northeast1'    # リージョンを設定
 SCHEDULER_CLIENT = scheduler_v1.CloudSchedulerClient()
 
-@functions_framework.cloud_event
-def manage_frontend_update_schedule(cloud_event):
+def manage_frontend_update_schedule(event,context):
     """
     Pub/Subからのメッセージを受け取り、frontend-update関数のスケジュールを管理する
+    Args:
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
+    Returns:
+        dict: 処理結果
     """
     try:
-        # メッセージデータの取得方法を修正
+        # メッセージデータの取得
         import json
         message = None
-        if 'data' in cloud_event:
+        if 'data' in event:
             import base64
-            message_data = base64.b64decode(cloud_event['data']).decode('utf-8')
+            message_data = base64.b64decode(event['data']).decode('utf-8')
             message_json = json.loads(message_data)
             status = message_json.get("status")
             
@@ -67,6 +71,10 @@ def enable_frequent_schedule():
             "http_target": {
                 "uri": f"https://{LOCATION}-{PROJECT_ID}.cloudfunctions.net/frontend-update",
                 "http_method": scheduler_v1.HttpMethod.POST,
+                "oidc_token": {
+                    "service_account_email": "cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com",
+                    "audience": f"https://{LOCATION}-{PROJECT_ID}.cloudfunctions.net/frontend-update"
+                }
             },
         }
         

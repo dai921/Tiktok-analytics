@@ -46,9 +46,35 @@ def process_video_data(cloud_event):
             message_data = data
 
         logger.info(f"受信したメッセージ: {message_data}")
+        
+        # 必須フィールドの検証
+        required_fields = ['video_id', 'username']
+        missing_required = [field for field in required_fields if field not in message_data]
+        if missing_required:
+            error_msg = f"必須フィールドがありません: {', '.join(missing_required)}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+            
+        # video_urlフィールドの検証
+        if 'video_url' not in message_data and 'url' in message_data:
+            message_data['video_url'] = message_data['url']
+        elif 'video_url' not in message_data and 'url' not in message_data:
+            error_msg = "必須フィールドがありません: video_url または url"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+            
+        # account_urlの自動補完
+        if 'account_url' not in message_data:
+            message_data['account_url'] = f"https://www.tiktok.com/@{message_data['username']}"
+            logger.info(f"account_urlを自動生成しました: {message_data['account_url']}")
+            
+        # statusのデフォルト値設定
+        if 'status' not in message_data:
+            message_data['status'] = 'normal'
+            logger.info("statusをデフォルト値'normal'に設定しました")
 
         # 真っ先にステータスをチェック
-        status = message_data.get('status', 'unknown')
+        status = message_data.get('status', 'normal')
         if status in ['error', 'deleted']:
             try:
                 # video_masterの更新（INSERT ... ON DUPLICATE KEY UPDATE）
@@ -346,30 +372,34 @@ def setup_subscription():
         logger.error(traceback.format_exc())
         return None
 
-@functions_framework.cloud_event
-def process_pubsub(cloud_event: CloudEvent):
+def process_pubsub(event, context):
     """
     GKEからのPub/Subメッセージを処理するCloud Function
     Args:
-        cloud_event (CloudEvent): Pub/Subからのメッセージを含むCloudEvent
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
     Returns:
         dict: 処理結果
     """
     logger.info(f"====== process_pubsub 開始：{datetime.now().isoformat()} ======")
-    logger.info(f"受信したcloudEvent: {cloud_event}")
     
     try:
         # Pub/Subメッセージデータの取得
-        pubsub_data = base64.b64decode(cloud_event.data["message"]["data"]).decode("utf-8")
-        message_data = json.loads(pubsub_data)
-        logger.info(f"デコード後のメッセージ: {message_data}")
-        
-        return process_video_data(message_data)
+        if 'data' in event:
+            pubsub_data = base64.b64decode(event['data']).decode("utf-8")
+            message_data = json.loads(pubsub_data)
+            logger.info(f"デコード後のメッセージ: {message_data}")
+            
+            return process_video_data(message_data)
+        else:
+            logger.error("イベントデータがありません")
+            return {"success": False, "error": "イベントデータがありません"}
     except Exception as e:
         logger.error(f"Pub/Subメッセージ処理エラー: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
+
 
 if __name__ == "__main__":
     logger.info("スタンドアロンモードで動画処理プロセッサーを起動しています...")

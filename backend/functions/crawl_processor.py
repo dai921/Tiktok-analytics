@@ -25,8 +25,8 @@ project_id = os.getenv('PROJECT_ID', 'local-project')
 logger.info(f"実行環境: {environment}")
 logger.info(f"プロジェクトID: {project_id}")
 
-@functions_framework.cloud_event
-def process_pubsub(cloud_event):
+
+def process_pubsub(event,context):
     """
     Pub/Subメッセージを処理するCloud Function
     Args:
@@ -38,11 +38,16 @@ def process_pubsub(cloud_event):
     
     try:
         # Pub/Subメッセージからデータを取得
-        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
-        message_data = json.loads(pubsub_message)
-        logger.info(f"受信したメッセージ: {message_data}")
+        if 'data' in event:
+            # Base64でエンコードされたデータをデコード
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            message_data = json.loads(message_data)
+            logger.info(f"受信したメッセージ: {message_data}")
         
-        return process_crawl_complete(message_data)
+            return process_crawl_complete(message_data)
+        else:
+            logger.error("イベントデータがありません")
+            return {"success": False, "error": "イベントデータがありません"}
     except Exception as e:
         logger.error(f"処理中にエラーが発生しました: {e}")
         import traceback
@@ -92,6 +97,15 @@ def process_crawl_complete(cloud_event):
                     last_video_count = %(video_count)s,
                     status = %(status)s,
                     needs_update = FALSE
+                WHERE account_url = %(account_url)s
+                """
+            elif status == "error":
+                # エラーステータスの場合は、is_new_accountを更新しない
+                update_sql = """
+                UPDATE account_list 
+                SET last_crawl_date = CURRENT_TIMESTAMP,
+                    last_video_count = %(video_count)s,
+                    status = %(status)s
                 WHERE account_url = %(account_url)s
                 """
             else:

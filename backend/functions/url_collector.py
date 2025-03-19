@@ -55,21 +55,23 @@ class CursorManager:
             logger.error(f"処理時間更新エラー: {str(e)}")
             raise
 
-@functions_framework.cloud_event
-def process_pubsub(cloud_event):
+def process_pubsub(event, context):
     """
-    スプレッドシート同期完了後のURL収集を行うCloud Function
+    スプレッドシート同期完了後のURL収集を行うCloud Function (Pub/Sub)
     Args:
-        cloud_event (CloudEvent): Pub/Subからのメッセージを含むCloudEvent
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
     Returns:
         dict: 処理結果
     """
     logger.info(f"====== URL収集処理開始：{datetime.now().isoformat()} ======")
     try:
         # Pub/Subメッセージからデータを取得
-        pubsub_message = base64.b64decode(cloud_event.data["message"]["data"]).decode('utf-8')
-        trigger_data = json.loads(pubsub_message)
-        logger.info(f"トリガー情報: {trigger_data}")
+        if 'data' in event:
+            # Base64でエンコードされたデータをデコード
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            trigger_data = json.loads(message_data)
+            logger.info(f"トリガー情報: {trigger_data}")
         
         return collect_urls()
     except Exception as e:

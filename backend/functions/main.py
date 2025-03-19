@@ -29,22 +29,22 @@ def sync_category_spreadsheet(request):
     return sync_category_job(request)
 
 # Pub/Sub (CloudEvent) エントリーポイント関数
-def process_pubsub(cloud_event):
-    return crawl_processor_pubsub(cloud_event)
+def process_pubsub(event,context):
+    return crawl_processor_pubsub(event,context)
 
-def process_video_data(cloud_event):
-    return process_video_data_pubsub(cloud_event)
+def process_video_data(event,context):
+    return process_video_data_pubsub(event,context)
 
-def url_collector(cloud_event):
-    return url_collector_pubsub(cloud_event)
+def url_collector(event,context):
+    return url_collector_pubsub(event,context)
 
-def collect_videos(cloud_event):
-    return video_collector_function(cloud_event)
+def collect_videos(event,context):
+    return video_collector_function(event,context)
 
-def video_url_data_updater(cloud_event):
-    return video_url_updater_function(cloud_event)
+def video_url_data_updater(event,context):
+    return video_url_updater_function(event,context)
 
 # batch_scheduler用のエントリーポイント関数を追加
-def manage_frontend_update_schedule(cloud_event):
-    return batch_scheduler_function(cloud_event)
+def manage_frontend_update_schedule(event,context):
+    return batch_scheduler_function(event,context)
 
