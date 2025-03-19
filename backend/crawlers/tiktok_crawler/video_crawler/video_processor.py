@@ -3,6 +3,7 @@ import asyncio
 import logging
 import json
 import aiohttp
+import base64
 from datetime import datetime
 from typing import Dict, Any, Optional
 from google.cloud import pubsub_v1, storage
@@ -12,6 +13,11 @@ import shutil
 import requests
 from yt_dlp import YoutubeDL
 from playwright.async_api import async_playwright
+# Flaskをインポート
+from flask import Flask, request, Response
+import jwt
+import time
+from functools import wraps
 
 # ロギング設定を更新
 logging.basicConfig(
@@ -26,11 +32,16 @@ class VideoProcessor:
         self.logger = logger  # 既存のロガーを使用
         
         # 環境設定
-        self.environment = os.getenv('ENVIRONMENT', 'development')
-        self.is_production = self.environment == 'production'
+        self.environment = os.getenv('ENVIRONMENT', 'production')
         self.logger.info(f"起動環境: {self.environment}")
         
-        self.semaphore = asyncio.Semaphore(1)  # 同時処理を1つに制限
+        # セマフォアを緩和（同時に処理できるリクエスト数を増やす）
+        self.semaphore = asyncio.Semaphore(3)  # 1から3に変更
+        
+        # Pod名を環境変数から取得（Kubernetesで自動設定される）
+        self.pod_name = os.getenv('POD_NAME', 'unknown-pod')
+        self.logger.info(f"Pod名: {self.pod_name}")
+        
         # User-Agent一覧
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -40,33 +51,34 @@ class VideoProcessor:
         ]
 
         # PubSub設定
-        if os.getenv('ENVIRONMENT') == 'development' and not os.getenv('PUBSUB_EMULATOR_HOST'):
-            os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'
+        # if os.getenv('ENVIRONMENT') == 'development' and not os.getenv('PUBSUB_EMULATOR_HOST'):
+        #     os.environ['PUBSUB_EMULATOR_HOST'] = 'localhost:8681'  # コメントアウト: ローカル開発用
         
-        self.project_id = os.getenv('PROJECT_ID', 'local-project')
+        self.project_id = os.getenv('PROJECT_ID', 'tiktok-analytics-prod-451609')  # デフォルト値を本番環境のIDに変更
         self.publisher = pubsub_v1.PublisherClient()
         self.subscriber = pubsub_v1.SubscriberClient()
         
         # トピックとサブスクリプションのパス
-        self.video_processing_sub = self.subscriber.subscription_path(
-            self.project_id, 'video-processing-sub'
+        self.video_processing_sub = os.environ.get('PUBSUB_SUBSCRIPTION', 'video-processing-sub')
+        self.video_processing_sub_path = self.subscriber.subscription_path(
+            self.project_id, self.video_processing_sub
         )
         self.video_data_topic = self.publisher.topic_path(
             self.project_id, 'video-data'
         )
 
         # Cloud Storage設定
-        if os.getenv('STORAGE_EMULATOR_HOST'):
-            # エミュレータ用の設定
-            storage_client_options = {
-                'api_endpoint': os.getenv('STORAGE_EMULATOR_HOST')
-            }
-            self.storage_client = storage.Client(
-                project=self.project_id,
-                client_options=storage_client_options
-            )
-        else:
-            self.storage_client = storage.Client()
+        # if os.getenv('STORAGE_EMULATOR_HOST'):  # コメントアウト: ローカル環境のStorage Emulator設定
+        #     # エミュレータ用の設定
+        #     storage_client_options = {
+        #         'api_endpoint': os.getenv('STORAGE_EMULATOR_HOST')
+        #     }
+        #     self.storage_client = storage.Client(
+        #         project=self.project_id,
+        #         client_options=storage_client_options
+        #     )
+        # else:
+        self.storage_client = storage.Client()
 
         self.bucket_name = os.getenv('BUCKET_NAME', 'tiktok-data-bucket')
         
@@ -74,14 +86,14 @@ class VideoProcessor:
         try:
             self.bucket = self.storage_client.bucket(self.bucket_name)
             if not self.bucket.exists():
-                if os.getenv('ENVIRONMENT') == 'development':
-                    # 開発環境のみバケット自動作成
-                    self.bucket = self.storage_client.create_bucket(self.bucket_name)
-                    self.logger.info(f"開発環境用バケットを作成しました: {self.bucket_name}")
-                else:
-                    # 本番環境では事前作成されているはず
-                    self.logger.error(f"バケット {self.bucket_name} が存在しません")
-                    raise ValueError(f"バケット {self.bucket_name} が事前に作成されていません")
+                # if os.getenv('ENVIRONMENT') == 'development':  # コメントアウト: 開発環境のみのコード
+                #     # 開発環境のみバケット自動作成
+                #     self.bucket = self.storage_client.create_bucket(self.bucket_name)
+                #     self.logger.info(f"開発環境用バケットを作成しました: {self.bucket_name}")
+                # else:
+                # 本番環境では事前作成されているはず
+                self.logger.error(f"バケット {self.bucket_name} が存在しません")
+                raise ValueError(f"バケット {self.bucket_name} が事前に作成されていません")
         except Exception as e:
             self.logger.error(f"バケット接続エラー: {str(e)}")
             raise
@@ -98,6 +110,108 @@ class VideoProcessor:
         for directory in [self.temp_dir, self.storage_dir]:
             if not os.path.exists(directory):
                 os.makedirs(directory)
+
+        # Flask アプリケーションを初期化
+        self.app = Flask(__name__)
+        self.setup_routes()
+
+    def setup_routes(self):
+        """Flaskルートの設定"""
+        self.app.route('/pubsub', methods=['POST'])(self.handle_pubsub_message)
+        
+    def verify_pubsub_token(self, request):
+        """Pub/Subメッセージの認証を検証"""
+        try:
+            # リクエストヘッダーからBearerトークンを取得
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer '):
+                self.logger.error("Authorization Bearer トークンがありません")
+                return False
+                
+            token = auth_header.split('Bearer ')[1]
+            
+            # JWTトークンを検証
+            # 注意: この実装は簡略化されています。本番環境では適切な検証が必要です
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            
+            # トークンの有効期限と発行元を確認
+            now = time.time()
+            if decoded_token.get('exp', 0) < now:
+                self.logger.error("トークンの有効期限切れ")
+                return False
+                
+            # 発行元が期待するサービスアカウントか確認
+            expected_email = "pubsub-to-cloudrun-invoker@tiktok-analytics-prod-451609.iam.gserviceaccount.com"
+            if decoded_token.get('email') != expected_email:
+                self.logger.error(f"不正なサービスアカウント: {decoded_token.get('email')}")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"トークン検証エラー: {str(e)}")
+            return False
+    
+    def handle_pubsub_message(self):
+        """Pub/Subプッシュメッセージを処理"""
+        try:
+            # 認証チェック
+            if not self.verify_pubsub_token(request):
+                return Response('認証失敗', status=401)
+                
+            # リクエストボディを解析
+            envelope = request.get_json()
+            if not envelope:
+                self.logger.error("リクエストボディがありません")
+                return Response('無効なリクエスト', status=400)
+                
+            if not isinstance(envelope, dict) or 'message' not in envelope:
+                self.logger.error("無効なPub/Subメッセージ形式")
+                return Response('無効なPub/Subメッセージ', status=400)
+                
+            pubsub_message = envelope['message']
+            
+            # メッセージデータが存在するか確認
+            if 'data' not in pubsub_message:
+                self.logger.error("Pub/Subメッセージにデータがありません")
+                return Response('データなし', status=400)
+                
+            # Base64エンコードされたデータをデコード
+            data_str = base64.b64decode(pubsub_message['data']).decode('utf-8')
+            data = json.loads(data_str)
+            
+            self.logger.info(f"Pub/Subから受信したメッセージ: {json.dumps(data)}")
+            
+            # 非同期処理を開始（別スレッドで実行）
+            asyncio.run_coroutine_threadsafe(
+                self.process_data(data), 
+                asyncio.get_event_loop()
+            )
+            
+            # Pub/Subに成功を返す
+            return Response('', status=204)
+            
+        except Exception as e:
+            self.logger.error(f"Pub/Subメッセージ処理エラー: {str(e)}")
+            return Response(f'エラー: {str(e)}', status=500)
+    
+    async def process_data(self, data):
+        """受信したデータを非同期で処理"""
+        try:
+            # video_dataと同じ形式に変換
+            video_data = {
+                'video_id': data.get('video_id'),
+                'video_url': data.get('video_url'),
+                'username': data.get('username'),
+                'is_new_video': data.get('is_new_video', True)
+            }
+            
+            # 既存の処理関数を呼び出す
+            message = type('PubSubMessage', (), {'data': json.dumps(video_data).encode('utf-8'), 'ack': lambda: None, 'nack': lambda: None})
+            await self.process_message(message)
+            
+        except Exception as e:
+            self.logger.error(f"データ処理エラー: {str(e)}")
 
     def get_random_user_agent(self) -> str:
         return random.choice(self.user_agents)
@@ -187,6 +301,8 @@ class VideoProcessor:
             return {
                 "video_url": video_url,
                 "video_id": video_id,
+                "username": username,
+                "status": "error"
             }
 
     async def save_to_storage(self, url: str, storage_path: str) -> None:
@@ -310,10 +426,14 @@ class VideoProcessor:
 
     async def process_message(self, message) -> None:
         """PubSubメッセージを処理"""
+        # セマフォアは維持するが、メッセージID追跡を追加
+        message_id = message.message_id
+        self.logger.info(f"処理開始 [Pod: {self.pod_name}]: message_id={message_id}")
+        
         async with self.semaphore:
             try:
                 data = json.loads(message.data.decode('utf-8'))
-                self.logger.debug(f"処理開始: video_id={data['video_id']}")
+                self.logger.debug(f"処理開始: video_id={data['video_id']} [Pod: {self.pod_name}]")
 
                 # TikTokApiのセッション作成
                 api = TikTokApi()
@@ -489,18 +609,49 @@ class VideoProcessor:
 
                 # メッセージを確認
                 message.ack()
-                self.logger.debug(f"処理完了: video_id={data['video_id']}")
+                self.logger.debug(f"処理完了: video_id={data['video_id']} [Pod: {self.pod_name}]")
 
             except Exception as e:
-                self.logger.error(f"メッセージ処理中にエラー: {str(e)}", exc_info=True)
+                self.logger.error(f"メッセージ処理中にエラー [Pod: {self.pod_name}]: {str(e)}", exc_info=True)
                 message.nack()
 
-    def callback(self, message):
-        """同期的なコールバック処理"""
-        asyncio.run_coroutine_threadsafe(
-            self.process_message(message),
-            self.loop
-        )
+    def setup_subscription(self):
+        """サブスクリプションをセットアップする（プル型）"""
+        try:
+            self.logger.info(f"プル型サブスクリプションを設定します (Project ID: {self.project_id})")
+            
+            # Flow control設定を追加して処理速度を制御
+            flow_control_settings = pubsub_v1.types.FlowControl(
+                max_messages=5,  # 一度に処理する最大メッセージ数
+                max_bytes=10 * 1024 * 1024,  # 10MB
+                max_lease_duration=300  # 5分
+            )
+            
+            def callback(message):
+                try:
+                    self.logger.info(f"メッセージを受信しました: {message.message_id} [Pod: {self.pod_name}]")
+                    asyncio.run_coroutine_threadsafe(
+                        self.process_message(message), 
+                        self.loop
+                    )
+                except Exception as e:
+                    self.logger.error(f"メッセージ処理エラー: {e}")
+                    message.nack()
+            
+            streaming_pull_future = self.subscriber.subscribe(
+                self.video_processing_sub_path,
+                callback=callback,
+                flow_control=flow_control_settings
+            )
+            
+            self.logger.info(f"プル型サブスクリプション '{self.video_processing_sub}' の設定完了 [Pod: {self.pod_name}] - メッセージ待機中...")
+            return streaming_pull_future
+                
+        except Exception as e:
+            self.logger.error(f"サブスクリプション設定エラー: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            raise
 
     async def run(self):
         """メッセージの受信と処理を開始"""
@@ -508,11 +659,30 @@ class VideoProcessor:
             # イベントループを保存
             self.loop = asyncio.get_running_loop()
             
-            # コールバックを設定してサブスクライブ
-            streaming_pull_future = self.subscriber.subscribe(
-                self.video_processing_sub,
-                callback=self.callback
-            )
+            # Pod情報を取得
+            try:
+                import socket
+                hostname = socket.gethostname()
+                self.pod_name = hostname
+                self.logger.info(f"Pod名を検出しました: {self.pod_name}")
+            except:
+                self.logger.warning("Pod名の自動検出に失敗しました")
+            
+            # Flaskアプリケーションを実行
+            from waitress import serve
+            self.logger.info(f"HTTP APIを開始: 0.0.0.0:8080 [Pod: {self.pod_name}]")
+            
+            # Flaskアプリを別スレッドで起動
+            import threading
+            threading.Thread(
+                target=serve,
+                args=(self.app,),
+                kwargs={'host': '0.0.0.0', 'port': 8080},
+                daemon=True
+            ).start()
+            
+            # プル型サブスクリプションを設定
+            streaming_pull_future = self.setup_subscription()
             self.logger.info(f"メッセージの受信を開始: {self.video_processing_sub}")
             
             # 無限ループで実行し続ける

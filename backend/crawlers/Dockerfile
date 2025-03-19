@@ -51,7 +51,8 @@ RUN pip install pymysql google-cloud-pubsub google-cloud-storage aiohttp TikTokA
 COPY . .
 
 # 環境変数でクローラーの種類を指定
-ENV CRAWLER_TYPE=${CRAWLER_TYPE:-account_crawler}
+ARG CRAWLER_TYPE
+ENV CRAWLER_TYPE=$CRAWLER_TYPE
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 

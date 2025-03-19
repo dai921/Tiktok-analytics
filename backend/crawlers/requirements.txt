@@ -4,3 +4,7 @@ mysql-connector-python==8.2.0
 google-cloud-pubsub==2.18.4
 grpcio==1.59.3 
 pymysql>=1.0.2
+flask==2.0.1
+waitress==2.0.0
+PyJWT==2.3.0
+werkzeug==2.0.3

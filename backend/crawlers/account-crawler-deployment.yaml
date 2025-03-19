@@ -2,27 +2,52 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: account-crawler
-  namespace: crawlers  # 名前空間を追加
+  namespace: crawlers
 spec:
-  replicas: 2  # 必要に応じて調整
-  selector:
+  replicas: 1    # Podの数（Deployment用）
+  selector:      # Deployment用の必須フィールド
     matchLabels:
       app: account-crawler
   template:
     metadata:
       labels:
         app: account-crawler
+      annotations:
+        # pubsub-to-cloudrun-invokerからtiktok-crawler-saに変更
+        iam.gke.io/gcp-service-account: tiktok-crawler-sa@tiktok-analytics-prod-451609.iam.gserviceaccount.com
     spec:
-      serviceAccountName: crawler-ksa  # Kubernetes ServiceAccountを指定
+      # restartPolicy: OnFailure  # Deploymentでは不要（Always固定）
+      serviceAccountName: crawler-ksa
+      # 終了猶予時間を長めに設定
+      terminationGracePeriodSeconds: 300
       containers:
       - name: account-crawler
         image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/account-crawler:v1
+        imagePullPolicy: Always
+        
+        # Pub/Subからのリクエストを受け付けるポートを公開
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+
+        # データ永続化のためのボリュームマウント
+        volumeMounts:
+        - name: crawler-data
+          mountPath: /app/data
         env:
         - name: CRAWLER_TYPE
           value: "account_crawler"
         - name: PROJECT_ID
-          value: "tiktok-analytics-prod-451609"  # 実際のプロジェクトID
-        # MySQLの接続情報（Secret経由で設定することを推奨）
+          value: "tiktok-analytics-prod-451609"
+        # Pub/Sub関連の環境変数
+        - name: PUBSUB_VERIFICATION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: pubsub-secrets
+              key: verification-token
+              optional: true
+        # MySQLの接続情報（Secret経由）
         - name: MYSQL_HOST
           valueFrom:
             secretKeyRef:
@@ -50,12 +75,20 @@ spec:
               key: database
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "100m"
+            memory: "3Gi"
+            cpu: "2000m"
           limits:
-            memory: "512Mi"
-            cpu: "300m"
+            memory: "6Gi"
+            cpu: "4000m"
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.28.0
+        command:
+          - "/cloud_sql_proxy"
+          - "-instances=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db=tcp:3306"
+        securityContext:
+          runAsNonRoot: true
+      # 永続ボリューム定義
       volumes:
-      - name: google-cloud-key
-        secret:
-          secretName: pubsub-key 
+      - name: crawler-data
+        persistentVolumeClaim:
+          claimName: account-crawler-data-pvc
