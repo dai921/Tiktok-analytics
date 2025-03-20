@@ -35,6 +35,23 @@ def update_frontend_from_master() -> Dict[str, Any]:
         logger.info(f"バッチ処理情報: processor={processor_name}, target={target_table}, " 
                    f"last_id={last_cursor_id}, batch_size={batch_size}, batch_number={batch_number}")
         
+        # バッチ番号が1（最初のバッチ）の場合、2週間以前のplayCountIncreaseを0にリセット
+        if batch_number == 1:
+            logger.info("バッチ1: 2週間以前のplayCountIncreaseのリセット処理を開始")
+            reset_start_time = datetime.now()
+            
+            reset_query = """
+            UPDATE video_master
+            SET playCountIncrease = 0
+            WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
+            AND playCountIncrease != 0
+            """
+            
+            affected_rows = execute_write_query(reset_query)
+            
+            reset_execution_time = (datetime.now() - reset_start_time).total_seconds()
+            logger.info(f"playCountIncreaseリセット完了: {affected_rows}件更新、実行時間: {reset_execution_time}秒")
+        
         # 基本クエリでデータ確認
         debug_query = """
         SELECT id, created_at, status

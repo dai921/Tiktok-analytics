@@ -3,7 +3,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: account-crawler-data-pvc
-  namespace: crawlers
+  namespace: account-crawler
 spec:
   accessModes:
     - ReadWriteOnce

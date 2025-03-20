@@ -1,0 +1,6 @@
+google-cloud-pubsub==2.13.6
+kubernetes==24.2.0
+flask==2.0.1
+waitress==2.0.0
+PyJWT==2.3.0
+werkzeug==2.0.3

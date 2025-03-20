@@ -198,9 +198,13 @@ def process_video_data(cloud_event):
             for key, value in message_data.items():
                 logger.info(f"{key}: {value}")
 
-            # play_countとlikes_countの増加量を計算
-            play_count_increase = message_data['play_count'] - message_data.get('prevPlayCount', 0)
-            likes_count_increase = message_data['likes_count'] - message_data.get('prevLikesCount', 0)
+            # 既存動画も新規動画も、増加量の値を設定
+            play_count_increase = message_data['play_count']
+            
+            # 既存動画の場合は差分を計算
+            if not is_new_video and 'prevPlayCount' in message_data:
+                play_count_increase = message_data['play_count'] - message_data.get('prevPlayCount', 0)
+                likes_count_increase = message_data['likes_count'] - message_data.get('prevLikesCount', 0)
 
             # 正常な場合は既存の処理を続行
             if is_new_video:
@@ -211,14 +215,16 @@ def process_video_data(cloud_event):
                         comment_count, share_count, save_count, created_at,
                         hashtags, duration, isViral, currentFetchDate,
                         music_id, music_title, music_artist, category, product,
-                        status, content_type, file_path, folder_path, image_count
+                        status, content_type, file_path, folder_path, image_count,
+                        playCountIncrease
                     ) VALUES (
                         %(url)s, %(video_id)s, %(username)s, %(display_name)s, 
                         %(cover_image_url)s, %(description)s, %(likes_count)s, %(play_count)s,
                         %(comment_count)s, %(share_count)s, %(save_count)s, %(created_at)s,
                         %(hashtags)s, %(duration)s, %(isViral)s, %(currentFetchDate)s,
                         %(music_id)s, %(music_title)s, %(music_artist)s, %(category)s, %(product)s,
-                        %(status)s, %(content_type)s, %(file_path)s, %(folder_path)s, %(image_count)s
+                        %(status)s, %(content_type)s, %(file_path)s, %(folder_path)s, %(image_count)s,
+                        %(playCountIncrease)s
                     )
                 """
                 
@@ -253,7 +259,8 @@ def process_video_data(cloud_event):
                     'content_type': content_type,
                     'file_path': file_path,
                     'folder_path': folder_path,
-                    'image_count': image_count
+                    'image_count': image_count,
+                    'playCountIncrease': play_count_increase
                 }
                 
                 execute_write_query(insert_query, insert_params)
