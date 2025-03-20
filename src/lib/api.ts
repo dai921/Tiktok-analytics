@@ -287,13 +287,13 @@ const convertFilterType = (type: FilterType, field: string): string => {
 const mapFieldToApiField = (field: string): string => {
   console.log('mapFieldToApiField - 入力フィールド:', field);
   
-  // 「ジャンル」を「category」に直接マッピング
+  // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
   if (field === 'ジャンル') {
-    console.log('mapFieldToApiField - ジャンルを特別処理:', {
-      input: field,
-      internalField: 'category'
-    });
     return 'category';
+  } else if (field === '再生増加数') {
+    return 'play_count_increase';
+  } else if (field === 'viewsIncrease') {
+    return 'play_count_increase';
   }
   
   // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
@@ -315,6 +315,7 @@ const mapFieldToApiField = (field: string): string => {
     'hashtags': 'hashtag', // hashtag（単数形）に変換
     'audioTitle': 'music_info', // audioTitleをmusic_infoに変換
     'category': 'category',    // categoryをそのまま保持
+    'viewsIncrease': 'play_count_increase', // 再生増加数の対応を追加
     // 他のフィールドも必要に応じて追加
   };
   
@@ -512,6 +513,8 @@ export async function getSheetData(page: number = 1, filters?: Record<string, Fi
         mainSortField = 'likes_count';
       } else if (primarySort.field === 'comments') {
         mainSortField = 'comment_count';
+      } else if (primarySort.field === 'viewsIncrease' || primarySort.field === '再生増加数') {
+        mainSortField = 'play_count_increase';  // 再生増加数の対応を追加
       } else {
         mainSortField = primarySort.apiField;
       }
@@ -840,6 +843,8 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           sortField = 'likes_count';
         } else if (primarySort.field === 'comments') {
           sortField = 'comment_count';
+        } else if (primarySort.field === 'viewsIncrease' || primarySort.field === '再生増加数') {
+          sortField = 'play_count_increase';  // 再生増加数の対応を追加
         } else {
           sortField = primarySort.apiField;
         }

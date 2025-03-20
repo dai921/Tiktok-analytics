@@ -51,6 +51,22 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             reset_execution_time = (datetime.now() - reset_start_time).total_seconds()
             logger.info(f"playCountIncreaseリセット完了: {affected_rows}件更新、実行時間: {reset_execution_time}秒")
+            
+            # 14日前～2日前でplayCountIncreaseとplay_countが一致している動画のplayCountIncreaseをnullに設定
+            logger.info("バッチ1: 14日前～2日前で再生数と増加数が一致する動画の処理を開始")
+            null_reset_start_time = datetime.now()
+            
+            null_reset_query = """
+            UPDATE video_master
+            SET playCountIncrease = NULL
+            WHERE created_at BETWEEN DATE_SUB(CURDATE(), INTERVAL 16 DAY) AND DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+            AND playCountIncrease = play_count
+            """
+            
+            null_affected_rows = execute_write_query(null_reset_query)
+            
+            null_reset_execution_time = (datetime.now() - null_reset_start_time).total_seconds()
+            logger.info(f"playCountIncrease NULL設定完了: {null_affected_rows}件更新、実行時間: {null_reset_execution_time}秒")
         
         # 基本クエリでデータ確認
         debug_query = """
@@ -66,6 +82,9 @@ def update_frontend_from_master() -> Dict[str, Any]:
         
         # パラメータ化されたクエリに変更
         min_date = '2023-12-01'
+        # 処理日の2日前までのデータのみを対象とする（例：3/21実行なら3/19 23:59まで）
+        max_date = "DATE_SUB(CURDATE(), INTERVAL 2 DAY)"
+        
         select_query = """
         SELECT 
             vm.id,
@@ -91,6 +110,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             vm.status != 'deleted'
             AND vm.created_at IS NOT NULL
             AND vm.created_at >= %(min_date)s
+            AND vm.created_at <= """ + max_date + """
             AND vm.id > %(last_id)s
         ORDER BY 
             vm.id
@@ -112,7 +132,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         max_id = batch_rows[-1]['id'] if batch_rows else last_cursor_id
         
         # 残りのレコード数を確認するクエリを修正
-        count_query = """
+        count_query = f"""
         SELECT 
             COUNT(*) as remaining_count
         FROM 
@@ -122,6 +142,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             vm.status != 'deleted'
             AND vm.created_at IS NOT NULL
             AND vm.created_at >= %(min_date)s
+            AND vm.created_at <= {max_date}
             AND vm.id > %(max_id)s  /* 現在のバッチの最大IDより大きいものをカウント */
         """
         

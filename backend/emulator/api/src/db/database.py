@@ -112,6 +112,7 @@ def format_video(row):
             "comment_count": row[8] or 0,
             "account_name": row[6],
             "likes_count": row[7] or 0,
+            "play_count_increase": row[5] if len(row) > 5 and row[5] is not None else 0, # 再生増加数を追加
             "audioInfo": audio_info,       # 既存のaudioInfoを保持
             "music_info": audio_info,      # 新しくmusic_infoとして同じ内容を追加
             "hashtags": hashtags,

@@ -245,7 +245,7 @@ steps:
         echo "スケジュールジョブ sync-spreadsheet-schedule を新規作成します。"
         gcloud scheduler jobs create http sync-spreadsheet-schedule \
           --location=asia-northeast1 \
-          --schedule="0 1 */30 * *" \
+          --schedule="0 0 2-30/2 * *" \
           --uri="$$FUNCTION_URL" \
           --http-method=POST \
           --time-zone="Asia/Tokyo" \
