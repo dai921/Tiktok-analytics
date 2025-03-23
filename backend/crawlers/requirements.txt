@@ -8,3 +8,9 @@ flask==2.0.1
 waitress==2.0.0
 PyJWT==2.3.0
 werkzeug==2.0.3
+tiktok-captcha-solver
+temu-captcha-solver
+shopee-captcha-solver
+playwright-stealth>=1.0.6
+requests>=2.28.0
+beautifulsoup4>=4.11.1

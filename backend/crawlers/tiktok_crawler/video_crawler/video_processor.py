@@ -255,7 +255,7 @@ class VideoProcessor:
                     await api.create_sessions(
                         num_sessions=num_sessions,
                         headless=True,
-                        sleep_after=3,
+                        sleep_after=1,
                         browser="chromium",
                         context_options={
                             "viewport": {"width": 1920, "height": 1080},

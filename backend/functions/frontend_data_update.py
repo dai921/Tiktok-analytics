@@ -44,7 +44,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             UPDATE video_master
             SET playCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-            AND playCountIncrease != 0
+            AND playCountIncrease < 1000
             """
             
             affected_rows = execute_write_query(reset_query)
@@ -52,14 +52,14 @@ def update_frontend_from_master() -> Dict[str, Any]:
             reset_execution_time = (datetime.now() - reset_start_time).total_seconds()
             logger.info(f"playCountIncreaseリセット完了: {affected_rows}件更新、実行時間: {reset_execution_time}秒")
             
-            # 14日前～2日前でplayCountIncreaseとplay_countが一致している動画のplayCountIncreaseをnullに設定
-            logger.info("バッチ1: 14日前～2日前で再生数と増加数が一致する動画の処理を開始")
+            # 2日前以前でplayCountIncreaseとplay_countが一致している動画のplayCountIncreaseをnullに設定
+            logger.info("バッチ1: 2日前以前で再生数と増加数が一致する動画の処理を開始")
             null_reset_start_time = datetime.now()
             
             null_reset_query = """
             UPDATE video_master
             SET playCountIncrease = NULL
-            WHERE created_at BETWEEN DATE_SUB(CURDATE(), INTERVAL 16 DAY) AND DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+            WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 4 DAY)
             AND playCountIncrease = play_count
             """
             

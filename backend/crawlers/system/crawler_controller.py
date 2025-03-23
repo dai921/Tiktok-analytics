@@ -30,12 +30,16 @@ def process_video_message(message):
         create_video_crawler_job(data, attributes)
         
         # メッセージを確認（処理完了をPub/Subに通知）
-        message.ack()
+        subscriber.acknowledge(
+            request={
+                "subscription": video_subscription_path,
+                "ack_ids": [message.ack_id]
+            }
+        )
         print(f"Video message processed: {data}")
     except Exception as e:
         # エラー時にはメッセージを確認せず、再処理されるようにする
         print(f"Error processing video message: {e}")
-        message.nack()
 
 def process_account_message(message):
     """アカウントクローラー用のメッセージ処理"""
