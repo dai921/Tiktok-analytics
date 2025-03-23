@@ -95,13 +95,23 @@ def process_video_data(cloud_event):
                     'current_date': datetime.now().isoformat()
                 }
                 
-                # video_url_dataのフラグを更新
-                update_flag_query = """
-                    UPDATE video_url_data 
-                    SET is_new_video = FALSE,
-                        needs_update = FALSE
-                    WHERE video_id = %(video_id)s
-                """
+                # status によって更新内容を変更
+                if status == 'deleted':
+                    # 削除された動画はフラグを両方とも FALSE に設定
+                    update_flag_query = """
+                        UPDATE video_url_data 
+                        SET is_new_video = FALSE,
+                            needs_update = FALSE
+                        WHERE video_id = %(video_id)s
+                    """
+                else:  # status == 'error'
+                    # エラー動画は is_new_video のみ FALSE に設定し、needs_update は TRUE のままにする
+                    update_flag_query = """
+                        UPDATE video_url_data 
+                        SET is_new_video = FALSE
+                        WHERE video_id = %(video_id)s
+                    """
+                
                 update_params = {
                     'video_id': message_data['video_id']
                 }
@@ -203,8 +213,20 @@ def process_video_data(cloud_event):
             
             # 既存動画の場合は差分を計算
             if not is_new_video and 'prevPlayCount' in message_data:
-                play_count_increase = message_data['play_count'] - message_data.get('prevPlayCount', 0)
-                likes_count_increase = message_data['likes_count'] - message_data.get('prevLikesCount', 0)
+                current_play_count = message_data['play_count'] if message_data['play_count'] is not None else 0
+                current_likes_count = message_data['likes_count'] if message_data['likes_count'] is not None else 0
+                
+                prev_play_count = message_data.get('prevPlayCount', 0)
+                prev_likes_count = message_data.get('prevLikesCount', 0)
+                
+                # None値の明示的なチェック
+                if prev_play_count is None:
+                    prev_play_count = current_play_count
+                if prev_likes_count is None:
+                    prev_likes_count = current_likes_count
+                    
+                play_count_increase = current_play_count - prev_play_count
+                likes_count_increase = current_likes_count - prev_likes_count
 
             # 正常な場合は既存の処理を続行
             if is_new_video:

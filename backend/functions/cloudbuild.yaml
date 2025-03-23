@@ -71,7 +71,7 @@ steps:
           echo "スケジュールジョブ frontend-update-schedule は既に存在します。更新します。"
           gcloud scheduler jobs update http frontend-update-schedule \
             --location=asia-northeast1 \
-            --schedule="0 3 */2 * *" \
+            --schedule="0 3 30/2 * *" \
             --uri="$$FUNCTION_URL" \
             --http-method=POST \
             --time-zone="Asia/Tokyo" \
@@ -245,7 +245,7 @@ steps:
         echo "スケジュールジョブ sync-spreadsheet-schedule を新規作成します。"
         gcloud scheduler jobs create http sync-spreadsheet-schedule \
           --location=asia-northeast1 \
-          --schedule="0 0 2-30/2 * *" \
+          --schedule="0 0 31/2 * *" \
           --uri="$$FUNCTION_URL" \
           --http-method=POST \
           --time-zone="Asia/Tokyo" \
@@ -286,7 +286,7 @@ steps:
       - '--runtime=python310'
       - '--region=asia-northeast1'
       - '--source=.'
-      - '--entry-point=video_url_data_updater'
+      - '--entry-point=video_url_updater_function'
       - '--trigger-topic=video-url-data-update'
       - '--memory=512MB'
       - '--timeout=540s'
