@@ -148,7 +148,7 @@ def save_statistics_to_db(statistics_records: List[Dict[str, Any]]) -> None:
     try:
         # テーブルが存在しない場合は作成
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS category_statistics (
+        CREATE TABLE IF NOT EXISTS trend_analytics (
             id INT AUTO_INCREMENT PRIMARY KEY,
             aggregation_date DATE NOT NULL,
             category VARCHAR(100) NOT NULL,
@@ -163,24 +163,24 @@ def save_statistics_to_db(statistics_records: List[Dict[str, Any]]) -> None:
         """
         execute_write_query(create_table_query)
         
-        # 既存の同じ日付のデータを削除（重複を避けるため）
-        if statistics_records:
-            delete_query = """
-            DELETE FROM category_statistics 
-            WHERE aggregation_date = %s
-            """
-            execute_write_query(delete_query, (statistics_records[0]['aggregation_date'],))
-        
-        # 新しいデータを挿入
+        # 新しいデータを挿入（カテゴリと日付の組み合わせで既存データがあれば更新）
         for record in statistics_records:
-            insert_query = """
-            INSERT INTO category_statistics 
+            upsert_query = """
+            INSERT INTO trend_analytics 
             (aggregation_date, category, total_increase, videos_10k_plus, videos_100k_plus, 
              total_videos, ratio_10k_plus, ratio_100k_plus)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                total_increase = VALUES(total_increase),
+                videos_10k_plus = VALUES(videos_10k_plus),
+                videos_100k_plus = VALUES(videos_100k_plus),
+                total_videos = VALUES(total_videos),
+                ratio_10k_plus = VALUES(ratio_10k_plus),
+                ratio_100k_plus = VALUES(ratio_100k_plus),
+                created_at = CURRENT_TIMESTAMP
             """
             
-            execute_write_query(insert_query, (
+            execute_write_query(upsert_query, (
                 record['aggregation_date'],
                 record['category'],
                 record['total_increase'],

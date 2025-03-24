@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 import pathlib
 import json
 import re
+from datetime import datetime, timedelta
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -1004,6 +1005,237 @@ async def get_filter_options(
             "success": False,
             "error": str(e)
         }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.get("/api/trends/timeline")
+async def get_trends_timeline(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    genres: Optional[str] = None,  # カンマ区切りのジャンル
+    metrics: Optional[str] = "view_increase,total_posts,videos_100k_plus"  # 取得する指標
+):
+    """ジャンル別の時系列データを取得するAPI"""
+    try:
+        # デフォルトは過去30日間
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # パラメータ処理
+        genre_list = genres.split(',') if genres else []
+        metric_list = metrics.split(',') if metrics else ["view_increase", "total_posts", "videos_100k_plus"]
+        
+        # 使用可能な指標リスト（テーブルのカラム名に対応）
+        valid_metrics = [
+            "view_increase", "videos_10k_plus", "videos_100k_plus", 
+            "total_posts", "ratio_10k_plus", "ratio_100k_plus"
+        ]
+        
+        # 無効な指標をフィルタリング
+        metric_list = [m for m in metric_list if m in valid_metrics]
+        
+        # クエリ構築
+        query = f"SELECT collection_date, genre, {', '.join(metric_list)} FROM trend_analysis WHERE collection_date BETWEEN %s AND %s"
+        params = [start_date, end_date]
+        
+        if genre_list:
+            query += " AND genre IN (" + ", ".join(["%s"] * len(genre_list)) + ")"
+            params.extend(genre_list)
+            
+        query += " ORDER BY collection_date ASC"
+        
+        # デバッグ出力
+        print(f"実行するクエリ: {query}")
+        print(f"パラメータ: {params}")
+        
+        # クエリ実行
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        # 結果整形 - 日付ごとにジャンル別データを整理
+        timeline_data = {}
+        
+        for row in rows:
+            date_str = row[0].isoformat()
+            genre = row[1]
+            
+            if date_str not in timeline_data:
+                timeline_data[date_str] = {}
+                
+            genre_data = {}
+            for i, metric in enumerate(metric_list):
+                genre_data[metric] = row[i+2]
+                
+            timeline_data[date_str][genre] = genre_data
+            
+        return {
+            "success": True,
+            "data": timeline_data,
+            "metrics": metric_list,
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"ジャンル別時系列データ取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.get("/api/trends/summary")
+async def get_trends_summary(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    genres: Optional[str] = None  # カンマ区切りのジャンル、省略時は全ジャンル
+):
+    """期間内のジャンル別集計データを取得するAPI"""
+    try:
+        # デフォルトは過去30日間
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+            
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # パラメータ処理
+        genre_list = genres.split(',') if genres else []
+        
+        # クエリ構築 - 期間内の各ジャンルの集計値を計算
+        query = """
+        SELECT 
+            genre,
+            AVG(view_increase) as avg_view_increase,
+            SUM(view_increase) as total_view_increase,
+            AVG(total_posts) as avg_total_posts,
+            SUM(total_posts) as total_posts,
+            AVG(videos_100k_plus) as avg_videos_100k_plus,
+            SUM(videos_100k_plus) as total_videos_100k_plus,
+            AVG(ratio_100k_plus) as avg_ratio_100k_plus,
+            COUNT(collection_date) as data_points
+        FROM 
+            trend_analysis 
+        WHERE 
+            collection_date BETWEEN %s AND %s
+        """
+        params = [start_date, end_date]
+        
+        if genre_list:
+            query += " AND genre IN (" + ", ".join(["%s"] * len(genre_list)) + ")"
+            params.extend(genre_list)
+            
+        query += " GROUP BY genre ORDER BY total_view_increase DESC"
+        
+        # デバッグ情報
+        print(f"実行するクエリ: {query}")
+        print(f"パラメータ: {params}")
+        
+        # クエリ実行
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        # 結果整形
+        summary_data = []
+        for row in rows:
+            summary_data.append({
+                "genre": row[0],
+                "avg_view_increase": int(row[1]) if row[1] else 0,
+                "total_view_increase": int(row[2]) if row[2] else 0,
+                "avg_total_posts": int(row[3]) if row[3] else 0,
+                "total_posts": int(row[4]) if row[4] else 0,
+                "avg_videos_100k_plus": int(row[5]) if row[5] else 0,
+                "total_videos_100k_plus": int(row[6]) if row[6] else 0,
+                "avg_ratio_100k_plus": float(row[7]) if row[7] else 0,
+                "data_points": int(row[8]) if row[8] else 0
+            })
+            
+        return {
+            "success": True,
+            "data": summary_data,
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"ジャンル別集計データ取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.get("/api/trends/genres")
+async def get_trend_genres():
+    """トレンド分析で利用可能なジャンル一覧を取得するAPI"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # ユニークなジャンル一覧を取得
+        query = "SELECT DISTINCT genre FROM trend_analysis ORDER BY genre"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        genres = [row[0] for row in rows]
+        
+        return {
+            "success": True,
+            "data": genres
+        }
+        
+    except Exception as e:
+        logger.error(f"トレンドジャンル一覧取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.get("/api/trends/dates")
+async def get_trend_dates():
+    """トレンド分析の利用可能な集計日一覧を取得するAPI"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 集計日の一覧を取得（最新順）
+        query = "SELECT DISTINCT collection_date FROM trend_analysis ORDER BY collection_date DESC"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        # ISO形式の日付文字列に変換
+        dates = [row[0].isoformat() for row in rows]
+        
+        return {
+            "success": True,
+            "data": dates
+        }
+        
+    except Exception as e:
+        logger.error(f"トレンド集計日一覧取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
     finally:
         if cursor:
             cursor.close()

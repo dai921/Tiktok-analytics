@@ -236,3 +236,22 @@ CREATE TABLE verification_tokens (
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE trend_analysis (
+  id SERIAL PRIMARY KEY,
+  collection_date DATE NOT NULL,  -- 集計日
+  genre VARCHAR(100) NOT NULL,    -- ジャンル
+  total_views BIGINT NOT NULL,    -- 再生数
+  view_increase BIGINT NOT NULL,  -- 再生増加数
+  videos_10k_plus INT NOT NULL,   -- 再生増加数1万以上動画数
+  videos_100k_plus INT NOT NULL,  -- 再生増加数10万以上動画数
+  total_posts INT NOT NULL,       -- 投稿数
+  ratio_10k_plus FLOAT NOT NULL,  -- 再生増加数1万以上割合
+  ratio_100k_plus FLOAT NOT NULL, -- 再生増加数10万以上割合
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  -- インデックス
+  INDEX idx_collection_date (collection_date),
+  INDEX idx_genre (genre),
+  UNIQUE INDEX unique_date_genre (collection_date, genre)
+);
