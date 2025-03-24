@@ -436,8 +436,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         ),
         cell: ({ row }) => formatNumber(row.views)
       },
-      // 再生増加数のカラムをコメントアウト
-      /*
       {
         accessorKey: 'viewsIncrease',
         header: ({ column }) => (
@@ -446,11 +444,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             type="number"
             align="center"
             onFilter={(value) => handleFilter('viewsIncrease')(value)}
+            isActive={Boolean(columnFilters['viewsIncrease'])}
+            sortDirection={sortField === 'viewsIncrease' ? sortDirection : null}
           />
         ),
         cell: ({ row }) => formatNumber(row.viewsIncrease)
       },
-      */
       {
         accessorKey: 'category',
         header: ({ column }) => (

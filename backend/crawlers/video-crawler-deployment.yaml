@@ -2,10 +2,10 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: video-crawler
-  namespace: crawlers
+  namespace: video-crawler
 spec:
   serviceName: "video-crawler"  # StatefulSetには必須
-  replicas: 2
+  replicas: 0 # 0に変更（オートスケーリング用）
   selector:
     matchLabels:
       app: video-crawler
@@ -17,9 +17,11 @@ spec:
         # GCPサービスアカウントとKubernetesサービスアカウントの連携
         iam.gke.io/gcp-service-account: tiktok-crawler-sa@tiktok-analytics-prod-451609.iam.gserviceaccount.com
     spec:
+      nodeSelector:  # ノードプールの指定
+        cloud.google.com/gke-nodepool: video-pool
       # restartPolicy: OnFailure  # Deploymentでは不要（Always固定）
       serviceAccountName: crawler-ksa
-      terminationGracePeriodSeconds: 300
+      terminationGracePeriodSeconds: 60
       containers:
       - name: video-crawler
         image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/video-crawler:v1
@@ -38,45 +40,15 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        # MySQLの接続情報
-        - name: MYSQL_HOST
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secrets
-              key: host
-        - name: MYSQL_PORT
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secrets
-              key: port
-        - name: MYSQL_USER
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secrets
-              key: user
-        - name: MYSQL_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secrets
-              key: password
-        - name: MYSQL_DATABASE
-          valueFrom:
-            secretKeyRef:
-              name: mysql-secrets
-              key: database
-        - name: PUBSUB_VERIFICATION_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: pubsub-secrets
-              key: verification-token
-              optional: true
+        # MySQLの接続情報セクションを削除
+        # Pub/Subの検証トークンセクションも削除
         resources:
           requests:
-            memory: "3Gi"  # 1Giから3Giに増加
-            cpu: "1000m"   # 500mから1000mに増加
+            memory: "3Gi"
+            cpu: "1000m"
           limits:
-            memory: "6Gi"  # 4Giから6Giに増加
-            cpu: "4000m"   # 2は2000mと同等なので変更なし
+            memory: "6Gi"
+            cpu: "4000m"
         volumeMounts:
         - name: crawler-data
           mountPath: /app/data

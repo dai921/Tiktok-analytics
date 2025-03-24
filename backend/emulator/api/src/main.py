@@ -101,7 +101,9 @@ async def get_videos(
     likes_count: Optional[int] = None,
     likes_count_type: Optional[str] = None,
     comment_count: Optional[int] = None,
-    comment_count_type: Optional[str] = None
+    comment_count_type: Optional[str] = None,
+    play_count_increase: Optional[int] = None, # 再生増加数
+    play_count_increase_type: Optional[str] = None, # 再生増加数のフィルタータイプ
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
@@ -189,6 +191,14 @@ async def get_videos(
             else:
                 where_clauses.append("comment_count = %s")
                 params.append(comment_count)
+
+        if play_count_increase is not None and play_count_increase_type:
+            if play_count_increase_type == "greater":
+                where_clauses.append(f"play_count_increase > {play_count_increase}")
+            elif play_count_increase_type == "less":
+                where_clauses.append(f"play_count_increase < {play_count_increase}")
+            else:  # equal
+                where_clauses.append(f"play_count_increase = {play_count_increase}")
 
         # フィルター条件のデバッグログ
         if play_count is not None:
@@ -296,6 +306,8 @@ async def get_videos_alt(
     comment_count_type: Optional[str] = None,
     created_at: Optional[str] = None,
     created_at_type: Optional[str] = None,
+    play_count_increase: Optional[int] = None, # 再生増加数
+    play_count_increase_type: Optional[str] = None, # 再生増加数のフィルタータイプ
 ):
     print(f"Received request with params: {request.query_params}")
     conn = None
@@ -394,6 +406,17 @@ async def get_videos_alt(
             else:
                 where_clauses.append("comment_count = %s")
                 params.append(comment_count)
+
+        if play_count_increase is not None:
+            if play_count_increase_type == "greater":
+                where_clauses.append("play_count_increase >= %s")
+                params.append(play_count_increase)
+            elif play_count_increase_type == "less":
+                where_clauses.append("play_count_increase <= %s")
+                params.append(play_count_increase)
+            else:
+                where_clauses.append("play_count_increase = %s")
+                params.append(play_count_increase)
 
         # WHERE句の追加
         if where_clauses:

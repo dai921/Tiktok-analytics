@@ -38,6 +38,11 @@ class VideoProcessor:
         # セマフォアを緩和（同時に処理できるリクエスト数を増やす）
         self.semaphore = asyncio.Semaphore(3)  # 1から3に変更
         
+        # セッション管理用の変数
+        self.session_locks = [asyncio.Lock() for _ in range(3)]  # 各セッション用のロック
+        self.api_lock = asyncio.Lock()  # APIインスタンス全体のロック
+        self.api_instance = None  # 共有APIインスタンス
+        
         # Pod名を環境変数から取得（Kubernetesで自動設定される）
         self.pod_name = os.getenv('POD_NAME', 'unknown-pod')
         self.logger.info(f"Pod名: {self.pod_name}")
@@ -235,225 +240,85 @@ class VideoProcessor:
         })();
         """)
 
-    async def get_video_info(self, api: TikTokApi, video_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """動画の情報を取得"""
-        try:
-            video_id = video_data['video_id']
-            username = video_data['username']
-            video_url = video_data['video_url']
-            is_new_video = video_data['is_new_video']
-
-                        # URLから動画IDとユーザー名を正しく抽出
-            try:
-                parts = video_url.split('/')
-                video_id = parts[-1].split('?')[0]
-                username = parts[3].lstrip('@')
-                normalized_url = f'https://www.tiktok.com/@{username}/video/{video_id}'
-                self.logger.error(f"正規化後の動画URL: {normalized_url}")
-            except Exception as e:
-                self.logger.error(f"動画URLの解析に失敗: {str(e)}")
-                return None# URLから動画IDとユーザー名を正しく抽出
-            # 動画情報を取得
-            video = await api.video(id=video_id, username=username, url=normalized_url).info()
-            if not video:
-                raise Exception("Empty response received")
-
-            # 基本情報を取得（既存のデータを使用）
-            base_info = {
-                'video_id': video_id,
-                'username': username,     # 既存のデータを使用
-                'url': video_url,        # 既存のデータを使用
-                'currentFetchDate': datetime.now().isoformat(),
-                'likes_count': video.get('stats', {}).get('diggCount'),
-                'play_count': video.get('stats', {}).get('playCount'),
-                'comment_count': video.get('stats', {}).get('commentCount'),
-                'share_count': video.get('stats', {}).get('shareCount'),
-                'save_count': video.get('stats', {}).get('collectCount'),
-                'isViral': video.get('stats', {}).get('playCount', 0) >= 100000,
-                'is_new_video': is_new_video  # is_new_videoも含める
-            }
-
-            # 新規動画の場合は追加情報を取得
-            if is_new_video:
-                # サムネイル画像をCloud Storageに保存
-                cover_image_url = video.get('video', {}).get('cover')
-                if cover_image_url:
-                    storage_path = f'thumbnails/{video_id}.jpg'
-                    await self.save_to_storage(cover_image_url, storage_path)
-                    base_info['cover_image_url'] = f'gs://{self.bucket_name}/{storage_path}'
-
-                # 追加情報を設定
-                base_info.update({
-                    'display_name': video.get('author', {}).get('nickname'),
-                    'description': video.get('desc'),
-                    'created_at': datetime.fromtimestamp(int(video.get('createTime', '0'))).isoformat(),
-                    'hashtags': [tag.get('hashtagName') for tag in video.get('textExtra', []) if tag.get('hashtagName')],
-                    'duration': video.get('video', {}).get('duration'),
-                    'music_id': video.get('music', {}).get('id'),
-                    'music_title': video.get('music', {}).get('title'),
-                    'music_artist': video.get('music', {}).get('authorName')
-                })
-
-            return base_info
-
-        except Exception as e:
-            self.logger.error(f"動画情報の取得に失敗 - video_id: {video_id}, error: {str(e)}")
-            return {
-                "video_url": video_url,
-                "video_id": video_id,
-                "username": username,
-                "status": "error"
-            }
-
-    async def save_to_storage(self, url: str, storage_path: str) -> None:
-        """画像をCloud Storageに保存"""
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.read()
-                        blob = self.bucket.blob(storage_path)
-                        blob.upload_from_string(data)
-                        self.logger.info(f"画像を保存しました: {storage_path}")
-        except Exception as e:
-            self.logger.error(f"画像の保存に失敗: {str(e)}")
-            raise
-
-    async def _process_video(self, url: str, video_id: str) -> Dict[str, Any]:
-        """動画のダウンロードと保存"""
-        temp_path = os.path.join(self.temp_dir, f"{video_id}")
-        storage_path = os.path.join(self.storage_dir, f"{video_id}")
-        
-        try:
-            ydl_opts = {
-                'outtmpl': f"{temp_path}.%(ext)s",
-                'format': 'bestvideo+bestaudio/best',
-            }
-            
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                downloaded_file = ydl.prepare_filename(info)
-                
-                # ストレージに移動
-                final_path = f"{storage_path}.{downloaded_file.split('.')[-1]}"
-                shutil.move(downloaded_file, final_path)
-                
-                self.logger.info(f"動画を保存しました: {final_path}")
-                return {
-                    "status": "success",
-                    "video_id": video_id,
-                    "file_path": final_path,
-                    "type": "video"
-                }
-                
-        except Exception as e:
-            self.logger.error(f"動画ダウンロード中にエラー: {str(e)}")
-            return {
-                "status": "error",
-                "video_id": video_id,
-                "message": str(e),
-                "type": "video"
-            }
-
-    async def process_video_data(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
-        """動画データの処理を実行"""
-        try:
-            url = video_data['video_url']
-            video_id = video_data['video_id']           
-
-            result = await self._process_video(url, video_id)
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"処理中にエラーが発生: {str(e)}")
-            return {
-                "status": "error",
-                "video_id": video_data.get('video_id', 'unknown'),
-                "message": str(e)
-            }
-
-    async def _check_deleted_content(self, url: str) -> bool:
-        """コンテンツが削除されているかチェック"""
-        try:
-            async with async_playwright() as p:
-                # 日本語ロケールとタイムゾーンを設定
-                browser = await p.chromium.launch(
-                    headless=True,
-                )
-                context = await browser.new_context(
-                    locale='ja-JP',
-                    timezone_id='Asia/Tokyo',
-                    user_agent=self.get_random_user_agent()
-                )
-                page = await context.new_page()
-                
-                await page.goto(url, wait_until='domcontentloaded')
-                await asyncio.sleep(2)
-                
-                # 削除されているかチェック
-                dead_link_selector = 'p.css-1y4x9xk-PTitle'
-                try:
-                    element = await page.wait_for_selector(dead_link_selector, timeout=2000)
-                    if element:
-                        text = await element.text_content()
-                        self.logger.info(f"削除メッセージを検出: '{text}'")  # 実際のメッセージをログ出力
-                        return any(msg in text for msg in [
-                            "動画は現在ご利用できません",
-                            "Video currently unavailable",
-                            "This video is unavailable",
-                            "このビデオは削除されました",
-                            "このビデオは利用できません"
-                        ])
-                except:
-                    return False
-                finally:
-                    await context.close()
-                    await browser.close()
-                    
-        except Exception as e:
-            self.logger.error(f"削除チェック中にエラー: {str(e)}")
-            return False
-
-    def cleanup(self):
-        """一時ファイルの削除"""
-        try:
-            shutil.rmtree(self.temp_dir)
-            os.makedirs(self.temp_dir)
-            self.logger.info("一時ファイルを削除しました")
-        except Exception as e:
-            self.logger.error(f"一時ファイルの削除中にエラー: {str(e)}")
-
-    async def process_message(self, message) -> None:
-        """PubSubメッセージを処理"""
-        # セマフォアは維持するが、メッセージID追跡を追加
-        message_id = message.message_id
-        self.logger.info(f"処理開始 [Pod: {self.pod_name}]: message_id={message_id}")
-        
-        async with self.semaphore:
-            try:
-                data = json.loads(message.data.decode('utf-8'))
-                self.logger.debug(f"処理開始: video_id={data['video_id']} [Pod: {self.pod_name}]")
-
-                # TikTokApiのセッション作成
+    async def get_api_instance(self):
+        """TikTokApiのインスタンスを取得（並行処理に対応）"""
+        async with self.api_lock:
+            if self.api_instance is None:
+                self.logger.debug("新しいTikTokAPIインスタンスを作成中...")
                 api = TikTokApi()
+                
                 try:
-                    self.logger.debug("TikTokAPIセッション作成中...")
+                    # セマフォアと同じ数のセッションを作成
+                    num_sessions = len(self.session_locks)
+                    self.logger.debug(f"{num_sessions}個のセッションを作成します")
+                    
                     await api.create_sessions(
-                        num_sessions=1,
+                        num_sessions=num_sessions,
                         headless=True,
-                        sleep_after=5,
+                        sleep_after=1,
                         browser="chromium",
                         context_options={
                             "viewport": {"width": 1920, "height": 1080},
                             "user_agent": self.get_random_user_agent()
                         }
                     )
-                    self.logger.debug("TikTokAPIセッション作成完了")
+                    
+                    # セッション作成直後に属性を確認
+                    if not hasattr(api, 'num_sessions') or api.num_sessions != num_sessions:
+                        api.num_sessions = num_sessions
+                        self.logger.debug(f"num_sessions属性を{num_sessions}に設定しました")
+                    
+                    self.api_instance = api
+                    self.logger.debug(f"TikTokAPIインスタンス作成完了: {api.num_sessions}個のセッション")
+                except Exception as e:
+                    self.logger.error(f"TikTokAPIインスタンス作成エラー: {str(e)}")
+                    raise
+                
+            return self.api_instance
 
-                    # 動画情報を取得
-                    self.logger.debug(f"動画情報取得開始: {data['video_id']}")
-                    video_info = await self.get_video_info(api, data)
+    async def acquire_session(self):
+        """使用可能なセッションを取得して予約する"""
+        api = await self.get_api_instance()
+        
+        # 空いているセッションを探す
+        for i, lock in enumerate(self.session_locks):
+            if not lock.locked():
+                await lock.acquire()
+                self.logger.debug(f"セッション {i} を予約しました")
+                return i, api
+        
+        # すべてのセッションが使用中の場合は待機
+        self.logger.warning("すべてのセッションが使用中です。セッション0の解放を待機します")
+        await self.session_locks[0].acquire()
+        self.logger.debug("セッション 0 を予約しました")
+        return 0, api
+
+    def release_session(self, session_index):
+        """セッションを解放する"""
+        if 0 <= session_index < len(self.session_locks) and self.session_locks[session_index].locked():
+            self.session_locks[session_index].release()
+            self.logger.debug(f"セッション {session_index} を解放しました")
+
+    async def process_message(self, message) -> None:
+        """PubSubメッセージを処理"""
+        # セマフォアは維持するが、メッセージID追跡を追加
+        message_id = message.message_id if hasattr(message, 'message_id') else 'unknown'
+        self.logger.info(f"処理開始 [Pod: {self.pod_name}]: message_id={message_id}")
+        
+        async with self.semaphore:
+            session_index = None
+            try:
+                data = json.loads(message.data.decode('utf-8'))
+                self.logger.debug(f"処理開始: video_id={data['video_id']} [Pod: {self.pod_name}]")
+
+                # 使用可能なセッションを取得
+                session_index, api = await self.acquire_session()
+                self.logger.debug(f"セッション {session_index} を使用して処理を開始")
+
+                try:
+                    # 動画情報を取得（セッションインデックスを指定）
+                    self.logger.debug(f"動画情報取得開始: {data['video_id']} (セッション: {session_index})")
+                    video_info = await self.get_video_info(api, data, session_index=session_index)
 
                     if video_info:
                         video_id = data['video_id']
@@ -603,10 +468,10 @@ class VideoProcessor:
                         message_id = future.result()
                         self.logger.info(f"処理済みデータを送信: Message ID: {message_id}")
 
-                finally:
-                    # セッションをクローズ
-                    await api.close_sessions()
-
+                except Exception as e:
+                    self.logger.error(f"API処理中にエラー: {str(e)}")
+                    raise
+                
                 # メッセージを確認
                 message.ack()
                 self.logger.debug(f"処理完了: video_id={data['video_id']} [Pod: {self.pod_name}]")
@@ -614,6 +479,210 @@ class VideoProcessor:
             except Exception as e:
                 self.logger.error(f"メッセージ処理中にエラー [Pod: {self.pod_name}]: {str(e)}", exc_info=True)
                 message.nack()
+            finally:
+                # 確実にセッションを解放
+                if session_index is not None:
+                    self.release_session(session_index)
+
+    async def get_video_info(self, api: TikTokApi, video_data: Dict[str, Any], session_index: int = None) -> Optional[Dict[str, Any]]:
+        """動画の情報を取得"""
+        try:
+            video_id = video_data['video_id']
+            username = video_data['username']
+            video_url = video_data['video_url']
+            is_new_video = video_data['is_new_video']
+
+            # URLから動画IDとユーザー名を正しく抽出
+            try:
+                parts = video_url.split('/')
+                video_id = parts[-1].split('?')[0]
+                username = parts[3].lstrip('@')
+                normalized_url = f'https://www.tiktok.com/@{username}/video/{video_id}'
+                self.logger.info(f"正規化後の動画URL: {normalized_url}")
+            except Exception as e:
+                self.logger.error(f"動画URLの解析に失敗: {str(e)}")
+                return None
+            
+            # 動画情報を取得（セッションインデックスを指定）
+            self.logger.debug(f"APIリクエスト実行 (セッション: {session_index})")
+            
+            # セッションインデックスを指定してvideoオブジェクトを取得
+            video_obj = api.video(id=video_id, username=username, url=normalized_url)
+            
+            # セッションインデックスを指定して情報を取得
+            if session_index is not None:
+                video = await video_obj.info(session_index=session_index)
+            else:
+                video = await video_obj.info()
+            
+            if not video:
+                raise Exception("Empty response received")
+
+            # 基本情報を取得（既存のデータを使用）
+            base_info = {
+                'video_id': video_id,
+                'username': username,     # 既存のデータを使用
+                'url': video_url,        # 既存のデータを使用
+                'currentFetchDate': datetime.now().isoformat(),
+                'likes_count': video.get('stats', {}).get('diggCount'),
+                'play_count': video.get('stats', {}).get('playCount'),
+                'comment_count': video.get('stats', {}).get('commentCount'),
+                'share_count': video.get('stats', {}).get('shareCount'),
+                'save_count': video.get('stats', {}).get('collectCount'),
+                'isViral': video.get('stats', {}).get('playCount', 0) >= 100000,
+                'is_new_video': is_new_video  # is_new_videoも含める
+            }
+
+            # 新規動画の場合は追加情報を取得
+            if is_new_video:
+                # サムネイル画像をCloud Storageに保存
+                cover_image_url = video.get('video', {}).get('cover')
+                if cover_image_url:
+                    storage_path = f'thumbnails/{video_id}.jpg'
+                    await self.save_to_storage(cover_image_url, storage_path)
+                    base_info['cover_image_url'] = f'gs://{self.bucket_name}/{storage_path}'
+
+                # 追加情報を設定
+                base_info.update({
+                    'display_name': video.get('author', {}).get('nickname'),
+                    'description': video.get('desc'),
+                    'created_at': datetime.fromtimestamp(int(video.get('createTime', '0'))).isoformat(),
+                    'hashtags': [tag.get('hashtagName') for tag in video.get('textExtra', []) if tag.get('hashtagName')],
+                    'duration': video.get('video', {}).get('duration'),
+                    'music_id': video.get('music', {}).get('id'),
+                    'music_title': video.get('music', {}).get('title'),
+                    'music_artist': video.get('music', {}).get('authorName')
+                })
+
+            return base_info
+
+        except Exception as e:
+            self.logger.error(f"動画情報の取得に失敗 - video_id: {video_id}, session: {session_index}, error: {str(e)}")
+            return {
+                "video_url": video_url,
+                "video_id": video_id,
+                "username": username,
+                "status": "error"
+            }
+
+    async def save_to_storage(self, url: str, storage_path: str) -> None:
+        """画像をCloud Storageに保存"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.read()
+                        blob = self.bucket.blob(storage_path)
+                        blob.upload_from_string(data)
+                        self.logger.info(f"画像を保存しました: {storage_path}")
+        except Exception as e:
+            self.logger.error(f"画像の保存に失敗: {str(e)}")
+            raise
+
+    async def _process_video(self, url: str, video_id: str) -> Dict[str, Any]:
+        """動画のダウンロードと保存"""
+        temp_path = os.path.join(self.temp_dir, f"{video_id}")
+        storage_path = os.path.join(self.storage_dir, f"{video_id}")
+        
+        try:
+            ydl_opts = {
+                'outtmpl': f"{temp_path}.%(ext)s",
+                'format': 'bestvideo+bestaudio/best',
+            }
+            
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
+                
+                # ストレージに移動
+                final_path = f"{storage_path}.{downloaded_file.split('.')[-1]}"
+                shutil.move(downloaded_file, final_path)
+                
+                self.logger.info(f"動画を保存しました: {final_path}")
+                return {
+                    "status": "success",
+                    "video_id": video_id,
+                    "file_path": final_path,
+                    "type": "video"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"動画ダウンロード中にエラー: {str(e)}")
+            return {
+                "status": "error",
+                "video_id": video_id,
+                "message": str(e),
+                "type": "video"
+            }
+
+    async def process_video_data(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
+        """動画データの処理を実行"""
+        try:
+            url = video_data['video_url']
+            video_id = video_data['video_id']           
+
+            result = await self._process_video(url, video_id)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"処理中にエラーが発生: {str(e)}")
+            return {
+                "status": "error",
+                "video_id": video_data.get('video_id', 'unknown'),
+                "message": str(e)
+            }
+
+    async def _check_deleted_content(self, url: str) -> bool:
+        """コンテンツが削除されているかチェック"""
+        try:
+            async with async_playwright() as p:
+                # 日本語ロケールとタイムゾーンを設定
+                browser = await p.chromium.launch(
+                    headless=True,
+                )
+                context = await browser.new_context(
+                    locale='ja-JP',
+                    timezone_id='Asia/Tokyo',
+                    user_agent=self.get_random_user_agent()
+                )
+                page = await context.new_page()
+                
+                await page.goto(url, wait_until='domcontentloaded')
+                await asyncio.sleep(2)
+                
+                # 削除されているかチェック
+                dead_link_selector = 'p.css-1y4x9xk-PTitle'
+                try:
+                    element = await page.wait_for_selector(dead_link_selector, timeout=2000)
+                    if element:
+                        text = await element.text_content()
+                        self.logger.info(f"削除メッセージを検出: '{text}'")  # 実際のメッセージをログ出力
+                        return any(msg in text for msg in [
+                            "動画は現在ご利用できません",
+                            "Video currently unavailable",
+                            "This video is unavailable",
+                            "このビデオは削除されました",
+                            "このビデオは利用できません"
+                        ])
+                except:
+                    return False
+                finally:
+                    await context.close()
+                    await browser.close()
+                    
+        except Exception as e:
+            self.logger.error(f"削除チェック中にエラー: {str(e)}")
+            return False
+
+    def cleanup(self):
+        """一時ファイルの削除"""
+        try:
+            shutil.rmtree(self.temp_dir)
+            os.makedirs(self.temp_dir)
+            self.logger.info("一時ファイルを削除しました")
+        except Exception as e:
+            self.logger.error(f"一時ファイルの削除中にエラー: {str(e)}")
 
     def setup_subscription(self):
         """サブスクリプションをセットアップする（プル型）"""
@@ -659,6 +728,9 @@ class VideoProcessor:
             # イベントループを保存
             self.loop = asyncio.get_running_loop()
             
+            # API定期リフレッシュタスクを開始
+            api_refresh_task = asyncio.create_task(self.api_refresh_loop())
+            
             # Pod情報を取得
             try:
                 import socket
@@ -693,10 +765,50 @@ class VideoProcessor:
             self.logger.error(f"実行中にエラー: {str(e)}")
             if 'streaming_pull_future' in locals():
                 streaming_pull_future.cancel()
+            if 'api_refresh_task' in locals():
+                api_refresh_task.cancel()
             raise
         finally:
             if 'streaming_pull_future' in locals():
                 streaming_pull_future.cancel()
+            if 'api_refresh_task' in locals():
+                api_refresh_task.cancel()
+
+    async def api_refresh_loop(self):
+        """TikTokApiインスタンスを定期的にリフレッシュ"""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # 1時間ごとにリフレッシュ
+                
+                self.logger.info("APIインスタンスの定期リフレッシュを開始...")
+                
+                # すべてのセッションを一時的にロック
+                for lock in self.session_locks:
+                    await lock.acquire()
+                    
+                # APIインスタンスをリフレッシュ
+                async with self.api_lock:
+                    if self.api_instance is not None:
+                        try:
+                            await self.api_instance.close_sessions()
+                        except Exception as e:
+                            self.logger.warning(f"古いAPIセッションのクローズに失敗: {str(e)}")
+                        self.api_instance = None
+                
+                # セッションを解放
+                for lock in self.session_locks:
+                    if lock.locked():
+                        lock.release()
+                    
+                self.logger.info("APIインスタンスリフレッシュ完了")
+                
+            except Exception as e:
+                self.logger.error(f"APIリフレッシュループでエラー: {str(e)}")
+                # セッションが残っている場合は解放
+                for lock in self.session_locks:
+                    if lock.locked():
+                        lock.release()
+                await asyncio.sleep(60)  # エラー時は短い間隔で再試行
 
 async def main():
     processor = VideoProcessor()
