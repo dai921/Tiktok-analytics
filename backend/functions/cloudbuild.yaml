@@ -376,6 +376,26 @@ steps:
             --project=tiktok-analytics-prod-451609
         fi
 
+  # category-analytics-aggregator
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-category-analytics-aggregator'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'category-analytics-aggregator'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=category_analytics_function'
+      - '--trigger-topic=frontend-analytics-trigger'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
 options:
   logging: CLOUD_LOGGING_ONLY
 

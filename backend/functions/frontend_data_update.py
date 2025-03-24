@@ -246,7 +246,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         batch_execution_time = (datetime.now() - batch_start_time).total_seconds()
         logger.info(f"バッチ#{batch_number}完了: {updated_count}/{batch_size}件更新、実行時間: {batch_execution_time}秒")
         
-        # 処理が終了していない場合、Pub/Subに継続メッセージを送信
+        # 処理完了していない場合、Pub/Subに継続メッセージを送信
         if remaining_count > 0:
             publish_message("frontend-update-status", {
                 "status": "in_progress",
@@ -260,6 +260,14 @@ def update_frontend_from_master() -> Dict[str, Any]:
             publish_message("frontend-update-status", {
                 "status": "completed",
                 "message": "全バッチの処理が完了しました",
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # カテゴリー統計集計用のトリガーメッセージを送信
+            logger.info("カテゴリー統計集計のトリガーメッセージを送信します")
+            publish_message("frontend-analytics-trigger", {
+                "status": "completed",
+                "message": "カテゴリー統計集計を開始します",
                 "timestamp": datetime.now().isoformat()
             })
             
