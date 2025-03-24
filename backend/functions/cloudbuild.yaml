@@ -313,6 +313,69 @@ steps:
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609'
 
+  # sync-video-urls
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-video-urls'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'sync-video-urls'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_video_urls_job'
+      - '--trigger-http'
+      - '--no-allow-unauthenticated'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_ID=1Ijjvk2jNKcKUUUhhzB5TtkjrsN_okhon30N83yXfIiA,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # sync-video-urls のスケジュール設定
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'create-sync-video-urls-schedule'
+    waitFor: ['deploy-sync-video-urls']
+    args:
+      - 'bash'
+      - '-c'
+      - |
+        # デプロイされた関数の情報を取得
+        FUNCTION_URL=$$(gcloud functions describe sync-video-urls --gen2 --region=asia-northeast1 --format='value(serviceConfig.uri)' --project=tiktok-analytics-prod-451609)
+        if [ -z "$$FUNCTION_URL" ]; then
+          echo "エラー: sync-video-urls 関数のURLを取得できませんでした"
+          exit 1
+        fi
+        
+        echo "sync-video-urls 関数のURL: $$FUNCTION_URL"
+        
+        # ジョブが存在するか確認
+        if gcloud scheduler jobs describe sync-video-urls-schedule --location=asia-northeast1 --project=tiktok-analytics-prod-451609 2>/dev/null; then
+          echo "スケジュールジョブ sync-video-urls-schedule は既に存在します。更新します。"
+          gcloud scheduler jobs update http sync-video-urls-schedule \
+            --location=asia-northeast1 \
+            --schedule="0 2 */2 * *" \
+            --uri="$$FUNCTION_URL" \
+            --http-method=POST \
+            --time-zone="Asia/Tokyo" \
+            --attempt-deadline=540s \
+            --oidc-service-account-email=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com \
+            --project=tiktok-analytics-prod-451609
+        else
+          echo "スケジュールジョブ sync-video-urls-schedule を新規作成します。"
+          gcloud scheduler jobs create http sync-video-urls-schedule \
+            --location=asia-northeast1 \
+            --schedule="0 2 */1 * *" \
+            --uri="$$FUNCTION_URL" \
+            --http-method=POST \
+            --time-zone="Asia/Tokyo" \
+            --attempt-deadline=540s \
+            --oidc-service-account-email=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com \
+            --project=tiktok-analytics-prod-451609
+        fi
+
 options:
   logging: CLOUD_LOGGING_ONLY
 

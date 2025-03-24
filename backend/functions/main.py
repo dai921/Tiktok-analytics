@@ -5,6 +5,7 @@ from config import initialize_config
 from sync_spreadsheet import scheduled_job as sync_spreadsheet_job
 from frontend_data_update import scheduled_job as frontend_update_job
 from sync_category_spreadsheet import scheduled_job as sync_category_job
+from sync_video_urls import sync_video_urls_job as sync_video_urls_job
 from crawl_processor import process_pubsub as crawl_processor_pubsub
 from process_video_data import process_pubsub as process_video_data_pubsub
 from url_collector import process_pubsub as url_collector_pubsub
@@ -27,6 +28,9 @@ def frontend_update(request):
 
 def sync_category_spreadsheet(request):
     return sync_category_job(request)
+
+def sync_video_urls(request):
+    return sync_video_urls_job(request)
 
 # Pub/Sub (CloudEvent) エントリーポイント関数
 def process_pubsub(event,context):
