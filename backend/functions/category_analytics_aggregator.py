@@ -2,7 +2,7 @@ import functions_framework
 import json
 import logging
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from db_utils import execute_query, execute_write_query, DatabaseError
 from config import initialize_config
@@ -62,17 +62,15 @@ def process_category_statistics(event, context):
 def aggregate_category_statistics() -> Dict[str, Any]:
     """カテゴリー別の統計情報を集計"""
     try:
-        # 集計日（現在日付）
-        aggregation_date = datetime.now().strftime('%Y-%m-%d')
+        # 集計日（現在日付の前日）
+        aggregation_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         
-        # カテゴリーごとの統計を集計するSQLクエリ
+        # ビデオデータを取得するクエリ - カテゴリごとではなく全データを取得
         query = """
         SELECT 
+            id,
             category,
-            COUNT(*) AS total_videos,
-            SUM(playCountIncrease) AS total_increase,
-            SUM(CASE WHEN playCountIncrease >= 10000 THEN 1 ELSE 0 END) AS videos_10k_plus,
-            SUM(CASE WHEN playCountIncrease >= 100000 THEN 1 ELSE 0 END) AS videos_100k_plus
+            playCountIncrease
         FROM 
             video_master
         WHERE 
@@ -80,16 +78,12 @@ def aggregate_category_statistics() -> Dict[str, Any]:
             AND category IS NOT NULL
             AND category != 'その他'
             AND category != ''
-        GROUP BY 
-            category
-        ORDER BY 
-            total_increase DESC
         """
         
         # クエリを実行
-        category_data = execute_query(query)
+        video_data = execute_query(query)
         
-        if not category_data:
+        if not video_data:
             logger.warning("集計対象のデータが見つかりませんでした")
             return {
                 "status": "success",
@@ -97,15 +91,46 @@ def aggregate_category_statistics() -> Dict[str, Any]:
                 "execution_time": datetime.now().isoformat()
             }
         
-        # 集計結果をデータベースに保存
+        # カテゴリごとの統計データを格納する辞書
+        category_stats = {}
+        
+        # 各ビデオデータについて処理
+        for video in video_data:
+            # カンマで区切られたカテゴリを分割
+            categories = [cat.strip() for cat in video['category'].split(',')]
+            
+            # 各カテゴリに対して統計を追加
+            for category in categories:
+                if not category:  # 空のカテゴリはスキップ
+                    continue
+                    
+                # カテゴリが辞書になければ初期化
+                if category not in category_stats:
+                    category_stats[category] = {
+                        'total_videos': 0,
+                        'total_increase': 0,
+                        'videos_10k_plus': 0,
+                        'videos_100k_plus': 0
+                    }
+                
+                # 統計を更新
+                category_stats[category]['total_videos'] += 1
+                category_stats[category]['total_increase'] += video['playCountIncrease']
+                
+                if video['playCountIncrease'] >= 10000:
+                    category_stats[category]['videos_10k_plus'] += 1
+                
+                if video['playCountIncrease'] >= 100000:
+                    category_stats[category]['videos_100k_plus'] += 1
+        
+        # 集計結果をデータベースに保存するための形式に変換
         statistics_records = []
         
-        for category_stats in category_data:
-            category = category_stats['category']
-            total_videos = category_stats['total_videos']
-            total_increase = category_stats['total_increase']
-            videos_10k_plus = category_stats['videos_10k_plus']
-            videos_100k_plus = category_stats['videos_100k_plus']
+        for category, stats in category_stats.items():
+            total_videos = stats['total_videos']
+            total_increase = stats['total_increase']
+            videos_10k_plus = stats['videos_10k_plus']
+            videos_100k_plus = stats['videos_100k_plus']
             
             # 割合の計算（小数点以下2桁まで）
             ratio_10k_plus = round((videos_10k_plus / total_videos) * 100, 2) if total_videos > 0 else 0
@@ -148,14 +173,14 @@ def save_statistics_to_db(statistics_records: List[Dict[str, Any]]) -> None:
     try:
         # テーブルが存在しない場合は作成
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS trend_analytics (
+        CREATE TABLE IF NOT EXISTS trend_analysis (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            aggregation_date DATE NOT NULL,
-            category VARCHAR(100) NOT NULL,
-            total_increase BIGINT NOT NULL,
+            collection_date DATE NOT NULL,
+            genre VARCHAR(100) NOT NULL,
+            view_increase BIGINT NOT NULL,
             videos_10k_plus INT NOT NULL,
             videos_100k_plus INT NOT NULL,
-            total_videos INT NOT NULL,
+            total_posts INT NOT NULL,
             ratio_10k_plus DECIMAL(5,2) NOT NULL,
             ratio_100k_plus DECIMAL(5,2) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -166,15 +191,15 @@ def save_statistics_to_db(statistics_records: List[Dict[str, Any]]) -> None:
         # 新しいデータを挿入（カテゴリと日付の組み合わせで既存データがあれば更新）
         for record in statistics_records:
             upsert_query = """
-            INSERT INTO trend_analytics 
-            (aggregation_date, category, total_increase, videos_10k_plus, videos_100k_plus, 
-             total_videos, ratio_10k_plus, ratio_100k_plus)
+            INSERT INTO trend_analysis 
+            (collection_date, genre, view_increase, videos_10k_plus, videos_100k_plus, 
+             total_posts, ratio_10k_plus, ratio_100k_plus)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                total_increase = VALUES(total_increase),
+                view_increase = VALUES(view_increase),
                 videos_10k_plus = VALUES(videos_10k_plus),
                 videos_100k_plus = VALUES(videos_100k_plus),
-                total_videos = VALUES(total_videos),
+                total_posts = VALUES(total_posts),
                 ratio_10k_plus = VALUES(ratio_10k_plus),
                 ratio_100k_plus = VALUES(ratio_100k_plus),
                 created_at = CURRENT_TIMESTAMP
