@@ -236,6 +236,7 @@ export default function TrendsPage() {
               xAxisLabel="日付"
               yAxisLabel="視聴回数増加数"
               height={400}
+              showLegend={false}
             />
           </>
         ) : (

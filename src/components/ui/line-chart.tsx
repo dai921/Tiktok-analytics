@@ -28,6 +28,7 @@ type LineChartProps = {
   yAxisLabel?: string
   height?: number | string
   className?: string
+  showLegend?: boolean
 }
 
 // 色のプリセット
@@ -43,6 +44,7 @@ export function LineChart({
   yAxisLabel = "数値",
   height = 400,
   className,
+  showLegend = true,
 }: LineChartProps) {
   
   // データの前処理（日付順にソート）
@@ -130,10 +132,15 @@ export function LineChart({
           />
           <YAxis 
             tickFormatter={formatYAxis}
-            label={{ value: yAxisLabel, angle: -90, position: 'insideLeft' }} 
+            label={{ 
+              value: yAxisLabel, 
+              angle: -90, 
+              position: 'insideLeft',
+              offset: -15
+            }} 
           />
           <Tooltip content={<CustomTooltip />} />
-          <Legend verticalAlign="top" height={36} />
+          {showLegend && <Legend verticalAlign="top" height={36} />}
           
           {chartSeries.map((s, index) => (
             <Line
