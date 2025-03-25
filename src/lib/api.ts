@@ -1183,4 +1183,33 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       error: error instanceof Error ? error.message : '不明なエラー'
     };
   }
+}
+
+export async function fetchTrendGenres() {
+  const response = await fetch('/api/trends/genres');
+  return await response.json();
+}
+
+export async function fetchTrendDates() {
+  const response = await fetch('/api/trends/dates');
+  return await response.json();
+}
+
+export async function fetchTrendTimeline(params) {
+  const { startDate, endDate, genres, metrics } = params;
+  const url = `/api/trends/timeline?start_date=${startDate}&end_date=${endDate}` + 
+    (genres ? `&genres=${encodeURIComponent(genres)}` : '') + 
+    (metrics ? `&metrics=${encodeURIComponent(metrics)}` : '');
+    
+  const response = await fetch(url);
+  return await response.json();
+}
+
+export async function fetchTrendSummary(params) {
+  const { startDate, endDate, genres } = params;
+  const url = `/api/trends/summary?start_date=${startDate}&end_date=${endDate}` + 
+    (genres ? `&genres=${encodeURIComponent(genres)}` : '');
+    
+  const response = await fetch(url);
+  return await response.json();
 } 

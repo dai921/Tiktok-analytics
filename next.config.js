@@ -34,6 +34,7 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   },
+  
 }
 
 console.log("Next.js config:", JSON.stringify(nextConfig, null, 2));
