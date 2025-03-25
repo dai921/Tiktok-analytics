@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from src.db.database import get_db_connection, format_video
 from src.utils.logger_config import setup_logger
 from src.auth.router import router as auth_router
@@ -1015,10 +1015,9 @@ async def get_filter_options(
 async def get_trends_timeline(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    genres: Optional[str] = None,  # カンマ区切りのジャンル
-    metrics: Optional[str] = "view_increase,total_posts,videos_100k_plus"  # 取得する指標
+    genres: List[str] = None,
+    metrics: Optional[str] = "view_increase,total_posts,videos_100k_plus"
 ):
-    """ジャンル別の時系列データを取得するAPI"""
     try:
         # デフォルトは過去30日間
         if not end_date:
@@ -1029,8 +1028,8 @@ async def get_trends_timeline(
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # パラメータ処理
-        genre_list = genres.split(',') if genres else []
+        # パラメータ処理 - List[str]型なのでsplit不要
+        genre_list = genres or []
         metric_list = metrics.split(',') if metrics else ["view_increase", "total_posts", "videos_100k_plus"]
         
         # 使用可能な指標リスト（テーブルのカラム名に対応）
@@ -1042,17 +1041,27 @@ async def get_trends_timeline(
         # 無効な指標をフィルタリング
         metric_list = [m for m in metric_list if m in valid_metrics]
         
-        # クエリ構築
-        query = f"SELECT collection_date, genre, {', '.join(metric_list)} FROM trend_analysis WHERE collection_date BETWEEN %s AND %s"
+        # クエリ最適化：必要なカラムのみ取得
+        needed_columns = ["collection_date", "genre"] + metric_list
+        query = f"SELECT {', '.join(needed_columns)} FROM trend_analysis WHERE collection_date BETWEEN %s AND %s"
+        
+        # ここで params 変数を初期化
         params = [start_date, end_date]
         
+        # インデックスを活用するクエリ順序に変更
         if genre_list:
             query += " AND genre IN (" + ", ".join(["%s"] * len(genre_list)) + ")"
             params.extend(genre_list)
             
-        query += " ORDER BY collection_date ASC"
+        # 日付でソートしてからジャンルでソート（インデックスを活用）
+        query += " ORDER BY collection_date ASC, genre ASC"
+        
+        # パフォーマンスのためにLIMITを追加（必要に応じて調整）
+        max_results = 1000  # 適切な上限を設定
+        query += f" LIMIT {max_results}"
         
         # デバッグ出力
+        print(f"ジャンルリスト: {genre_list}")
         print(f"実行するクエリ: {query}")
         print(f"パラメータ: {params}")
         
@@ -1087,7 +1096,7 @@ async def get_trends_timeline(
         }
         
     except Exception as e:
-        logger.error(f"ジャンル別時系列データ取得エラー: {str(e)}")
+        logger.error(f"トレンドタイムラインデータ取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
     finally:
