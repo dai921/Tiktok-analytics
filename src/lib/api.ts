@@ -1185,31 +1185,126 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
   }
 }
 
-export async function fetchTrendGenres() {
-  const response = await fetch('/api/trends/genres');
-  return await response.json();
-}
+// APIのベースURL（環境変数から取得）
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
-export async function fetchTrendDates() {
-  const response = await fetch('/api/trends/dates');
-  return await response.json();
-}
+// レスポンス型定義
+type ApiResponse<T> = {
+  success: boolean;
+  data: T;
+  error?: string;
+};
 
-export async function fetchTrendTimeline(params) {
-  const { startDate, endDate, genres, metrics } = params;
-  const url = `/api/trends/timeline?start_date=${startDate}&end_date=${endDate}` + 
-    (genres ? `&genres=${encodeURIComponent(genres)}` : '') + 
-    (metrics ? `&metrics=${encodeURIComponent(metrics)}` : '');
+// エラーハンドリング共通関数
+const handleApiError = (error: unknown): ApiResponse<never> => {
+  console.error('API呼び出しエラー:', error);
+  return {
+    success: false,
+    data: [] as never,
+    error: error instanceof Error ? error.message : '不明なエラーが発生しました'
+  };
+};
+
+// 利用可能なジャンル一覧を取得
+export async function fetchTrendGenres(): Promise<ApiResponse<string[]>> {
+  try {
+    console.log('ジャンル取得中...');
+    const response = await fetch(`${API_BASE_URL}/api/trends/genres`);
     
-  const response = await fetch(url);
-  return await response.json();
+    if (!response.ok) {
+      throw new Error(`HTTPエラー: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log('取得したジャンルデータ:', result);
+    
+    // APIレスポンスの形式を確認
+    if (result.success && Array.isArray(result.data)) {
+      return result;
+    } else {
+      return {
+        success: true,
+        data: result.data || [],
+      };
+    }
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
-export async function fetchTrendSummary(params) {
-  const { startDate, endDate, genres } = params;
-  const url = `/api/trends/summary?start_date=${startDate}&end_date=${endDate}` + 
-    (genres ? `&genres=${encodeURIComponent(genres)}` : '');
+// 利用可能な集計日一覧を取得
+export async function fetchTrendDates(): Promise<ApiResponse<string[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/trends/dates`);
     
-  const response = await fetch(url);
-  return await response.json();
+    if (!response.ok) {
+      throw new Error(`HTTPエラー: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    
+    if (result.success && Array.isArray(result.data)) {
+      return result;
+    } else {
+      return {
+        success: true,
+        data: result.data || [],
+      };
+    }
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// トレンドタイムラインデータを取得
+export async function fetchTrendTimeline(params: {
+  start_date: string;
+  end_date: string;
+  genres: string[];
+}): Promise<ApiResponse<any>> {
+  try {
+    const queryParams = new URLSearchParams();
+    queryParams.append('start_date', params.start_date);
+    queryParams.append('end_date', params.end_date);
+    params.genres.forEach(genre => {
+      queryParams.append('genres', genre);
+    });
+    
+    const response = await fetch(
+      `${API_BASE_URL}/api/trends/timeline?${queryParams.toString()}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`HTTPエラー: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// トレンドサマリーデータを取得
+export async function fetchTrendSummary(params: {
+  start_date: string;
+  end_date: string;
+}): Promise<ApiResponse<any>> {
+  try {
+    const queryParams = new URLSearchParams({
+      start_date: params.start_date,
+      end_date: params.end_date,
+    });
+    
+    const response = await fetch(
+      `${API_BASE_URL}/api/trends/summary?${queryParams.toString()}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`HTTPエラー: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    return handleApiError(error);
+  }
 } 
