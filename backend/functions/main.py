@@ -13,6 +13,7 @@ from video_collector import collect_videos as video_collector_function
 from video_url_data_updater import update_video_url_data as video_url_updater_function
 from batch_scheduler import manage_frontend_update_schedule as batch_scheduler_function
 from category_analytics_aggregator import process_category_statistics as category_analytics_function
+from update_all_categories import update_all_categories as update_all_categories_function
 
 # 環境変数の読み込み
 load_dotenv()
@@ -32,6 +33,9 @@ def sync_category_spreadsheet(request):
 
 def sync_video_urls(request):
     return sync_video_urls_job(request)
+
+def update_all_categories(request):
+    return update_all_categories_function(request)
 
 # Pub/Sub (CloudEvent) エントリーポイント関数
 def process_pubsub(event,context):

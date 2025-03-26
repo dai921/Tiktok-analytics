@@ -45,6 +45,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             SET playCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
             AND playCountIncrease < 1000
+            AND play_count < 100000
             """
             
             affected_rows = execute_write_query(reset_query)

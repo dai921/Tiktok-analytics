@@ -71,7 +71,7 @@ steps:
           echo "スケジュールジョブ frontend-update-schedule は既に存在します。更新します。"
           gcloud scheduler jobs update http frontend-update-schedule \
             --location=asia-northeast1 \
-            --schedule="0 3 30/2 * *" \
+            --schedule="0 3 2-30/2 * *" \
             --uri="$$FUNCTION_URL" \
             --http-method=POST \
             --time-zone="Asia/Tokyo" \
@@ -393,6 +393,27 @@ steps:
       - '--trigger-topic=frontend-analytics-trigger'
       - '--memory=512MB'
       - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # update-all-categories
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-update-all-categories'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'update-all-categories'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=update_all_categories'
+      - '--trigger-http'
+      - '--no-allow-unauthenticated'
+      - '--memory=1024MB'
+      - '--timeout=3600s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
