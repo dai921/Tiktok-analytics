@@ -31,6 +31,7 @@ type LineChartProps = {
   height?: number | string
   className?: string
   showLegend?: boolean
+  highlightSameGroup?: boolean
 }
 
 // 色のプリセット
@@ -46,11 +47,14 @@ export function LineChart({
   yAxisLabel = "数値",
   height = 400,
   className,
-  showLegend = true,
+  showLegend = false,
+  highlightSameGroup = false,
 }: LineChartProps) {
   
   // アクティブなシリーズを追跡する状態を追加
   const [activeSeriesKey, setActiveSeriesKey] = useState<string | null>(null);
+  // アクティブなグループ（ジャンル）を追跡
+  const [activeGroupPrefix, setActiveGroupPrefix] = useState<string | null>(null);
   // ツールチップを表示すべきかのフラグ
   const [shouldShowTooltip, setShouldShowTooltip] = useState<boolean>(false);
   // X軸ラベル上にマウスがあるかのフラグ
@@ -114,6 +118,27 @@ export function LineChart({
     }
   }, [activeSeriesKey, data]); // データが変わったときに再設定
   
+  // アクティブなシリーズキーからグループプレフィックスを抽出する関数
+  const getGroupPrefixFromKey = (key: string) => {
+    // キーは "ジャンル_指標" の形式なので、最初の_までを抽出
+    return key.split('_')[0];
+  };
+
+  // シリーズがアクティブグループに属しているかをチェック
+  const isInActiveGroup = (seriesKey: string) => {
+    if (!activeGroupPrefix || !highlightSameGroup) return true;
+    return seriesKey.startsWith(`${activeGroupPrefix}_`);
+  };
+
+  // シリーズグループの強調表示イベント
+  const handleSeriesMouseOver = (seriesKey: string) => {
+    setActiveSeriesKey(seriesKey);
+    if (highlightSameGroup) {
+      setActiveGroupPrefix(getGroupPrefixFromKey(seriesKey));
+    }
+    setShouldShowTooltip(true);
+  };
+
   // ツールチップのカスタムフォーマット
   const CustomTooltip = ({ 
     active, 
@@ -203,6 +228,7 @@ export function LineChart({
   // マウスがグラフエリアを離れたときのハンドラー
   const handleMouseLeave = () => {
     setActiveSeriesKey(null);
+    setActiveGroupPrefix(null);
     setShouldShowTooltip(false);
     setIsOverXAxisLabel(false);
   };
@@ -257,13 +283,19 @@ export function LineChart({
               dataKey={s.key}
               name={s.name}
               stroke={s.color || COLORS[index % COLORS.length]}
-              strokeWidth={2}
-              dot={{ r: 3 }}
+              strokeWidth={activeSeriesKey ? 
+                (isInActiveGroup(s.key) ? 3 : 1) : 2}
+              opacity={activeSeriesKey ? 
+                (isInActiveGroup(s.key) ? 1 : 0.3) : 1}
+              dot={{ 
+                r: 3,
+                strokeWidth: activeSeriesKey && !isInActiveGroup(s.key) ? 0 : 1,
+                fill: activeSeriesKey && !isInActiveGroup(s.key) ? 'transparent' : s.color || COLORS[index % COLORS.length] 
+              }}
               activeDot={{ 
                 r: 6,
                 onMouseOver: () => {
-                  setActiveSeriesKey(s.key);
-                  setShouldShowTooltip(true);
+                  handleSeriesMouseOver(s.key);
                 },
                 onMouseOut: () => {
                   if (!isOverXAxisLabel) {

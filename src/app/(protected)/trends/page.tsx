@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from "react"
+import React, { useEffect, useState, useRef, useMemo } from "react"
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,6 +8,8 @@ import { DateRange, DateRangePicker } from "@/components/ui/date-range-picker";
 import { MultiSelect, Option } from '@/components/ui/multi-select';
 import { LineChart, TimelineDataPoint } from '@/components/ui/line-chart';
 import { fetchTrendGenres, fetchTrendTimeline, fetchTrendDates } from '@/lib/api';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 
 export default function TrendsPage() {
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -17,6 +19,7 @@ export default function TrendsPage() {
   const [availableDates, setAvailableDates] = useState<string[]>([])
   const [availableGenres, setAvailableGenres] = useState<Option[]>([])
   const [selectedGenres, setSelectedGenres] = useState<string[]>([])
+  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['videos_100k_plus'])
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isLoadingChart, setIsLoadingChart] = useState<boolean>(false)
   const [timelineData, setTimelineData] = useState<TimelineDataPoint[]>([])
@@ -104,7 +107,7 @@ export default function TrendsPage() {
         // キャッシュキーを作成
         const startDate = dateRange.from.toISOString().split('T')[0];
         const endDate = dateRange.to.toISOString().split('T')[0];
-        const cacheKey = `${startDate}-${endDate}-${selectedGenres.sort().join(',')}`;
+        const cacheKey = `${startDate}-${endDate}-${selectedGenres.sort().join(',')}-${selectedMetrics.sort().join(',')}`;
         
         // キャッシュにデータがあればそれを使用
         if (dataCache.current[cacheKey]) {
@@ -117,7 +120,8 @@ export default function TrendsPage() {
         const params = {
           start_date: startDate,
           end_date: endDate,
-          genres: selectedGenres
+          genres: selectedGenres,
+          metrics: selectedMetrics
         };
         
         const response = await fetchTrendTimeline(params);
@@ -142,7 +146,7 @@ export default function TrendsPage() {
     }
     
     fetchTimelineData()
-  }, [dateRange, selectedGenres])
+  }, [dateRange, selectedGenres, selectedMetrics])
 
   // APIレスポンスからグラフ用のデータ形式に変換する関数
   const formatTimelineData = (apiData: any): TimelineDataPoint[] => {
@@ -159,11 +163,18 @@ export default function TrendsPage() {
       
       // 選択されたすべてのジャンルについてデータポイントを作成
       selectedGenres.forEach(genre => {
-        // 対象のジャンルデータが存在する場合のみ設定（0は設定しない）
-        if (dateData[genre]?.view_increase) {
-          dataPoint[genre] = dateData[genre].view_increase;
-        }
-        // 0値の場合は、そのジャンルのプロパティを設定しない
+        const genreData = dateData[genre] || {};
+        
+        // 選択された指標に基づいてデータを追加
+        selectedMetrics.forEach(metric => {
+          // ジャンル名と指標名を組み合わせたキーを作成
+          const dataKey = `${genre}_${metric}`;
+          
+          // 対応するデータが存在する場合のみ設定
+          if (genreData[metric]) {
+            dataPoint[dataKey] = genreData[metric];
+          }
+        });
       });
       
       return dataPoint;
@@ -171,10 +182,41 @@ export default function TrendsPage() {
   };
 
   // グラフのシリーズ定義
-  const chartSeries = selectedGenres.map(genre => ({
-    key: genre,
-    name: genre
-  }));
+  const chartSeries = useMemo(() => {
+    const series: Array<{key: string, name: string, color?: string}> = [];
+    
+    // 指標の表示名マッピング
+    const metricLabels: Record<string, string> = {
+      'view_increase': '再生増加数',
+      'videos_100k_plus': '10万再生以上個数',
+      'total_posts': '投稿数'
+    };
+    
+    // 色のプリセット
+    const COLORS = [
+      "#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#0088fe",
+      "#00C49F", "#FFBB28", "#FF8042", "#a4de6c", "#d0ed57"
+    ];
+    
+    // ジャンルごとに色を割り当てる
+    const genreColors: Record<string, string> = {};
+    selectedGenres.forEach((genre, index) => {
+      genreColors[genre] = COLORS[index % COLORS.length];
+    });
+    
+    // 選択されたジャンルと指標の組み合わせでシリーズを作成
+    selectedGenres.forEach(genre => {
+      selectedMetrics.forEach(metric => {
+        series.push({
+          key: `${genre}_${metric}`,
+          name: `${genre} (${metricLabels[metric]})`,
+          color: genreColors[genre] // 同じジャンルには同じ色を割り当てる
+        });
+      });
+    });
+    
+    return series;
+  }, [selectedGenres, selectedMetrics]);
 
   // 選択した日付範囲とジャンルに基づいてグラフを表示するかの判定
   const shouldShowChart = !isLoading && dateRange.from && dateRange.to && selectedGenres.length > 0;
@@ -186,6 +228,17 @@ export default function TrendsPage() {
   const handleGenresChange = (newSelected: string[]) => {
     setSelectedGenres(newSelected)
   }
+
+  const handleMetricsChange = (metric: string, isChecked: boolean) => {
+    if (isChecked) {
+      setSelectedMetrics(prev => [...prev, metric]);
+    } else {
+      // 少なくとも1つの指標は選択されている必要がある
+      if (selectedMetrics.length > 1) {
+        setSelectedMetrics(prev => prev.filter(m => m !== metric));
+      }
+    }
+  };
 
   if (isLoading) {
     return <div className="p-6">データを読み込み中...</div>
@@ -216,6 +269,41 @@ export default function TrendsPage() {
         </div>
       </div>
       
+      <div className="flex gap-6 mb-6">
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="metric-view-increase" 
+            checked={selectedMetrics.includes('view_increase')}
+            onCheckedChange={(checked) => 
+              handleMetricsChange('view_increase', checked as boolean)
+            }
+          />
+          <Label htmlFor="metric-view-increase">再生増加数</Label>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="metric-100k-plus" 
+            checked={selectedMetrics.includes('videos_100k_plus')}
+            onCheckedChange={(checked) => 
+              handleMetricsChange('videos_100k_plus', checked as boolean)
+            }
+          />
+          <Label htmlFor="metric-100k-plus">10万再生以上個数</Label>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="metric-total-posts" 
+            checked={selectedMetrics.includes('total_posts')}
+            onCheckedChange={(checked) => 
+              handleMetricsChange('total_posts', checked as boolean)
+            }
+          />
+          <Label htmlFor="metric-total-posts">投稿数</Label>
+        </div>
+      </div>
+      
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md mb-6">
           <p>{error}</p>
@@ -229,14 +317,15 @@ export default function TrendsPage() {
           </div>
         ) : shouldShowChart && timelineData.length > 0 ? (
           <>
-            <h2 className="text-xl font-medium mb-4">視聴回数増加数の推移</h2>
+            <h2 className="text-xl font-medium mb-4">トレンド指標の推移</h2>
             <LineChart 
               data={timelineData}
               series={chartSeries}
               xAxisLabel="日付"
-              yAxisLabel="視聴回数増加数"
+              yAxisLabel="値"
               height={400}
               showLegend={false}
+              highlightSameGroup={true}
             />
           </>
         ) : (
