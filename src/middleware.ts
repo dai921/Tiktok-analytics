@@ -38,7 +38,7 @@ export function middleware(request: NextRequest) {
   }
   
   // ダッシュボードへのアクセスには認証が必要
-  if (path.startsWith('/dashboard') && !token) {
+  if ((path.startsWith('/dashboard') || path.startsWith('/trends') || path.startsWith('/summary')) && !token) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
   
@@ -55,6 +55,8 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/dashboard/:path*',
+    '/trends/:path*',
+    '/summary/:path*',
     '/login',
     '/register',
     '/admin/:path*'
