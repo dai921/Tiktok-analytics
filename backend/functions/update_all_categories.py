@@ -22,6 +22,10 @@ project_id = os.getenv('PROJECT_ID')
 logger.info(f"実行環境: {environment}")
 logger.info(f"プロジェクトID: {project_id}")
 
+# デバッグ用に接続情報を確認
+db_config = get_db_config()
+logger.info(f"データベース接続設定: host={db_config.get('host', 'unknown')}, database={db_config.get('database', 'unknown')}")
+
 # 定数
 PROCESSOR_NAME = 'update_all_categories'
 TARGET_TABLE = 'video_master'
@@ -40,6 +44,18 @@ def update_all_categories(request):
     """
     start_time = time.time()
     logger.info(f"====== update_all_categories 開始：{datetime.now().isoformat()} ======")
+    
+    # デバッグ: 接続情報の確認
+    try:
+        # テスト接続を実行して接続先を確認
+        test_query = "SELECT DATABASE() as db, @@hostname as host"
+        connection_info = execute_query(test_query)
+        if connection_info:
+            logger.info(f"接続先確認: {connection_info[0]}")
+        else:
+            logger.warning("接続テスト結果が空です")
+    except Exception as e:
+        logger.error(f"接続テスト中にエラー: {str(e)}")
     
     try:
         # カーソル情報を取得または作成

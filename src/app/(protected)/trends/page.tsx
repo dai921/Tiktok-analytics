@@ -10,6 +10,7 @@ import { LineChart, TimelineDataPoint } from '@/components/ui/line-chart';
 import { fetchTrendGenres, fetchTrendTimeline, fetchTrendDates } from '@/lib/api';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { TrendTabs } from '@/components/ui/trend-tabs';
 
 export default function TrendsPage() {
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -121,7 +122,8 @@ export default function TrendsPage() {
           start_date: startDate,
           end_date: endDate,
           genres: selectedGenres,
-          metrics: selectedMetrics
+          // すべての指標を常に取得（表示はselectedMetricsで制御）
+          metrics: ['view_increase', 'videos_100k_plus', 'total_posts']
         };
         
         const response = await fetchTrendTimeline(params);
@@ -165,13 +167,13 @@ export default function TrendsPage() {
       selectedGenres.forEach(genre => {
         const genreData = dateData[genre] || {};
         
-        // 選択された指標に基づいてデータを追加
+        // 選択された指標についてのみデータポイントを作成
         selectedMetrics.forEach(metric => {
           // ジャンル名と指標名を組み合わせたキーを作成
           const dataKey = `${genre}_${metric}`;
           
-          // 対応するデータが存在する場合のみ設定
-          if (genreData[metric]) {
+          // データが存在する場合のみ設定（欠損値は undefined のままにする）
+          if (genreData[metric] !== undefined) {
             dataPoint[dataKey] = genreData[metric];
           }
         });
@@ -183,7 +185,7 @@ export default function TrendsPage() {
 
   // グラフのシリーズ定義
   const chartSeries = useMemo(() => {
-    const series: Array<{key: string, name: string, color?: string}> = [];
+    const series: Array<{key: string, name: string, color?: string, metricType?: string}> = [];
     
     // 指標の表示名マッピング
     const metricLabels: Record<string, string> = {
@@ -192,10 +194,38 @@ export default function TrendsPage() {
       'total_posts': '投稿数'
     };
     
-    // 色のプリセット
+    // 視覚的に区別しやすい30色のパレット（色相を散らした配置）
     const COLORS = [
-      "#8884d8", "#82ca9d", "#ffc658", "#ff8042", "#0088fe",
-      "#00C49F", "#FFBB28", "#FF8042", "#a4de6c", "#d0ed57"
+      "#1f77b4", // 青
+      "#d62728", // 赤
+      "#2ca02c", // 緑
+      "#9467bd", // 紫
+      "#ff7f0e", // オレンジ
+      "#8c564b", // 茶
+      "#e377c2", // ピンク
+      "#7f7f7f", // グレー
+      "#bcbd22", // 黄緑
+      "#17becf", // シアン
+      "#ff4500", // オレンジレッド
+      "#00aa00", // 深緑
+      "#8a2be2", // ブルーバイオレット
+      "#a0522d", // シエナ
+      "#00ced1", // ターコイズ
+      "#ff69b4", // ホットピンク
+      "#4682b4", // スティールブルー
+      "#dc3912", // 赤茶
+      "#32cd32", // ライムグリーン
+      "#9932cc", // ダークオーキッド
+      "#ffd700", // ゴールド
+      "#696969", // ディムグレー
+      "#ff1493", // ディープピンク
+      "#006400", // ダークグリーン
+      "#00008b", // ダークブルー
+      "#ff8c00", // ダークオレンジ
+      "#ba55d3", // ミディアムオーキッド
+      "#556b2f", // ダークオリーブグリーン
+      "#daa520", // ゴールデンロッド
+      "#20b2aa"  // ライトシーグリーン
     ];
     
     // ジャンルごとに色を割り当てる
@@ -210,7 +240,8 @@ export default function TrendsPage() {
         series.push({
           key: `${genre}_${metric}`,
           name: `${genre} (${metricLabels[metric]})`,
-          color: genreColors[genre] // 同じジャンルには同じ色を割り当てる
+          color: genreColors[genre], // 同じジャンルには同じ色を割り当てる
+          metricType: metric // 指標タイプを設定
         });
       });
     });
@@ -247,6 +278,8 @@ export default function TrendsPage() {
   return (
     <div className="container mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">トレンド分析</h1>
+      
+      <TrendTabs />
       
       <div className="grid gap-4 md:grid-cols-2 mb-6">
         <div>
@@ -326,6 +359,7 @@ export default function TrendsPage() {
               height={400}
               showLegend={false}
               highlightSameGroup={true}
+              useMultipleYAxis={true}
             />
           </>
         ) : (

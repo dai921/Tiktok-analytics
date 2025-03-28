@@ -1129,14 +1129,10 @@ async def get_trends_summary(
         query = """
         SELECT 
             genre,
-            AVG(view_increase) as avg_view_increase,
             SUM(view_increase) as total_view_increase,
-            AVG(total_posts) as avg_total_posts,
-            SUM(total_posts) as total_posts,
-            AVG(videos_100k_plus) as avg_videos_100k_plus,
+            SUM(videos_10k_plus) as total_videos_10k_plus,
             SUM(videos_100k_plus) as total_videos_100k_plus,
-            AVG(ratio_100k_plus) as avg_ratio_100k_plus,
-            COUNT(collection_date) as data_points
+            SUM(total_posts) as total_posts
         FROM 
             trend_analysis 
         WHERE 
@@ -1161,16 +1157,23 @@ async def get_trends_summary(
         # 結果整形
         summary_data = []
         for row in rows:
+            genre = row[0]
+            total_view_increase = int(row[1]) if row[1] else 0
+            total_videos_10k_plus = int(row[2]) if row[2] else 0
+            total_videos_100k_plus = int(row[3]) if row[3] else 0
+            total_posts = int(row[4]) if row[4] else 0
+            
+            # 投稿数が0の場合は割合を0とする
+            ratio_10k_plus = total_videos_10k_plus / total_posts if total_posts > 0 else 0
+            ratio_100k_plus = total_videos_100k_plus / total_posts if total_posts > 0 else 0
+            
             summary_data.append({
-                "genre": row[0],
-                "avg_view_increase": int(row[1]) if row[1] else 0,
-                "total_view_increase": int(row[2]) if row[2] else 0,
-                "avg_total_posts": int(row[3]) if row[3] else 0,
-                "total_posts": int(row[4]) if row[4] else 0,
-                "avg_videos_100k_plus": int(row[5]) if row[5] else 0,
-                "total_videos_100k_plus": int(row[6]) if row[6] else 0,
-                "avg_ratio_100k_plus": float(row[7]) if row[7] else 0,
-                "data_points": int(row[8]) if row[8] else 0
+                "genre": genre,
+                "total_view_increase": total_view_increase,
+                "total_videos_100k_plus": total_videos_100k_plus,
+                "total_posts": total_posts,
+                "ratio_10k_plus": ratio_10k_plus,
+                "ratio_100k_plus": ratio_100k_plus
             })
             
         return {

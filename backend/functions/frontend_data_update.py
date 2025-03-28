@@ -68,6 +68,22 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             null_reset_execution_time = (datetime.now() - null_reset_start_time).total_seconds()
             logger.info(f"playCountIncrease NULL設定完了: {null_affected_rows}件更新、実行時間: {null_reset_execution_time}秒")
+            
+            # 作成日が2日以内のものでplayCountIncreaseとplay_countが一致していないものはplayCountIncrease=play_countにする
+            logger.info("バッチ1: 作成日が2日以内で再生数と増加数が一致していない動画の処理を開始")
+            sync_start_time = datetime.now()
+            
+            sync_query = """
+            UPDATE video_master
+            SET playCountIncrease = play_count
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+            AND (playCountIncrease != play_count)
+            """
+            
+            sync_affected_rows = execute_write_query(sync_query)
+            
+            sync_execution_time = (datetime.now() - sync_start_time).total_seconds()
+            logger.info(f"playCountIncrease同期完了: {sync_affected_rows}件更新、実行時間: {sync_execution_time}秒")
         
         # 基本クエリでデータ確認
         debug_query = """
