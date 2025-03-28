@@ -79,8 +79,14 @@ def update_all_categories(request):
         cursor_data = get_or_create_cursor()
         last_cursor_id = cursor_data.get('last_cursor_id', 0)
         batch_size = cursor_data.get('batch_size', BATCH_SIZE)
+        batch_number = cursor_data.get('batch_number', 1)
         
-        print(f"処理開始: last_cursor_id = {last_cursor_id}, batch_size = {batch_size}")
+        print(f"処理開始: last_cursor_id = {last_cursor_id}, batch_size = {batch_size}, batch_number = {batch_number}")
+        
+        # バッチ番号ごとの特殊処理
+        if batch_number == 1:
+            print(f"バッチ#{batch_number}: 初回バッチ処理開始")
+            # 初回バッチでの特別な処理があればここに実装
         
         total_updated = 0
         
@@ -113,6 +119,7 @@ def update_all_categories(request):
                 "success": True,
                 "message": "処理対象のデータがありません。カーソルをリセットしました。",
                 "total_updated": 0,
+                "batch_number": batch_number,
                 "execution_time": time.time() - start_time
             }
         
@@ -185,14 +192,30 @@ def update_all_categories(request):
                 print(f"動画 {video.get('video_id', 'unknown')} の処理中にエラーが発生: {str(e)}")
                 continue
         
-        # 処理した最大IDでカーソルを更新
+        # 残りのデータ数を確認
+        remain_query = f"""
+            SELECT COUNT(*) as count
+            FROM video_master
+            WHERE id > {max_id}
+        """
+        remain_data = execute_query(remain_query)
+        remaining_count = remain_data[0]['count'] if remain_data else 0
+        
+        # 処理した最大IDとバッチ番号を更新
+        next_batch_number = batch_number + 1
         if max_id > 0:
-            update_cursor(max_id)
-            print(f"カーソルを更新しました: {max_id}")
+            if remaining_count > 0:
+                # まだ処理するデータがある場合
+                update_cursor(max_id, next_batch_number)
+                print(f"カーソルを更新しました: ID={max_id}, バッチ番号={next_batch_number}")
+            else:
+                # 全データ処理完了
+                reset_cursor()
+                print("すべてのデータ処理が完了しました。カーソルをリセットしました。")
         
         execution_time = time.time() - start_time
         print(f"====== update_all_categories バッチ処理完了：{datetime.now().isoformat()} ======")
-        print(f"合計 {total_updated} 件の動画カテゴリを更新しました")
+        print(f"バッチ#{batch_number}: 合計 {total_updated} 件の動画カテゴリを更新しました")
         print(f"実行時間: {execution_time:.2f}秒")
         
         return {
@@ -200,7 +223,10 @@ def update_all_categories(request):
             "total_updated": total_updated,
             "execution_time": execution_time,
             "last_cursor_id": max_id,
-            "more_data": len(videos) == batch_size  # バッチサイズと同じ数のデータが取得できた場合、まだ処理するデータがある
+            "batch_number": batch_number,
+            "next_batch_number": next_batch_number,
+            "remaining_count": remaining_count,
+            "more_data": remaining_count > 0
         }
     
     except Exception as e:
@@ -219,7 +245,7 @@ def get_or_create_cursor():
     try:
         # カーソル情報を取得
         query = """
-            SELECT id, processor_name, target_table, last_cursor_id, batch_size
+            SELECT id, processor_name, target_table, last_cursor_id, batch_size, batch_number
             FROM processing_cursors
             WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s
         """
@@ -236,8 +262,8 @@ def get_or_create_cursor():
         # カーソル情報がない場合は新規作成
         insert_query = """
             INSERT INTO processing_cursors
-            (processor_name, target_table, last_cursor_id, batch_size, reset_interval)
-            VALUES (%(processor_name)s, %(target_table)s, 0, %(batch_size)s, 86400)
+            (processor_name, target_table, last_cursor_id, batch_size, batch_number, reset_interval)
+            VALUES (%(processor_name)s, %(target_table)s, 0, %(batch_size)s, 1, 86400)
         """
         insert_params = {
             'processor_name': PROCESSOR_NAME,
@@ -257,7 +283,8 @@ def get_or_create_cursor():
             'processor_name': PROCESSOR_NAME,
             'target_table': TARGET_TABLE,
             'last_cursor_id': 0,
-            'batch_size': BATCH_SIZE
+            'batch_size': BATCH_SIZE,
+            'batch_number': 1
         }
         
     except Exception as e:
@@ -267,26 +294,30 @@ def get_or_create_cursor():
             'processor_name': PROCESSOR_NAME,
             'target_table': TARGET_TABLE,
             'last_cursor_id': 0,
-            'batch_size': BATCH_SIZE
+            'batch_size': BATCH_SIZE,
+            'batch_number': 1
         }
 
-def update_cursor(last_id):
+def update_cursor(last_id, batch_number):
     """
     カーソル位置を更新する
     
     Args:
         last_id (int): 最後に処理したID
+        batch_number (int): 次のバッチ番号
     """
     try:
         update_query = """
             UPDATE processing_cursors
             SET last_cursor_id = %(last_cursor_id)s, 
+                batch_number = %(batch_number)s,
                 updated_at = NOW()
             WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s
         """
         
         params = {
             'last_cursor_id': last_id,
+            'batch_number': batch_number,
             'processor_name': PROCESSOR_NAME,
             'target_table': TARGET_TABLE
         }
@@ -304,6 +335,7 @@ def reset_cursor():
         update_query = """
             UPDATE processing_cursors
             SET last_cursor_id = 0, 
+                batch_number = 1,
                 last_reset_time = NOW(),
                 updated_at = NOW()
             WHERE processor_name = %(processor_name)s AND target_table = %(target_table)s

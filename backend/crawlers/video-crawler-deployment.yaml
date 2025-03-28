@@ -5,7 +5,7 @@ metadata:
   namespace: video-crawler
 spec:
   serviceName: "video-crawler"  # StatefulSetには必須
-  replicas: 6 # 0に変更（オートスケーリング用）
+  replicas: 0 # 0に変更（オートスケーリング用）
   selector:
     matchLabels:
       app: video-crawler

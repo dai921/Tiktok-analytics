@@ -239,7 +239,7 @@ def sync_video_urls():
             }
             
             # Pub/Subユーティリティを使用してメッセージを送信
-            message_id = publish_message('trigger-video-url-data-update', completion_message)
+            message_id = publish_message('video-url-data-update', completion_message)
             print(f"Pub/Sub通知送信完了: メッセージID {message_id}")
         except Exception as pub_sub_error:
             print(f"Pub/Sub通知エラー: {str(pub_sub_error)}")

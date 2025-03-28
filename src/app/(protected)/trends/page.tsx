@@ -48,14 +48,17 @@ export default function TrendsPage() {
         if (datesResponse.success && datesResponse.data.length > 0) {
           setAvailableDates(datesResponse.data)
           
-          // デフォルトの日付範囲を設定（全期間）
+          // デフォルトの日付範囲を設定（直近7回まで）
           const dates = datesResponse.data.map(dateStr => new Date(dateStr))
           dates.sort((a, b) => a.getTime() - b.getTime())
           
           if (dates.length >= 2) {
+            // 直近の最大7件の日付に制限
+            const recentDates = dates.length <= 7 ? dates : dates.slice(-7)
+            
             setDateRange({
-              from: dates[0],
-              to: dates[dates.length - 1]
+              from: recentDates[0],
+              to: recentDates[recentDates.length - 1]
             })
           }
         }
