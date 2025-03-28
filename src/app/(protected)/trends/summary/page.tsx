@@ -48,25 +48,25 @@ export default function TrendsSummaryPage() {
     },
     {
       accessorKey: "total_videos_100k_plus",
-      header: "合計10万再生以上個数",
+      header: "合計10万再生増加個数",
       cell: ({ row }: { row: any }) => formatNumber(row.getValue("total_videos_100k_plus")),
       enableSorting: true,
     },
     {
       accessorKey: "total_posts",
-      header: "合計投稿数",
+      header: "合計動画数",
       cell: ({ row }: { row: any }) => formatNumber(row.getValue("total_posts")),
       enableSorting: true,
     },
     {
       accessorKey: "ratio_100k_plus",
-      header: "10万再生以上割合",
+      header: "10万再生増加割合",
       cell: ({ row }: { row: any }) => formatPercent(row.getValue("ratio_100k_plus")),
       enableSorting: true,
     },
     {
       accessorKey: "ratio_10k_plus",
-      header: "1万再生以上割合",
+      header: "1万再生増加割合",
       cell: ({ row }: { row: any }) => formatPercent(row.getValue("ratio_10k_plus")),
       enableSorting: true,
     },
@@ -191,10 +191,10 @@ export default function TrendsSummaryPage() {
     const headers = [
       'ジャンル',
       '合計再生増加数',
-      '合計10万再生以上個数',
-      '合計投稿数',
-      '10万再生以上割合',
-      '1万再生以上割合'
+      '合計10万再生増加個数',
+      '合計動画数',
+      '10万再生増加割合',
+      '1万再生増加割合'
     ];
     
     // CSVデータ作成

@@ -20,7 +20,7 @@ export default function TrendsPage() {
   const [availableDates, setAvailableDates] = useState<string[]>([])
   const [availableGenres, setAvailableGenres] = useState<Option[]>([])
   const [selectedGenres, setSelectedGenres] = useState<string[]>([])
-  const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['videos_100k_plus'])
+  const [selectedMetric, setSelectedMetric] = useState<string>('videos_100k_plus')
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isLoadingChart, setIsLoadingChart] = useState<boolean>(false)
   const [timelineData, setTimelineData] = useState<TimelineDataPoint[]>([])
@@ -111,7 +111,7 @@ export default function TrendsPage() {
         // キャッシュキーを作成
         const startDate = dateRange.from.toISOString().split('T')[0];
         const endDate = dateRange.to.toISOString().split('T')[0];
-        const cacheKey = `${startDate}-${endDate}-${selectedGenres.sort().join(',')}-${selectedMetrics.sort().join(',')}`;
+        const cacheKey = `${startDate}-${endDate}-${selectedGenres.sort().join(',')}-${selectedMetric}`;
         
         // キャッシュにデータがあればそれを使用
         if (dataCache.current[cacheKey]) {
@@ -125,8 +125,8 @@ export default function TrendsPage() {
           start_date: startDate,
           end_date: endDate,
           genres: selectedGenres,
-          // すべての指標を常に取得（表示はselectedMetricsで制御）
-          metrics: ['view_increase', 'videos_100k_plus', 'total_posts']
+          // 選択された指標と、常に必要な指標を取得
+          metrics: [selectedMetric]
         };
         
         const response = await fetchTrendTimeline(params);
@@ -151,7 +151,7 @@ export default function TrendsPage() {
     }
     
     fetchTimelineData()
-  }, [dateRange, selectedGenres, selectedMetrics])
+  }, [dateRange, selectedGenres, selectedMetric])
 
   // APIレスポンスからグラフ用のデータ形式に変換する関数
   const formatTimelineData = (apiData: any): TimelineDataPoint[] => {
@@ -171,24 +171,22 @@ export default function TrendsPage() {
         const genreData = dateData[genre] || {};
         
         // 選択された指標についてのみデータポイントを作成
-        selectedMetrics.forEach(metric => {
-          // ジャンル名と指標名を組み合わせたキーを作成
-          const dataKey = `${genre}_${metric}`;
-          
-          // データが存在する場合のみ設定（欠損値は undefined のままにする）
-          if (genreData[metric] !== undefined) {
-            dataPoint[dataKey] = genreData[metric];
-          }
-        });
+        // ジャンル名と指標名を組み合わせたキーを作成
+        const dataKey = `${genre}_${selectedMetric}`;
+        
+        // データが存在する場合のみ設定（欠損値は undefined のままにする）
+        if (genreData[selectedMetric] !== undefined) {
+          dataPoint[dataKey] = genreData[selectedMetric];
+        }
       });
       
       return dataPoint;
     });
   };
 
-  // グラフのシリーズ定義
+  // グラフのシリーズ定義を修正
   const chartSeries = useMemo(() => {
-    const series: Array<{key: string, name: string, color?: string, metricType?: string}> = [];
+    const series: Array<{key: string, name: string, color?: string}> = [];
     
     // 指標の表示名マッピング
     const metricLabels: Record<string, string> = {
@@ -237,20 +235,28 @@ export default function TrendsPage() {
       genreColors[genre] = COLORS[index % COLORS.length];
     });
     
-    // 選択されたジャンルと指標の組み合わせでシリーズを作成
+    // 選択された単一指標について、すべてのジャンルのシリーズを作成
     selectedGenres.forEach(genre => {
-      selectedMetrics.forEach(metric => {
-        series.push({
-          key: `${genre}_${metric}`,
-          name: `${genre} (${metricLabels[metric]})`,
-          color: genreColors[genre], // 同じジャンルには同じ色を割り当てる
-          metricType: metric // 指標タイプを設定
-        });
+      series.push({
+        key: `${genre}_${selectedMetric}`,
+        name: genre,
+        color: genreColors[genre]
       });
     });
     
     return series;
-  }, [selectedGenres, selectedMetrics]);
+  }, [selectedGenres, selectedMetric]);
+
+  // グラフタイトルを取得
+  const getChartTitle = () => {
+    const metricLabels: Record<string, string> = {
+      'view_increase': '再生増加数',
+      'videos_100k_plus': '10万再生以上個数',
+      'total_posts': '投稿数'
+    };
+    
+    return `ジャンル別${metricLabels[selectedMetric]}の推移`;
+  };
 
   // 選択した日付範囲とジャンルに基づいてグラフを表示するかの判定
   const shouldShowChart = !isLoading && dateRange.from && dateRange.to && selectedGenres.length > 0;
@@ -262,17 +268,6 @@ export default function TrendsPage() {
   const handleGenresChange = (newSelected: string[]) => {
     setSelectedGenres(newSelected)
   }
-
-  const handleMetricsChange = (metric: string, isChecked: boolean) => {
-    if (isChecked) {
-      setSelectedMetrics(prev => [...prev, metric]);
-    } else {
-      // 少なくとも1つの指標は選択されている必要がある
-      if (selectedMetrics.length > 1) {
-        setSelectedMetrics(prev => prev.filter(m => m !== metric));
-      }
-    }
-  };
 
   if (isLoading) {
     return <div className="p-6">データを読み込み中...</div>
@@ -305,39 +300,18 @@ export default function TrendsPage() {
         </div>
       </div>
       
-      <div className="flex gap-6 mb-6">
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="metric-view-increase" 
-            checked={selectedMetrics.includes('view_increase')}
-            onCheckedChange={(checked) => 
-              handleMetricsChange('view_increase', checked as boolean)
-            }
-          />
-          <Label htmlFor="metric-view-increase">再生増加数</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="metric-100k-plus" 
-            checked={selectedMetrics.includes('videos_100k_plus')}
-            onCheckedChange={(checked) => 
-              handleMetricsChange('videos_100k_plus', checked as boolean)
-            }
-          />
-          <Label htmlFor="metric-100k-plus">10万再生以上個数</Label>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="metric-total-posts" 
-            checked={selectedMetrics.includes('total_posts')}
-            onCheckedChange={(checked) => 
-              handleMetricsChange('total_posts', checked as boolean)
-            }
-          />
-          <Label htmlFor="metric-total-posts">投稿数</Label>
-        </div>
+      {/* チェックボックスを削除してドロップダウンに置き換え */}
+      <div className="mb-6">
+        <label className="text-sm font-medium mb-2 block">表示する指標</label>
+        <select
+          className="w-full p-2 border rounded-md"
+          value={selectedMetric}
+          onChange={(e) => setSelectedMetric(e.target.value)}
+        >
+          <option value="videos_100k_plus">10万再生以上個数</option>
+          <option value="view_increase">再生増加数</option>
+          <option value="total_posts">投稿数</option>
+        </select>
       </div>
       
       {error && (
@@ -353,7 +327,7 @@ export default function TrendsPage() {
           </div>
         ) : shouldShowChart && timelineData.length > 0 ? (
           <>
-            <h2 className="text-xl font-medium mb-4">トレンド指標の推移</h2>
+            <h2 className="text-xl font-medium mb-4">{getChartTitle()}</h2>
             <LineChart 
               data={timelineData}
               series={chartSeries}
@@ -361,8 +335,7 @@ export default function TrendsPage() {
               yAxisLabel="値"
               height={400}
               showLegend={false}
-              highlightSameGroup={true}
-              useMultipleYAxis={true}
+              highlightSameGroup={false}
             />
           </>
         ) : (
