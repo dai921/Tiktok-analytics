@@ -258,6 +258,17 @@ export default function TrendsPage() {
     return `ジャンル別${metricLabels[selectedMetric]}の推移`;
   };
 
+  // Y軸ラベルを取得する関数
+  const getYAxisLabel = () => {
+    const yAxisLabels: Record<string, string> = {
+      'view_increase': '再生増加数',
+      'videos_100k_plus': '個数',
+      'total_posts': '動画数'
+    };
+    
+    return yAxisLabels[selectedMetric] || '値';
+  };
+
   // 選択した日付範囲とジャンルに基づいてグラフを表示するかの判定
   const shouldShowChart = !isLoading && dateRange.from && dateRange.to && selectedGenres.length > 0;
 
@@ -308,9 +319,9 @@ export default function TrendsPage() {
           value={selectedMetric}
           onChange={(e) => setSelectedMetric(e.target.value)}
         >
-          <option value="videos_100k_plus">10万再生以上個数</option>
+          <option value="videos_100k_plus">10万再生増加個数</option>
           <option value="view_increase">再生増加数</option>
-          <option value="total_posts">投稿数</option>
+          <option value="total_posts">対象動画数</option>
         </select>
       </div>
       
@@ -332,10 +343,14 @@ export default function TrendsPage() {
               data={timelineData}
               series={chartSeries}
               xAxisLabel="日付"
-              yAxisLabel="値"
+              yAxisLabel={getYAxisLabel()}
               height={400}
               showLegend={false}
               highlightSameGroup={false}
+              marginLeft={40}
+              marginRight={15}
+              marginTop={20}
+              marginBottom={40}
             />
           </>
         ) : (

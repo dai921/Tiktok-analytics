@@ -32,6 +32,10 @@ type LineChartProps = {
   className?: string
   showLegend?: boolean
   highlightSameGroup?: boolean
+  marginLeft?: number
+  marginRight?: number
+  marginTop?: number
+  marginBottom?: number
 }
 
 // 視覚的に区別しやすい30色のパレット（色相を散らした配置）
@@ -77,6 +81,10 @@ export function LineChart({
   className,
   showLegend = false,
   highlightSameGroup = false,
+  marginLeft,
+  marginRight,
+  marginTop,
+  marginBottom,
 }: LineChartProps) {
   
   // アクティブなシリーズを追跡する状態を追加
@@ -261,6 +269,14 @@ export function LineChart({
     setIsOverXAxisLabel(false);
   };
 
+  // マージン設定の計算
+  const chartMargin = {
+    top: marginTop || 10,
+    right: marginRight || 40,
+    left: marginLeft || 20,
+    bottom: marginBottom || 35
+  };
+
   return (
     <div 
       className={`${className} relative`} 
@@ -270,7 +286,7 @@ export function LineChart({
       <ResponsiveContainer width="100%" height={height}>
         <RechartsLineChart
           data={sortedData}
-          margin={{ top: 10, right: 40, left: 20, bottom: 35 }}
+          margin={chartMargin}
           onMouseLeave={handleMouseLeave}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -294,7 +310,8 @@ export function LineChart({
               value: yAxisLabel, 
               angle: -90, 
               position: 'insideLeft',
-              offset: -15
+              offset: 5,
+              dx: -10
             }} 
           />
           <Tooltip 
