@@ -77,57 +77,39 @@ export function DateRangePicker({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <div className="p-3 space-y-3">
-            <div className="grid gap-2">
-              <Label htmlFor="from-date">開始日</Label>
-              <Calendar
-                id="from-date"
-                mode="single"
-                selected={dateRange.from}
-                onSelect={(date) => {
-                  const newRange = { ...dateRange, from: date }
-                  // 開始日が終了日より後の場合、終了日を開始日に合わせる
-                  if (date && dateRange.to && date > dateRange.to) {
-                    newRange.to = date
-                  }
-                  onDateRangeChange(newRange)
-                }}
-                disabled={(date) => 
-                  dateRange.to ? date > dateRange.to : false
-                }
-                locale={ja}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="to-date">終了日</Label>
-              <Calendar
-                id="to-date"
-                mode="single"
-                selected={dateRange.to}
-                onSelect={(date) => {
-                  const newRange = { ...dateRange, to: date }
-                  // 終了日が開始日より前の場合、開始日を終了日に合わせる
-                  if (date && dateRange.from && date < dateRange.from) {
-                    newRange.from = date
-                  }
-                  onDateRangeChange(newRange)
-                }}
-                disabled={(date) => 
-                  dateRange.from ? date < dateRange.from : false
-                }
-                locale={ja}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <Button 
-                size="sm" 
-                onClick={() => setIsPopoverOpen(false)}
-              >
-                完了
-              </Button>
-            </div>
+          <div className="p-1">
+            <Calendar
+              initialFocus
+              mode="range"
+              defaultMonth={dateRange.from}
+              selected={dateRange}
+              onSelect={(newRange) => {
+                onDateRangeChange(newRange)
+              }}
+              numberOfMonths={2}
+              classNames={{
+                day_range_end: "day-range-end",
+                day_range_start: "day-range-start",
+                day_range_middle: "day-range-middle",
+                day: "h-7 w-7 text-xs p-0 focus-within:w-7 focus-within:h-7",
+                day_today: "day-today",
+                cell: "h-8 w-8 p-0 relative",
+                head_cell: "text-xs font-normal",
+                months: "space-y-2",
+                month: "space-y-2",
+                caption: "text-sm flex justify-center pt-1 relative items-center",
+                nav_button: "h-5 w-5",
+                table: "w-full border-collapse space-y-1",
+              }}
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button 
+              size="sm" 
+              onClick={() => setIsPopoverOpen(false)}
+            >
+              完了
+            </Button>
           </div>
         </PopoverContent>
       </Popover>
