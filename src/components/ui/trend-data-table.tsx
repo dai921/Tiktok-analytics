@@ -20,7 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Search } from 'lucide-react';
+import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Button } from "@/components/ui/button";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -37,6 +38,11 @@ export function DataTable<TData, TValue>({
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' | null }>({
+    key: '',
+    direction: null
+  });
 
   const table = useReactTable({
     data,
@@ -52,51 +58,116 @@ export function DataTable<TData, TValue>({
     },
   });
 
+  // 検索フィルター
+  const filteredData = React.useMemo(() => {
+    if (!searchQuery || !searchColumn) return data;
+    
+    return data.filter(item => {
+      const value = item[searchColumn];
+      if (typeof value === 'string') {
+        return value.toLowerCase().includes(searchQuery.toLowerCase());
+      }
+      return false;
+    });
+  }, [data, searchQuery, searchColumn]);
+
+  // ソート処理
+  const sortedData = React.useMemo(() => {
+    if (!sortConfig.key || !sortConfig.direction) return filteredData;
+    
+    return [...filteredData].sort((a, b) => {
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+      
+      // 数値の場合
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+      
+      // 文字列の場合
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortConfig.direction === 'asc' 
+          ? aValue.localeCompare(bValue, 'ja') 
+          : bValue.localeCompare(aValue, 'ja');
+      }
+      
+      return 0;
+    });
+  }, [filteredData, sortConfig]);
+
+  // ソート状態を切り替える
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' | null = 'asc';
+    
+    if (sortConfig.key === key) {
+      if (sortConfig.direction === 'asc') {
+        direction = 'desc';
+      } else if (sortConfig.direction === 'desc') {
+        direction = null;
+      }
+    }
+    
+    setSortConfig({ key, direction });
+  };
+
+  // ソートアイコンを取得
+  const getSortIcon = (key: string) => {
+    if (sortConfig.key !== key) {
+      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+    }
+    
+    if (sortConfig.direction === 'asc') {
+      return <ArrowUp className="ml-2 h-4 w-4" />;
+    }
+    
+    if (sortConfig.direction === 'desc') {
+      return <ArrowDown className="ml-2 h-4 w-4" />;
+    }
+    
+    return <ArrowUpDown className="ml-2 h-4 w-4" />;
+  };
+
   return (
     <div>
       {searchColumn && (
         <div className="flex items-center py-4">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={searchPlaceholder}
-              value={(table.getColumn(searchColumn)?.getFilterValue() as string) ?? ''}
-              onChange={(event) =>
-                table.getColumn(searchColumn)?.setFilterValue(event.target.value)
-              }
-              className="max-w-sm pl-8"
-            />
-          </div>
+          <Input
+            placeholder={searchPlaceholder}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-sm"
+          />
         </div>
       )}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
+            <TableRow>
+              {columns.map((column) => (
+                <TableHead key={column.accessorKey}>
+                  {column.enableSorting ? (
+                    <Button
+                      variant="ghost"
+                      onClick={() => requestSort(column.accessorKey)}
+                      className="flex items-center font-medium text-xs sm:text-sm p-0 h-auto"
+                    >
+                      {column.header}
+                      {getSortIcon(column.accessorKey)}
+                    </Button>
+                  ) : (
+                    <span className="font-medium text-xs sm:text-sm">{column.header}</span>
+                  )}
+                </TableHead>
+              ))}
+            </TableRow>
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            {sortedData.length > 0 ? (
+              sortedData.map((row, rowIndex) => (
+                <TableRow key={rowIndex}>
+                  {columns.map((column) => (
+                    <TableCell key={column.accessorKey}>
+                      {column.cell ? column.cell({ row: { getValue: (key: string) => row[key] } }) : row[column.accessorKey]}
                     </TableCell>
                   ))}
                 </TableRow>

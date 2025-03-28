@@ -11,20 +11,36 @@ from config import initialize_config, get_environment, get_db_config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ファイル先頭でログを追加
+print("===== モジュールロード時の環境変数 =====")
+print(f"ENVIRONMENT: {os.getenv('ENVIRONMENT', '未設定')}")
+print(f"PROJECT_ID: {os.getenv('PROJECT_ID', '未設定')}")
+print(f"INSTANCE_CONNECTION_NAME: {os.getenv('INSTANCE_CONNECTION_NAME', '未設定')}")
+
 # 設定の初期化
+print("===== 設定初期化前 =====")
 initialize_config()
+print("===== 設定初期化後 =====")
+print(f"環境: {get_environment()}")
 
 # 環境情報を取得
 environment = get_environment()
 project_id = os.getenv('PROJECT_ID')
+instance_connection_name = os.getenv('INSTANCE_CONNECTION_NAME')
 
-# 環境情報をログ出力
-logger.info(f"実行環境: {environment}")
-logger.info(f"プロジェクトID: {project_id}")
+# 環境情報をより詳細に出力
+print(f"実行環境: {environment}")
+print(f"プロジェクトID: {project_id}")
+print(f"インスタンス接続名: {instance_connection_name}")
+
+# 環境変数全体の確認
+print(f"全環境変数: {dict(os.environ)}")
 
 # デバッグ用に接続情報を確認
 db_config = get_db_config()
-logger.info(f"データベース接続設定: host={db_config.get('host', 'unknown')}, database={db_config.get('database', 'unknown')}")
+# パスワードを隠して表示
+safe_db_config = {k: v if k != 'password' else '********' for k, v in db_config.items()}
+print(f"データベース接続設定: {safe_db_config}")
 
 # 定数
 PROCESSOR_NAME = 'update_all_categories'
@@ -43,19 +59,20 @@ def update_all_categories(request):
         dict: 処理結果の JSON レスポンス
     """
     start_time = time.time()
-    logger.info(f"====== update_all_categories 開始：{datetime.now().isoformat()} ======")
+    print(f"====== update_all_categories 開始：{datetime.now().isoformat()} ======")
     
-    # デバッグ: 接続情報の確認
-    try:
-        # テスト接続を実行して接続先を確認
-        test_query = "SELECT DATABASE() as db, @@hostname as host"
-        connection_info = execute_query(test_query)
-        if connection_info:
-            logger.info(f"接続先確認: {connection_info[0]}")
-        else:
-            logger.warning("接続テスト結果が空です")
-    except Exception as e:
-        logger.error(f"接続テスト中にエラー: {str(e)}")
+    # 関数実行時の環境変数確認
+    print("===== 関数実行時の環境変数 =====")
+    print(f"ENVIRONMENT: {os.getenv('ENVIRONMENT', '未設定')}")
+    print(f"PROJECT_ID: {os.getenv('PROJECT_ID', '未設定')}")
+    print(f"INSTANCE_CONNECTION_NAME: {os.getenv('INSTANCE_CONNECTION_NAME', '未設定')}")
+    print(f"環境: {get_environment()}")
+    
+    # DBに接続する直前の設定を再確認
+    print("===== DB接続直前の設定 =====")
+    db_config = get_db_config()
+    safe_db_config = {k: v if k != 'password' else '********' for k, v in db_config.items()}
+    print(f"DB設定: {safe_db_config}")
     
     try:
         # カーソル情報を取得または作成
@@ -63,18 +80,19 @@ def update_all_categories(request):
         last_cursor_id = cursor_data.get('last_cursor_id', 0)
         batch_size = cursor_data.get('batch_size', BATCH_SIZE)
         
-        logger.info(f"処理開始: last_cursor_id = {last_cursor_id}, batch_size = {batch_size}")
+        print(f"処理開始: last_cursor_id = {last_cursor_id}, batch_size = {batch_size}")
         
         total_updated = 0
         
         # カテゴリキーワードの取得
+        print("カテゴリキーワードの取得を開始します")
         category_query = """
             SELECT ck.keyword, ck.is_product, cm.category_name, cm.category_id
             FROM category_keywords ck
             JOIN category_master cm ON ck.category_id = cm.category_id
         """
         keywords_data = execute_query(category_query)
-        logger.info(f"カテゴリキーワード {len(keywords_data)} 件を取得しました")
+        print(f"カテゴリキーワード {len(keywords_data)} 件を取得しました")
         
         # 処理すべき動画データの取得（バッチサイズ分）
         video_query = f"""
@@ -85,11 +103,11 @@ def update_all_categories(request):
             LIMIT {batch_size}
         """
         videos = execute_query(video_query)
-        logger.info(f"動画データ {len(videos)} 件を取得しました (cursor_id > {last_cursor_id})")
+        print(f"動画データ {len(videos)} 件を取得しました (cursor_id > {last_cursor_id})")
         
         if not videos:
             # 処理対象のデータがない場合はカーソルをリセット
-            logger.info("処理対象のデータがありません。カーソルをリセットします。")
+            print("処理対象のデータがありません。カーソルをリセットします。")
             reset_cursor()
             return {
                 "success": True,
@@ -161,21 +179,21 @@ def update_all_categories(request):
                 # 100件ごとに進捗状況を表示
                 if total_updated % 100 == 0:
                     elapsed_time = time.time() - start_time
-                    logger.info(f"進捗状況: {total_updated}/{len(videos)} 件更新 ({total_updated/len(videos)*100:.1f}%), 経過時間: {elapsed_time:.2f}秒")
+                    print(f"進捗状況: {total_updated}/{len(videos)} 件更新 ({total_updated/len(videos)*100:.1f}%), 経過時間: {elapsed_time:.2f}秒")
                 
             except Exception as e:
-                logger.error(f"動画 {video.get('video_id', 'unknown')} の処理中にエラーが発生: {str(e)}")
+                print(f"動画 {video.get('video_id', 'unknown')} の処理中にエラーが発生: {str(e)}")
                 continue
         
         # 処理した最大IDでカーソルを更新
         if max_id > 0:
             update_cursor(max_id)
-            logger.info(f"カーソルを更新しました: {max_id}")
+            print(f"カーソルを更新しました: {max_id}")
         
         execution_time = time.time() - start_time
-        logger.info(f"====== update_all_categories バッチ処理完了：{datetime.now().isoformat()} ======")
-        logger.info(f"合計 {total_updated} 件の動画カテゴリを更新しました")
-        logger.info(f"実行時間: {execution_time:.2f}秒")
+        print(f"====== update_all_categories バッチ処理完了：{datetime.now().isoformat()} ======")
+        print(f"合計 {total_updated} 件の動画カテゴリを更新しました")
+        print(f"実行時間: {execution_time:.2f}秒")
         
         return {
             "success": True, 
@@ -186,10 +204,10 @@ def update_all_categories(request):
         }
     
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        print(f"エラーが発生しました: {str(e)}")
         import traceback
-        logger.error(traceback.format_exc())
-        return {"success": False, "error": str(e)}
+        print(traceback.format_exc())
+        return {'success': False, 'error': str(e)}
 
 def get_or_create_cursor():
     """
@@ -243,7 +261,7 @@ def get_or_create_cursor():
         }
         
     except Exception as e:
-        logger.error(f"カーソル情報の取得に失敗しました: {str(e)}")
+        print(f"カーソル情報の取得に失敗しました: {str(e)}")
         # デフォルト値を返す
         return {
             'processor_name': PROCESSOR_NAME,
@@ -276,7 +294,7 @@ def update_cursor(last_id):
         execute_write_query(update_query, params)
         
     except Exception as e:
-        logger.error(f"カーソル更新に失敗しました: {str(e)}")
+        print(f"カーソル更新に失敗しました: {str(e)}")
 
 def reset_cursor():
     """
@@ -297,10 +315,10 @@ def reset_cursor():
         }
         
         execute_write_query(update_query, params)
-        logger.info("カーソルをリセットしました")
+        print("カーソルをリセットしました")
         
     except Exception as e:
-        logger.error(f"カーソルリセットに失敗しました: {str(e)}")
+        print(f"カーソルリセットに失敗しました: {str(e)}")
 
 if __name__ == "__main__":
-    logger.info("このスクリプトはCloud Functionsとして実行されます。ローカルでの直接実行はサポートされていません。") 
+    print("このスクリプトはCloud Functionsとして実行されます。ローカルでの直接実行はサポートされていません。") 

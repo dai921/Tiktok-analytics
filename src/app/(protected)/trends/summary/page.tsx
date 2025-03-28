@@ -38,7 +38,7 @@ export default function TrendsSummaryPage() {
     {
       accessorKey: "genre",
       header: "ジャンル",
-      enableSorting: true,
+      enableSorting: false,
     },
     {
       accessorKey: "total_view_increase",
