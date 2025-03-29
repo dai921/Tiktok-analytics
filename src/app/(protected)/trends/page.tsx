@@ -11,6 +11,7 @@ import { fetchTrendGenres, fetchTrendTimeline, fetchTrendDates } from '@/lib/api
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { TrendTabs } from '@/components/ui/trend-tabs';
+import { useAuth } from '@/lib/auth-context';
 
 export default function TrendsPage() {
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -28,6 +29,30 @@ export default function TrendsPage() {
 
   // キャッシュを保持する
   const dataCache = useRef<Record<string, any>>({});
+
+  // Auth contextからログアウト関数を取得
+  const { logout } = useAuth();
+  
+  // ログアウトハンドラー
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        logout();
+      } else {
+        console.error('ログアウトに失敗しました');
+      }
+    } catch (error) {
+      console.error('ログアウトエラー:', error);
+    }
+  };
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -286,7 +311,16 @@ export default function TrendsPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">トレンド分析</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">トレンド分析</h1>
+        <Button 
+          variant="outline"
+          onClick={handleLogout}
+          className="text-sm"
+        >
+          ログアウト
+        </Button>
+      </div>
       
       <TrendTabs />
       
@@ -301,8 +335,7 @@ export default function TrendsPage() {
           />
         </div>
         
-        <div>
-          <label className="text-sm font-medium mb-2 block">ジャンル選択</label>
+        <div className="flex items-end justify-between">
           <MultiSelect 
             options={availableGenres}
             selected={selectedGenres}
@@ -313,7 +346,6 @@ export default function TrendsPage() {
         </div>
       </div>
       
-      {/* チェックボックスを削除してドロップダウンに置き換え */}
       <div className="mb-6">
         <label className="text-sm font-medium mb-2 block">表示する指標</label>
         <select

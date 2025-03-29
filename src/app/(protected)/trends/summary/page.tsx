@@ -8,6 +8,7 @@ import { fetchTrendDates, fetchTrendSummary } from "@/lib/api";
 import { DataTable } from "@/components/ui/trend-data-table";
 import { DownloadIcon } from "lucide-react";
 import { TrendTabs } from '@/components/ui/trend-tabs';
+import { useAuth } from '@/lib/auth-context';
 
 // サマリーデータの型定義
 interface TrendSummaryItem {
@@ -32,6 +33,9 @@ export default function TrendsSummaryPage() {
 
   // キャッシュを保持する
   const dataCache = useRef<Record<string, TrendSummaryItem[]>>({});
+
+  // Auth contextからログアウト関数を取得
+  const { logout } = useAuth();
 
   // テーブルの列定義
   const columns = [
@@ -224,33 +228,68 @@ export default function TrendsSummaryPage() {
     URL.revokeObjectURL(link.href);
   };
 
+  // ログアウトハンドラー
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        logout();
+      } else {
+        console.error('ログアウトに失敗しました');
+      }
+    } catch (error) {
+      console.error('ログアウトエラー:', error);
+    }
+  };
+
   if (isLoading) {
     return <div className="p-6">データを読み込み中...</div>;
   }
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">トレンドサマリー</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">トレンド分析</h1>
+        <Button 
+          variant="outline"
+          onClick={handleLogout}
+          className="text-sm"
+        >
+          ログアウト
+        </Button>
+      </div>
       
       <TrendTabs />
       
-      <div className="mb-6">
-        <label className="text-sm font-medium mb-2 block">期間選択</label>
-        <div className="flex gap-4">
+      <div className="grid gap-4 md:grid-cols-2 mb-6">
+        <div>
+          <label className="text-sm font-medium mb-2 block">期間選択</label>
           <DateRangePicker 
-            dateRange={dateRange}
-            onDateRangeChange={handleDateRangeChange}
-            availableDates={availableDates}
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            displayMode={true}
           />
-          
+        </div>
+        
+        <div className="flex items-end">
+          {/* CSV出力ボタンをコメントアウト
           <Button
             variant="outline"
             onClick={handleDownloadCSV}
             disabled={isLoadingTable || summaryData.length === 0}
+            className="h-10"
           >
             <DownloadIcon className="mr-2 h-4 w-4" />
             CSV出力
           </Button>
+          */}
         </div>
       </div>
       

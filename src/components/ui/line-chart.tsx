@@ -324,7 +324,7 @@ export function LineChart({
           {series.map((s, index) => (
             <Line
               key={s.key}
-              type="monotone"
+              type="linear"
               dataKey={s.key}
               name={s.name}
               stroke={s.color || COLORS[index % COLORS.length]}
