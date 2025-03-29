@@ -294,9 +294,10 @@ export default function TrendsPage() {
         <div>
           <label className="text-sm font-medium mb-2 block">期間選択</label>
           <DateRangePicker 
-            dateRange={dateRange}
-            onDateRangeChange={handleDateRangeChange}
-            availableDates={availableDates}
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            displayMode={true}
+            displayLabel="集計期間"
           />
         </div>
         
