@@ -3,116 +3,111 @@
 import * as React from "react"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
-import { Calendar as CalendarIcon } from "lucide-react"
-
+import { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
 
-export type DateRange = {
-  from: Date | undefined
-  to: Date | undefined
-}
-
-type DateRangePickerProps = {
-  dateRange: DateRange
-  onDateRangeChange: (range: DateRange) => void
+interface DateRangePickerProps {
   className?: string
+  value?: DateRange | undefined
+  onChange?: (date: DateRange | undefined) => void
+  startLabel?: string
+  endLabel?: string
 }
 
 export function DateRangePicker({
-  dateRange,
-  onDateRangeChange,
   className,
+  value,
+  onChange,
+  startLabel = "開始日",
+  endLabel = "終了日"
 }: DateRangePickerProps) {
-  const [isPopoverOpen, setIsPopoverOpen] = React.useState(false)
+  // 日付範囲用の内部状態
+  const [startDate, setStartDate] = React.useState<string>(
+    value?.from ? format(value.from, "yyyy-MM-dd") : ""
+  )
+  const [endDate, setEndDate] = React.useState<string>(
+    value?.to ? format(value.to, "yyyy-MM-dd") : ""
+  )
 
-  // 日付表示フォーマット
-  const formatDate = (date: Date | undefined) => {
-    if (!date) return ""
-    return format(date, "yyyy年MM月dd日", { locale: ja })
+  // 入力変更ハンドラー
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setStartDate(newValue)
+    
+    if (newValue) {
+      const newStart = new Date(newValue)
+      const newRange = {
+        from: newStart,
+        to: endDate ? new Date(endDate) : undefined
+      }
+      onChange?.(newRange)
+    } else {
+      // 開始日が空の場合、終了日だけを設定
+      onChange?.(endDate ? { from: undefined, to: new Date(endDate) } : undefined)
+    }
   }
 
-  // 表示するラベル
-  const getDisplayText = () => {
-    if (dateRange.from && dateRange.to) {
-      return `${formatDate(dateRange.from)} 〜 ${formatDate(dateRange.to)}`
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setEndDate(newValue)
+    
+    if (newValue) {
+      const newEnd = new Date(newValue)
+      const newRange = {
+        from: startDate ? new Date(startDate) : undefined,
+        to: newEnd
+      }
+      onChange?.(newRange)
+    } else {
+      // 終了日が空の場合、開始日だけを設定
+      onChange?.(startDate ? { from: new Date(startDate), to: undefined } : undefined)
     }
-    if (dateRange.from) {
-      return `${formatDate(dateRange.from)} から`
-    }
-    if (dateRange.to) {
-      return `${formatDate(dateRange.to)} まで`
-    }
-    return "日付範囲を選択"
   }
+
+  // 値が外部から更新された場合、内部状態を同期
+  React.useEffect(() => {
+    if (value?.from) {
+      setStartDate(format(value.from, "yyyy-MM-dd"))
+    }
+    if (value?.to) {
+      setEndDate(format(value.to, "yyyy-MM-dd"))
+    }
+  }, [value])
 
   return (
     <div className={cn("grid gap-2", className)}>
-      <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id="date-range"
-            variant={"outline"}
-            className={cn(
-              "w-full justify-start text-left font-normal",
-              !dateRange.from && !dateRange.to && "text-muted-foreground"
-            )}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {getDisplayText()}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <div className="p-1">
-            <Calendar
-              initialFocus
-              mode="range"
-              defaultMonth={dateRange.from}
-              selected={dateRange}
-              onSelect={(newRange) => {
-                onDateRangeChange(newRange)
-              }}
-              numberOfMonths={2}
-              classNames={{
-                day_range_end: "day-range-end",
-                day_range_start: "day-range-start",
-                day_range_middle: "day-range-middle",
-                day: "h-7 w-7 text-xs p-0 focus-within:w-7 focus-within:h-7",
-                day_today: "day-today",
-                cell: "h-8 w-8 p-0 relative",
-                head_cell: "text-xs font-normal",
-                months: "space-y-2",
-                month: "space-y-2",
-                caption: "text-sm flex justify-center pt-1 relative items-center",
-                nav_button: "h-5 w-5",
-                table: "w-full border-collapse space-y-1",
-              }}
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button 
-              size="sm" 
-              onClick={() => setIsPopoverOpen(false)}
-            >
-              完了
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
+      <div className="flex items-center gap-2">
+        <div className="relative w-full">
+          <label className="text-xs text-gray-500 mb-1 block">{startLabel}</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={handleStartDateChange}
+            onClick={(e) => {
+              // カレンダーを強制的に表示
+              const input = e.target as HTMLInputElement;
+              input.showPicker();
+            }}
+            className="w-full px-2 py-1 border rounded text-xs cursor-pointer"
+            style={{ colorScheme: 'auto' }}
+          />
+        </div>
+        <div className="relative w-full">
+          <label className="text-xs text-gray-500 mb-1 block">{endLabel}</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={handleEndDateChange}
+            onClick={(e) => {
+              // カレンダーを強制的に表示
+              const input = e.target as HTMLInputElement;
+              input.showPicker();
+            }}
+            className="w-full px-2 py-1 border rounded text-xs cursor-pointer"
+            style={{ colorScheme: 'auto' }}
+          />
+        </div>
+      </div>
     </div>
   )
 } 

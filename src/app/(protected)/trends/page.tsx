@@ -296,6 +296,7 @@ export default function TrendsPage() {
           <DateRangePicker 
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
+            availableDates={availableDates}
           />
         </div>
         

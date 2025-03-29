@@ -50,12 +50,17 @@ def process_account_message(message):
         # ここでアカウントクローラージョブを作成
         create_account_crawler_job(data, attributes)
         
-        # メッセージを確認
-        message.ack()
+        # メッセージを確認（process_video_messageと同じ方法で実装）
+        subscriber.acknowledge(
+            request={
+                "subscription": account_subscription_path,
+                "ack_ids": [message.ack_id]
+            }
+        )
         print(f"Account message processed: {data}")
     except Exception as e:
+        # エラー時にはメッセージを確認せず、再処理されるようにする
         print(f"Error processing account message: {e}")
-        message.nack()
 
 def poll_video_subscription():
     """ビデオサブスクリプションのポーリング"""
@@ -135,7 +140,7 @@ def create_job(namespace, name, image, params):
                         "env": env_vars
                     }],
                     "restartPolicy": "Never",
-                    "serviceAccountName": f"{name}-ksa"
+                    "serviceAccountName": f"{name}-ksa"  # 各クローラー専用のサービスアカウントを使用
                 }
             },
             "backoffLimit": 2,
@@ -143,8 +148,11 @@ def create_job(namespace, name, image, params):
         }
     }
     
-    batch_v1.create_namespaced_job(namespace=namespace, body=job_manifest)
-    print(f"Created job in namespace {namespace}: {job_manifest['metadata']['name']}")
+    try:
+        batch_v1.create_namespaced_job(namespace=namespace, body=job_manifest)
+        print(f"Created job in namespace {namespace}: {job_manifest['metadata']['name']}")
+    except Exception as e:
+        print(f"Error creating job in namespace {namespace}: {e}")
 
 # メインアプリケーション起動
 def main():

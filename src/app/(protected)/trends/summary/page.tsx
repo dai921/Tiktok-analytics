@@ -48,13 +48,13 @@ export default function TrendsSummaryPage() {
     },
     {
       accessorKey: "total_videos_100k_plus",
-      header: "合計10万再生増加個数",
+      header: "10万再生増加個数",
       cell: ({ row }: { row: any }) => formatNumber(row.getValue("total_videos_100k_plus")),
       enableSorting: true,
     },
     {
       accessorKey: "total_posts",
-      header: "合計動画数",
+      header: "対象動画数",
       cell: ({ row }: { row: any }) => formatNumber(row.getValue("total_posts")),
       enableSorting: true,
     },
@@ -191,8 +191,8 @@ export default function TrendsSummaryPage() {
     const headers = [
       'ジャンル',
       '合計再生増加数',
-      '合計10万再生増加個数',
-      '合計動画数',
+      '10万再生増加個数',
+      '対象動画数',
       '10万再生増加割合',
       '1万再生増加割合'
     ];
@@ -240,6 +240,7 @@ export default function TrendsSummaryPage() {
           <DateRangePicker 
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
+            availableDates={availableDates}
           />
           
           <Button
