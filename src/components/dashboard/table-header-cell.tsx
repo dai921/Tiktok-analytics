@@ -21,6 +21,7 @@ interface TableHeaderCellProps {
   isActive?: boolean
   categoryData?: string[]  // カテゴリデータの型を追加
   sortDirection?: 'asc' | 'desc' | null  // ソート方向を追加
+  isLoadingFilterOptions?: boolean
 }
 
 export interface TableHeaderCellRef {
@@ -56,7 +57,7 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterType>('equal')
@@ -473,16 +474,28 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // カテゴリリストを描画する関数を改善
     const renderCategoryList = () => {
-      console.log(`TableHeaderCell(${title}) - カテゴリリストレンダリング:`, {
-        対象タイトル: title,
-        対象カラム: ['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title),
-        カテゴリ数: filteredCategories.length,
-        表示判定: !['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title) || filteredCategories.length === 0
-      });
-
       // カテゴリーデータが関連するカラムにのみ表示
-      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title) || filteredCategories.length === 0) {
+      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title)) {
         return null;
+      }
+
+      // ローディング中の表示
+      if (isLoadingFilterOptions) {
+        return (
+          <div className="flex justify-center items-center py-4">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+            <span className="ml-2 text-xs text-gray-500">フィルター更新中...</span>
+          </div>
+        );
+      }
+
+      // カテゴリが空の場合
+      if (filteredCategories.length === 0) {
+        return (
+          <div className="py-4 px-3 text-sm text-gray-500 text-center">
+            選択可能な項目がありません
+          </div>
+        );
       }
 
       return (

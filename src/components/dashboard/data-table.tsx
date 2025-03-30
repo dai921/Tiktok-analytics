@@ -318,30 +318,33 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       
       // クリア操作を明示的に検出
       if (filterValue.type === 'clear' || !filterValue.value) {
-        console.log(`フィルター削除開始: ${field}`, {
-          currentColumnFilters: { ...columnFilters },
-          currentFiltersState: { ...currentFilters },
-          filterValue
-        });
+        console.log(`フィルター削除: ${field}`);
         
         // 既存のフィルターをコピー（削除対象以外）
         const newFilters = { ...columnFilters };
         delete newFilters[field];
         
-        // 状態を更新
-        setColumnFilters(newFilters);
-        // currentFiltersも同期して更新する
-        setCurrentFilters(newFilters);
+        // このフィールド以外のフィルターがまだ残っているか確認
+        const hasRemainingFilters = Object.keys(newFilters).length > 0;
         
         console.log(`フィルター削除後の状態:`, {
           newFilters,
           field,
-          残りフィルター数: Object.keys(newFilters).length
+          残りフィルター数: Object.keys(newFilters).length,
+          残りフィルターあり: hasRemainingFilters
         });
         
-        // 親コンポーネントに明示的に削除したフィールドを伝える
+        // 状態を更新
+        setColumnFilters(newFilters);
+        setCurrentFilters(newFilters);
+        setHasActiveFilters(hasRemainingFilters);
+        
+        // ローディング状態を明示的に設定
+        setIsLoadingFilterOptions(true);
+        
+        // 親コンポーネントに変更を通知
         onFilterChange(
-          Object.keys(newFilters).length > 0,
+          hasRemainingFilters,
           {
             field: field,
             type: 'clear',
@@ -351,7 +354,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         return;
       }
       
-      // 新しいフィルターを追加（既存のフィルターは保持）
+      // フィルター追加の場合もローディング状態に設定
+      setIsLoadingFilterOptions(true);
+      
+      // 新しいフィルターを追加
       const newFilters = { ...columnFilters, [field]: filterValue };
       
       setColumnFilters(newFilters);
@@ -367,29 +373,42 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
     const getFilteredOptions = useCallback((columnName: string) => {
-      // APIで取得した全データの選択肢を使用
+      // 現在アクティブなフィルターの数を確認
+      const activeFilterCount = Object.keys(currentFilters).length;
+      
+      // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
+      const useInitialCache = activeFilterCount === 0;
+      
+      // フィルタークリア直後のローディング中であるかを判断
+      const isTransitioning = isLoadingFilterOptions && activeFilterCount > 0;
+      
+      // フィルタークリア直後のローディング中かつ一部フィルターのみクリアの場合はloadingを表示
+      if (isTransitioning) {
+        console.log(`${columnName} - ローディング中のため空の配列を返します`);
+        return [];
+      }
+      
       switch (columnName) {
         case 'ジャンル':
-          // APIから取得したカテゴリリストを使用（「カテゴリ」を削除し、「その他」を最後にソート）
-          return [...categoryList]
-            .filter(category => category !== 'カテゴリ') // 「カテゴリ」を除外
-            .sort((a, b) => {
-              if (a === 'その他') return 1;  // 「その他」を最後に
-              if (b === 'その他') return -1; // 「その他」を最後に
-              return a.localeCompare(b);     // それ以外は通常のソート
-            });
+          // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
+          return useInitialCache && categoryList.length > 0 
+            ? categoryList 
+            : categoryList;
           
         case 'アカウント名':
-          // APIから取得したアカウントリストを使用
-          return accountList;
+          return useInitialCache && accountList.length > 0
+            ? accountList
+            : accountList;
           
         case 'ハッシュタグ':
-          // APIから取得したハッシュタグリストを使用
-          return hashtagList;
+          return useInitialCache && hashtagList.length > 0
+            ? hashtagList
+            : hashtagList;
           
         case 'BGM':
-          // APIから取得したBGMリストを使用
-          return audioTitleList;
+          return useInitialCache && audioTitleList.length > 0
+            ? audioTitleList
+            : audioTitleList;
           
         default:
           return [];
@@ -432,6 +451,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               onFilter={(value) => handleFilter('createdAt')(value)}
               isActive={Boolean(columnFilters['createdAt'])}
               sortDirection={sortField === 'createdAt' ? sortDirection : null}
+              isLoadingFilterOptions={isLoadingFilterOptions}
             />
           );
         },
@@ -471,7 +491,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           console.log('ジャンルカラムのレンダリング:', {
             categoryDataLength: options.length,
             sample: options.slice(0, 3),
-            hasActiveFilter: Boolean(columnFilters['category'])
+            hasActiveFilter: Boolean(columnFilters['category']),
+            isLoading: isLoadingFilterOptions
           });
           return (
             <TableHeaderCell
@@ -481,6 +502,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               isActive={Boolean(columnFilters['category'])}
               categoryData={options}
               sortDirection={sortField === 'category' ? sortDirection : null}
+              isLoadingFilterOptions={isLoadingFilterOptions}
             />
           );
         },
