@@ -124,26 +124,29 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const loadFilterOptions = useCallback(async () => {
       try {
         setIsLoadingFilterOptions(true);
-        console.log('フィルター条件に基づく選択肢データの取得開始:', currentFilters);
+        console.log('フィルター条件に基づく選択肢データの取得開始:', {
+          currentFilters,
+          フィルター数: Object.keys(currentFilters).length,
+          詳細: JSON.stringify(currentFilters)
+        });
         
         // 最適化されたAPIを使って選択肢のみを取得
         const result = await getFilterOptions(currentFilters);
         
         if (result.success) {
-          console.log(`選択肢データの取得成功`);
+          console.log(`選択肢データの取得成功:`, {
+            カテゴリ数: result.categories.length,
+            アカウント数: result.accounts.length,
+            ハッシュタグ数: result.hashtags.length,
+            音声タイトル数: result.music.length,
+            カテゴリサンプル: result.categories.slice(0, 3)
+          });
           
           // 取得した選択肢をセット
           setCategoryList(result.categories);
           setAccountList(result.accounts);
           setHashtagList(result.hashtags);
           setAudioTitleList(result.music);
-          
-          console.log('選択肢更新完了:', {
-            カテゴリ数: result.categories.length,
-            アカウント数: result.accounts.length,
-            ハッシュタグ数: result.hashtags.length,
-            音声タイトル数: result.music.length
-          });
         } else {
           console.error('選択肢データの取得に失敗:', result.error || '不明なエラー');
         }
@@ -315,7 +318,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       
       // クリア操作を明示的に検出
       if (filterValue.type === 'clear' || !filterValue.value) {
-        console.log(`フィルター削除: ${field}`);
+        console.log(`フィルター削除開始: ${field}`, {
+          currentColumnFilters: { ...columnFilters },
+          currentFiltersState: { ...currentFilters },
+          filterValue
+        });
         
         // 既存のフィルターをコピー（削除対象以外）
         const newFilters = { ...columnFilters };
@@ -323,9 +330,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         
         // 状態を更新
         setColumnFilters(newFilters);
+        // currentFiltersも同期して更新する
+        setCurrentFilters(newFilters);
         
-        // 親コンポーネントに変更を通知（明示的に削除されたことを伝える）
-        console.log('フィルター削除後の状態:', newFilters);
+        console.log(`フィルター削除後の状態:`, {
+          newFilters,
+          field,
+          残りフィルター数: Object.keys(newFilters).length
+        });
         
         // 親コンポーネントに明示的に削除したフィールドを伝える
         onFilterChange(
@@ -454,16 +466,24 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       },
       {
         accessorKey: 'category',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="ジャンル"
-            type="text"
-            onFilter={(value) => handleFilter('category')(value)}
-            isActive={Boolean(columnFilters['category'])}
-            categoryData={getFilteredOptions('ジャンル')}
-            sortDirection={sortField === 'category' ? sortDirection : null}
-          />
-        ),
+        header: ({ column }) => {
+          const options = getFilteredOptions('ジャンル');
+          console.log('ジャンルカラムのレンダリング:', {
+            categoryDataLength: options.length,
+            sample: options.slice(0, 3),
+            hasActiveFilter: Boolean(columnFilters['category'])
+          });
+          return (
+            <TableHeaderCell
+              title="ジャンル"
+              type="text"
+              onFilter={(value) => handleFilter('category')(value)}
+              isActive={Boolean(columnFilters['category'])}
+              categoryData={options}
+              sortDirection={sortField === 'category' ? sortDirection : null}
+            />
+          );
+        },
       },
       {
         accessorKey: 'url',
