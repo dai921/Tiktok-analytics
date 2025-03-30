@@ -10,7 +10,7 @@ import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 const headers = [
   { key: 'createdAt', title: '作成日時', type: 'date' as const },
   { key: 'views', title: '再生数', type: 'number' as const },
-  // { key: 'viewsIncrease', title: '再生増加数', type: 'number' as const },  // 一時的に非表示
+  { key: 'viewsIncrease', title: '再生増加数', type: 'number' as const },
   { key: 'category', title: 'ジャンル' },
   { key: 'product', title: '商材' },
   { key: 'accountName', title: 'アカウント名' },

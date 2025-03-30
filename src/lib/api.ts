@@ -244,7 +244,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'duration': '動画時間(秒)',
   'isViral': '10万再生以上',
   'prevViews': '前回再生数',
-  'viewsIncrease': '再生数伸び',
+  'viewsIncrease': '再生増加数',
   'prevLikes': '前回いいね数',
   'likesIncrease': 'いいね数伸び',
   'product': '商材',
