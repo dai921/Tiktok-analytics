@@ -17,6 +17,8 @@ interface DataTableProps {
   currentPage: number
   totalPages: number
   isLoading: boolean
+  isPrOnly: boolean
+  onPrOnlyChange: (isPrOnly: boolean) => void
 }
 
 // フィルタ可能なカラムを定義
@@ -69,7 +71,7 @@ interface CategoryItem {
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false }, ref) => {
+  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
@@ -122,26 +124,29 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const loadFilterOptions = useCallback(async () => {
       try {
         setIsLoadingFilterOptions(true);
-        console.log('フィルター条件に基づく選択肢データの取得開始:', currentFilters);
+        console.log('フィルター条件に基づく選択肢データの取得開始:', {
+          currentFilters,
+          フィルター数: Object.keys(currentFilters).length,
+          詳細: JSON.stringify(currentFilters)
+        });
         
         // 最適化されたAPIを使って選択肢のみを取得
         const result = await getFilterOptions(currentFilters);
         
         if (result.success) {
-          console.log(`選択肢データの取得成功`);
+          console.log(`選択肢データの取得成功:`, {
+            カテゴリ数: result.categories.length,
+            アカウント数: result.accounts.length,
+            ハッシュタグ数: result.hashtags.length,
+            音声タイトル数: result.music.length,
+            カテゴリサンプル: result.categories.slice(0, 3)
+          });
           
           // 取得した選択肢をセット
           setCategoryList(result.categories);
           setAccountList(result.accounts);
           setHashtagList(result.hashtags);
           setAudioTitleList(result.music);
-          
-          console.log('選択肢更新完了:', {
-            カテゴリ数: result.categories.length,
-            アカウント数: result.accounts.length,
-            ハッシュタグ数: result.hashtags.length,
-            音声タイトル数: result.music.length
-          });
         } else {
           console.error('選択肢データの取得に失敗:', result.error || '不明なエラー');
         }
@@ -319,15 +324,27 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         const newFilters = { ...columnFilters };
         delete newFilters[field];
         
+        // このフィールド以外のフィルターがまだ残っているか確認
+        const hasRemainingFilters = Object.keys(newFilters).length > 0;
+        
+        console.log(`フィルター削除後の状態:`, {
+          newFilters,
+          field,
+          残りフィルター数: Object.keys(newFilters).length,
+          残りフィルターあり: hasRemainingFilters
+        });
+        
         // 状態を更新
         setColumnFilters(newFilters);
+        setCurrentFilters(newFilters);
+        setHasActiveFilters(hasRemainingFilters);
         
-        // 親コンポーネントに変更を通知（明示的に削除されたことを伝える）
-        console.log('フィルター削除後の状態:', newFilters);
+        // ローディング状態を明示的に設定
+        setIsLoadingFilterOptions(true);
         
-        // 親コンポーネントに明示的に削除したフィールドを伝える
+        // 親コンポーネントに変更を通知
         onFilterChange(
-          Object.keys(newFilters).length > 0,
+          hasRemainingFilters,
           {
             field: field,
             type: 'clear',
@@ -337,7 +354,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         return;
       }
       
-      // 新しいフィルターを追加（既存のフィルターは保持）
+      // フィルター追加の場合もローディング状態に設定
+      setIsLoadingFilterOptions(true);
+      
+      // 新しいフィルターを追加
       const newFilters = { ...columnFilters, [field]: filterValue };
       
       setColumnFilters(newFilters);
@@ -353,29 +373,42 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
     const getFilteredOptions = useCallback((columnName: string) => {
-      // APIで取得した全データの選択肢を使用
+      // 現在アクティブなフィルターの数を確認
+      const activeFilterCount = Object.keys(currentFilters).length;
+      
+      // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
+      const useInitialCache = activeFilterCount === 0;
+      
+      // フィルタークリア直後のローディング中であるかを判断
+      const isTransitioning = isLoadingFilterOptions && activeFilterCount > 0;
+      
+      // フィルタークリア直後のローディング中かつ一部フィルターのみクリアの場合はloadingを表示
+      if (isTransitioning) {
+        console.log(`${columnName} - ローディング中のため空の配列を返します`);
+        return [];
+      }
+      
       switch (columnName) {
         case 'ジャンル':
-          // APIから取得したカテゴリリストを使用（「カテゴリ」を削除し、「その他」を最後にソート）
-          return [...categoryList]
-            .filter(category => category !== 'カテゴリ') // 「カテゴリ」を除外
-            .sort((a, b) => {
-              if (a === 'その他') return 1;  // 「その他」を最後に
-              if (b === 'その他') return -1; // 「その他」を最後に
-              return a.localeCompare(b);     // それ以外は通常のソート
-            });
+          // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
+          return useInitialCache && categoryList.length > 0 
+            ? categoryList 
+            : categoryList;
           
         case 'アカウント名':
-          // APIから取得したアカウントリストを使用
-          return accountList;
+          return useInitialCache && accountList.length > 0
+            ? accountList
+            : accountList;
           
         case 'ハッシュタグ':
-          // APIから取得したハッシュタグリストを使用
-          return hashtagList;
+          return useInitialCache && hashtagList.length > 0
+            ? hashtagList
+            : hashtagList;
           
         case 'BGM':
-          // APIから取得したBGMリストを使用
-          return audioTitleList;
+          return useInitialCache && audioTitleList.length > 0
+            ? audioTitleList
+            : audioTitleList;
           
         default:
           return [];
@@ -418,6 +451,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               onFilter={(value) => handleFilter('createdAt')(value)}
               isActive={Boolean(columnFilters['createdAt'])}
               sortDirection={sortField === 'createdAt' ? sortDirection : null}
+              isLoadingFilterOptions={isLoadingFilterOptions}
             />
           );
         },
@@ -452,16 +486,26 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       },
       {
         accessorKey: 'category',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="ジャンル"
-            type="text"
-            onFilter={(value) => handleFilter('category')(value)}
-            isActive={Boolean(columnFilters['category'])}
-            categoryData={getFilteredOptions('ジャンル')}
-            sortDirection={sortField === 'category' ? sortDirection : null}
-          />
-        ),
+        header: ({ column }) => {
+          const options = getFilteredOptions('ジャンル');
+          console.log('ジャンルカラムのレンダリング:', {
+            categoryDataLength: options.length,
+            sample: options.slice(0, 3),
+            hasActiveFilter: Boolean(columnFilters['category']),
+            isLoading: isLoadingFilterOptions
+          });
+          return (
+            <TableHeaderCell
+              title="ジャンル"
+              type="text"
+              onFilter={(value) => handleFilter('category')(value)}
+              isActive={Boolean(columnFilters['category'])}
+              categoryData={options}
+              sortDirection={sortField === 'category' ? sortDirection : null}
+              isLoadingFilterOptions={isLoadingFilterOptions}
+            />
+          );
+        },
       },
       {
         accessorKey: 'url',
@@ -627,11 +671,25 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <Pagination 
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-        />
+        <div className="flex items-center space-x-2 p-2">
+          <Pagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+          />
+          <label className="flex items-center cursor-pointer ml-4">
+            <input
+              type="checkbox"
+              checked={isPrOnly}
+              onChange={(e) => onPrOnlyChange(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-red-500 peer-focus:ring-2 peer-focus:ring-red-300 transition-colors">
+              <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
+            </div>
+            <span className="ml-2 text-sm font-medium text-red-600">#PRを含む動画のみ表示</span>
+          </label>
+        </div>
         
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
@@ -717,11 +775,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           )}
         </div>
         
-        <Pagination 
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-        />
+        <div className="flex items-center p-2">
+          <Pagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+          />
+        </div>
       </div>
     )
   }

@@ -36,26 +36,22 @@ def update_needs_update_flag() -> Dict[str, Any]:
         # 14日前の日付を計算
         fourteen_days_ago = (datetime.now() - timedelta(days=14)).date()
         
-        # Step 1: すべてのレコードをFALSE(0)にリセット
-        reset_query = """
-        UPDATE video_url_data
-        SET needs_update = FALSE
-        """
-        
-        reset_count = execute_write_query(reset_query, {})
-        logger.info(f"リセット完了: {reset_count}件のレコードをFALSEに設定")
-        
-        # Step 2: 条件に合うレコードだけをTRUE(1)に更新
+        # Step 1と2をまとめた単一のクエリ
         update_query = """
-        UPDATE video_url_data vud
-        INNER JOIN video_master vm ON vud.video_id = vm.video_id
-        SET vud.needs_update = TRUE
-        WHERE (
-            (vm.created_at >= %(fourteen_days_ago)s) -- 14日以内の全ての動画
-            OR (vm.created_at < %(fourteen_days_ago)s AND vm.play_count >= 100000 AND vm.playCountIncrease > 1000) -- 14日より古いが再生数10万以上でplayCountIncreaseが1000より大きい
-            OR vm.created_at IS NULL -- created_atがNULL
-        )
-        AND (vm.status != 'deleted' OR vm.status IS NULL)
+            UPDATE video_url_data vud
+            INNER JOIN video_master vm
+                ON vud.video_id = vm.video_id
+            SET vud.needs_update = TRUE
+            WHERE
+                vud.needs_update = FALSE
+                AND (
+                        vm.created_at IS NULL
+                        OR vm.created_at >= %(fourteen_days_ago)s
+                        OR (vm.created_at < %(fourteen_days_ago)s
+                            AND vm.play_count >= 100000
+                            AND vm.playCountIncrease > 1000)           
+                )
+                AND vm.status != 'deleted'
         """
         
         params = {
@@ -68,7 +64,6 @@ def update_needs_update_flag() -> Dict[str, Any]:
         
         return {
             "status": "success",
-            "reset_count": reset_count,
             "updated_count": updated_count,
             "execution_time": datetime.now().isoformat()
         }

@@ -69,16 +69,34 @@ def create_verification_token(email: str, token_type: str) -> tuple[str, str, da
     expires = datetime.utcnow() + timedelta(minutes=VERIFICATION_TOKEN_EXPIRE_MINUTES)
     return token_id, token, expires
 
-def create_session(user_id: str) -> tuple[str, str, datetime]:
+def create_session(user_id: str) -> tuple[str, str, datetime, datetime]:
     """セッションの生成
     
     Returns:
-        tuple[session_id, session_token, expiry]: セッションID、セッショントークン、有効期限
+        tuple[session_id, session_token, expires, last_used_at]: セッションID、セッショントークン、有効期限、最終利用日時
     """
     session_id = generate_uuid()
     session_token = generate_token()
     expires = datetime.utcnow() + timedelta(days=SESSION_TOKEN_EXPIRE_DAYS)
-    return session_id, session_token, expires
+    last_used_at = datetime.utcnow()  # 最終利用日時を追加
+    return session_id, session_token, expires, last_used_at
+
+def update_session_activity(session_token: str) -> Optional[datetime]:
+    """セッションの最終利用日時を更新
+    
+    Args:
+        session_token: セッショントークン
+        
+    Returns:
+        Optional[datetime]: 更新された最終利用日時、失敗した場合はNone
+    """
+    try:
+        current_time = datetime.utcnow()
+        # この関数は実際の実装時にDB接続してセッションを更新する
+        # データベース接続はこの関数内で行うか、外部から渡す
+        return current_time
+    except Exception:
+        return None
 
 def get_jwt_settings():
     secret_key = os.getenv("JWT_SECRET_KEY")

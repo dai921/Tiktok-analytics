@@ -110,13 +110,13 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             )
         
         # セッションの作成
-        session_id, session_token, expires = create_session(user["id"])
+        session_id, session_token, expires, last_used_at = create_session(user["id"])
         cursor.execute(
             """
-            INSERT INTO sessions (id, user_id, session_token, expires)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO sessions (id, user_id, session_token, expires, last_used_at)
+            VALUES (%s, %s, %s, %s, %s)
             """,
-            (session_id, user["id"], session_token, expires)
+            (session_id, user["id"], session_token, expires, last_used_at)
         )
         conn.commit()
         

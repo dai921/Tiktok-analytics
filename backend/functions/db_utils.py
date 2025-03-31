@@ -1,4 +1,4 @@
-import os  # 完全なosモジュールをインポート
+import os  # 確実にファイル先頭でインポート
 import pymysql
 import logging
 from typing import Dict, Any, List, Optional, Callable
@@ -16,51 +16,66 @@ class DatabaseError(Exception):
 
 @contextmanager
 def get_connection():
-    """
-    データベース接続を提供するコンテキストマネージャー
-    Unixソケットを使用してCloud SQLに接続
-    
-    Yields:
-        Connection: データベース接続オブジェクト
-    
-    Raises:
-        DatabaseError: 接続の確立に失敗した場合
-    """
+    """データベース接続を提供するコンテキストマネージャー"""
     connection = None
     try:
         config = get_db_config()
+        print("===== DB接続設定の詳細 =====")
+        print(f"DB設定キー: {list(config.keys())}")
+        
+        # ホスト設定の詳細を表示
+        print(f"ホスト設定: host={config.get('host', 'なし')}")
+        print(f"全DB設定（パスワード除く）: {{{', '.join([f'{k}: {v}' for k, v in config.items() if k != 'password'])}}}")
         
         # インスタンス接続名を取得
         instance_connection_name = os.environ.get('INSTANCE_CONNECTION_NAME')
-        logger.info(f"DB接続を試みます: {instance_connection_name}")
+        print(f"接続タイプ判定: instance_connection_name={instance_connection_name}")
         
         if instance_connection_name:
-            # Cloud FunctionからのUnixソケット接続
+            # Unixソケット接続
             unix_socket = f'/cloudsql/{instance_connection_name}'
+            print(f"Unixソケット接続を使用します")
+            print(f"Unixソケットパス: {unix_socket}")
             
-            # 接続パラメータから不要な設定を削除
+            # ソケットファイルの存在確認
+            if os.path.exists(unix_socket):
+                print(f"ソケットファイルは存在します: {unix_socket}")
+            else:
+                print(f"ソケットファイルが存在しません: {unix_socket}")
+                
+            # /cloudsqlディレクトリの確認
+            try:
+                cloudsql_contents = os.listdir('/cloudsql')
+                print(f"/cloudsql ディレクトリ内容: {cloudsql_contents}")
+            except Exception as e:
+                print(f"/cloudsql ディレクトリ確認エラー: {str(e)}")
+            
+            # 接続パラメータ設定
             connection_params = {k: v for k, v in config.items() if k not in ['host', 'port']}
-            
-            # 必要なパラメータのみ設定
             connection_params.update({
                 'unix_socket': unix_socket,
                 'cursorclass': pymysql.cursors.DictCursor
             })
             
-            logger.info(f"Unixソケット接続パラメータ: {connection_params}")
+            print(f"Unixソケット接続パラメータ（パスワード除く）: {{{', '.join([f'{k}: {v}' for k, v in connection_params.items() if k != 'password'])}}}")
             connection = pymysql.connect(**connection_params)
         else:
-            # 開発環境での接続
-            logger.info("通常接続を使用します")
+            # 通常接続（開発環境）
+            print("ホスト接続モードを使用します")
+            print(f"ホスト: {config.get('host', 'なし')}")
+            print(f"ポート: {config.get('port', 'なし')}")
+            print(f"データベース: {config.get('database', 'なし')}")
             connection = pymysql.connect(
                 **config,
-                cursorclass=DictCursor
+                cursorclass=pymysql.cursors.DictCursor
             )
         
         yield connection
         
     except Exception as e:
-        logger.error(f"データベース接続エラー: {str(e)}", exc_info=True)
+        print(f"DB接続エラー詳細: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         raise DatabaseError(f"データベース接続に失敗しました: {str(e)}")
     finally:
         if connection and connection.open:

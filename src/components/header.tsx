@@ -1,7 +1,6 @@
 'use client'
 
 import Link from "next/link"
-import { Logo } from "@/components/ui/logo"
 import { usePathname } from "next/navigation"
 import { useAuth } from '@/lib/auth-context'
 
@@ -40,7 +39,7 @@ export function Header({ hasFilters, onClearFilters }: HeaderProps) {
     <header className="border-b bg-white">
       <div className="flex items-center justify-between px-4 h-14">
         <div className="flex items-center gap-2">
-          <Logo className="w-48" />
+          {/* ここからLogoコンポーネントを削除 */}
         </div>
         <div className="flex items-center gap-4">
           {showFilterClear && (

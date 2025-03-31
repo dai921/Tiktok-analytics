@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 # 設定の初期化
 initialize_config()
 
+# 環境情報を取得
+environment = get_environment()
+project_id = os.getenv('PROJECT_ID')
+
+# 環境情報をログ出力
+logger.info(f"実行環境: {environment}")
+logger.info(f"プロジェクトID: {project_id}")
+
+# デバッグ用に接続情報を確認
+db_config = get_db_config()
+logger.info(f"データベース接続設定: host={db_config.get('host', 'unknown')}, database={db_config.get('database', 'unknown')}")
+
 @functions_framework.http
 def sync_video_urls_job(request):
     """
@@ -38,6 +50,18 @@ def sync_video_urls_job(request):
     """
     start_time = datetime.now()
     logger.info(f"====== 動画URL同期処理開始：{start_time.isoformat()} ======")
+    
+    # デバッグ: 接続情報の確認
+    try:
+        # テスト接続を実行して接続先を確認
+        test_query = "SELECT DATABASE() as db, @@hostname as host"
+        connection_info = execute_query(test_query)
+        if connection_info:
+            logger.info(f"接続先確認: {connection_info[0]}")
+        else:
+            logger.warning("接続テスト結果が空です")
+    except Exception as e:
+        logger.error(f"接続テスト中にエラー: {str(e)}")
     
     try:
         result, status_code = sync_video_urls()
@@ -215,7 +239,7 @@ def sync_video_urls():
             }
             
             # Pub/Subユーティリティを使用してメッセージを送信
-            message_id = publish_message('trigger-video-url-data-update', completion_message)
+            message_id = publish_message('video-url-data-update', completion_message)
             print(f"Pub/Sub通知送信完了: メッセージID {message_id}")
         except Exception as pub_sub_error:
             print(f"Pub/Sub通知エラー: {str(pub_sub_error)}")

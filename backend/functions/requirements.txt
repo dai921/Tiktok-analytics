@@ -7,4 +7,4 @@ google-cloud-pubsub
 pymysql
 google-cloud-secret-manager
 google-cloud-scheduler
-
+pytz>=2025.1

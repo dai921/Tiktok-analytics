@@ -10,7 +10,7 @@ import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 const headers = [
   { key: 'createdAt', title: '作成日時', type: 'date' as const },
   { key: 'views', title: '再生数', type: 'number' as const },
-  // { key: 'viewsIncrease', title: '再生増加数', type: 'number' as const },  // 一時的に非表示
+  { key: 'viewsIncrease', title: '再生増加数', type: 'number' as const },
   { key: 'category', title: 'ジャンル' },
   { key: 'product', title: '商材' },
   { key: 'accountName', title: 'アカウント名' },
@@ -34,6 +34,7 @@ const Dashboard = () => {
   const [totalPages, setTotalPages] = useState(1)
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
+  const [isPrOnly, setIsPrOnly] = useState(false)
 
   const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
     // ハッシュタグ用のフラグを引き継ぐ
@@ -180,12 +181,43 @@ const Dashboard = () => {
       tableRef.current.clearAllFilters();
     }
     
+    // PRフィルターの状態もリセット
+    setIsPrOnly(false);
+    
     // すべてのフィルターをクリア
     setFilters({});
     setCurrentPage(1); // ページもリセット
     
     // 最後にデータを再取得
     fetchData(1, {});
+  };
+
+  const handlePrOnlyChange = (checked: boolean) => {
+    console.log('PR動画のみ表示:', checked);
+    setIsPrOnly(checked);
+    
+    if (checked) {
+      // PRフィルターを追加
+      const prFilter: FilterQuery = {
+        field: 'hashtags',
+        type: 'contains',
+        value: 'pr',
+        isHashtag: true
+      };
+      
+      setFilters(prev => ({
+        ...prev,
+        hashtags_pr: prFilter
+      }));
+    } else {
+      // PRフィルターを削除
+      const updatedFilters = { ...filters };
+      delete updatedFilters.hashtags_pr;
+      setFilters(updatedFilters);
+    }
+    
+    // ページをリセット
+    setCurrentPage(1);
   };
 
   return (
@@ -207,6 +239,8 @@ const Dashboard = () => {
           currentPage={currentPage}
           totalPages={totalPages}
           isLoading={isLoading}
+          isPrOnly={isPrOnly}
+          onPrOnlyChange={handlePrOnlyChange}
         />
       </main>
     </div>

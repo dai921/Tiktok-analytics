@@ -45,6 +45,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             SET playCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
             AND playCountIncrease < 1000
+            AND play_count < 100000
             """
             
             affected_rows = execute_write_query(reset_query)
@@ -67,6 +68,22 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             null_reset_execution_time = (datetime.now() - null_reset_start_time).total_seconds()
             logger.info(f"playCountIncrease NULL設定完了: {null_affected_rows}件更新、実行時間: {null_reset_execution_time}秒")
+            
+            # 作成日が2日以内のものでplayCountIncreaseとplay_countが一致していないものはplayCountIncrease=play_countにする
+            logger.info("バッチ1: 作成日が2日以内で再生数と増加数が一致していない動画の処理を開始")
+            sync_start_time = datetime.now()
+            
+            sync_query = """
+            UPDATE video_master
+            SET playCountIncrease = play_count
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+            AND (playCountIncrease != play_count)
+            """
+            
+            sync_affected_rows = execute_write_query(sync_query)
+            
+            sync_execution_time = (datetime.now() - sync_start_time).total_seconds()
+            logger.info(f"playCountIncrease同期完了: {sync_affected_rows}件更新、実行時間: {sync_execution_time}秒")
         
         # 基本クエリでデータ確認
         debug_query = """
@@ -246,7 +263,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         batch_execution_time = (datetime.now() - batch_start_time).total_seconds()
         logger.info(f"バッチ#{batch_number}完了: {updated_count}/{batch_size}件更新、実行時間: {batch_execution_time}秒")
         
-        # 処理が終了していない場合、Pub/Subに継続メッセージを送信
+        # 処理完了していない場合、Pub/Subに継続メッセージを送信
         if remaining_count > 0:
             publish_message("frontend-update-status", {
                 "status": "in_progress",
@@ -260,6 +277,14 @@ def update_frontend_from_master() -> Dict[str, Any]:
             publish_message("frontend-update-status", {
                 "status": "completed",
                 "message": "全バッチの処理が完了しました",
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # カテゴリー統計集計用のトリガーメッセージを送信
+            logger.info("カテゴリー統計集計のトリガーメッセージを送信します")
+            publish_message("frontend-analytics-trigger", {
+                "status": "completed",
+                "message": "カテゴリー統計集計を開始します",
                 "timestamp": datetime.now().isoformat()
             })
             

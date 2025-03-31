@@ -21,6 +21,7 @@ interface TableHeaderCellProps {
   isActive?: boolean
   categoryData?: string[]  // カテゴリデータの型を追加
   sortDirection?: 'asc' | 'desc' | null  // ソート方向を追加
+  isLoadingFilterOptions?: boolean
 }
 
 export interface TableHeaderCellRef {
@@ -56,7 +57,7 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterType>('equal')
@@ -416,13 +417,16 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     }
 
-    // propsから受け取ったcategoryDataを使用
+    // categoryDataが変更されたときのuseEffect
     useEffect(() => {
+      console.log(`TableHeaderCell(${title}) - categoryDataの変化を検知:`, {
+        receivedLength: categoryData?.length || 0,
+        sample: categoryData?.slice(0, 3) || [],
+        isEmpty: !categoryData || categoryData.length === 0
+      });
+      
       if (categoryData && categoryData.length > 0) {
-        console.log(`TableHeaderCell(${title}) - カテゴリデータを受け取りました:`, {
-          count: categoryData.length,
-          sample: categoryData.slice(0, 3)
-        });
+        console.log(`TableHeaderCell(${title}) - 有効なカテゴリデータを設定します`);
         setCategories(categoryData);
         // フィルタリングされた値も更新
         if (filterValue === '') {
@@ -433,8 +437,21 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           );
           setFilteredCategories(filtered);
         }
+      } else {
+        console.log(`TableHeaderCell(${title}) - カテゴリデータが空のため設定をスキップします`);
       }
     }, [categoryData, title, filterValue]);
+
+    // フィルターポップアップが開かれたときのログ
+    const handleToggleFilter = () => {
+      console.log(`TableHeaderCell(${title}) - フィルターポップアップ開閉:`, {
+        現在の状態: isFilterOpen,
+        新しい状態: !isFilterOpen,
+        利用可能カテゴリ数: filteredCategories.length,
+        カテゴリサンプル: filteredCategories.slice(0, 3)
+      });
+      setIsFilterOpen(!isFilterOpen);
+    };
 
     // カテゴリを選択する処理
     const handleCategorySelect = (category: string) => {
@@ -458,8 +475,27 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // カテゴリリストを描画する関数を改善
     const renderCategoryList = () => {
       // カテゴリーデータが関連するカラムにのみ表示
-      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title) || filteredCategories.length === 0) {
+      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title)) {
         return null;
+      }
+
+      // ローディング中の表示
+      if (isLoadingFilterOptions) {
+        return (
+          <div className="flex justify-center items-center py-4">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+            <span className="ml-2 text-xs text-gray-500">フィルター更新中...</span>
+          </div>
+        );
+      }
+
+      // カテゴリが空の場合
+      if (filteredCategories.length === 0) {
+        return (
+          <div className="py-4 px-3 text-sm text-gray-500 text-center">
+            選択可能な項目がありません
+          </div>
+        );
       }
 
       return (
@@ -561,7 +597,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         {onFilter && (
           <button 
             ref={buttonRef}
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            onClick={handleToggleFilter}
             className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500 font-bold' : ''}`}
             data-active={isActive}
           >

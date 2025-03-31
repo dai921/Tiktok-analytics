@@ -12,6 +12,8 @@ from url_collector import process_pubsub as url_collector_pubsub
 from video_collector import collect_videos as video_collector_function
 from video_url_data_updater import update_video_url_data as video_url_updater_function
 from batch_scheduler import manage_frontend_update_schedule as batch_scheduler_function
+from category_analytics_aggregator import process_category_statistics as category_analytics_function
+from update_all_categories import update_all_categories as update_all_categories_function
 
 # 環境変数の読み込み
 load_dotenv()
@@ -32,6 +34,9 @@ def sync_category_spreadsheet(request):
 def sync_video_urls(request):
     return sync_video_urls_job(request)
 
+def update_all_categories(request):
+    return update_all_categories_function(request)
+
 # Pub/Sub (CloudEvent) エントリーポイント関数
 def process_pubsub(event,context):
     return crawl_processor_pubsub(event,context)
@@ -51,4 +56,8 @@ def video_url_data_updater(event,context):
 # batch_scheduler用のエントリーポイント関数を追加
 def manage_frontend_update_schedule(event,context):
     return batch_scheduler_function(event,context)
+
+# カテゴリー統計集計用のエントリーポイント関数
+def category_analytics_aggregator(event, context):
+    return category_analytics_function(event, context)
 

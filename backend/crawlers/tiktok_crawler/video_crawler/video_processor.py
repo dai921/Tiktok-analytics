@@ -533,26 +533,25 @@ class VideoProcessor:
                 'is_new_video': is_new_video  # is_new_videoも含める
             }
 
-            # 新規動画の場合は追加情報を取得
+            # サムネイル画像は新規動画の場合のみCloud Storageに保存
             if is_new_video:
-                # サムネイル画像をCloud Storageに保存
                 cover_image_url = video.get('video', {}).get('cover')
                 if cover_image_url:
                     storage_path = f'thumbnails/{video_id}.jpg'
                     await self.save_to_storage(cover_image_url, storage_path)
                     base_info['cover_image_url'] = f'gs://{self.bucket_name}/{storage_path}'
 
-                # 追加情報を設定
-                base_info.update({
-                    'display_name': video.get('author', {}).get('nickname'),
-                    'description': video.get('desc'),
-                    'created_at': datetime.fromtimestamp(int(video.get('createTime', '0'))).isoformat(),
-                    'hashtags': [tag.get('hashtagName') for tag in video.get('textExtra', []) if tag.get('hashtagName')],
-                    'duration': video.get('video', {}).get('duration'),
-                    'music_id': video.get('music', {}).get('id'),
-                    'music_title': video.get('music', {}).get('title'),
-                    'music_artist': video.get('music', {}).get('authorName')
-                })
+            # 全ての動画に追加情報を設定（新規・既存共通）
+            base_info.update({
+                'display_name': video.get('author', {}).get('nickname'),
+                'description': video.get('desc'),
+                'created_at': datetime.fromtimestamp(int(video.get('createTime', '0'))).isoformat(),
+                'hashtags': [tag.get('hashtagName') for tag in video.get('textExtra', []) if tag.get('hashtagName')],
+                'duration': video.get('video', {}).get('duration'),
+                'music_id': video.get('music', {}).get('id'),
+                'music_title': video.get('music', {}).get('title'),
+                'music_artist': video.get('music', {}).get('authorName')
+            })
 
             return base_info
 
