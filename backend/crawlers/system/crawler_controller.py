@@ -38,15 +38,14 @@ def process_video_message(message):
         # 最終メッセージ受信時間を更新
         last_video_message_time = datetime.datetime.now()
         
-        # ジョブが既に実行中でなければ新しいジョブを作成
+        # ジョブが既に実行中でなければStatefulSetのレプリカを6に設定
         if not video_job_active:
-            # ここでビデオクローラージョブを作成
-            create_video_crawler_job(data, attributes)
+            scale_video_crawler_statefulset(6)  # レプリカ数を6に設定
             video_job_active = True
         else:
-            print("Video crawler job already running, ignoring message")
+            print("Video crawler already running, ignoring message")
         
-        # メッセージを確認（処理完了をPub/Subに通知）
+        # メッセージを確認
         subscriber.acknowledge(
             request={
                 "subscription": video_subscription_path,
@@ -55,7 +54,6 @@ def process_video_message(message):
         )
         print(f"Video message processed: {data}")
     except Exception as e:
-        # エラー時にはメッセージを確認せず、再処理されるようにする
         print(f"Error processing video message: {e}")
 
 def process_account_message(message):
@@ -166,7 +164,7 @@ def create_job(namespace, name, image, params, replicas=1):
                         "env": env_vars
                     }],
                     "restartPolicy": "Never",
-                    "serviceAccountName": f"{name}-ksa"  # 各クローラー専用のサービスアカウント
+                    "serviceAccountName": "crawler-ksa"  # 正しいサービスアカウント名に修正
                 }
             },
             "backoffLimit": 2,
@@ -182,6 +180,34 @@ def create_job(namespace, name, image, params, replicas=1):
         print(f"Error creating job in namespace {namespace}: {e}")
         return None
 
+def scale_video_crawler_statefulset(replicas):
+    """ビデオクローラーStatefulSetのレプリカ数を設定"""
+    namespace = os.environ.get('VIDEO_CRAWLER_NAMESPACE', 'video-crawler')
+    statefulset_name = "video-crawler"
+    
+    try:
+        apps_v1 = client.AppsV1Api()
+        # StatefulSetを取得
+        statefulset = apps_v1.read_namespaced_stateful_set(
+            name=statefulset_name, namespace=namespace
+        )
+        
+        # レプリカ数を設定
+        statefulset.spec.replicas = replicas
+        
+        # StatefulSetを更新
+        apps_v1.patch_namespaced_stateful_set(
+            name=statefulset_name, 
+            namespace=namespace, 
+            body={"spec": {"replicas": replicas}}
+        )
+        
+        print(f"Scaled {statefulset_name} to {replicas} replicas in namespace {namespace}")
+        return True
+    except Exception as e:
+        print(f"Error scaling StatefulSet: {e}")
+        return False
+
 def check_video_job_timeout():
     """ビデオジョブのタイムアウトをチェックするスレッド"""
     global video_job_active, video_job_name, last_video_message_time
@@ -192,21 +218,9 @@ def check_video_job_timeout():
             if (video_job_active and last_video_message_time and 
                 (datetime.datetime.now() - last_video_message_time).total_seconds() > VIDEO_JOB_TIMEOUT):
                 
-                # ジョブを削除
-                if video_job_name:
-                    namespace = os.environ.get('VIDEO_CRAWLER_NAMESPACE')
-                    try:
-                        batch_v1.delete_namespaced_job(
-                            name=video_job_name,
-                            namespace=namespace,
-                            body=client.V1DeleteOptions(
-                                propagation_policy='Foreground',
-                                grace_period_seconds=5
-                            )
-                        )
-                        print(f"Deleted video job {video_job_name} due to timeout")
-                    except Exception as e:
-                        print(f"Error deleting video job: {e}")
+                # StatefulSetのレプリカを0に設定
+                scale_video_crawler_statefulset(0)
+                print("Video crawler scaled to 0 replicas due to timeout")
                 
                 # 状態をリセット
                 video_job_active = False

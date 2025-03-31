@@ -41,4 +41,9 @@ class Token(BaseModel):
     is_admin: bool = False
 
 class TokenData(BaseModel):
-    email: Optional[str] = None 
+    email: Optional[str] = None
+
+class PasswordChange(BaseModel):
+    email: Optional[str] = None  # 管理者がユーザーを指定する場合に使用
+    current_password: str
+    new_password: str 

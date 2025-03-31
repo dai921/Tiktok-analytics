@@ -16,22 +16,31 @@ interface ApiError {
   code?: string;
 }
 
-export default function Register() {
+export default function ChangePassword() {
   const router = useRouter()
-  const { login, user, isAdmin, isLoading } = useAuth()
+  const { user, isAdmin, isLoading } = useAuth()
   const [formLoading, setFormLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // 認証状態を確認
+  useEffect(() => {
+    if (!isLoading && (!user || !isAdmin)) {
+      router.replace('/login');
+    }
+  }, [isLoading, user, isAdmin, router]);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setFormLoading(true)
     setError('')
+    setSuccess('')
 
     const formData = new FormData(event.currentTarget)
     const email = formData.get('email') as string
-    const password = formData.get('password') as string
+    const currentPassword = formData.get('currentPassword') as string
+    const newPassword = formData.get('newPassword') as string
     const confirmPassword = formData.get('confirmPassword') as string
-    const name = formData.get('name') as string
 
     // バリデーション
     if (!email || !email.includes('@')) {
@@ -40,62 +49,69 @@ export default function Register() {
       return
     }
 
-    if (!password || password.length < 8) {
-      setError('パスワードは8文字以上である必要があります')
+    if (!currentPassword) {
+      setError('現在のパスワードを入力してください')
       setFormLoading(false)
       return
     }
 
-    if (password !== confirmPassword) {
-      setError('パスワードが一致しません')
+    if (!newPassword || newPassword.length < 8) {
+      setError('新しいパスワードは8文字以上である必要があります')
+      setFormLoading(false)
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('新しいパスワードが一致しません')
       setFormLoading(false)
       return
     }
 
     try {
-      // アカウント登録
-      const registerResponse = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      // パスワード変更リクエスト（直接API呼び出し）
+      const token = localStorage.getItem('token')
+      
+      const changePasswordResponse = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ 
-          email, 
-          password,
-          name: name || undefined
+          email,
+          current_password: currentPassword,
+          new_password: newPassword
         }),
       })
 
-      if (!registerResponse.ok) {
-        const errorData = await registerResponse.json() as ApiError
-        if (errorData.code === 'email_exists') {
-          throw new Error('このメールアドレスは既に登録されています')
-        }
-        throw new Error(errorData.detail || '登録に失敗しました')
+      if (!changePasswordResponse.ok) {
+        const errorData = await changePasswordResponse.json() as ApiError
+        throw new Error(errorData.detail || 'パスワード変更に失敗しました')
       }
 
-      // 自動ログイン
-      const loginData = new URLSearchParams()
-      loginData.append('username', email)
-      loginData.append('password', password)
-
-      const loginResponse = await fetch(`${API_BASE_URL}/api/auth/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: loginData.toString(),
-      })
-
-      if (loginResponse.ok) {
-        const data = await loginResponse.json()
-        login(data.access_token, data.token_type, false)
-        router.push('/dashboard')
-      } else {
-        // 登録は成功したがログインに失敗した場合
-        router.push('/login')
-      }
+      // 成功処理
+      setSuccess('パスワードが正常に変更されました')
+      // フォームをリセット
+      event.currentTarget.reset()
     } catch (error) {
-      setError(error instanceof Error ? error.message : '登録に失敗しました')
+      setError(error instanceof Error ? error.message : 'パスワード変更に失敗しました')
     } finally {
       setFormLoading(false)
     }
+  }
+
+  // 読み込み中は何も表示しない
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-sky-50">
+        <p>認証情報を確認中...</p>
+      </div>
+    );
+  }
+
+  // 未認証または管理者でない場合は何も表示しない
+  if (!user || !isAdmin) {
+    return null;
   }
 
   return (
@@ -109,7 +125,7 @@ export default function Register() {
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="email" className="text-sky-900">メールアドレス</Label>
+              <Label htmlFor="email" className="text-sky-900">対象ユーザーのメールアドレス</Label>
               <Input
                 id="email"
                 name="email"
@@ -121,23 +137,25 @@ export default function Register() {
                 autoComplete="email"
               />
             </div>
+            
             <div className="space-y-1">
-              <Label htmlFor="name" className="text-sky-900">名前</Label>
+              <Label htmlFor="currentPassword" className="text-sky-900">現在のパスワード</Label>
               <Input
-                id="name"
-                name="name"
-                type="text"
-                placeholder="表示名"
+                id="currentPassword"
+                name="currentPassword"
+                type="password"
+                required
                 className="h-12"
                 disabled={formLoading}
-                autoComplete="name"
+                autoComplete="current-password"
               />
             </div>
+            
             <div className="space-y-1">
-              <Label htmlFor="password" className="text-sky-900">パスワード</Label>
+              <Label htmlFor="newPassword" className="text-sky-900">新しいパスワード</Label>
               <Input
-                id="password"
-                name="password"
+                id="newPassword"
+                name="newPassword"
                 type="password"
                 required
                 className="h-12"
@@ -149,8 +167,9 @@ export default function Register() {
                 ※ 8文字以上の半角英数字を入力してください
               </p>
             </div>
+            
             <div className="space-y-1">
-              <Label htmlFor="confirmPassword" className="text-sky-900">パスワード（確認）</Label>
+              <Label htmlFor="confirmPassword" className="text-sky-900">新しいパスワード（確認）</Label>
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
@@ -168,6 +187,12 @@ export default function Register() {
                 {error}
               </p>
             )}
+            
+            {success && (
+              <p className="text-sm text-green-500 bg-green-50 p-2 rounded">
+                {success}
+              </p>
+            )}
 
             <div className="space-y-2 pt-4">
               <Button 
@@ -175,35 +200,21 @@ export default function Register() {
                 className="w-full h-12 text-lg bg-sky-600 hover:bg-sky-700"
                 disabled={formLoading}
               >
-                {formLoading ? '登録中...' : '新規登録'}
+                {formLoading ? '変更中...' : 'パスワードを変更'}
               </Button>
               <Button 
                 type="button" 
                 variant="outline" 
                 className="w-full h-12 text-lg text-sky-600 border-sky-600 hover:bg-sky-50"
-                onClick={() => router.replace('/login')}
+                onClick={() => router.push('/dashboard')}
                 disabled={formLoading}
               >
-                ログインへ戻る
+                ダッシュボードに戻る
               </Button>
-              
-              <div className="text-center mt-4">
-                <p className="text-sm text-gray-600">
-                  ユーザーのパスワードを変更したい場合は
-                  <Button 
-                    variant="link" 
-                    className="text-sky-600 p-0 h-auto font-normal ml-1"
-                    onClick={() => router.push('/register/change-password')}
-                    disabled={formLoading}
-                  >
-                    こちら
-                  </Button>
-                </p>
-              </div>
             </div>
           </form>
         </CardContent>
       </Card>
     </div>
-  )
-}
+  );
+} 

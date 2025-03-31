@@ -500,16 +500,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
       return (
         <div className="p-2 border-t">
-          <div className="mb-2">
-            <input
-              type="text"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              placeholder={`${getTitleLabel()}を検索...`}
-              className="w-full px-2 py-1 border rounded text-xs"
-            />
-          </div>
-          
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs font-medium text-gray-700">利用可能な{getTitleLabel()}:</p>
             <span className="text-xs text-gray-500">{filteredCategories.length}件</span>

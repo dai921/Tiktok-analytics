@@ -1307,4 +1307,51 @@ export async function fetchTrendSummary(params: {
   } catch (error) {
     return handleApiError(error);
   }
+}
+
+// 管理者用パスワード変更API呼び出し
+export async function changePassword(email: string, currentPassword: string, newPassword: string): Promise<ApiResponse<{ message: string }>> {
+  try {
+    // トークンの取得方法を確認
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('認証トークンがありません。再ログインしてください。');
+    }
+    
+    console.log('認証トークン:', token ? token.substring(0, 10) + '...' : 'なし');
+
+    const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        email: email,
+        current_password: currentPassword,
+        new_password: newPassword
+      }),
+      credentials: 'include' // Cookieを含める
+    });
+    
+    console.log('レスポンスステータス:', response.status);
+
+    if (response.status === 401) {
+      throw new Error('認証情報が無効です。再ログインしてください。');
+    }
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'パスワード変更に失敗しました');
+    }
+    
+    const data = await response.json();
+    return {
+      success: true,
+      data
+    };
+  } catch (error) {
+    console.error('API呼び出しエラー:', error);
+    return handleApiError(error);
+  }
 } 
