@@ -94,7 +94,7 @@ export default function TrendsSummaryPage() {
           const dates = datesResponse.data.map(dateStr => new Date(dateStr));
           dates.sort((a, b) => a.getTime() - b.getTime());
           
-          if (dates.length >= 2) {
+          if (dates.length >= 1) {
             // 直近の最大7件の日付に制限
             const recentDates = dates.length <= 7 ? dates : dates.slice(-7);
             

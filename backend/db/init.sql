@@ -241,7 +241,6 @@ CREATE TABLE trend_analysis (
   id SERIAL PRIMARY KEY,
   collection_date DATE NOT NULL,  -- 集計日
   genre VARCHAR(100) NOT NULL,    -- ジャンル
-  total_views BIGINT NOT NULL,    -- 再生数
   view_increase BIGINT NOT NULL,  -- 再生増加数
   videos_10k_plus INT NOT NULL,   -- 再生増加数1万以上動画数
   videos_100k_plus INT NOT NULL,  -- 再生増加数10万以上動画数

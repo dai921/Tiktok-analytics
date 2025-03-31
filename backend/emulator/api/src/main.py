@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.responses import JSONResponse, HTMLResponse
 from typing import Optional, Dict, List
 from src.db.database import get_db_connection, format_video
@@ -17,6 +17,7 @@ import pathlib
 import json
 import re
 from datetime import datetime, timedelta
+from src.auth.utils import update_session_activity
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -1253,6 +1254,34 @@ async def get_trend_dates():
             cursor.close()
         if conn:
             conn.close()
+
+@app.middleware("http")
+async def update_session_middleware(request: Request, call_next):
+    """リクエスト処理時にセッションアクティビティを更新するミドルウェア"""
+    response = await call_next(request)
+    
+    # セッショントークンをクッキーまたはヘッダーから取得
+    session_token = request.cookies.get("session_token") or request.headers.get("X-Session-Token")
+    
+    if session_token:
+        # 非同期でセッション最終利用日時を更新
+        # 実際の実装では、データベースに接続して更新処理を行う
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            current_time = datetime.utcnow()
+            cursor.execute(
+                "UPDATE sessions SET last_used_at = %s WHERE session_token = %s",
+                (current_time, session_token)
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"セッション更新エラー: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+    
+    return response
 
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":

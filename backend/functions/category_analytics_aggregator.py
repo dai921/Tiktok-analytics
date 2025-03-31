@@ -3,7 +3,6 @@ import json
 import logging
 import base64
 from datetime import datetime, timedelta
-import pytz  # タイムゾーン処理用のライブラリを追加
 from typing import Dict, Any, List
 from db_utils import execute_query, execute_write_query, DatabaseError
 from config import initialize_config
@@ -14,10 +13,6 @@ logger = logging.getLogger(__name__)
 
 # 設定の初期化
 initialize_config()
-
-def get_jst_now() -> datetime:
-    """日本時間の現在時刻を取得する"""
-    return datetime.now(pytz.timezone('Asia/Tokyo'))
 
 def process_category_statistics(event, context):
     """
@@ -60,15 +55,15 @@ def process_category_statistics(event, context):
         logger.error(error_message)
         import traceback
         logger.error(traceback.format_exc())
-        return {"status": "error", "error": error_message, "time": get_jst_now().isoformat()}
+        return {"status": "error", "error": error_message, "time": datetime.now().isoformat()}
     finally:
         logger.info("==== カテゴリー統計集計処理の終了 ====")
 
 def aggregate_category_statistics() -> Dict[str, Any]:
     """カテゴリー別の統計情報を集計"""
     try:
-        # 集計日（日本時間の現在日付の前日）
-        aggregation_date = (get_jst_now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        # 集計日（現在日付の前日）- JSTから標準時間に変更
+        aggregation_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         
         # ビデオデータを取得するクエリ - 日付条件を追加
         query = """
@@ -92,7 +87,7 @@ def aggregate_category_statistics() -> Dict[str, Any]:
             return {
                 "status": "success",
                 "message": "集計対象のデータがありません",
-                "execution_time": get_jst_now().isoformat()
+                "execution_time": datetime.now().isoformat()
             }
         
         # カテゴリごとの統計データを格納する辞書
@@ -165,7 +160,7 @@ def aggregate_category_statistics() -> Dict[str, Any]:
             "message": f"{len(statistics_records)}カテゴリーの統計情報を集計しました",
             "aggregation_date": aggregation_date,
             "categories_processed": len(statistics_records),
-            "execution_time": get_jst_now().isoformat()
+            "execution_time": datetime.now().isoformat()
         }
         
     except Exception as e:

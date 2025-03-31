@@ -39,7 +39,7 @@ spec:
           value: "process-account-list-sub"
         # Pub/Sub処理間隔（秒）
         - name: PUBSUB_POLLING_INTERVAL
-          value: "30"
+          value: "1"
         # Kubernetes関連設定
         - name: ACCOUNT_CRAWLER_IMAGE
           value: "asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/account-crawler:v1"

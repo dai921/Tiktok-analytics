@@ -22,7 +22,7 @@ export function TrendTabs() {
     >
       <TabsList className="grid w-full max-w-md grid-cols-2">
         <TabsTrigger value="/trends">トレンドグラフ</TabsTrigger>
-        <TabsTrigger value="/trends/summary">トレンドサマリー</TabsTrigger>
+        <TabsTrigger value="/trends/summary">トレンド数値データ</TabsTrigger>
       </TabsList>
     </Tabs>
   );
