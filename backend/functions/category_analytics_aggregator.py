@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from db_utils import execute_query, execute_write_query, DatabaseError
 from config import initialize_config
+from pytz import timezone
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -63,7 +64,8 @@ def aggregate_category_statistics() -> Dict[str, Any]:
     """カテゴリー別の統計情報を集計"""
     try:
         # 集計日（現在日付の前日）- JSTから標準時間に変更
-        aggregation_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+        jst = timezone('Asia/Tokyo')
+        aggregation_date = (datetime.now(jst) - timedelta(days=2)).strftime('%Y-%m-%d')
         
         # ビデオデータを取得するクエリ - 日付条件を追加
         query = """

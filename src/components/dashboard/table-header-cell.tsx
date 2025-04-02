@@ -220,13 +220,15 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       // 特定のフィールドは直接内部フィールド名を使用
       let fieldName = title;
       if (title === '投稿日時') {
-        fieldName = 'createdAt';  // 日本語名から内部フィールド名へ直接マッピング
+        fieldName = 'createdAt';
       } else if (title === '再生数') {
         fieldName = 'views';
       } else if (title === 'いいね数') {
         fieldName = 'likes';
       } else if (title === 'コメント数') {
         fieldName = 'comments';
+      } else if (title === '再生数増加数') {
+        fieldName = 'viewsIncrease';  // バックエンドのフィールド名に合わせて調整してください
       }
 
       // ソート情報を親コンポーネントに渡す際に、明示的に新しいソートであることを示すフラグを追加
@@ -297,16 +299,22 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     const handleFilter = (value: string, type: FilterType) => {
       if (!onFilter) return;
       
-      // カテゴリフィールドの場合は特別な処理
-      if (title === 'ジャンル') {
-        // 既存の型に合わせて渡すデータを調整
+      // キャプションの場合のみ部分一致を適用
+      if (title === 'キャプション') {
+        onFilter({
+          field: title,
+          value: value,
+          type: 'contains'  // キャプションは常に部分一致
+        }, true);
+      } else if (title === 'ジャンル') {
+        // ジャンルの既存の特別処理を維持
         onFilter({
           field: title,
           value: value,
           type: type
         }, true);
       } else {
-        // 他のフィールドは通常通り
+        // その他のフィールドは通常通りの処理
         onFilter({
           field: title,
           value: value,
@@ -500,16 +508,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
       return (
         <div className="p-2 border-t">
-          <div className="mb-2">
-            <input
-              type="text"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              placeholder={`${getTitleLabel()}を検索...`}
-              className="w-full px-2 py-1 border rounded text-xs"
-            />
-          </div>
-          
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs font-medium text-gray-700">利用可能な{getTitleLabel()}:</p>
             <span className="text-xs text-gray-500">{filteredCategories.length}件</span>
@@ -572,6 +570,51 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       return '▼ 降順に並び替え';
     };
 
+    // 数値カラムかどうかを判定する関数を追加
+    const isNumericColumn = (title: string): boolean => {
+      return ['再生数', 'いいね数', 'コメント数', '再生増加数'].includes(title);
+    }
+
+    // renderCategoryList の前あたりに配置
+    const renderSortSection = () => {
+      // 数値カラムの場合のみソート機能を表示                 
+      if (!isNumericColumn(title)) {
+        return null;
+      }
+
+      return (
+        <div className="p-2 border-t">
+          {/* ソートのヘッダー部分 */}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-700">並び替え</p>
+            {/* ソートがアクティブな場合のみクリアボタンを表示 */}
+          </div>
+
+          {/* ソートボタン */}
+          <div className="space-y-1">
+            <button 
+              onClick={() => handleSortDirection('desc')}
+              className={cn(
+                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
+                localSortDirection === 'desc' ? "bg-gray-100 font-semibold" : ""
+              )}
+            >
+              {getDescSortLabel()}
+            </button>
+            <button 
+              onClick={() => handleSortDirection('asc')}
+              className={cn(
+                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
+                localSortDirection === 'asc' ? "bg-gray-100 font-semibold" : ""
+              )}
+            >
+              {getAscSortLabel()}
+            </button>
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div 
         data-header-cell
@@ -582,11 +625,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           isActive || localSortDirection ? "text-blue-600 font-medium" : ""
         )}
       >
-        <div 
-          className="flex items-center cursor-default" 
-          // ソート機能を削除するため、handleSortの呼び出しを削除
-          // onClick={handleSort}
-        >
+        <div className="flex items-center cursor-default">
           <span>{title}</span>
           {localSortDirection && (
             <span className="ml-1 text-blue-600">
@@ -594,7 +633,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             </span>
           )}
         </div>
-        {onFilter && (
+        {/* キャプションの場合はフィルターボタンを表示しない */}
+        {onFilter && title !== 'キャプション' && (
           <button 
             ref={buttonRef}
             onClick={handleToggleFilter}
@@ -664,21 +704,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               {/* カテゴリリストを表示 */}
               {renderCategoryList()}
               
-              <div className="p-2 border-t">
-                <p className="text-xs font-medium mb-1 text-gray-700">並び替え:</p>
-                <button 
-                  onClick={() => handleSortDirection('desc')}
-                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs mb-1 ${localSortDirection === 'desc' ? 'bg-gray-100 font-semibold' : ''}`}
-                >
-                  {getDescSortLabel()}
-                </button>
-                <button 
-                  onClick={() => handleSortDirection('asc')}
-                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs ${localSortDirection === 'asc' ? 'bg-gray-100 font-semibold' : ''}`}
-                >
-                  {getAscSortLabel()}
-                </button>
-              </div>
+              {/* ソートセクションを条件付きで表示 */}
+              {renderSortSection()}
             </div>
           </Portal>
         )}

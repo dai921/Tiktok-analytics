@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Optional
 from datetime import datetime
 from src.db.database import get_db_connection
-from .models import UserCreate, User, Token, Session
+from .models import UserCreate, User, Token, Session, PasswordChange
 from .utils import (
     verify_password,
     get_password_hash,
@@ -151,4 +151,90 @@ async def logout(current_user: User = Depends(get_current_user)):
 @router.get("/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     """現在のユーザー情報を取得"""
-    return current_user 
+    return current_user
+
+@router.post("/change-password")
+async def change_password(
+    password_data: PasswordChange,
+    current_user: User = Depends(get_current_user)
+):
+    """ユーザーのパスワード変更"""
+    print("パスワード変更リクエスト - ユーザー情報:", {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "is_admin_attr": getattr(current_user, "is_admin", None),
+        "raw_user_data": current_user.__dict__
+    })
+    
+    # 管理者権限のチェック
+    is_admin = getattr(current_user, "is_admin", False)
+    print("管理者権限チェック:", {
+        "is_admin": is_admin,
+        "user_email": current_user.email
+    })
+    
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="認証情報が無効です",
+        )
+    
+    # 管理者権限のチェック
+    if password_data.email and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="この操作を行う権限がありません",
+        )
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        target_user_id = None
+        
+        if password_data.email and is_admin:
+            # 管理者が他のユーザーのパスワードを変更する場合
+            cursor.execute(
+                "SELECT id FROM users WHERE email = %s",
+                (password_data.email,)
+            )
+            user_data = cursor.fetchone()
+            
+            if not user_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="指定されたメールアドレスのユーザーが見つかりません",
+                )
+            
+            target_user_id = user_data["id"]
+            # 管理者の場合はcurrent_passwordの検証をスキップ
+        else:
+            # 一般ユーザーが自分自身のパスワードを変更する場合
+            cursor.execute(
+                "SELECT id, password FROM users WHERE id = %s",
+                (current_user.id,)
+            )
+            user_data = cursor.fetchone()
+            target_user_id = current_user.id
+            
+            # 一般ユーザーの場合のみパスワード検証
+            if not verify_password(password_data.current_password, user_data["password"]):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="現在のパスワードが正しくありません",
+                )
+        
+        # 新しいパスワードをハッシュ化して保存
+        hashed_password = get_password_hash(password_data.new_password)
+        
+        cursor.execute(
+            "UPDATE users SET password = %s WHERE id = %s",
+            (hashed_password, target_user_id)
+        )
+        conn.commit()
+        
+        return {"message": "パスワードが正常に変更されました"}
+        
+    finally:
+        cursor.close()
+        conn.close() 

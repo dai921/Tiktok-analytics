@@ -18,6 +18,7 @@ class User(UserBase):
     email_verified: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    is_admin: bool = False
 
     class Config:
         from_attributes = True
@@ -41,4 +42,9 @@ class Token(BaseModel):
     is_admin: bool = False
 
 class TokenData(BaseModel):
-    email: Optional[str] = None 
+    email: Optional[str] = None
+
+class PasswordChange(BaseModel):
+    email: Optional[str] = None  # 管理者がユーザーを指定する場合に使用
+    current_password: str
+    new_password: str 

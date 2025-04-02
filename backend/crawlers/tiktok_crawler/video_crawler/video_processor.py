@@ -521,9 +521,9 @@ class VideoProcessor:
             # 基本情報を取得（既存のデータを使用）
             base_info = {
                 'video_id': video_id,
-                'username': username,     # 既存のデータを使用
-                'url': video_url,        # 既存のデータを使用
-                'currentFetchDate': datetime.now().isoformat(),
+                'username': username,
+                'url': video_url,
+                'currentFetchDate': datetime.now().date().isoformat(),  # 日付のみに変更
                 'likes_count': video.get('stats', {}).get('diggCount'),
                 'play_count': video.get('stats', {}).get('playCount'),
                 'comment_count': video.get('stats', {}).get('commentCount'),
@@ -545,7 +545,9 @@ class VideoProcessor:
             base_info.update({
                 'display_name': video.get('author', {}).get('nickname'),
                 'description': video.get('desc'),
-                'created_at': datetime.fromtimestamp(int(video.get('createTime', '0'))).isoformat(),
+                'created_at': datetime.fromtimestamp(
+                    int(video.get('createTime', '0'))
+                ).date().isoformat(),  # .date().isoformat()で日付のみを取得
                 'hashtags': [tag.get('hashtagName') for tag in video.get('textExtra', []) if tag.get('hashtagName')],
                 'duration': video.get('video', {}).get('duration'),
                 'music_id': video.get('music', {}).get('id'),

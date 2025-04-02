@@ -186,6 +186,20 @@ export default function Register() {
               >
                 ログインへ戻る
               </Button>
+              
+              <div className="text-center mt-4">
+                <p className="text-sm text-gray-600">
+                  ユーザーのパスワードを変更したい場合は
+                  <Button 
+                    variant="link" 
+                    className="text-sky-600 p-0 h-auto font-normal ml-1"
+                    onClick={() => router.push('/register/change-password')}
+                    disabled={formLoading}
+                  >
+                    こちら
+                  </Button>
+                </p>
+              </div>
             </div>
           </form>
         </CardContent>
