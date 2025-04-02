@@ -159,20 +159,27 @@ async def change_password(
     current_user: User = Depends(get_current_user)
 ):
     """ユーザーのパスワード変更"""
-    print(f"認証ユーザー: {current_user.email if current_user else 'なし'}")
-    print(f"管理者権限: {getattr(current_user, 'is_admin', False) if current_user else False}")
-    print(f"リクエストデータ: {password_data}")
+    print("パスワード変更リクエスト - ユーザー情報:", {
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "is_admin_attr": getattr(current_user, "is_admin", None),
+        "raw_user_data": current_user.__dict__
+    })
     
-    # 管理者権限のチェックを明示的に行う
+    # 管理者権限のチェック
+    is_admin = getattr(current_user, "is_admin", False)
+    print("管理者権限チェック:", {
+        "is_admin": is_admin,
+        "user_email": current_user.email
+    })
+    
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="認証情報が無効です",
-            headers={"WWW-Authenticate": "Bearer"},
         )
     
     # 管理者権限のチェック
-    is_admin = getattr(current_user, "is_admin", False)
     if password_data.email and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -183,13 +190,12 @@ async def change_password(
     cursor = conn.cursor(dictionary=True)
     
     try:
-        # 管理者権限チェック
         target_user_id = None
         
-        if password_data.email:
-            # 管理者が他のユーザーのパスワードを変更
+        if password_data.email and is_admin:
+            # 管理者が他のユーザーのパスワードを変更する場合
             cursor.execute(
-                "SELECT id, password FROM users WHERE email = %s",
+                "SELECT id FROM users WHERE email = %s",
                 (password_data.email,)
             )
             user_data = cursor.fetchone()
@@ -201,21 +207,22 @@ async def change_password(
                 )
             
             target_user_id = user_data["id"]
+            # 管理者の場合はcurrent_passwordの検証をスキップ
         else:
-            # 一般ユーザーが自分自身のパスワードを変更
+            # 一般ユーザーが自分自身のパスワードを変更する場合
             cursor.execute(
                 "SELECT id, password FROM users WHERE id = %s",
                 (current_user.id,)
             )
             user_data = cursor.fetchone()
             target_user_id = current_user.id
-        
-        # 現在のパスワードを検証
-        if not verify_password(password_data.current_password, user_data["password"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="現在のパスワードが正しくありません",
-            )
+            
+            # 一般ユーザーの場合のみパスワード検証
+            if not verify_password(password_data.current_password, user_data["password"]):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="現在のパスワードが正しくありません",
+                )
         
         # 新しいパスワードをハッシュ化して保存
         hashed_password = get_password_hash(password_data.new_password)

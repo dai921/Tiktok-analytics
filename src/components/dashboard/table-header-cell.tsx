@@ -220,13 +220,15 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       // 特定のフィールドは直接内部フィールド名を使用
       let fieldName = title;
       if (title === '投稿日時') {
-        fieldName = 'createdAt';  // 日本語名から内部フィールド名へ直接マッピング
+        fieldName = 'createdAt';
       } else if (title === '再生数') {
         fieldName = 'views';
       } else if (title === 'いいね数') {
         fieldName = 'likes';
       } else if (title === 'コメント数') {
         fieldName = 'comments';
+      } else if (title === '再生数増加数') {
+        fieldName = 'viewsIncrease';  // バックエンドのフィールド名に合わせて調整してください
       }
 
       // ソート情報を親コンポーネントに渡す際に、明示的に新しいソートであることを示すフラグを追加
@@ -562,6 +564,51 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       return '▼ 降順に並び替え';
     };
 
+    // 数値カラムかどうかを判定する関数を追加
+    const isNumericColumn = (title: string): boolean => {
+      return ['再生数', 'いいね数', 'コメント数', '再生増加数'].includes(title);
+    }
+
+    // renderCategoryList の前あたりに配置
+    const renderSortSection = () => {
+      // 数値カラムの場合のみソート機能を表示                 
+      if (!isNumericColumn(title)) {
+        return null;
+      }
+
+      return (
+        <div className="p-2 border-t">
+          {/* ソートのヘッダー部分 */}
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-700">並び替え</p>
+            {/* ソートがアクティブな場合のみクリアボタンを表示 */}
+          </div>
+
+          {/* ソートボタン */}
+          <div className="space-y-1">
+            <button 
+              onClick={() => handleSortDirection('desc')}
+              className={cn(
+                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
+                localSortDirection === 'desc' ? "bg-gray-100 font-semibold" : ""
+              )}
+            >
+              {getDescSortLabel()}
+            </button>
+            <button 
+              onClick={() => handleSortDirection('asc')}
+              className={cn(
+                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
+                localSortDirection === 'asc' ? "bg-gray-100 font-semibold" : ""
+              )}
+            >
+              {getAscSortLabel()}
+            </button>
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div 
         data-header-cell
@@ -654,21 +701,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               {/* カテゴリリストを表示 */}
               {renderCategoryList()}
               
-              <div className="p-2 border-t">
-                <p className="text-xs font-medium mb-1 text-gray-700">並び替え:</p>
-                <button 
-                  onClick={() => handleSortDirection('desc')}
-                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs mb-1 ${localSortDirection === 'desc' ? 'bg-gray-100 font-semibold' : ''}`}
-                >
-                  {getDescSortLabel()}
-                </button>
-                <button 
-                  onClick={() => handleSortDirection('asc')}
-                  className={`w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs ${localSortDirection === 'asc' ? 'bg-gray-100 font-semibold' : ''}`}
-                >
-                  {getAscSortLabel()}
-                </button>
-              </div>
+              {/* ソートセクションを条件付きで表示 */}
+              {renderSortSection()}
             </div>
           </Portal>
         )}

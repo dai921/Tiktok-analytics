@@ -1310,48 +1310,67 @@ export async function fetchTrendSummary(params: {
 }
 
 // 管理者用パスワード変更API呼び出し
-export async function changePassword(email: string, currentPassword: string, newPassword: string): Promise<ApiResponse<{ message: string }>> {
+export async function changePassword(email: string, currentPassword: string, newPassword: string) {
   try {
-    // トークンの取得方法を確認
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('認証トークンがありません。再ログインしてください。');
-    }
+    const token = localStorage.getItem('auth_token');
+    const tokenType = (localStorage.getItem('auth_token_type') || 'Bearer').charAt(0).toUpperCase() + 
+                     (localStorage.getItem('auth_token_type') || 'Bearer').slice(1).toLowerCase();
     
-    console.log('認証トークン:', token ? token.substring(0, 10) + '...' : 'なし');
+    console.log('パスワード変更リクエスト詳細:', {
+      token: token ? '存在する' : 'なし',
+      tokenType,
+      email,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `${tokenType} ${token?.substring(0, 10)}...`
+      },
+      requestBody: {
+        email,
+        current_password: '***',
+        new_password: '***'
+      }
+    });
 
     const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Authorization': `${tokenType} ${token}`,
+        'Accept': 'application/json'  // 明示的にJSONレスポンスを要求
       },
       body: JSON.stringify({
-        email: email,
+        email,
         current_password: currentPassword,
         new_password: newPassword
       }),
-      credentials: 'include' // Cookieを含める
+      credentials: 'include'  // Cookieを含める
     });
-    
-    console.log('レスポンスステータス:', response.status);
 
-    if (response.status === 401) {
-      throw new Error('認証情報が無効です。再ログインしてください。');
-    }
-    
+    // エラーレスポンスの詳細を取得
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.detail || 'パスワード変更に失敗しました');
+      console.error('パスワード変更エラー詳細:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData,
+        requestHeaders: {
+          'Authorization': `${tokenType} ${token?.substring(0, 10)}...`,
+          'Content-Type': 'application/json'
+        }
+      });
+      throw new Error(errorData.detail || 'この操作を行う権限がありません');
     }
-    
+
     const data = await response.json();
     return {
       success: true,
       data
     };
   } catch (error) {
-    console.error('API呼び出しエラー:', error);
-    return handleApiError(error);
+    console.error('パスワード変更エラー:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '不明なエラー'
+    };
   }
 } 

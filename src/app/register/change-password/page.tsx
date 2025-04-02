@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from '@/lib/auth-context'
+import { changePassword } from '@/lib/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
@@ -23,24 +24,73 @@ export default function ChangePassword() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // 認証状態を確認
+  // ページロード時の管理者権限チェックを修正
   useEffect(() => {
-    if (!isLoading && (!user || !isAdmin)) {
-      router.replace('/login');
+    console.log('管理者権限チェック詳細:', {
+      isLoading,
+      user,
+      isAdmin,
+      localStorage: {
+        auth_token: localStorage.getItem('auth_token'),
+        token_type: localStorage.getItem('auth_token_type'),
+        is_admin: localStorage.getItem('is_admin'),
+      }
+    });
+
+    // isLoadingが完了してから判定を行う
+    if (!isLoading) {
+      if (!isAdmin) {
+        console.log('管理者権限なし:', { isAdmin });
+        router.replace('/login');
+      } else if (!user) {
+        console.log('ユーザー情報なし:', { user });
+        router.replace('/login');
+      }
     }
   }, [isLoading, user, isAdmin, router]);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    console.log('パスワード変更フォーム送信開始');
+    const form = event.currentTarget;  // フォーム要素を保持
     setFormLoading(true)
     setError('')
     setSuccess('')
+
+    // フォーム送信時の管理者権限チェック
+    console.log('送信時の権限チェック:', { 
+      isAdmin,
+      user: user ? 'exists' : 'null',
+      localStorage: {
+        is_admin: localStorage.getItem('is_admin'),
+        auth_token: !!localStorage.getItem('auth_token')
+      }
+    });
+
+    if (!isAdmin) {
+      setError('この操作を行う権限がありません（管理者権限なし）');
+      setFormLoading(false);
+      return;
+    }
+
+    if (!user) {
+      setError('この操作を行う権限がありません（ユーザー情報なし）');
+      setFormLoading(false);
+      return;
+    }
 
     const formData = new FormData(event.currentTarget)
     const email = formData.get('email') as string
     const currentPassword = formData.get('currentPassword') as string
     const newPassword = formData.get('newPassword') as string
     const confirmPassword = formData.get('confirmPassword') as string
+
+    console.log('フォームデータ:', { 
+      email: email ? '入力あり' : '未入力',
+      currentPassword: currentPassword ? '入力あり' : '未入力',
+      newPassword: newPassword ? '入力あり' : '未入力',
+      confirmPassword: confirmPassword ? '入力あり' : '未入力'
+    });
 
     // バリデーション
     if (!email || !email.includes('@')) {
@@ -68,39 +118,24 @@ export default function ChangePassword() {
     }
 
     try {
-      // パスワード変更リクエスト（直接API呼び出し）
-      const token = localStorage.getItem('token')
+      const result = await changePassword(email, currentPassword, newPassword);
       
-      const changePasswordResponse = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ 
-          email,
-          current_password: currentPassword,
-          new_password: newPassword
-        }),
-      })
-
-      if (!changePasswordResponse.ok) {
-        const errorData = await changePasswordResponse.json() as ApiError
-        throw new Error(errorData.detail || 'パスワード変更に失敗しました')
+      if (!result.success) {
+        throw new Error(result.error || 'パスワード変更に失敗しました');
       }
 
-      // 成功処理
-      setSuccess('パスワードが正常に変更されました')
-      // フォームをリセット
-      event.currentTarget.reset()
+      setSuccess('パスワードが正常に変更されました');
+      if (form) {  // フォームが存在する場合のみリセット
+        form.reset();
+      }
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'パスワード変更に失敗しました')
+      setError(error instanceof Error ? error.message : 'パスワード変更に失敗しました');
     } finally {
-      setFormLoading(false)
+      setFormLoading(false);
     }
   }
 
-  // 読み込み中は何も表示しない
+  // ローディング中の表示
   if (isLoading) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-sky-50">
@@ -109,7 +144,7 @@ export default function ChangePassword() {
     );
   }
 
-  // 未認証または管理者でない場合は何も表示しない
+  // 管理者権限がない場合は何も表示しない
   if (!user || !isAdmin) {
     return null;
   }

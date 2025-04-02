@@ -100,7 +100,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         # パラメータ化されたクエリに変更
         min_date = '2023-12-01'
         # 処理日の2日前までのデータのみを対象とする（例：3/21実行なら3/19 23:59まで）
-        max_date = "DATE_SUB(CURDATE(), INTERVAL 1 DAY)"
+        max_date = "DATE_SUB(CURDATE(), INTERVAL 2 DAY)"
         
         select_query = """
         SELECT 

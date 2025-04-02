@@ -18,6 +18,7 @@ class User(UserBase):
     email_verified: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    is_admin: bool = False
 
     class Config:
         from_attributes = True
