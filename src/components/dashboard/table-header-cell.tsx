@@ -299,16 +299,22 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     const handleFilter = (value: string, type: FilterType) => {
       if (!onFilter) return;
       
-      // カテゴリフィールドの場合は特別な処理
-      if (title === 'ジャンル') {
-        // 既存の型に合わせて渡すデータを調整
+      // キャプションの場合のみ部分一致を適用
+      if (title === 'キャプション') {
+        onFilter({
+          field: title,
+          value: value,
+          type: 'contains'  // キャプションは常に部分一致
+        }, true);
+      } else if (title === 'ジャンル') {
+        // ジャンルの既存の特別処理を維持
         onFilter({
           field: title,
           value: value,
           type: type
         }, true);
       } else {
-        // 他のフィールドは通常通り
+        // その他のフィールドは通常通りの処理
         onFilter({
           field: title,
           value: value,
@@ -619,11 +625,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           isActive || localSortDirection ? "text-blue-600 font-medium" : ""
         )}
       >
-        <div 
-          className="flex items-center cursor-default" 
-          // ソート機能を削除するため、handleSortの呼び出しを削除
-          // onClick={handleSort}
-        >
+        <div className="flex items-center cursor-default">
           <span>{title}</span>
           {localSortDirection && (
             <span className="ml-1 text-blue-600">
@@ -631,7 +633,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             </span>
           )}
         </div>
-        {onFilter && (
+        {/* キャプションの場合はフィルターボタンを表示しない */}
+        {onFilter && title !== 'キャプション' && (
           <button 
             ref={buttonRef}
             onClick={handleToggleFilter}
