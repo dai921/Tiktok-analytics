@@ -254,3 +254,8 @@ CREATE TABLE trend_analysis (
   INDEX idx_genre (genre),
   UNIQUE INDEX unique_date_genre (collection_date, genre)
 );
+
+CREATE TABLE scheduler_job_info (
+    job_name VARCHAR(255) PRIMARY KEY,
+    last_run TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
