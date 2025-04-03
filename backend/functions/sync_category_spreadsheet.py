@@ -17,6 +17,53 @@ logger = logging.getLogger(__name__)
 # 設定の初期化
 initialize_config()
 
+def check_last_execution():
+    """
+    前回の実行時刻をチェックし、36時間以上経過しているか確認する
+    Returns:
+        bool: 実行可能な場合はTrue、そうでない場合はFalse
+    """
+    try:
+        query = """
+            SELECT last_run 
+            FROM scheduler_job_info 
+            WHERE job_name = 'sync_category_spreadsheet'
+        """
+        result = execute_query(query)
+        
+        if not result:
+            # 初回実行の場合、レコードを作成して実行可能とする
+            insert_query = """
+                INSERT INTO scheduler_job_info (job_name, last_run)
+                VALUES ('sync_category_spreadsheet', NOW())
+            """
+            execute_write_query(insert_query)
+            logger.info("初回実行のため、実行を許可します")
+            return True
+        
+        last_run = result[0]['last_run']
+        current_time = datetime.now()
+        time_diff = current_time - last_run
+        
+        # 36時間以上経過しているかチェック
+        if time_diff.total_seconds() >= 36 * 3600:
+            # last_runを更新
+            update_query = """
+                UPDATE scheduler_job_info 
+                SET last_run = NOW()
+                WHERE job_name = 'sync_category_spreadsheet'
+            """
+            execute_write_query(update_query)
+            logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間経過しているため、実行を許可します")
+            return True
+        else:
+            logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間しか経過していないため、実行をスキップします")
+            return False
+            
+    except Exception as e:
+        logger.error(f"実行時間チェックでエラーが発生しました: {str(e)}")
+        return True  # エラーの場合は安全のため実行を許可
+
 @functions_framework.http
 def scheduled_job(request):
     """
@@ -27,7 +74,12 @@ def scheduled_job(request):
         tuple: (レスポンスメッセージ, HTTPステータスコード)
     """
     logger.info(f"====== カテゴリ同期処理開始：{datetime.now().isoformat()} ======")
+    
     try:
+        # 実行可能かチェック
+        if not check_last_execution():
+            return "前回の実行から36時間経過していないため、処理をスキップします", 200
+            
         return sync_category_spreadsheet()
     except Exception as e:
         logger.error(f"同期処理エラー: {str(e)}")
