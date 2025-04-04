@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: video-crawler
+  namespace: video-crawler
+spec:
+  serviceName: "video-crawler"  # StatefulSetには必須
+  replicas: 6 # 0に変更（オートスケーリング用）
+  selector:
+    matchLabels:
+      app: video-crawler
+  template:
+    metadata:
+      labels:
+        app: video-crawler
+      annotations:
+        # GCPサービスアカウントとKubernetesサービスアカウントの連携
+        iam.gke.io/gcp-service-account: tiktok-crawler-sa@tiktok-analytics-prod-451609.iam.gserviceaccount.com
+    spec:
+      nodeSelector:  # ノードプールの指定
+        cloud.google.com/gke-nodepool: video-pool
+      # restartPolicy: OnFailure  # Deploymentでは不要（Always固定）
+      serviceAccountName: crawler-ksa
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: video-crawler
+        image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/video-crawler:v1
+        imagePullPolicy: Always
+        env:
+        - name: CRAWLER_TYPE
+          value: "video_crawler"
+        - name: PROJECT_ID
+          value: "tiktok-analytics-prod-451609"
+        - name: BUCKET_NAME
+          value: "tiktok-data-bucket"
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "tiktok-analytics-prod-451609"
+        # Pod名を環境変数として設定
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        # MySQLの接続情報セクションを削除
+        # Pub/Subの検証トークンセクションも削除
+        resources:
+          requests:
+            memory: "3Gi"
+            cpu: "1000m"
+          limits:
+            memory: "6Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: crawler-data
+          mountPath: /app/data
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ps aux | grep python | grep -v grep
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.28.0
+        command:
+          - "/cloud_sql_proxy"
+          - "-instances=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db=tcp:3306"
+        securityContext:
+          runAsNonRoot: true
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - nc -z localhost 3306
+          initialDelaySeconds: 30
+          periodSeconds: 10
+  volumeClaimTemplates:  # 各Podごとに独自のPVCを自動生成
+  - metadata:
+      name: crawler-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "standard-rwo"
+      resources:
+        requests:
+          storage: 20Gi

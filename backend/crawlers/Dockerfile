@@ -58,7 +58,7 @@ ENV PYTHONUNBUFFERED=1
 
 # コマンドを条件分岐で指定
 CMD if [ "$CRAWLER_TYPE" = "video_crawler" ]; then \
-        python -m tiktok_crawler.video_crawler.video_processor; \
+        python -m video_crawler.video_processor; \
     else \
-        python -m tiktok_crawler.account_crawler.crawler; \
+        python -m account_crawler.crawler; \
     fi 
