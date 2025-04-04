@@ -1,8 +1,10 @@
 import os
-from google.cloud import pubsub_v1
-import logging
-from typing import Optional
 import json
+import logging
+from google.cloud import pubsub_v1
+from typing import Dict, Any, Optional
+
+from .config import get_environment
 
 logger = logging.getLogger(__name__)
 

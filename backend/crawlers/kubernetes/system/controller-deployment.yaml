@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: system-controller
+  namespace: system
+spec:
+  replicas: 1  # 常に1つは稼働させる
+  selector:
+    matchLabels:
+      app: system-controller
+  template:
+    metadata:
+      labels:
+        app: system-controller
+      annotations:
+        iam.gke.io/gcp-service-account: tiktok-crawler-sa@tiktok-analytics-prod-451609.iam.gserviceaccount.com
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: default-pool
+      # 常に少なくとも1つのPodを確実に維持するための設定
+      # priorityClassName: system-cluster-critical
+      serviceAccountName: system-ksa
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: controller
+        image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/controller:v1
+        imagePullPolicy: Always
+        env:
+        - name: PROJECT_ID
+          value: "tiktok-analytics-prod-451609"
+        - name: VIDEO_CRAWLER_NAMESPACE
+          value: "video-crawler"
+        - name: ACCOUNT_CRAWLER_NAMESPACE
+          value: "account-crawler"
+        # Pub/Sub設定の修正（プル型）
+        - name: VIDEO_PUBSUB_SUBSCRIPTION
+          value: "video-processing-sub"
+        - name: ACCOUNT_PUBSUB_SUBSCRIPTION
+          value: "process-account-list-sub"
+        # Pub/Sub処理間隔（秒）
+        - name: PUBSUB_POLLING_INTERVAL
+          value: "1"
+        # Kubernetes関連設定
+        - name: ACCOUNT_CRAWLER_IMAGE
+          value: "asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/account-crawler:v1"
+        - name: VIDEO_CRAWLER_IMAGE
+          value: "asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/video-crawler:v1"
+        - name: MAX_CONCURRENT_JOBS
+          value: "5"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        # システムの健全性確認
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10

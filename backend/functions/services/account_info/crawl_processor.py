@@ -5,10 +5,11 @@ from datetime import datetime
 import time
 import sys
 import functions_framework
+from typing import List, Dict, Any, Optional
+import base64
 from core.db_utils import get_connection, execute_query, execute_write_query, DatabaseError
 from core.config import initialize_config, get_environment, get_db_config
 from core.pubsub_utils import publish_message
-import base64
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO)

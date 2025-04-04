@@ -5,8 +5,10 @@ from typing import Dict, Any, List, Optional, Callable
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
 import functools
+import psycopg2
+import psycopg2.extras
 
-from config import get_db_config, ConfigError
+from .config import get_db_config, ConfigError
 
 logger = logging.getLogger(__name__)
 

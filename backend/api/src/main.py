@@ -11,8 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 import pathlib
 import json
 import re

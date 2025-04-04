@@ -1,15 +1,17 @@
 import os
-from dotenv import load_dotenv
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-import functions_framework
-from datetime import datetime
+import json
 import logging
+from datetime import datetime
+import functions_framework
+from typing import List, Dict, Any, Optional
+import base64
 from core.db_utils import get_connection, execute_query, execute_write_query, DatabaseError
 from core.config import initialize_config, get_environment, get_db_config
 from core.pubsub_utils import publish_message
 from google.cloud import secretmanager
-import json
+from dotenv import load_dotenv
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

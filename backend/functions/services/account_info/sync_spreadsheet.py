@@ -6,6 +6,8 @@ from googleapiclient.discovery import build
 import functions_framework
 import logging
 from datetime import datetime
+from typing import List, Dict, Any, Optional
+import base64
 from core.db_utils import get_connection, execute_query, execute_write_query, batch_insert, DatabaseError
 from core.config import initialize_config, get_environment, get_db_config
 from core.pubsub_utils import publish_message

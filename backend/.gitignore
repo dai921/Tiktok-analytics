@@ -60,3 +60,5 @@ config.local.yaml
 
 .learned.md
 Reference/
+tests/
+storage/
