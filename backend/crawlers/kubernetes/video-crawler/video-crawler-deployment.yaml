@@ -5,7 +5,7 @@ metadata:
   namespace: video-crawler
 spec:
   serviceName: "video-crawler"  # StatefulSetには必須
-  replicas: 6 # 0に変更（オートスケーリング用）
+  replicas: 0  # 初期状態は0
   selector:
     matchLabels:
       app: video-crawler
@@ -27,6 +27,8 @@ spec:
         image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/tiktok-crawlers/video-crawler:v1
         imagePullPolicy: Always
         env:
+        - name: MESSAGE_TIMEOUT_SECONDS
+          value: "600"  # 10分のタイムアウトを追加
         - name: CRAWLER_TYPE
           value: "video_crawler"
         - name: PROJECT_ID
