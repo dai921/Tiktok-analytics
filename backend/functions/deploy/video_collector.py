@@ -4,9 +4,9 @@ from typing import List, Dict, Any, Tuple
 from datetime import datetime
 import functions_framework
 import json
-from core.db_utils import get_connection, execute_query, execute_write_query, DatabaseError
-from core.config import initialize_config, get_environment, get_db_config
-from core.pubsub_utils import publish_message
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
 import base64
 import argparse
 
@@ -155,7 +155,7 @@ class VideoCollector:
                     AND id > %(last_cursor_id)s
                 ORDER BY 
                     id
-                LIMIT 5000
+                LIMIT 5
             """
             params = {'last_cursor_id': last_cursor_id}
             results = execute_query(query, params)

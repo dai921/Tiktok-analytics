@@ -12,10 +12,9 @@ import base64
 # coreモジュールのパスを追加
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-# 相対インポートを絶対インポートに変更
-from core.db_utils import get_connection, execute_query, execute_write_query, DatabaseError
-from core.config import initialize_config, get_environment, get_db_config
-from core.pubsub_utils import publish_message
+from db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from config import initialize_config, get_environment, get_db_config
+from pubsub_utils import publish_message
 from google.cloud import secretmanager
 
 # .envファイルのサポートを追加
