@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: video-crawler-scaleup
+  namespace: video-crawler
+spec:
+  schedule: "0 13 * * *"  # 毎日13時に実行
+  concurrencyPolicy: Forbid  # 前のジョブが完了するまで新しいジョブを開始しない
+  successfulJobsHistoryLimit: 3  # 成功したジョブの履歴を保持
+  failedJobsHistoryLimit: 3  # 失敗したジョブの履歴を保持
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: crawler-ksa
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - kubectl scale statefulset video-crawler -n video-crawler --replicas=10
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "100m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+          restartPolicy: OnFailure

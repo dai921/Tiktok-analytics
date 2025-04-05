@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: system-pod-controller
+  namespace: video-crawler
+spec:
+  schedule: "55 12 * * *"  # クローラー起動5分前
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: crawler-ksa
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # ノードにラベルを付与してシステムPodを起動
+              kubectl label nodes -l cloud.google.com/gke-nodepool=video-pool video-crawler-active=true --overwrite
+
+              # クローラーPodの監視を開始
+              while true; do
+                pod_count=$(kubectl get statefulset video-crawler -n video-crawler -o jsonpath='{.status.replicas}')
+                
+                if [ "$pod_count" = "0" ]; then
+                  # Podが0になったらラベルを削除してシステムPodを停止
+                  kubectl label nodes -l cloud.google.com/gke-nodepool=video-pool video-crawler-active-
+                  break
+                fi
+                
+                sleep 60
+              done
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "100m"
+              limits:
+                memory: "128Mi"
+                cpu: "200m"
+          restartPolicy: OnFailure

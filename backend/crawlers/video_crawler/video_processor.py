@@ -4,6 +4,8 @@ import logging
 import json
 import aiohttp
 import base64
+import subprocess
+import sys
 from datetime import datetime
 from typing import Dict, Any, Optional
 from google.cloud import pubsub_v1, storage
@@ -46,6 +48,11 @@ class VideoProcessor:
         # Pod名を環境変数から取得（Kubernetesで自動設定される）
         self.pod_name = os.getenv('POD_NAME', 'unknown-pod')
         self.logger.info(f"Pod名: {self.pod_name}")
+        
+        # メッセージタイムアウト設定
+        self.message_timeout_seconds = int(os.getenv('MESSAGE_TIMEOUT_SECONDS', '600'))  # デフォルト10分
+        self.last_message_time = time.time()
+        self.logger.info(f"メッセージタイムアウト設定: {self.message_timeout_seconds}秒")
         
         # User-Agent一覧
         self.user_agents = [
@@ -186,6 +193,9 @@ class VideoProcessor:
             data = json.loads(data_str)
             
             self.logger.info(f"Pub/Subから受信したメッセージ: {json.dumps(data)}")
+            
+            # メッセージ受信時間を更新
+            self.last_message_time = time.time()
             
             # 非同期処理を開始（別スレッドで実行）
             asyncio.run_coroutine_threadsafe(
@@ -685,6 +695,27 @@ class VideoProcessor:
         except Exception as e:
             self.logger.error(f"一時ファイルの削除中にエラー: {str(e)}")
 
+    async def scale_down_statefulset(self):
+        """StatefulSetのレプリカ数を0に設定"""
+        try:
+            self.logger.info("10分間メッセージがないため、StatefulSetのレプリカ数を0に設定します")
+            cmd = [
+                "kubectl", "scale", "statefulset",
+                "video-crawler",
+                "-n", "video-crawler",
+                "--replicas=0"
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                self.logger.info(f"StatefulSetのスケールダウン成功: {result.stdout}")
+                return True
+            else:
+                self.logger.error(f"StatefulSetのスケールダウン失敗: {result.stderr}")
+                return False
+        except Exception as e:
+            self.logger.error(f"StatefulSetのスケールダウン中にエラー: {str(e)}")
+            return False
+
     def setup_subscription(self):
         """サブスクリプションをセットアップする（プル型）"""
         try:
@@ -700,6 +731,8 @@ class VideoProcessor:
             def callback(message):
                 try:
                     self.logger.info(f"メッセージを受信しました: {message.message_id} [Pod: {self.pod_name}]")
+                    # メッセージ受信時間を更新
+                    self.last_message_time = time.time()
                     asyncio.run_coroutine_threadsafe(
                         self.process_message(message), 
                         self.loop
@@ -723,6 +756,27 @@ class VideoProcessor:
             self.logger.error(traceback.format_exc())
             raise
 
+    async def check_message_timeout(self):
+        """メッセージタイムアウトをチェック"""
+        while True:
+            try:
+                await asyncio.sleep(10)  # 10秒ごとにチェック
+                current_time = time.time()
+                elapsed_time = current_time - self.last_message_time
+                
+                if elapsed_time > self.message_timeout_seconds:
+                    self.logger.warning(f"メッセージタイムアウト: 最後のメッセージから{elapsed_time:.1f}秒経過")
+                    # StatefulSetのレプリカ数を0に設定
+                    if await self.scale_down_statefulset():
+                        self.logger.info("StatefulSetのスケールダウンが成功しました。正常終了します。")
+                        sys.exit(0)  # 正常終了
+                    else:
+                        self.logger.error("StatefulSetのスケールダウンに失敗しました。異常終了します。")
+                        sys.exit(1)  # 異常終了
+            except Exception as e:
+                self.logger.error(f"タイムアウトチェック中にエラー: {str(e)}")
+                # エラーが発生しても継続
+
     async def run(self):
         """メッセージの受信と処理を開始"""
         try:
@@ -731,6 +785,9 @@ class VideoProcessor:
             
             # API定期リフレッシュタスクを開始
             api_refresh_task = asyncio.create_task(self.api_refresh_loop())
+            
+            # タイムアウトチェックタスクを開始
+            timeout_check_task = asyncio.create_task(self.check_message_timeout())
             
             # Pod情報を取得
             try:
@@ -768,12 +825,17 @@ class VideoProcessor:
                 streaming_pull_future.cancel()
             if 'api_refresh_task' in locals():
                 api_refresh_task.cancel()
-            raise
+            if 'timeout_check_task' in locals():
+                timeout_check_task.cancel()
+            # 異常終了（再起動される）
+            sys.exit(1)
         finally:
             if 'streaming_pull_future' in locals():
                 streaming_pull_future.cancel()
             if 'api_refresh_task' in locals():
                 api_refresh_task.cancel()
+            if 'timeout_check_task' in locals():
+                timeout_check_task.cancel()
 
     async def api_refresh_loop(self):
         """TikTokApiインスタンスを定期的にリフレッシュ"""

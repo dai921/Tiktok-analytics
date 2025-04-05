@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gke-metrics-agent
+  namespace: kube-system
+  labels:
+    k8s-app: gke-metrics-agent
+spec:
+  selector:
+    matchLabels:
+      k8s-app: gke-metrics-agent
+  template:
+    metadata:
+      labels:
+        k8s-app: gke-metrics-agent
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: video-crawler-active
+                operator: In
+                values:
+                - "true"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+      containers:
+      - name: gke-metrics-agent
+        image: asia-northeast1-artifactregistry.gcr.io/gke-release/gke-release/gke-metrics-agent:1.13.0-gke.2
+        resources:
+          limits:
+            memory: 70Mi
+          requests:
+            cpu: 6m
+            memory: 70Mi
+        volumeMounts:
+        - mountPath: /conf
+          name: gke-metrics-agent-config-vol
+      volumes:
+      - configMap:
+          name: gke-metrics-agent-conf
+        name: gke-metrics-agent-config-vol
+      serviceAccount: gke-metrics-agent
+      serviceAccountName: gke-metrics-agent
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists

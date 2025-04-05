@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentbit-gke
+  namespace: kube-system
+  labels:
+    k8s-app: fluentbit-gke
+    kubernetes.io/cluster-service: "true"
+spec:
+  selector:
+    matchLabels:
+      k8s-app: fluentbit-gke
+  template:
+    metadata:
+      labels:
+        k8s-app: fluentbit-gke
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: video-crawler-active
+                operator: In
+                values:
+                - "true"
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+      containers:
+      - name: fluentbit
+        image: asia-northeast1-artifactregistry.gcr.io/gke-release/gke-release/fluent-bit:v1.8.12-gke.62
+        resources:
+          limits:
+            memory: 250Mi
+          requests:
+            cpu: 50m
+            memory: 100Mi
+        volumeMounts:
+        - mountPath: /var/log
+          name: varlog
+        - mountPath: /var/lib/docker/containers
+          name: varlibdockercontainers
+          readOnly: true
+        - mountPath: /fluent-bit/etc/
+          name: config-volume
+      volumes:
+      - hostPath:
+          path: /var/log
+          type: Directory
+        name: varlog
+      - hostPath:
+          path: /var/lib/docker/containers
+          type: Directory
+        name: varlibdockercontainers
+      - configMap:
+          name: fluentbit-gke-config
+        name: config-volume
+      serviceAccount: fluentbit-gke
+      serviceAccountName: fluentbit-gke
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
