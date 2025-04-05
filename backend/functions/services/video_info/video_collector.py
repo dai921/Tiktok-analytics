@@ -155,7 +155,7 @@ class VideoCollector:
                     AND id > %(last_cursor_id)s
                 ORDER BY 
                     id
-                LIMIT 5
+                LIMIT 5000
             """
             params = {'last_cursor_id': last_cursor_id}
             results = execute_query(query, params)

@@ -6,9 +6,9 @@ import functions_framework
 import json
 import base64
 import requests
-from ...core.db_utils import get_connection, execute_query, execute_write_query, DatabaseError
-from ...core.config import initialize_config, get_environment, get_db_config
-from ...core.pubsub_utils import publish_message
+from core.db_utils import get_connection, execute_query, execute_write_query, DatabaseError
+from core.config import initialize_config, get_environment, get_db_config
+from core.pubsub_utils import publish_message
 import argparse
 
 logging.basicConfig(level=logging.INFO)

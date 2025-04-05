@@ -4,7 +4,7 @@ import logging
 from google.cloud import pubsub_v1
 from typing import Dict, Any, Optional
 
-from .config import get_environment
+from core.config import get_environment
 
 logger = logging.getLogger(__name__)
 
