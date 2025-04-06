@@ -22,15 +22,16 @@ export function ImageHover({ src, alt, videoUrl }: ImageHoverProps) {
         throw new Error('TikTokのURLではありません')
       }
 
-      const matches = url.match(/video\/(\d+)/)
+      // /video/ または /photo/ のパターンに対応
+      const matches = url.match(/(?:video|photo)\/(\d+)/)
       if (!matches) {
-        throw new Error('動画IDが見つかりません')
+        throw new Error('コンテンツIDが見つかりません')
       }
 
       return matches[1]
     } catch (e) {
       console.error('URL解析エラー:', e)
-      setError('動画の読み込みに失敗しました')
+      setError('コンテンツの読み込みに失敗しました')
       return ''
     }
   }, [])
