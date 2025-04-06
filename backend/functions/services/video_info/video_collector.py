@@ -200,6 +200,10 @@ class VideoCollector:
                     "batch_number": current_batch
                 }
             
+            # バッチ内の最後のvideo_idを事前に特定
+            last_video_id = videos[-1]['video_id'] if videos else None
+            logger.info(f"バッチ内の最後のvideo_id: {last_video_id}")
+            
             # 各動画データをPub/Subに送信
             processed_videos = []
             
@@ -207,7 +211,11 @@ class VideoCollector:
             last_cursor_id = None
             
             for video in videos:
-                message_id = self.publish_video_data(video)
+                # 各メッセージにlast_video_idを含める
+                video_data = video.copy()
+                video_data['last_video_id'] = last_video_id
+                
+                message_id = self.publish_video_data(video_data)
                 processed_videos.append({
                     "video_id": video['video_id'],
                     "message_id": message_id
@@ -238,23 +246,8 @@ class VideoCollector:
                     # まだ処理すべき動画が残っている場合は、カーソルとバッチ番号を更新
                     self.processing_manager.update_last_processed_time(last_cursor_id, next_batch)
             
-            # バッチ処理の状態に応じてPub/Subメッセージを送信
-            if remaining_videos > 0:
-                # 処理継続が必要な場合
-                publish_message('video-collector-status', {
-                    'status': 'in_progress',
-                    'message': f'バッチ#{next_batch}完了、残り{remaining_videos}件',
-                    'batch_number': next_batch,
-                    'remaining': remaining_videos,
-                    'timestamp': datetime.now().isoformat()
-                })
-            else:
-                # 全ての処理が完了した場合
-                publish_message('video-collector-status', {
-                    'status': 'completed',
-                    'message': '全バッチの処理が完了しました',
-                    'timestamp': datetime.now().isoformat()
-                })
+            # すべての処理が完了した場合はカーソルをリセット
+            if is_last_batch:
                 self.processing_manager.update_last_processed_time(reset_cursor=True)
             
             return {

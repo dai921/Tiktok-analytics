@@ -104,7 +104,7 @@ def sync_video_urls():
         
         # Googleスプレッドシートの設定
         print("Googleスプレッドシート設定開始")
-        SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+        SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
         # 認証情報の取得処理
         try:

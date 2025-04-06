@@ -26,19 +26,30 @@ def manage_video_collector_schedule(event, context):
         if 'data' in event:
             message_data = base64.b64decode(event['data']).decode('utf-8')
             message_json = json.loads(message_data)
-            status = message_json.get("status")
             
-            logger.info(f"ステータス更新を受信: {status}")
+            # アクションを取得
+            action = message_json.get("action")
+            processor_name = message_json.get("processor_name")
             
-            if status == "in_progress":
-                # バッチ処理進行中 - 3分後のスケジュールを設定
+            logger.info(f"アクションを受信: {action}, プロセッサー: {processor_name}")
+            
+            # video_collectorプロセッサーのみ処理
+            if processor_name != "video_collector":
+                logger.info(f"video_collector以外のプロセッサー: {processor_name}は無視します")
+                return {"status": "success", "message": f"無視されたプロセッサー: {processor_name}"}
+            
+            if action == "start_batch_controller":
+                # バッチコントローラー起動 - 3分後のスケジュールを設定
                 enable_delayed_schedule()
                 return {"status": "success", "action": "delayed_schedule_enabled"}
                 
-            elif status == "completed":
-                # 全ての処理が完了 - スケジュールを削除
+            elif action == "stop_scheduler":
+                # スケジューラー停止 - スケジュールを削除
                 disable_delayed_schedule()
                 return {"status": "success", "action": "schedule_disabled"}
+            else:
+                logger.warning(f"未知のアクション: {action}")
+                return {"status": "error", "message": f"未知のアクション: {action}"}
         
         return {"status": "error", "message": "Invalid message format"}
         
