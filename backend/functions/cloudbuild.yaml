@@ -475,6 +475,25 @@ steps:
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
     id: 'deploy-batch-collector-scheduler'
 
+# batch-category-scheduler関数のデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - batch-category-scheduler
+      - --gen2
+      - --runtime=python39
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=batch_category_scheduler_function
+      - --trigger-topic=category-update-status
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-batch-category-scheduler'
+
 options:
   logging: CLOUD_LOGGING_ONLY
 

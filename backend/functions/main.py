@@ -22,6 +22,7 @@ from services.video_info.batch_collector_scheduler import manage_video_collector
 # カテゴリー関連
 from services.category.sync_category_spreadsheet import scheduled_job as sync_category_job
 from services.category.update_all_categories import update_all_categories as update_all_categories_function
+from services.category.batch_category_scheduler import manage_category_update_schedule as batch_category_scheduler_function
 
 # スケジューラー関連
 from services.data_sync.frontend_data_update.batch_scheduler import manage_frontend_update_schedule as batch_scheduler_function
@@ -84,4 +85,8 @@ def category_analytics_aggregator(event, context):
 # Pub/Sub エントリーポイント関数に追加
 def video_history_sync_function(event, context):
     return sync_video_history(event, context)
+
+# Pub/Subエントリーポイント関数に追加
+def manage_category_update_schedule(event,context):
+    return batch_category_scheduler_function(event,context)
 
