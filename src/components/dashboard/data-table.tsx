@@ -70,6 +70,47 @@ interface CategoryItem {
   category: string;
 }
 
+const TIKTOK_COLORS = {
+  black: "#000000",
+  cyan: "#25F4EE",
+  red: "#FE2C55",
+  white: "#FFFFFF"
+} as const;
+
+// サイズを props として受け取るように修正
+const VideoTypeIcon = ({ size = 32 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 80 80" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="40" cy="40" r="35" fill={TIKTOK_COLORS.black} />
+    <path d="M40 75C59.33 75 75 59.33 75 40C75 20.67 59.33 5 40 5" stroke={TIKTOK_COLORS.cyan} strokeWidth="10" />
+    <path d="M40 5C20.67 5 5 20.67 5 40C5 59.33 20.67 75 40 75" stroke={TIKTOK_COLORS.white} strokeWidth="3" />
+    <circle cx="40" cy="40" r="18" fill={TIKTOK_COLORS.red} />
+    <path d="M48 40L36 48V32L48 40Z" fill={TIKTOK_COLORS.white} />
+  </svg>
+);
+
+// サイズを props として受け取るように修正
+const PhotoTypeIcon = ({ size = 32 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 80 80" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <rect x="15" y="15" width="50" height="50" rx="4" fill={TIKTOK_COLORS.black} />
+    <rect x="15" y="15" width="50" height="50" rx="4" stroke={TIKTOK_COLORS.cyan} strokeWidth="3" fill="none" />
+    <rect x="20" y="20" width="40" height="40" rx="2" fill={TIKTOK_COLORS.white} />
+    <path d="M20 50L30 40L40 50L50 35L60 50V60H20V50Z" fill={TIKTOK_COLORS.red} />
+    <circle cx="50" cy="30" r="5" fill={TIKTOK_COLORS.red} />
+  </svg>
+);
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
@@ -407,11 +448,25 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           if (!imageUrl) {
             return <NoThumbnail />
           }
-          return <ImageHover 
-            src={imageUrl} 
-            alt="サムネイル" 
-            videoUrl={row.url}
-          />
+
+          return (
+            <div className="relative">
+              <ImageHover 
+                src={imageUrl} 
+                alt="サムネイル" 
+                videoUrl={row.url}
+              />
+              <div className="absolute -bottom-1 -right-1">
+                <div className="bg-white p-0.2 rounded-lg shadow-sm">
+                  {row.content_type === 'video' ? (
+                    <VideoTypeIcon size={32} />
+                  ) : (
+                    <PhotoTypeIcon size={32} />
+                  )}
+                </div>
+              </div>
+            </div>
+          )
         }
       },
       {
