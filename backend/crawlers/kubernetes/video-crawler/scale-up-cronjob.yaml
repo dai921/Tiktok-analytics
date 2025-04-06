@@ -4,7 +4,7 @@ metadata:
   name: video-crawler-scaleup
   namespace: video-crawler
 spec:
-  schedule: "0 13 * * *"  # 毎日13時に実行
+  schedule: "0 4 * * *"  # 毎日13時に実行
   concurrencyPolicy: Forbid  # 前のジョブが完了するまで新しいジョブを開始しない
   successfulJobsHistoryLimit: 3  # 成功したジョブの履歴を保持
   failedJobsHistoryLimit: 3  # 失敗したジョブの履歴を保持

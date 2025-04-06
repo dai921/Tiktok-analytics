@@ -4,7 +4,7 @@ metadata:
   name: system-pod-controller
   namespace: video-crawler
 spec:
-  schedule: "55 12 * * *"  # クローラー起動5分前
+  schedule: "55 3 * * *"  # クローラー起動5分前
   jobTemplate:
     spec:
       template:
