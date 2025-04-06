@@ -118,7 +118,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             vm.category,
             vm.product,
             vm.content_type,
-            vm.status
+            vm.status,
+            vm.display_name,
+            vm.content_type,
+            vm.ten_days_increase
         FROM 
             video_master vm
         LEFT JOIN frontend_data fd ON vm.id = fd.id
@@ -225,11 +228,13 @@ def update_frontend_from_master() -> Dict[str, Any]:
                 REPLACE INTO frontend_data (
                     id, url, thumbnail_url, created_at, play_count, 
                     play_count_increase, account_name, likes_count, comment_count, 
-                    hashtags, music_info, caption, category
+                    hashtags, music_info, caption, category, display_name,
+                    content_type, ten_days_increase, product
                 ) VALUES (
                     %(id)s, %(url)s, %(thumbnail_url)s, %(created_at)s, %(play_count)s, 
                     %(play_count_increase)s, %(account_name)s, %(likes_count)s, %(comment_count)s, 
-                    %(hashtags)s, %(music_info)s, %(caption)s, %(category)s
+                    %(hashtags)s, %(music_info)s, %(caption)s, %(category)s, %(display_name)s,
+                    %(content_type)s, %(ten_days_increase)s, %(product)s
                 )
                 """
                 
@@ -247,6 +252,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
                     'music_info': row['music_info'],
                     'caption': row['caption'],
                     'category': row['category'],
+                    'display_name': row['display_name'],
+                    'content_type': row['content_type'],
+                    'ten_days_increase': row['ten_days_increase'],
+                    'product': row['product']
                 }
                 
                 execute_write_query(update_query, params)
