@@ -13,15 +13,36 @@ interface ImageHoverProps {
 
 export function ImageHover({ src, alt, videoUrl }: ImageHoverProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // 埋め込みコードを生成
-  const generateEmbedCode = (url: string) => {
-    // TikTok動画IDを抽出
-    const videoId = url.split('/').pop()
+  const extractTikTokId = useCallback((url: string): string => {
+    try {
+      const urlObj = new URL(url)
+      if (!urlObj.hostname.includes('tiktok.com')) {
+        throw new Error('TikTokのURLではありません')
+      }
+
+      const matches = url.match(/video\/(\d+)/)
+      if (!matches) {
+        throw new Error('動画IDが見つかりません')
+      }
+
+      return matches[1]
+    } catch (e) {
+      console.error('URL解析エラー:', e)
+      setError('動画の読み込みに失敗しました')
+      return ''
+    }
+  }, [])
+
+  const generateEmbedCode = useCallback((url: string) => {
+    const videoId = extractTikTokId(url)
+    if (!videoId) return ''
+
     return `<blockquote class="tiktok-embed" cite="${url}" data-video-id="${videoId}">
       <section></section>
     </blockquote>`
-  }
+  }, [extractTikTokId])
 
   // TikTokの埋め込みスクリプトを読み込む
   useEffect(() => {
@@ -83,12 +104,18 @@ export function ImageHover({ src, alt, videoUrl }: ImageHoverProps) {
               </button>
 
               {/* TikTok動画の埋め込み */}
-              <div 
-                className="w-full"
-                dangerouslySetInnerHTML={{ 
-                  __html: generateEmbedCode(videoUrl)
-                }} 
-              />
+              {error ? (
+                <div className="text-red-500 text-center p-4">
+                  {error}
+                </div>
+              ) : (
+                <div 
+                  className="w-full"
+                  dangerouslySetInnerHTML={{ 
+                    __html: generateEmbedCode(videoUrl)
+                  }} 
+                />
+              )}
             </div>
           </div>
         </Portal>
