@@ -238,6 +238,25 @@ class VideoCollector:
                     # まだ処理すべき動画が残っている場合は、カーソルとバッチ番号を更新
                     self.processing_manager.update_last_processed_time(last_cursor_id, next_batch)
             
+            # バッチ処理の状態に応じてPub/Subメッセージを送信
+            if remaining_videos > 0:
+                # 処理継続が必要な場合
+                publish_message('video-collector-status', {
+                    'status': 'in_progress',
+                    'message': f'バッチ#{next_batch}完了、残り{remaining_videos}件',
+                    'batch_number': next_batch,
+                    'remaining': remaining_videos,
+                    'timestamp': datetime.now().isoformat()
+                })
+            else:
+                # 全ての処理が完了した場合
+                publish_message('video-collector-status', {
+                    'status': 'completed',
+                    'message': '全バッチの処理が完了しました',
+                    'timestamp': datetime.now().isoformat()
+                })
+                self.processing_manager.update_last_processed_time(reset_cursor=True)
+            
             return {
                 "success": True,
                 "message": f"{processed_count}件の動画を処理しました",

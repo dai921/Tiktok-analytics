@@ -14,8 +14,10 @@ from services.data_sync.frontend_data_update.frontend_data_update import schedul
 # 動画情報関連
 from services.video_info.video_collector import collect_videos as video_collector_function
 from services.video_info.video_url_data_updater import update_video_url_data as video_url_updater_function
-from services.video_info.sync_video_urls import sync_video_urls_job as sync_video_urls_job
+from services.video_info.sync_video_urls import sync_video_urls_job
 from services.video_info.process_video_data import process_pubsub as process_video_data_pubsub
+from services.video_info.batch_sync_scheduler import manage_video_url_sync_schedule as batch_sync_scheduler_function
+from services.video_info.batch_collector_scheduler import manage_video_collector_schedule as batch_collector_scheduler_function
 
 # カテゴリー関連
 from services.category.sync_category_spreadsheet import scheduled_job as sync_category_job
@@ -68,6 +70,12 @@ def video_url_data_updater(event,context):
 # batch_scheduler用のエントリーポイント関数を追加
 def manage_frontend_update_schedule(event,context):
     return batch_scheduler_function(event,context)
+
+def manage_video_url_sync_schedule(event,context):
+    return batch_sync_scheduler_function(event,context)
+
+def manage_video_collector_schedule(event,context):
+    return batch_collector_scheduler_function(event,context)
 
 # カテゴリー統計集計用のエントリーポイント関数
 def category_analytics_aggregator(event, context):
