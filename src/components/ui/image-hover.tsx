@@ -8,35 +8,40 @@ import { X } from 'lucide-react'
 interface ImageHoverProps {
   src: string
   alt: string
+  videoUrl: string
 }
 
-export function ImageHover({ src, alt }: ImageHoverProps) {
+export function ImageHover({ src, alt, videoUrl }: ImageHoverProps) {
   const [isOpen, setIsOpen] = useState(false)
 
-  // ESCキーで閉じる
+  // 埋め込みコードを生成
+  const generateEmbedCode = (url: string) => {
+    // TikTok動画IDを抽出
+    const videoId = url.split('/').pop()
+    return `<blockquote class="tiktok-embed" cite="${url}" data-video-id="${videoId}">
+      <section></section>
+    </blockquote>`
+  }
+
+  // TikTokの埋め込みスクリプトを読み込む
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsOpen(false)
-      }
-    }
-
     if (isOpen) {
-      window.addEventListener('keydown', handleEsc)
-    }
+      const script = document.createElement('script')
+      script.src = 'https://www.tiktok.com/embed.js'
+      script.async = true
+      document.body.appendChild(script)
 
-    return () => {
-      window.removeEventListener('keydown', handleEsc)
+      return () => {
+        document.body.removeChild(script)
+      }
     }
   }, [isOpen])
 
-  // モーダルを閉じる
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     setIsOpen(false)
   }, [])
 
-  // サムネイルクリックでモーダルを開く
   const handleOpen = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     setIsOpen(true)
@@ -46,7 +51,7 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
     <>
       <div
         onClick={handleOpen}
-        className="cursor-zoom-in"
+        className="cursor-pointer"
       >
         <div className="w-[120px] h-[120px] relative bg-gray-100 rounded flex items-center justify-center overflow-hidden">
           <Image
@@ -64,11 +69,11 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
         <Portal>
           <div 
             className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4"
-            onClick={handleClose} // 背景クリックで閉じる
+            onClick={handleClose}
           >
             <div 
-              className="relative max-w-4xl w-full bg-white rounded-lg shadow-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()} // モーダル内のクリックは伝播を止める
+              className="relative max-w-xl w-full bg-white rounded-lg shadow-xl p-6"
+              onClick={(e) => e.stopPropagation()}
             >
               <button
                 onClick={handleClose}
@@ -76,15 +81,14 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
               >
                 <X size={20} />
               </button>
-              <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
-                <Image
-                  src={src}
-                  alt={alt}
-                  fill
-                  className="object-contain"
-                  unoptimized
-                />
-              </div>
+
+              {/* TikTok動画の埋め込み */}
+              <div 
+                className="w-full"
+                dangerouslySetInnerHTML={{ 
+                  __html: generateEmbedCode(videoUrl)
+                }} 
+              />
             </div>
           </div>
         </Portal>
