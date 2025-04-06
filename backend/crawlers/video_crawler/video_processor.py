@@ -321,6 +321,11 @@ class VideoProcessor:
                 data = json.loads(message.data.decode('utf-8'))
                 self.logger.debug(f"処理開始: video_id={data['video_id']} [Pod: {self.pod_name}]")
 
+                # last_video_idの情報を保持
+                last_video_id = data.get('last_video_id')
+                if last_video_id:
+                    self.logger.info(f"バッチの最後のvideo_id: {last_video_id}")
+
                 # 使用可能なセッションを取得
                 session_index, api = await self.acquire_session()
                 self.logger.debug(f"セッション {session_index} を使用して処理を開始")
@@ -336,11 +341,12 @@ class VideoProcessor:
                         username = data['username']
                         self.logger.debug(f"処理するデータ: video_id={video_id}, url={url}, username={username}")
 
-                        # 基本情報を設定
+                        # 基本情報を設定（last_video_idを含める）
                         base_result = {
                             "video_id": video_id,
                             "video_url": url,
-                            "username": username
+                            "username": username,
+                            "last_video_id": last_video_id  # 基本情報に追加
                         }
                         self.logger.debug(f"基本情報を設定: {json.dumps(base_result)}")
 
@@ -467,6 +473,11 @@ class VideoProcessor:
 
                         # 処理済みデータをPubSubに送信
                         final_message = {**result, **video_info}  # resultを優先して結合
+                        
+                        # last_video_idが含まれていることを確認
+                        if 'last_video_id' not in final_message and last_video_id:
+                            final_message['last_video_id'] = last_video_id
+                        
                         self.logger.debug("=== 送信前の最終データ確認 ===")
                         self.logger.debug(f"result: {json.dumps(result, indent=2)}")
                         self.logger.debug(f"video_info: {json.dumps(video_info, indent=2)}")

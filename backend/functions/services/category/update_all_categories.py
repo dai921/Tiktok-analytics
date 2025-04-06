@@ -221,6 +221,25 @@ def update_all_categories(request):
         print(f"バッチ#{batch_number}: 合計 {total_updated} 件の動画カテゴリを更新しました")
         print(f"実行時間: {execution_time:.2f}秒")
         
+        # Pub/Subメッセージを送信
+        if remaining_count > 0:
+            # 処理継続が必要な場合
+            publish_message('category-update-status', {
+                'status': 'in_progress',
+                'message': f'バッチ#{batch_number}完了、残り{remaining_count}件',
+                'batch_number': batch_number,
+                'remaining': remaining_count,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            # 全ての処理が完了した場合
+            publish_message('category-update-status', {
+                'status': 'completed',
+                'message': '全バッチの処理が完了しました',
+                'timestamp': datetime.now().isoformat()
+            })
+            reset_cursor()
+
         return {
             "success": True, 
             "total_updated": total_updated,

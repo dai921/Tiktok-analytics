@@ -84,6 +84,17 @@ def sync_video_urls():
     try:
         print("==== 動画URL同期処理開始 ====")
         
+        # カーソル情報の取得または初期化
+        cursor_info = get_or_initialize_cursor("video_url_sync", "video_url_data", default_batch_size=7000)
+        processor_name = cursor_info["processor_name"]
+        target_table = cursor_info["target_table"]
+        last_cursor_row = cursor_info["last_cursor_id"]
+        batch_size = min(cursor_info["batch_size"], 7000)
+        batch_number = cursor_info["batch_number"]
+        
+        print(f"バッチ処理情報: processor={processor_name}, target={target_table}, " 
+              f"last_row={last_cursor_row}, batch_size={batch_size}, batch_number={batch_number}")
+
         # SPREADSHEETの確認のみ行う
         SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
         if not SPREADSHEET_ID:
@@ -93,7 +104,7 @@ def sync_video_urls():
         
         # Googleスプレッドシートの設定
         print("Googleスプレッドシート設定開始")
-        SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+        SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
         # 認証情報の取得処理
         try:
@@ -141,39 +152,41 @@ def sync_video_urls():
 
         # スプレッドシートからデータを読み取る（動画URLシート）
         print("動画URLシートデータ取得開始")
-        range_name = '動画URL!B2:E'  # B列:video_url, C列:video_id, D列:username, E列:フラグ
+        start_row = last_cursor_row + 2  # ヘッダー行(1行目)を考慮
+        range_name = f'動画URL!B{start_row}:E{start_row + batch_size - 1}'
         print(f"取得範囲: {range_name}")
-        print("APIリクエスト送信...")
+        
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
             range=range_name
         ).execute()
-        print("APIレスポンス受信完了")
         values = result.get('values', [])
-        print(f"取得行数: {len(values) if values else 0}")
 
         if not values:
             print("データが見つかりませんでした")
+            # カーソルをリセット
+            reset_cursor(processor_name, target_table)
             return 'No data found', 200
 
-        # データをデータベースに保存
-        print("データベース保存処理開始")
+        # 処理済みの行番号を保持するリスト
+        processed_rows = []
         inserted_count = 0
         processed_count = 0
         
         for i, row in enumerate(values):
+            current_row = start_row + i
             try:
-                print(f"行 {i+1}/{len(values)} 処理中")
+                print(f"行 {current_row}/{start_row + batch_size - 1} 処理中")
                 
                 # 行のデータをチェック（最低5列必要）
                 if len(row) < 4:
-                    print(f"警告: 行 {i+1} のデータが不足しています: {row}")
+                    print(f"警告: 行 {current_row} のデータが不足しています: {row}")
                     continue
                 
                 # E列のフラグをチェック（1のみ処理）
                 flag = row[3].strip() if len(row) > 3 else None
                 if flag != '1':
-                    print(f"行 {i+1} はフラグが1ではないためスキップします: {flag}")
+                    print(f"行 {current_row} はフラグが1ではないためスキップします: {flag}")
                     processed_count += 1
                     continue
                 
@@ -200,7 +213,7 @@ def sync_video_urls():
                     existing_count = check_result[0]['count'] if check_result else 0
                     
                     if existing_count > 0:
-                        print(f"行 {i+1} は既に存在するためスキップします")
+                        print(f"行 {current_row} は既に存在するためスキップします")
                         processed_count += 1
                         continue
                     
@@ -219,39 +232,88 @@ def sync_video_urls():
                     print(f"DBクエリ実行開始")
                     affected_rows = execute_write_query(insert_query, insert_params)
                     print(f"DBクエリ完了: {affected_rows}行影響")
-                    inserted_count += affected_rows
+                    
+                    if affected_rows > 0:
+                        processed_rows.append(current_row)
+                        inserted_count += affected_rows
                     processed_count += 1
                 else:
-                    print(f"行 {i+1} はURL、ID、またはユーザー名が不足しているためスキップします")
+                    print(f"行 {current_row} はURL、ID、またはユーザー名が不足しているためスキップします")
                     processed_count += 1
 
             except DatabaseError as row_error:
-                print(f"行 {i+1} 処理エラー: {str(row_error)}")
+                print(f"行 {current_row} 処理エラー: {str(row_error)}")
                 continue
             except Exception as unexpected_error:
-                print(f"予期しないエラー（行 {i+1}）: {str(unexpected_error)}")
+                print(f"予期しないエラー（行 {current_row}）: {str(unexpected_error)}")
                 continue
 
-        print(f"DB処理完了: {inserted_count}行挿入（全{processed_count}行処理）")
+        # 処理済みの行のフラグを0に更新
+        if processed_rows:
+            try:
+                # バッチで更新するための値の準備
+                update_values = []
+                for row in processed_rows:
+                    update_values.append({
+                        'range': f'動画URL!E{row}',
+                        'values': [['0']]
+                    })
 
-        # 同期完了後、Pub/Subメッセージを送信
-        print("Pub/Sub通知送信開始")
-        try:
-            # trigger-video-url-data-updateトピックにメッセージを送信
-            completion_message = {
-                'timestamp': datetime.now().isoformat(),
-                'status': 'success',
-                'inserted_count': inserted_count,
-                'processed_count': processed_count
-            }
+                body = {
+                    'valueInputOption': 'RAW',
+                    'data': update_values
+                }
+
+                # バッチ更新の実行
+                service.spreadsheets().values().batchUpdate(
+                    spreadsheetId=SPREADSHEET_ID,
+                    body=body
+                ).execute()
+                print(f"{len(processed_rows)}行のフラグを0に更新しました")
+            except Exception as update_error:
+                print(f"フラグ更新エラー: {str(update_error)}")
+
+        # 次のバッチのためにカーソルを更新
+        last_processed_row = start_row + len(values) - 1
+        update_cursor(processor_name, target_table, last_processed_row, batch_number + 1)
+
+        # 残りのデータ数を確認
+        next_range = f'動画URL!B{last_processed_row + 1}:E'
+        remaining_result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=next_range
+        ).execute()
+        remaining_values = remaining_result.get('values', [])
+        remaining_count = len(remaining_values)
+
+        # Pub/Subメッセージを送信
+        if remaining_count > 0:
+            # 処理継続が必要な場合
+            publish_message('video-url-sync-status', {
+                'status': 'in_progress',
+                'message': f'バッチ#{batch_number}完了、残り{remaining_count}件',
+                'batch_number': batch_number,
+                'remaining': remaining_count,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            # 全ての処理が完了した場合
+            publish_message('video-url-sync-status', {
+                'status': 'completed',
+                'message': '全バッチの処理が完了しました',
+                'timestamp': datetime.now().isoformat()
+            })
             
-            # Pub/Subユーティリティを使用してメッセージを送信
-            message_id = publish_message('video-url-data-update', completion_message)
-            print(f"Pub/Sub通知送信完了: メッセージID {message_id}")
-        except Exception as pub_sub_error:
-            print(f"Pub/Sub通知エラー: {str(pub_sub_error)}")
-        
-        print("==== 動画URL同期処理正常終了 ====")
+            # 処理完了後、次の処理のトリガーメッセージを送信
+            logger.info("video-url-data-updateトリガーメッセージを送信します")
+            publish_message('trigger-video-url-data-update', {
+                'status': 'ready',
+                'message': 'URL同期処理が完了しました。データ更新を開始します。',
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            reset_cursor(processor_name, target_table)
+
         return f'Successfully processed {processed_count} rows, inserted {inserted_count} new video URLs', 200
 
     except Exception as e:
@@ -259,6 +321,60 @@ def sync_video_urls():
         import traceback
         print(f"詳細エラートレース: {traceback.format_exc()}")
         return str(e), 500
+
+# カーソル管理関数の追加と修正
+def get_or_initialize_cursor(processor_name: str, target_table: str, default_batch_size: int = 7000) -> Dict[str, Any]:
+    """カーソル情報を取得、存在しない場合は初期化"""
+    query = """
+    SELECT id, processor_name, target_table, last_cursor_id, 
+           batch_size, batch_number, updated_at
+    FROM processing_cursors
+    WHERE processor_name = %s AND target_table = %s
+    """
+    
+    result = execute_query(query, (processor_name, target_table))
+    
+    if result:
+        return result[0]
+    else:
+        # 新しいカーソルを作成
+        insert_query = """
+        INSERT INTO processing_cursors 
+        (processor_name, target_table, last_cursor_id, batch_size, reset_interval, batch_number, created_at, updated_at)
+        VALUES (%s, %s, 0, %s, 172800, 1, NOW(), NOW())
+        """
+        
+        execute_write_query(insert_query, (processor_name, target_table, default_batch_size))
+        
+        # 作成したカーソル情報を取得
+        return execute_query(query, (processor_name, target_table))[0]
+
+def update_cursor(processor_name: str, target_table: str, last_cursor_id: int, batch_number: int) -> None:
+    """カーソル情報を更新"""
+    query = """
+    UPDATE processing_cursors
+    SET last_cursor_id = %s, 
+        batch_number = %s, 
+        updated_at = NOW()
+    WHERE processor_name = %s 
+    AND target_table = %s
+    """
+    
+    execute_write_query(query, (last_cursor_id, batch_number, processor_name, target_table))
+
+def reset_cursor(processor_name: str, target_table: str) -> None:
+    """カーソル情報をリセット"""
+    query = """
+    UPDATE processing_cursors
+    SET last_cursor_id = 0, 
+        batch_number = 1, 
+        last_reset_time = NOW(), 
+        updated_at = NOW()
+    WHERE processor_name = %s 
+    AND target_table = %s
+    """
+    
+    execute_write_query(query, (processor_name, target_table))
 
 if __name__ == "__main__":
     # ローカルテスト用

@@ -345,6 +345,46 @@ def process_video_data(cloud_event):
             execute_write_query(update_flag_query, update_flag_params)
             logger.info(f"Updated flags for video_id: {message_data['video_id']}")
             
+            # last_video_idとvideo_idが一致する場合の処理
+            last_video_id = message_data.get('last_video_id')
+            if last_video_id and last_video_id == message_data['video_id']:
+                logger.info(f"last_video_idとvideo_idが一致しました: {last_video_id}")
+                
+                # batch_cursorsテーブルを確認
+                cursor_query = """
+                    SELECT last_cursor_id
+                    FROM processing_cursors
+                    WHERE processor_name = 'video_collector'
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """
+                cursor_results = execute_query(cursor_query)
+                
+                if cursor_results and cursor_results[0]['last_cursor_id'] == 0:
+                    logger.info("video_collectorのlast_cursor_idが0です。SchedulerのJobを終了します。")
+                    
+                    # SchedulerのJobを終了するためのPub/Subメッセージを送信
+                    scheduler_message = {
+                        "action": "stop_scheduler",
+                        "processor_name": "video_collector",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    scheduler_topic = "video-collector-status"
+                    publish_message(scheduler_topic, scheduler_message)
+                    logger.info(f"Scheduler停止メッセージを送信しました: {scheduler_message}")
+                else:
+                    # batch_controller_scheduler.pyを起動するためのPub/Subメッセージを送信
+                    scheduler_message = {
+                        "action": "start_batch_controller",
+                        "processor_name": "video_collector",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                    scheduler_topic = "video-collector-status"
+                    publish_message(scheduler_topic, scheduler_message)
+                    logger.info(f"バッチコントローラー起動メッセージを送信しました: {scheduler_message}")
+            
             logger.info(f"Successfully processed video {message_data['video_id']}")
             return {"success": True, "execution_time": time.time() - start_time}
 
