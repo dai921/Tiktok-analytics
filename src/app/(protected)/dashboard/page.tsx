@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { DataTable } from '@/components/dashboard/data-table'
 import { Header } from "@/components/header"
-import { getSheetData, COLUMN_MAP } from '@/lib/api'
+import { getDbData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
 
@@ -135,7 +135,7 @@ const Dashboard = () => {
   const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true);
     try {
-      const response = await getSheetData(page, currentFilters);
+      const response = await getDbData(page, currentFilters);
       console.log('APIレスポンス:', response);  // デバッグログを追加
       
       if (response && response.success) {

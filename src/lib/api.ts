@@ -428,7 +428,7 @@ const convertToVideoData = (video: any): VideoData => {
 }
 
 // バックエンドAPIからデータを取得する関数
-export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>) {
+export async function getDbData(page: number = 1, filters?: Record<string, FilterQuery>) {
   const params = new URLSearchParams({
     page: page.toString(),
     limit: '50'
