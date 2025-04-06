@@ -522,9 +522,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         ),
         cell: ({ row }) => (
           <div className="w-[100px] min-w-[100px]">
-            <span className="truncate block">
-              {row.accountName}
-            </span>
+            <div className="flex flex-col">
+              <span className="font-bold truncate">
+                {row.accountName}
+              </span>
+              {row.display_name && (
+                <span className="text-xs text-gray-500 truncate">
+                  {row.display_name}
+                </span>
+              )}
+            </div>
           </div>
         ),
       },

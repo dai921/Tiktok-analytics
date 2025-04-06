@@ -423,7 +423,11 @@ const convertToVideoData = (video: any): VideoData => {
     audioId: musicInfo.id || '',
     audioTitle: musicInfo.title || '',
     artist: musicInfo.artist || '',
-    predictedViews: 0
+    predictedViews: 0,
+    display_name: video.display_name || '',
+    products: video.products || '',
+    ten_days_increase: parseNumberSafely(video.ten_days_increase),
+    content_type: video.content_type || ''
   };
 }
 
