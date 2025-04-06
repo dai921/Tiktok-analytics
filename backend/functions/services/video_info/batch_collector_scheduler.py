@@ -68,8 +68,8 @@ def enable_delayed_schedule():
     except NotFound:
         parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
         
-        # 現在時刻から3分後を計算
-        next_run = datetime.now() + timedelta(minutes=3)
+        # 現在時刻から3分後を計算（日本時間JSTに合わせるため9時間をプラス）
+        next_run = datetime.now() + timedelta(hours=9, minutes=3)
         
         job = {
             "name": job_name,
