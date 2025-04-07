@@ -100,7 +100,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-sky-50 p-4">
-      <Card className="w-[500px] shadow-lg">
+      <Card className="w-[500px] shadow-lg bg-zinc-900 border-zinc-800">
         <CardHeader className="pb-2">
         <div className="w-full flex justify-center py-6">
         <Logo className="w-full max-w-[280px]" variant="auth" />
@@ -109,54 +109,54 @@ export default function Register() {
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="email" className="text-sky-900">メールアドレス</Label>
+              <Label htmlFor="email" className="text-zinc-300">メールアドレス</Label>
               <Input
                 id="email"
                 name="email"
                 placeholder="example@example.com"
                 type="email"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 autoComplete="email"
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="name" className="text-sky-900">名前</Label>
+              <Label htmlFor="name" className="text-zinc-300">名前</Label>
               <Input
                 id="name"
                 name="name"
                 type="text"
                 placeholder="表示名"
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 autoComplete="name"
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="password" className="text-sky-900">パスワード</Label>
+              <Label htmlFor="password" className="text-zinc-300">パスワード</Label>
               <Input
                 id="password"
                 name="password"
                 type="password"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 minLength={8}
                 autoComplete="new-password"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-zinc-500 mt-1">
                 ※ 8文字以上の半角英数字を入力してください
               </p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="confirmPassword" className="text-sky-900">パスワード（確認）</Label>
+              <Label htmlFor="confirmPassword" className="text-zinc-300">パスワード（確認）</Label>
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
                 type="password"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 minLength={8}
                 autoComplete="new-password"
@@ -164,7 +164,7 @@ export default function Register() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-500 bg-red-50 p-2 rounded">
+              <p className="text-sm text-red-500 bg-red-900/20 p-2 rounded">
                 {error}
               </p>
             )}
@@ -172,7 +172,7 @@ export default function Register() {
             <div className="space-y-2 pt-4">
               <Button 
                 type="submit"
-                className="w-full h-12 text-lg bg-sky-600 hover:bg-sky-700"
+                className="w-full h-12 text-lg bg-[#FE2C55] hover:bg-[#FE2C55]/90 text-white"
                 disabled={formLoading}
               >
                 {formLoading ? '登録中...' : '新規登録'}
@@ -180,7 +180,7 @@ export default function Register() {
               <Button 
                 type="button" 
                 variant="outline" 
-                className="w-full h-12 text-lg text-sky-600 border-sky-600 hover:bg-sky-50"
+                className="w-full h-12 text-lg text-white border-zinc-600 hover:bg-zinc-800"
                 onClick={() => router.replace('/login')}
                 disabled={formLoading}
               >
@@ -188,11 +188,11 @@ export default function Register() {
               </Button>
               
               <div className="text-center mt-4">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-zinc-400">
                   ユーザーのパスワードを変更したい場合は
                   <Button 
                     variant="link" 
-                    className="text-sky-600 p-0 h-auto font-normal ml-1"
+                    className="text-[#FE2C55] p-0 h-auto font-normal ml-1"
                     onClick={() => router.push('/register/change-password')}
                     disabled={formLoading}
                   >
