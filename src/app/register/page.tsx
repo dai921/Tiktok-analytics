@@ -102,8 +102,8 @@ export default function Register() {
     <div className="min-h-screen w-full flex items-center justify-center bg-sky-50 p-4">
       <Card className="w-[500px] shadow-lg">
         <CardHeader className="pb-2">
-          <div className="w-full flex justify-center py-4">
-            <Logo className="w-48" />
+        <div className="w-full flex justify-center py-6">
+        <Logo className="w-full max-w-[280px]" variant="auth" />
           </div>
         </CardHeader>
         <CardContent>

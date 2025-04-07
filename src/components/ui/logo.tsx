@@ -1,22 +1,42 @@
-export function Logo({ className = '' }: { className?: string }) {
+import Image from 'next/image'
+
+type LogoProps = {
+  className?: string;
+  variant?: 'auth' | 'sidebar';
+}
+
+export function Logo({ className = '', variant = 'sidebar' }: LogoProps) {
+  const logoSrc = variant === 'auth' 
+    ? '/images/buzzmiru_logo_color_white.png'
+    : '/images/buzzmiru_logo_no_jp.png';
+
+  // variantに応じてサイズと配置を調整
+  const containerStyles = variant === 'auth'
+    ? 'flex items-center justify-center gap-3'  // 認証画面用：中央寄せ、大きめの間隔
+    : 'flex items-center gap-1';  // サイドバー用：左寄せ、コンパクトな間隔
+
+  const iconSize = variant === 'auth' ? 80 : 60;  // 認証画面ではアイコンを大きく
+  const logoWidth = variant === 'auth' ? 240 : 160;  // 認証画面ではロゴを大きく
+  const logoHeight = variant === 'auth' ? 60 : 40;
+
   return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      viewBox="0 0 200 50" 
-      className={className}
-      style={{ fontFamily: 'system-ui, sans-serif' }}
-    >
-      <defs>
-        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" style={{stopColor: '#0EA5E9', stopOpacity: 1}} />
-          <stop offset="100%" style={{stopColor: '#38BDF8', stopOpacity: 1}} />
-        </linearGradient>
-      </defs>
-      <circle cx="25" cy="25" r="20" fill="url(#gradient)"/>
-      <path d="M15 25 L20 20 L30 30 L40 15" stroke="white" strokeWidth="3" fill="none" strokeLinecap="round"/>
-      <text x="55" y="32" fontSize="20" fill="#0F172A" fontWeight="bold">
-        <tspan fill="#0EA5E9">Tik</tspan>Analytics
-      </text>
-    </svg>
+    <div className={`${containerStyles} ${className}`}>
+      <Image
+        src="/images/icon.png"
+        alt="BuzzMiru Icon"
+        width={iconSize}
+        height={iconSize}
+        priority
+        className="object-contain"
+      />
+      <Image
+        src={logoSrc}
+        alt="BuzzMiru Logo"
+        width={logoWidth}
+        height={logoHeight}
+        priority
+        className="object-contain"
+      />
+    </div>
   )
 }

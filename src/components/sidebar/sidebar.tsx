@@ -19,7 +19,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 h-screen bg-gray-50 border-r">
       <div className="p-4">
-        <Logo className="w-48" />
+        <Logo className="w-full max-w-[200px]" variant="sidebar" />
       </div>
       
       <nav className="mt-8">
