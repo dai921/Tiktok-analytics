@@ -58,7 +58,7 @@ def enable_delayed_schedule():
         parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
         
         # 現在時刻から5分後を計算
-        next_run = datetime.now() + timedelta(minutes=5)
+        next_run = datetime.now() + timedelta(hours=9, minutes=5)
         
         job = {
             "name": job_name,

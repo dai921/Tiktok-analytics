@@ -54,6 +54,10 @@ export interface VideoData {
   artist: string
   rank?: number
   predictedViews: number
+  display_name: string
+  products: string
+  ten_days_increase: number
+  content_type: string
 }
 
 // テーブル関連の型

@@ -423,12 +423,16 @@ const convertToVideoData = (video: any): VideoData => {
     audioId: musicInfo.id || '',
     audioTitle: musicInfo.title || '',
     artist: musicInfo.artist || '',
-    predictedViews: 0
+    predictedViews: 0,
+    display_name: video.display_name || '',
+    products: video.products || '',
+    ten_days_increase: parseNumberSafely(video.ten_days_increase),
+    content_type: video.content_type || ''
   };
 }
 
 // バックエンドAPIからデータを取得する関数
-export async function getSheetData(page: number = 1, filters?: Record<string, FilterQuery>) {
+export async function getDbData(page: number = 1, filters?: Record<string, FilterQuery>) {
   const params = new URLSearchParams({
     page: page.toString(),
     limit: '50'

@@ -69,6 +69,7 @@ CREATE TABLE video_master (
   currentFetchDate DATE DEFAULT NULL,
   prevPlayCount INT UNSIGNED DEFAULT NULL,
   playCountIncrease INT UNSIGNED DEFAULT NULL,
+  ten_days_increase INT DEFAULT NULL,
   prevLikesCount INT UNSIGNED DEFAULT NULL,
   likesCountIncrease INT DEFAULT NULL,
   product VARCHAR(255) DEFAULT NULL,
@@ -170,7 +171,10 @@ CREATE TABLE frontend_data (
   created_at DATE DEFAULT NULL,
   play_count INT UNSIGNED DEFAULT NULL,
   play_count_increase INT UNSIGNED DEFAULT NULL,
+  ten_days_increase INT DEFAULT NULL,
   account_name VARCHAR(50) DEFAULT NULL,
+  display_name VARCHAR(255) DEFAULT NULL,
+  content_type VARCHAR(50) DEFAULT NULL,
   likes_count INT UNSIGNED DEFAULT NULL,
   comment_count INT UNSIGNED DEFAULT NULL,
   hashtags TEXT,
@@ -259,4 +263,24 @@ CREATE TABLE trend_analysis (
 CREATE TABLE scheduler_job_info (
     job_name VARCHAR(255) PRIMARY KEY,
     last_run TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 再生増加数の過去データの追加
+CREATE TABLE play_count_history (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    video_id VARCHAR(50) NOT NULL,
+    video_url VARCHAR(255) NOT NULL,
+    collection_date DATE NOT NULL,
+    play_count_increase INT UNSIGNED DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, collection_date),
+    INDEX idx_video_date (video_id, collection_date),
+    UNIQUE INDEX unique_video_date (video_id, collection_date)
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci
+PARTITION BY RANGE (TO_DAYS(collection_date)) (
+    PARTITION p_current VALUES LESS THAN (TO_DAYS('2025-05-01')),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
 );

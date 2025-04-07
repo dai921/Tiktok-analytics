@@ -117,7 +117,12 @@ def format_video(row):
             "music_info": audio_info,      # 新しくmusic_infoとして同じ内容を追加
             "hashtags": hashtags,
             "caption": row[11] if len(row) > 11 else "",
-            "category": row[12] if len(row) > 12 else "その他"
+            "category": row[12] if len(row) > 12 else "その他",
+            # 新しいフィールドを追加
+            "display_name": row[13] if len(row) > 13 else "",
+            "content_type": row[14] ,
+            "ten_days_increase": row[15] if len(row) > 15 else 0,
+            "products": row[16] if len(row) > 16 else ""
         }
     except Exception as e:
         print(f"行のフォーマット中にエラーが発生: {e}")

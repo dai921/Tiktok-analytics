@@ -8,35 +8,62 @@ import { X } from 'lucide-react'
 interface ImageHoverProps {
   src: string
   alt: string
+  videoUrl: string
 }
 
-export function ImageHover({ src, alt }: ImageHoverProps) {
+export function ImageHover({ src, alt, videoUrl }: ImageHoverProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // ESCキーで閉じる
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsOpen(false)
+  const extractTikTokId = useCallback((url: string): string => {
+    try {
+      const urlObj = new URL(url)
+      if (!urlObj.hostname.includes('tiktok.com')) {
+        throw new Error('TikTokのURLではありません')
       }
-    }
 
+      // /video/ または /photo/ のパターンに対応
+      const matches = url.match(/(?:video|photo)\/(\d+)/)
+      if (!matches) {
+        throw new Error('コンテンツIDが見つかりません')
+      }
+
+      return matches[1]
+    } catch (e) {
+      console.error('URL解析エラー:', e)
+      setError('コンテンツの読み込みに失敗しました')
+      return ''
+    }
+  }, [])
+
+  const generateEmbedCode = useCallback((url: string) => {
+    const videoId = extractTikTokId(url)
+    if (!videoId) return ''
+
+    return `<blockquote class="tiktok-embed" cite="${url}" data-video-id="${videoId}">
+      <section></section>
+    </blockquote>`
+  }, [extractTikTokId])
+
+  // TikTokの埋め込みスクリプトを読み込む
+  useEffect(() => {
     if (isOpen) {
-      window.addEventListener('keydown', handleEsc)
-    }
+      const script = document.createElement('script')
+      script.src = 'https://www.tiktok.com/embed.js'
+      script.async = true
+      document.body.appendChild(script)
 
-    return () => {
-      window.removeEventListener('keydown', handleEsc)
+      return () => {
+        document.body.removeChild(script)
+      }
     }
   }, [isOpen])
 
-  // モーダルを閉じる
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     setIsOpen(false)
   }, [])
 
-  // サムネイルクリックでモーダルを開く
   const handleOpen = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     setIsOpen(true)
@@ -46,7 +73,7 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
     <>
       <div
         onClick={handleOpen}
-        className="cursor-zoom-in"
+        className="cursor-pointer"
       >
         <div className="w-[120px] h-[120px] relative bg-gray-100 rounded flex items-center justify-center overflow-hidden">
           <Image
@@ -64,11 +91,11 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
         <Portal>
           <div 
             className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4"
-            onClick={handleClose} // 背景クリックで閉じる
+            onClick={handleClose}
           >
             <div 
-              className="relative max-w-4xl w-full bg-white rounded-lg shadow-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()} // モーダル内のクリックは伝播を止める
+              className="relative max-w-xl w-full bg-white rounded-lg shadow-xl p-6"
+              onClick={(e) => e.stopPropagation()}
             >
               <button
                 onClick={handleClose}
@@ -76,15 +103,20 @@ export function ImageHover({ src, alt }: ImageHoverProps) {
               >
                 <X size={20} />
               </button>
-              <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
-                <Image
-                  src={src}
-                  alt={alt}
-                  fill
-                  className="object-contain"
-                  unoptimized
+
+              {/* TikTok動画の埋め込み */}
+              {error ? (
+                <div className="text-red-500 text-center p-4">
+                  {error}
+                </div>
+              ) : (
+                <div 
+                  className="w-full"
+                  dangerouslySetInnerHTML={{ 
+                    __html: generateEmbedCode(videoUrl)
+                  }} 
                 />
-              </div>
+              )}
             </div>
           </div>
         </Portal>

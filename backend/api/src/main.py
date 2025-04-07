@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.responses import JSONResponse, HTMLResponse
 from typing import Optional, Dict, List
 from src.db.database import get_db_connection, format_video
 from src.utils.logger_config import setup_logger
@@ -52,17 +51,6 @@ app.add_middleware(
 
 # 認証ルーターの追加
 app.include_router(auth_router)
-
-# 絶対パスを使用してテンプレートディレクトリを指定
-base_dir = pathlib.Path(__file__).parent.resolve()
-templates_directory = str(base_dir / "templates")
-print(f"テンプレートディレクトリ: {templates_directory}")  # デバッグ用i
-templates = Jinja2Templates(directory=templates_directory)
-
-# 静的ファイルのディレクトリも同様に絶対パスで指定
-static_directory = str(base_dir / "static")
-print(f"静的ファイルディレクトリ: {static_directory}")  # デバッグ用
-app.mount("/static", StaticFiles(directory=static_directory), name="static")
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)
@@ -603,13 +591,6 @@ async def debug_row(row_id: str):
             cursor.close()
         if conn:
             conn.close()
-
-# APIテスト用のUIを追加
-@app.get("/test-ui", response_class=HTMLResponse)
-async def test_ui(request: Request):
-    """APIテスト用のブラウザインターフェース"""
-    print("test-uiエンドポイントにアクセスがありました")  # デバッグ用
-    return templates.TemplateResponse("test.html", {"request": request})
 
 @app.get("/api/categories")
 async def get_categories():
