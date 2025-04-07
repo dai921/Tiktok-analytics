@@ -3,59 +3,38 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from '@/lib/auth-context'
+import { useUserInfo } from '@/lib/use-user-info'
+import { UserIcon } from 'lucide-react'
+import { useFilter } from '@/lib/filter-context'
 
 interface HeaderProps {
-  hasFilters?: boolean
-  onClearFilters?: () => void
+  showFilterClear?: boolean
 }
 
-export function Header({ hasFilters, onClearFilters }: HeaderProps) {
-  const pathname = usePathname()
-  const { logout } = useAuth()
-  const showFilterClear = pathname === '/dashboard' && hasFilters
-
-  const handleLogout = async () => {
-    try {
-      const token = localStorage.getItem('auth_token')
-      console.log(token)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (response.ok) {
-        logout()
-      } else {
-        console.error('ログアウトに失敗しました')
-      }
-    } catch (error) {
-      console.error('ログアウトエラー:', error)
-    }
-  }
+export function Header({ showFilterClear = false }: HeaderProps) {
+  const { hasFilters, onClearFilters } = useFilter()
+  const { userInfo, isLoading } = useUserInfo()
+  const showClearButton = showFilterClear && hasFilters && onClearFilters
 
   return (
-    <header className="border-b bg-white">
+    <header className="border-b bg-black text-white">
       <div className="flex items-center justify-between px-4 h-14">
-        <div className="flex items-center gap-2">
-          {/* ここからLogoコンポーネントを削除 */}
-        </div>
         <div className="flex items-center gap-4">
-          {showFilterClear && (
+          {showClearButton && (
             <button
               onClick={onClearFilters}
-              className="inline-flex items-center px-2.5 py-1.5 text-xs border border-red-200 rounded hover:bg-red-50 text-red-500"
+              className="ml-6 inline-flex items-center px-3 py-2 text-sm border border-red-400 rounded hover:bg-red-900 text-red-300"
             >
               フィルターを全てクリア
             </button>
           )}
-          <button 
-            onClick={handleLogout}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            ログアウト
-          </button>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <UserIcon size={20} className="text-gray-300" />
+          <span className="text-base font-medium">
+            {isLoading ? '読み込み中...' : userInfo?.name || 'ゲスト'}
+          </span>
         </div>
       </div>
     </header>

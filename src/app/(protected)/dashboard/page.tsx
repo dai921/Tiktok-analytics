@@ -2,10 +2,10 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { DataTable } from '@/components/dashboard/data-table'
-import { Header } from "@/components/header"
 import { getDbData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
+
 
 const headers = [
   { key: 'createdAt', title: '作成日時', type: 'date' as const },
@@ -222,10 +222,6 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header 
-        hasFilters={Object.keys(filters).length > 0}
-        onClearFilters={handleClearAllFilters} 
-      />
       <main className="max-w-screen-2xl mx-auto px-4 py-4">
         <DataTable 
           ref={tableRef}
