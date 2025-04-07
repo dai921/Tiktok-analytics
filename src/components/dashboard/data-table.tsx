@@ -9,6 +9,8 @@ import { COLUMN_MAP } from '@/lib/api'
 import { Pagination } from './pagination'
 import { ImageHover } from '@/components/ui/image-hover'
 import { getFilterOptions } from '@/lib/api'
+import { GenreBadge, HashtagBadge } from '@/components/ui/badge'
+import { TIKTOK_COLORS } from '@/lib/constants'
 
 interface DataTableProps {
   initialData: VideoData[]
@@ -53,14 +55,6 @@ const NoThumbnail = () => (
     </svg>
   </div>
 )
-
-const TIKTOK_COLORS = {
-  black: "#000000",
-  cyan: "#25F4EE",
-  red: "#FE2C55",
-  white: "#FFFFFF",
-  green: "#4CAF50"  // 緑色を追加
-} as const;
 
 // サイズを props として受け取るように修正
 const VideoTypeIcon = ({ size = 32 }: { size?: number }) => (
@@ -489,7 +483,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
       
       switch (columnName) {
-        case 'ジャンル':
+        case '動画ジャンル':
           // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
           return useInitialCache && categoryList.length > 0 
             ? categoryList 
@@ -513,7 +507,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         default:
           return [];
       }
-    }, [categoryList, accountList, hashtagList, audioTitleList]);
+    }, [categoryList, accountList, hashtagList, audioTitleList, isLoadingFilterOptions, currentFilters]);
 
     const columns: Column[] = [
       {
@@ -563,7 +557,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => {
           return (
             <TableHeaderCell
-              title="投稿日時"
+              title="投稿日"
               type="date"
               onFilter={(value) => handleFilter('createdAt')(value)}
               isActive={Boolean(columnFilters['createdAt'])}
@@ -575,7 +569,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         },
         cell: ({ row }) => {
           const date = row.createdAt;
-          if (!date) return '';
+          if (!date) return null;
           
           try {
             // ISO形式や標準的な日付文字列の場合
@@ -646,8 +640,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       {
         accessorKey: 'category',
         header: ({ column }) => {
-          const options = getFilteredOptions('ジャンル');
-          console.log('ジャンルカラムのレンダリング:', {
+          const options = getFilteredOptions('動画ジャンル');
+          console.log('動画ジャンルカラムのレンダリング:', {
             categoryDataLength: options.length,
             sample: options.slice(0, 3),
             hasActiveFilter: Boolean(columnFilters['category']),
@@ -655,7 +649,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           });
           return (
             <TableHeaderCell
-              title="ジャンル"
+              title="動画ジャンル"
               type="text"
               onFilter={(value) => handleFilter('category')(value)}
               isActive={Boolean(columnFilters['category'])}
@@ -665,6 +659,61 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             />
           );
         },
+        cell: ({ row }) => {
+          // カテゴリが文字列かどうかをチェック
+          const category = row.category;
+          if (!category) return null;
+          
+          // カテゴリが文字列の場合
+          if (typeof category === 'string') {
+            // 複数のジャンルがカンマや区切り文字で分割されている場合
+            if (category.includes(',') || category.includes('、')) {
+              const genres = category
+                .split(/[,、]/)
+                .map(g => g.trim())
+                .filter(Boolean);
+                
+              return (
+                <div className="flex flex-wrap gap-1">
+                  {genres.map((genre, idx) => (
+                    <GenreBadge key={idx} genre={genre} />
+                  ))}
+                </div>
+              );
+            }
+            return <GenreBadge genre={category} />;
+          }
+          
+          // カテゴリが配列の場合（複数カテゴリに対応）
+          if (Array.isArray(category)) {
+            const allGenreBadges: React.ReactElement[] = [];
+            
+            // すべての要素を処理して、必要に応じて分割
+            (category as string[]).forEach((cat: string, idx: number) => {
+              // 区切り文字を含む場合は分割
+              if (cat.includes(',') || cat.includes('、') || cat.includes('/')) {
+                const subGenres = cat
+                  .split(/[,、\/]/)
+                  .map(g => g.trim())
+                  .filter(Boolean);
+                  
+                subGenres.forEach((genre, subIdx) => {
+                  allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} />);
+                });
+              } else {
+                allGenreBadges.push(<GenreBadge key={idx} genre={cat} />);
+              }
+            });
+            
+            return (
+              <div className="flex flex-wrap gap-1">
+                {allGenreBadges}
+              </div>
+            );
+          }
+          
+          return null;
+        }
       },
       {
         accessorKey: 'accountName',
@@ -748,23 +797,36 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             ...hashtagsFromCaption
           ])];
           
-          const hashtagString = allHashtags.join(', ');
-
+          if (allHashtags.length === 0) {
+            return <span className="text-gray-400 text-xs">ハッシュタグなし</span>;
+          }
+          
+          // ハッシュタグの表示（最大3つまで表示し、それ以上は省略）
+          const displayTags = allHashtags.slice(0, 3);
+          const remainingCount = allHashtags.length - displayTags.length;
+          
           return (
-            <div className="w-[60px] min-w-[60px]">
+            <div className="w-[120px] min-w-[120px]">
               <button 
                 onClick={() => setSelectedText({ 
                   title: 'ハッシュタグ', 
-                  content: hashtagString || 'ハッシュタグなし'
+                  content: allHashtags.join(', ') || 'ハッシュタグなし'
                 })}
                 className="text-left w-full"
               >
-                <span className="line-clamp-2 text-sm">
-                  {hashtagString || 'ハッシュタグなし'}
-                </span>
+                <div className="flex flex-wrap">
+                  {displayTags.map((tag: string, idx: number) => (
+                    <HashtagBadge key={idx} tag={tag} />
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="text-xs text-gray-500 mt-1">
+                      他{remainingCount}個...
+                    </span>
+                  )}
+                </div>
               </button>
             </div>
-          )
+          );
         }
       },
       {
