@@ -57,7 +57,7 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
+  ({ title, type = 'text', align = 'center', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterType>('equal')
@@ -625,7 +625,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           isActive || localSortDirection ? "text-blue-600 font-medium" : ""
         )}
       >
-        <div className="flex items-center cursor-default">
+        <div className={cn("flex items-center cursor-default", alignmentClass)}>
           <span>{title}</span>
           {localSortDirection && (
             <span className="ml-1 text-blue-600">

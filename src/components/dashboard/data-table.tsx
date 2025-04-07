@@ -515,7 +515,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         header: ({ column }) => (
           <TableHeaderCell
             title="サムネイル"
-            align="left"
           />
         ),
         cell: ({ row }) => {
