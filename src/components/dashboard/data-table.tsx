@@ -882,7 +882,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-red-500 peer-focus:ring-2 peer-focus:ring-red-300 transition-colors">
               <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
             </div>
-            <span className="ml-2 text-sm font-medium text-red-600">#PRを含む動画のみ表示</span>
+            <span className="ml-2 text-sm font-medium text-red-600">#PRを含む動画のみ</span>
           </label>
         </div>
         
@@ -900,12 +900,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                     {columns.map((column) => (
                       <th 
                         key={column.accessorKey} 
-                        className="px-3 py-2 font-medium text-gray-700 bg-gray-50 sticky top-0"
+                        className="px-3 py-0.25 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
                           minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
-                                   column.accessorKey === 'createdAt' ? '80px' :
+                                   column.accessorKey === 'createdAt' ? '50px' :
+                                   column.accessorKey === 'views' ? '65px' :
+                                   column.accessorKey === 'viewsIncrease' ? '65px' :
                                    column.accessorKey === 'accountName' ? '100px' :
                                    column.accessorKey === 'hashtags' ? '50px' :
+                                   column.accessorKey === 'category' ? '100px' :
                                    column.accessorKey === 'description' ? '120px' : '70px',
                           color: Boolean(columnFilters[column.accessorKey]) ? 'var(--color-sky-500)' : undefined
                         }}
@@ -931,9 +934,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                           }`}
                           style={{ 
                             minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
-                                     column.accessorKey === 'createdAt' ? '80px' :
+                                     column.accessorKey === 'createdAt' ? '70px' :
+                                     column.accessorKey === 'views' ? '65px' :
+                                     column.accessorKey === 'viewsIncrease' ? '65px' :
                                      column.accessorKey === 'accountName' ? '100px' :
                                      column.accessorKey === 'hashtags' ? '50px' :
+                                     column.accessorKey === 'category' ? '85px' :
                                      column.accessorKey === 'description' ? '120px' : '70px',
                             maxHeight: '100px',
                             overflow: 'hidden'

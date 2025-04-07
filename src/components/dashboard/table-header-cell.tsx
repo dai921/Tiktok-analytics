@@ -620,7 +620,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         data-header-cell
         className={cn(
           "flex items-center gap-1 whitespace-nowrap",
-          "px-2 py-1 text-gray-700 text-sm",
+          "px-2 py-1 text-gray-700 text-[12px]", // text-sm から text-[8px] に変更
           align === 'center' ? 'justify-center' : '',
           isActive || localSortDirection ? "text-blue-600 font-medium" : ""
         )}
