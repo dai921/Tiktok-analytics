@@ -553,6 +553,84 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         }
       },
       {
+        accessorKey: 'category',
+        header: ({ column }) => {
+          const options = getFilteredOptions('動画ジャンル');
+          console.log('動画ジャンルカラムのレンダリング:', {
+            categoryDataLength: options.length,
+            sample: options.slice(0, 3),
+            hasActiveFilter: Boolean(columnFilters['category']),
+            isLoading: isLoadingFilterOptions
+          });
+          return (
+            <TableHeaderCell
+              title="動画ジャンル"
+              type="text"
+              onFilter={(value) => handleFilter('category')(value)}
+              isActive={Boolean(columnFilters['category'])}
+              categoryData={options}
+              sortDirection={sortField === 'category' ? sortDirection : null}
+              isLoadingFilterOptions={isLoadingFilterOptions}
+            />
+          );
+        },
+        cell: ({ row }) => {
+          // カテゴリが文字列かどうかをチェック
+          const category = row.category;
+          if (!category) return null;
+          
+          // カテゴリが文字列の場合
+          if (typeof category === 'string') {
+            // 複数のジャンルがカンマや区切り文字で分割されている場合
+            if (category.includes(',') || category.includes('、')) {
+              const genres = category
+                .split(/[,、]/)
+                .map(g => g.trim())
+                .filter(Boolean);
+                
+              return (
+                <div className="flex flex-wrap gap-1">
+                  {genres.map((genre, idx) => (
+                    <GenreBadge key={idx} genre={genre} />
+                  ))}
+                </div>
+              );
+            }
+            return <GenreBadge genre={category} />;
+          }
+          
+          // カテゴリが配列の場合（複数カテゴリに対応）
+          if (Array.isArray(category)) {
+            const allGenreBadges: React.ReactElement[] = [];
+            
+            // すべての要素を処理して、必要に応じて分割
+            (category as string[]).forEach((cat: string, idx: number) => {
+              // 区切り文字を含む場合は分割
+              if (cat.includes(',') || cat.includes('、') || cat.includes('/')) {
+                const subGenres = cat
+                  .split(/[,、\/]/)
+                  .map(g => g.trim())
+                  .filter(Boolean);
+                  
+                subGenres.forEach((genre, subIdx) => {
+                  allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} />);
+                });
+              } else {
+                allGenreBadges.push(<GenreBadge key={idx} genre={cat} />);
+              }
+            });
+            
+            return (
+              <div className="flex flex-wrap gap-1">
+                {allGenreBadges}
+              </div>
+            );
+          }
+          
+          return null;
+        }
+      },
+      {
         accessorKey: 'createdAt',
         header: ({ column }) => {
           return (
@@ -638,82 +716,32 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         cell: ({ row }) => formatNumber(row.viewsIncrease, 'viewsIncrease')
       },
       {
-        accessorKey: 'category',
-        header: ({ column }) => {
-          const options = getFilteredOptions('動画ジャンル');
-          console.log('動画ジャンルカラムのレンダリング:', {
-            categoryDataLength: options.length,
-            sample: options.slice(0, 3),
-            hasActiveFilter: Boolean(columnFilters['category']),
-            isLoading: isLoadingFilterOptions
-          });
-          return (
-            <TableHeaderCell
-              title="動画ジャンル"
-              type="text"
-              onFilter={(value) => handleFilter('category')(value)}
-              isActive={Boolean(columnFilters['category'])}
-              categoryData={options}
-              sortDirection={sortField === 'category' ? sortDirection : null}
-              isLoadingFilterOptions={isLoadingFilterOptions}
-            />
-          );
-        },
-        cell: ({ row }) => {
-          // カテゴリが文字列かどうかをチェック
-          const category = row.category;
-          if (!category) return null;
-          
-          // カテゴリが文字列の場合
-          if (typeof category === 'string') {
-            // 複数のジャンルがカンマや区切り文字で分割されている場合
-            if (category.includes(',') || category.includes('、')) {
-              const genres = category
-                .split(/[,、]/)
-                .map(g => g.trim())
-                .filter(Boolean);
-                
-              return (
-                <div className="flex flex-wrap gap-1">
-                  {genres.map((genre, idx) => (
-                    <GenreBadge key={idx} genre={genre} />
-                  ))}
-                </div>
-              );
-            }
-            return <GenreBadge genre={category} />;
-          }
-          
-          // カテゴリが配列の場合（複数カテゴリに対応）
-          if (Array.isArray(category)) {
-            const allGenreBadges: React.ReactElement[] = [];
-            
-            // すべての要素を処理して、必要に応じて分割
-            (category as string[]).forEach((cat: string, idx: number) => {
-              // 区切り文字を含む場合は分割
-              if (cat.includes(',') || cat.includes('、') || cat.includes('/')) {
-                const subGenres = cat
-                  .split(/[,、\/]/)
-                  .map(g => g.trim())
-                  .filter(Boolean);
-                  
-                subGenres.forEach((genre, subIdx) => {
-                  allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} />);
-                });
-              } else {
-                allGenreBadges.push(<GenreBadge key={idx} genre={cat} />);
-              }
-            });
-            
-            return (
-              <div className="flex flex-wrap gap-1">
-                {allGenreBadges}
-              </div>
-            );
-          }
-          
-          return null;
-        }
+        accessorKey: 'likes',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="いいね数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('likes')(value)}
+            isActive={Boolean(columnFilters['likes'])}
+            sortDirection={sortField === 'likes' ? sortDirection : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.likes, 'likes')
+      },
+      {
+        accessorKey: 'comments',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="コメント数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('comments')(value)}
+            isActive={Boolean(columnFilters['comments'])}
+            sortDirection={sortField === 'comments' ? sortDirection : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.comments, 'comments')
       },
       {
         accessorKey: 'accountName',
@@ -741,34 +769,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             </div>
           </div>
         ),
-      },
-      {
-        accessorKey: 'likes',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="いいね数"
-            type="number"
-            align="center"
-            onFilter={(value) => handleFilter('likes')(value)}
-            isActive={Boolean(columnFilters['likes'])}
-            sortDirection={sortField === 'likes' ? sortDirection : null}
-          />
-        ),
-        cell: ({ row }) => formatNumber(row.likes, 'likes')
-      },
-      {
-        accessorKey: 'comments',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="コメント数"
-            type="number"
-            align="center"
-            onFilter={(value) => handleFilter('comments')(value)}
-            isActive={Boolean(columnFilters['comments'])}
-            sortDirection={sortField === 'comments' ? sortDirection : null}
-          />
-        ),
-        cell: ({ row }) => formatNumber(row.comments, 'comments')
       },
       {
         accessorKey: 'hashtags',
