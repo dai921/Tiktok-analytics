@@ -576,9 +576,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         ),
         cell: ({ row }) => (
-          <div className="w-[100px] min-w-[100px]">
+          <div className="w-[120px] min-w-[120px]">
             <div className="flex flex-col">
-              <span className="font-bold truncate">
+              <span className="font-bold truncate text-base">
                 {row.accountName}
               </span>
               {row.display_name && (
