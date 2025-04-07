@@ -783,40 +783,35 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         ),
         cell: ({ row }) => {
-          // ハッシュタグの処理
-          const hashtags = row.hashtags;
+          // キャプションからのみハッシュタグを抽出する
           const caption = row.description || '';
           
-          // キャプションからハッシュタグを抽出
-          const hashtagsFromCaption = (caption.match(/#[^\s#]+/g) || [])
-            .map(tag => tag.replace('#', ''));
+          // キャプションからハッシュタグを抽出（#付きの形式で）
+          const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
           
-          // 既存のハッシュタグと結合（重複を除去）
-          const allHashtags = [...new Set([
-            ...(Array.isArray(hashtags) ? hashtags : []),
-            ...hashtagsFromCaption
-          ])];
+          // 重複を除去
+          const uniqueTags = [...new Set(hashtagsFromCaption)].filter(Boolean);
           
-          if (allHashtags.length === 0) {
+          if (uniqueTags.length === 0) {
             return <span className="text-gray-400 text-xs">ハッシュタグなし</span>;
           }
           
           // ハッシュタグの表示（最大3つまで表示し、それ以上は省略）
-          const displayTags = allHashtags.slice(0, 3);
-          const remainingCount = allHashtags.length - displayTags.length;
+          const displayTags = uniqueTags.slice(0, 3);
+          const remainingCount = uniqueTags.length - displayTags.length;
           
           return (
             <div className="w-[120px] min-w-[120px]">
               <button 
                 onClick={() => setSelectedText({ 
                   title: 'ハッシュタグ', 
-                  content: allHashtags.join(', ') || 'ハッシュタグなし'
+                  content: uniqueTags.join(', ') || 'ハッシュタグなし'
                 })}
                 className="text-left w-full"
               >
                 <div className="flex flex-wrap">
                   {displayTags.map((tag: string, idx: number) => (
-                    <HashtagBadge key={idx} tag={tag} />
+                    <HashtagBadge key={idx} tag={tag.substring(1)} />
                   ))}
                   {remainingCount > 0 && (
                     <span className="text-xs text-gray-500 mt-1">

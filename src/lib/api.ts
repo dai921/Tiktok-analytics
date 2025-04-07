@@ -230,7 +230,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'likes': 'いいね数',
   'comments': 'コメント数',
   'accountName': 'アカウント名',
-  'category': 'ジャンル',
+  'category': '動画ジャンル',
   'hashtags': 'ハッシュタグ',
   'description': '説明',
   'audioTitle': '音声タイトル',
@@ -240,7 +240,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'authorName': '作成者表示名',
   'shares': '共有数',
   'saves': '保存数',
-  'createdAt': '投稿日時',
+  'createdAt': '投稿日',
   'duration': '動画時間(秒)',
   'isViral': '10万再生以上',
   'prevViews': '前回再生数',
@@ -260,7 +260,7 @@ Object.entries(COLUMN_MAP).forEach(([key, value]) => {
 
 // デバッグ用：REVERSE_COLUMN_MAPの内容を出力
 console.log('REVERSE_COLUMN_MAP初期化:', {
-  '投稿日時': REVERSE_COLUMN_MAP['投稿日時'],
+  '投稿日': REVERSE_COLUMN_MAP['投稿日'],
   '再生数': REVERSE_COLUMN_MAP['再生数'],
   'いいね数': REVERSE_COLUMN_MAP['いいね数']
 });
@@ -288,7 +288,7 @@ const mapFieldToApiField = (field: string): string => {
   console.log('mapFieldToApiField - 入力フィールド:', field);
   
   // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
-  if (field === 'ジャンル') {
+  if (field === '動画ジャンル') {
     return 'category';
   } else if (field === '再生増加数') {
     return 'play_count_increase';
@@ -491,7 +491,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
       sortFilters.map(f => ({
         ...f, 
         time: new Date(f.timestamp).toISOString(),
-        isCreatedAt: f.field === 'createdAt' || f.field.includes('投稿日時')
+        isCreatedAt: f.field === 'createdAt' || f.field.includes('投稿日')
       })), null, 2)
     );
     
@@ -509,7 +509,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
       });
       
       // 主ソートの設定
-      if (primarySort.field === 'createdAt' || primarySort.field.includes('投稿日時')) {
+      if (primarySort.field === 'createdAt' || primarySort.field.includes('投稿日')) {
         mainSortField = 'created_at';
       } else if (primarySort.field === 'views') {
         mainSortField = 'play_count';
@@ -536,7 +536,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
         });
         
         // 二次ソートの設定
-        if (secondarySort.field === 'createdAt' || secondarySort.field.includes('投稿日時')) {
+        if (secondarySort.field === 'createdAt' || secondarySort.field.includes('投稿日')) {
           subSortField = 'created_at';
         } else if (secondarySort.field === 'views') {
           subSortField = 'play_count';
@@ -616,7 +616,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
         }
 
         // カテゴリーフィルターの特別な処理
-        if (key === 'category' || key === 'ジャンル') {
+        if (key === 'category' || key === '動画ジャンル') {
           console.log('API - カテゴリーのフィルタリング処理');
           params.append('category', filter.value.toString());
           
@@ -640,9 +640,9 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           return;
         }
 
-        // 投稿日時フィルターの特別な処理
-        if (key === 'createdAt' || key === '投稿日時') {
-          console.log('API - 投稿日時のフィルタリング処理');
+        // 投稿日フィルターの特別な処理
+        if (key === 'createdAt' || key === '投稿日') {
+          console.log('API - 投稿日のフィルタリング処理');
           
           // 日付フィルターのタイプに基づいて適切なパラメータを追加
           if (filter.type === 'after' || filter.type === 'greater') {
@@ -656,7 +656,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
             params.append('created_at_type', 'date');
           }
           
-          console.log('投稿日時フィルター設定:', {
+          console.log('投稿日フィルター設定:', {
             type: filter.type,
             value: filter.value.toString(),
             queryParams: Object.fromEntries(params.entries())
@@ -821,7 +821,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
         sortFilters.map(f => ({
           ...f, 
           time: new Date(f.timestamp).toISOString(),
-          isCreatedAt: f.field === 'createdAt' || f.field.includes('投稿日時')
+          isCreatedAt: f.field === 'createdAt' || f.field.includes('投稿日')
         })), null, 2)
       );
       
@@ -839,7 +839,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
         });
         
         // 主ソートの設定
-        if (primarySort.field === 'createdAt' || primarySort.field.includes('投稿日時')) {
+        if (primarySort.field === 'createdAt' || primarySort.field.includes('投稿日')) {
           sortField = 'created_at';
         } else if (primarySort.field === 'views') {
           sortField = 'play_count';
@@ -866,7 +866,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           });
           
           // 二次ソートの設定
-          if (secondarySort.field === 'createdAt' || secondarySort.field.includes('投稿日時')) {
+          if (secondarySort.field === 'createdAt' || secondarySort.field.includes('投稿日')) {
             secondarySortField = 'created_at';
           } else if (secondarySort.field === 'views') {
             secondarySortField = 'play_count';
@@ -938,7 +938,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           });
         }
         // 日付フィルターの処理
-        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日時') {
+        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
           console.log('日付フィルター検出:', {
             key,
             apiField,
@@ -1099,7 +1099,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
           params.append('category', filter.value.toString());
         }
         // 日付フィルターの処理
-        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日時') {
+        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
           // 日付フィルターのタイプに基づいて適切なパラメータを追加
           if (filter.type === 'after' || filter.type === 'greater') {
             params.append('created_at', filter.value.toString());
@@ -1209,10 +1209,10 @@ const handleApiError = (error: unknown): ApiResponse<never> => {
   };
 };
 
-// 利用可能なジャンル一覧を取得
+// 利用可能な動画ジャンル一覧を取得
 export async function fetchTrendGenres(): Promise<ApiResponse<string[]>> {
   try {
-    console.log('ジャンル取得中...');
+    console.log('動画ジャンル取得中...');
     const response = await fetch(`${API_BASE_URL}/api/trends/genres`);
     
     if (!response.ok) {
@@ -1220,7 +1220,7 @@ export async function fetchTrendGenres(): Promise<ApiResponse<string[]>> {
     }
     
     const result = await response.json();
-    console.log('取得したジャンルデータ:', result);
+    console.log('取得した動画ジャンルデータ:', result);
     
     // APIレスポンスの形式を確認
     if (result.success && Array.isArray(result.data)) {

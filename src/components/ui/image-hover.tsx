@@ -146,7 +146,7 @@ export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
                     </div>
                     
                     <div>
-                      <div className="text-gray-500 text-xs mb-1">ジャンル:</div>
+                      <div className="text-gray-500 text-xs mb-1">動画ジャンル:</div>
                       <div className="bg-red-100 text-red-600 inline-block px-2 py-1 rounded text-sm">
                         {videoData?.category || 'なし'}
                       </div>
