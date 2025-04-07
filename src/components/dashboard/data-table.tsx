@@ -481,8 +481,50 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               isActive={Boolean(columnFilters['createdAt'])}
               sortDirection={sortField === 'createdAt' ? sortDirection : null}
               isLoadingFilterOptions={isLoadingFilterOptions}
+              align="right"
             />
           );
+        },
+        cell: ({ row }) => {
+          const date = row.createdAt;
+          if (!date) return '';
+          
+          try {
+            // ISO形式や標準的な日付文字列の場合
+            const dateObj = new Date(date);
+            if (!isNaN(dateObj.getTime())) {
+              // YY/MM/DD形式に変換
+              const year = dateObj.getFullYear().toString().slice(2); // 下2桁のみ
+              const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+              const day = dateObj.getDate().toString().padStart(2, '0');
+              return (
+                <div className="text-right font-medium text-gray-700">
+                  {`${year}/${month}/${day}`}
+                </div>
+              );
+            }
+            
+            // すでに文字列として存在する日付形式の変換
+            if (typeof date === 'string') {
+              // YYYY-MM-DDパターンにマッチ
+              const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (match) {
+                const year = match[1].slice(2); // 下2桁
+                const month = match[2];
+                const day = match[3];
+                return (
+                  <div className="text-right font-medium text-gray-700">
+                    {`${year}/${month}/${day}`}
+                  </div>
+                );
+              }
+            }
+            
+            return <div className="text-right text-gray-700">{date}</div>;
+          } catch (e) {
+            console.error('日付変換エラー:', e);
+            return <div className="text-right text-gray-700">{date}</div>;
+          }
         },
       },
       {
@@ -535,34 +577,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             />
           );
         },
-      },
-      {
-        accessorKey: 'url',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="URL"
-            onFilter={(value: FilterValue) => handleFilter('url')(value)}
-            isActive={Boolean(columnFilters['url'])}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[100px] min-w-[100px]">
-            <button 
-              onClick={() => setSelectedText({ title: 'URL', content: row.url })}
-              className="text-left w-full"
-            >
-              <a 
-                href={row.url}
-                className="text-sky-600 hover:underline line-clamp-1 text-sm"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-              >
-                {row.url}
-              </a>
-            </button>
-          </div>
-        ),
       },
       {
         accessorKey: 'accountName',
@@ -741,9 +755,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                     {columns.map((column) => (
                       <th 
                         key={column.accessorKey} 
-                        className="px-4 py-3 font-medium text-gray-700 bg-gray-50 sticky top-0"
+                        className="px-3 py-2 font-medium text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
-                          minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px',
+                          minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
+                                   column.accessorKey === 'createdAt' ? '80px' :
+                                   column.accessorKey === 'accountName' ? '100px' :
+                                   column.accessorKey === 'hashtags' ? '50px' :
+                                   column.accessorKey === 'description' ? '120px' : '70px',
                           color: Boolean(columnFilters[column.accessorKey]) ? 'var(--color-sky-500)' : undefined
                         }}
                       >
@@ -761,13 +779,17 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                       {columns.map((column, colIndex) => (
                         <td 
                           key={`cell-${row.id || rowIndex}-${column.accessorKey || colIndex}`}
-                          className={`px-4 py-4 bg-white ${
+                          className={`px-3 py-3 bg-white ${
                             ['views', 'viewsIncrease', 'likes', 'comments'].includes(column.accessorKey) 
                               ? 'text-center font-medium' 
                               : ''
                           }`}
                           style={{ 
-                            minWidth: column.accessorKey === 'thumbnail' ? '120px' : '100px',
+                            minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
+                                     column.accessorKey === 'createdAt' ? '80px' :
+                                     column.accessorKey === 'accountName' ? '100px' :
+                                     column.accessorKey === 'hashtags' ? '50px' :
+                                     column.accessorKey === 'description' ? '120px' : '70px',
                             maxHeight: '100px',
                             overflow: 'hidden'
                           }}
