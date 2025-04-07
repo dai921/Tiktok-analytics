@@ -4,6 +4,8 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Logo } from "@/components/ui/logo";
+import { useAuth } from '@/lib/auth-context';
+import { useState } from 'react';
 
 // アイコンをインポート
 import { 
@@ -25,10 +27,38 @@ type SidebarItemProps = {
   active: boolean;
   disabled?: boolean;
   comingSoon?: boolean;
+  onClick?: () => void;
 }
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    
+    setIsLoggingOut(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        logout();
+      } else {
+        console.error('ログアウトに失敗しました');
+        setIsLoggingOut(false);
+      }
+    } catch (error) {
+      console.error('ログアウトエラー:', error);
+      setIsLoggingOut(false);
+    }
+  };
   
   return (
     <aside className="w-64 h-screen bg-black border-r border-gray-800 flex flex-col">
@@ -73,17 +103,19 @@ export function Sidebar() {
           active={pathname === '/settings'}
         />
         <SidebarItem
-          href="/logout"
+          href="#"
           icon="LogOut"
-          label="ログアウト"
+          label={isLoggingOut ? "ログアウト中..." : "ログアウト"}
           active={false}
+          onClick={handleLogout}
+          disabled={isLoggingOut}
         />
       </div>
     </aside>
   );
 }
 
-function SidebarItem({ href, icon, label, active, disabled, comingSoon }: SidebarItemProps) {
+function SidebarItem({ href, icon, label, active, disabled, comingSoon, onClick }: SidebarItemProps) {
   const content = (
     <div
       className={cn(
@@ -92,8 +124,10 @@ function SidebarItem({ href, icon, label, active, disabled, comingSoon }: Sideba
           ? "bg-[#FE2C55] text-white font-medium" 
           : disabled
             ? "text-gray-500 cursor-not-allowed"
-            : "text-gray-200 hover:bg-gray-800"
+            : "text-gray-200 hover:bg-gray-800",
+        onClick && !disabled && "cursor-pointer"
       )}
+      onClick={!disabled && onClick}
     >
       <span className="mr-3">{renderIcon(icon)}</span>
       <span>{label}</span>
@@ -114,7 +148,7 @@ function SidebarItem({ href, icon, label, active, disabled, comingSoon }: Sideba
     return content;
   }
 
-  return <Link href={href}>{content}</Link>;
+  return onClick ? content : <Link href={href}>{content}</Link>;
 }
 
 // アイコン名からコンポーネントを返す関数

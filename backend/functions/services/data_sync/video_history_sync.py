@@ -41,7 +41,10 @@ def sync_video_history(event, context):
             return {"status": "skipped", "reason": "Not a completion message"}
         
         # 集計日（現在日付の前日）- UTC+9で計算
-        collection_date = (datetime.now() + timedelta(hours=9) - timedelta(days=1)).strftime('%Y-%m-%d')
+        jst = timezone('Asia/Tokyo')
+        print(f"現在の時刻は {datetime.now(jst)}")
+        print(f"現在jstの時刻は {datetime.now(jst)}")
+        collection_date = (datetime.now(jst) + timedelta(hours=9) - timedelta(days=2)).strftime('%Y-%m-%d')
         
         # video_masterからデータを取得して同期
         sync_query = """

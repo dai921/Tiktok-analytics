@@ -67,7 +67,9 @@ def aggregate_category_statistics() -> Dict[str, Any]:
     try:
         # 集計日（現在日付の前日）- JSTから標準時間に変更
         jst = timezone('Asia/Tokyo')
-        aggregation_date = (datetime.now(jst) - timedelta(days=1)).strftime('%Y-%m-%d')
+        print(f"現在の時刻は {datetime.now()}")
+        print(f"現在のjst時刻は {datetime.now(jst)}")
+        aggregation_date = (datetime.now(jst) - timedelta(days=2)).strftime('%Y-%m-%d')
         
         # ビデオデータを取得するクエリ - 日付条件を追加
         query = """
