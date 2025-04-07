@@ -12,16 +12,19 @@ import {
   Menu, 
   Settings,
   Eye,
-  LogOut
+  LogOut,
+  FileText
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText';
 
 type SidebarItemProps = {
   href: string;
   icon: IconName;
   label: string;
   active: boolean;
+  disabled?: boolean;
+  comingSoon?: boolean;
 }
 
 export function Sidebar() {
@@ -52,6 +55,14 @@ export function Sidebar() {
           label="ウォッチリスト"
           active={pathname === '/watchlist'}
         />
+        <SidebarItem
+          href="#"
+          icon="FileText"
+          label="台本作成"
+          active={false}
+          disabled={true}
+          comingSoon={true}
+        />
       </nav>
 
       <div className="border-t border-gray-800 pt-4 pb-4">
@@ -72,22 +83,38 @@ export function Sidebar() {
   );
 }
 
-function SidebarItem({ href, icon, label, active }: SidebarItemProps) {
-  return (
-    <Link href={href}>
-      <div
-        className={cn(
-          "flex items-center px-4 py-2 my-1 mx-2 rounded-md transition-colors",
-          active 
-            ? "bg-[#FE2C55] text-white font-medium" 
+function SidebarItem({ href, icon, label, active, disabled, comingSoon }: SidebarItemProps) {
+  const content = (
+    <div
+      className={cn(
+        "flex items-center px-4 py-2 my-1 mx-2 rounded-md transition-colors relative",
+        active 
+          ? "bg-[#FE2C55] text-white font-medium" 
+          : disabled
+            ? "text-gray-500 cursor-not-allowed"
             : "text-gray-200 hover:bg-gray-800"
-        )}
-      >
-        <span className="mr-3">{renderIcon(icon)}</span>
-        <span>{label}</span>
-      </div>
-    </Link>
+      )}
+    >
+      <span className="mr-3">{renderIcon(icon)}</span>
+      <span>{label}</span>
+      {comingSoon && (
+        <div className="absolute -right-1 top-1/2 -translate-y-1/2 -rotate-12">
+          <span className="text-[10px] px-2 py-0.5 rounded-full 
+            bg-gradient-to-r from-[#FE2C55]/80 to-[#00F7FF]/80 
+            font-medium tracking-wide
+            inline-block">
+            COMING SOON
+          </span>
+        </div>
+      )}
+    </div>
   );
+
+  if (disabled) {
+    return content;
+  }
+
+  return <Link href={href}>{content}</Link>;
 }
 
 // アイコン名からコンポーネントを返す関数
@@ -103,6 +130,8 @@ function renderIcon(iconName: IconName) {
       return <Settings size={20} />;
     case 'LogOut':
       return <LogOut size={20} />;
+    case 'FileText':
+      return <FileText size={20} />;
     default:
       return null;
   }
