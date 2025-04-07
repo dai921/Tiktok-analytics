@@ -54,27 +54,12 @@ const NoThumbnail = () => (
   </div>
 )
 
-// 数値フォーマット関数を修正
-const formatNumber = (num: number): ReactElement => {
-  return (
-    <div className="text-center font-medium text-gray-700">
-      <span className="tabular-nums">
-        {new Intl.NumberFormat('ja-JP').format(num)}
-      </span>
-    </div>
-  )
-}
-
-// カテゴリ型の追加
-interface CategoryItem {
-  category: string;
-}
-
 const TIKTOK_COLORS = {
   black: "#000000",
   cyan: "#25F4EE",
   red: "#FE2C55",
-  white: "#FFFFFF"
+  white: "#FFFFFF",
+  green: "#4CAF50"  // 緑色を追加
 } as const;
 
 // サイズを props として受け取るように修正
@@ -110,6 +95,109 @@ const PhotoTypeIcon = ({ size = 32 }: { size?: number }) => (
     <circle cx="50" cy="30" r="5" fill={TIKTOK_COLORS.red} />
   </svg>
 );
+
+// ハートアイコン（アウトライン）を追加
+const HeartIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke={TIKTOK_COLORS.red} 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+  </svg>
+);
+
+// コメントアイコン（アウトライン）を追加
+const CommentIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke={TIKTOK_COLORS.cyan} 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+  </svg>
+);
+
+// 上矢印アイコンを追加
+const UpArrowIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke={TIKTOK_COLORS.green} 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M12 19V5M5 12L12 5l7 7"/>
+  </svg>
+);
+
+// 数値フォーマット関数を修正 - num と type を受け取るように変更
+const formatNumber = (num: number, type?: 'views' | 'viewsIncrease' | 'likes' | 'comments'): ReactElement => {
+  const formattedNum = new Intl.NumberFormat('ja-JP').format(num);
+  
+  // 再生増加数の場合
+  if (type === 'viewsIncrease' && num > 0) {
+    return (
+      <div className="text-center font-medium text-green-600 flex items-center justify-center">
+        <UpArrowIcon size={14} />
+        <span className="tabular-nums ml-1">
+          {formattedNum}
+        </span>
+      </div>
+    );
+  }
+  
+  // いいね数の場合
+  if (type === 'likes') {
+    return (
+      <div className="text-center font-medium text-gray-700 flex items-center justify-center">
+        <HeartIcon size={14} />
+        <span className="tabular-nums ml-1">
+          {formattedNum}
+        </span>
+      </div>
+    );
+  }
+  
+  // コメント数の場合
+  if (type === 'comments') {
+    return (
+      <div className="text-center font-medium text-gray-700 flex items-center justify-center">
+        <CommentIcon size={14} />
+        <span className="tabular-nums ml-1">
+          {formattedNum}
+        </span>
+      </div>
+    );
+  }
+  
+  // 通常の数値表示
+  return (
+    <div className="text-center font-medium text-gray-700">
+      <span className="tabular-nums">
+        {formattedNum}
+      </span>
+    </div>
+  );
+};
+
+// カテゴリ型の追加
+interface CategoryItem {
+  category: string;
+}
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange }, ref) => {
@@ -539,7 +627,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortDirection={sortField === 'views' ? sortDirection : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.views)
+        cell: ({ row }) => formatNumber(row.views, 'views')
       },
       {
         accessorKey: 'viewsIncrease',
@@ -553,7 +641,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortDirection={sortField === 'viewsIncrease' ? sortDirection : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.viewsIncrease)
+        cell: ({ row }) => formatNumber(row.viewsIncrease, 'viewsIncrease')
       },
       {
         accessorKey: 'category',
@@ -617,7 +705,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortDirection={sortField === 'likes' ? sortDirection : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.likes)
+        cell: ({ row }) => formatNumber(row.likes, 'likes')
       },
       {
         accessorKey: 'comments',
@@ -631,7 +719,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortDirection={sortField === 'comments' ? sortDirection : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.comments)
+        cell: ({ row }) => formatNumber(row.comments, 'comments')
       },
       {
         accessorKey: 'hashtags',
