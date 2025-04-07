@@ -455,6 +455,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 src={imageUrl} 
                 alt="サムネイル" 
                 videoUrl={row.url}
+                videoData={row}
               />
               <div className="absolute -bottom-1 -right-1">
                 <div className="bg-white p-0.2 rounded-lg shadow-sm">
