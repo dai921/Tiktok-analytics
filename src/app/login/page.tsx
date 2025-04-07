@@ -54,42 +54,42 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-sky-50 p-4">
-      <Card className="w-[500px] shadow-lg">
+      <Card className="w-[500px] shadow-lg bg-zinc-900 border-zinc-800">
         <CardHeader className="pb-2">
-          <div className="w-full flex justify-center py-4">
-            <Logo className="w-48" />
+          <div className="w-full flex justify-center py-6">
+            <Logo className="w-full max-w-[280px]" variant="auth" />
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="email" className="text-sky-900">メールアドレス</Label>
+              <Label htmlFor="email" className="text-zinc-300">メールアドレス</Label>
               <Input
                 id="email"
                 name="email"
                 placeholder="example@example.com"
                 type="email"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={isLoading}
                 autoComplete="email"
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="password" className="text-sky-900">パスワード</Label>
+              <Label htmlFor="password" className="text-zinc-300">パスワード</Label>
               <Input
                 id="password"
                 name="password"
                 type="password"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={isLoading}
                 autoComplete="current-password"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-500 bg-red-50 p-2 rounded">
+              <p className="text-sm text-red-500 bg-red-900/20 p-2 rounded">
                 {error}
               </p>
             )}
@@ -97,7 +97,7 @@ export default function LoginPage() {
             <div className="space-y-2 pt-4">
               <Button 
                 type="submit"
-                className="w-full h-12 text-lg bg-sky-600 hover:bg-sky-700"
+                className="w-full h-12 text-lg bg-[#FE2C55] hover:bg-[#FE2C55]/90 text-white"
                 disabled={isLoading}
               >
                 {isLoading ? 'ログイン中...' : 'ログイン'}

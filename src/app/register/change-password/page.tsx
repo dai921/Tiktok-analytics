@@ -151,66 +151,66 @@ export default function ChangePassword() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-sky-50 p-4">
-      <Card className="w-[500px] shadow-lg">
+      <Card className="w-[500px] shadow-lg bg-zinc-900 border-zinc-800">
         <CardHeader className="pb-2">
-          <div className="w-full flex justify-center py-4">
-            <Logo className="w-48" />
+        <div className="w-full flex justify-center py-6">
+        <Logo className="w-full max-w-[280px]" variant="auth" />
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3">
             <div className="space-y-1">
-              <Label htmlFor="email" className="text-sky-900">対象ユーザーのメールアドレス</Label>
+              <Label htmlFor="email" className="text-zinc-300">対象ユーザーのメールアドレス</Label>
               <Input
                 id="email"
                 name="email"
                 placeholder="example@example.com"
                 type="email"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 autoComplete="email"
               />
             </div>
             
             <div className="space-y-1">
-              <Label htmlFor="currentPassword" className="text-sky-900">現在のパスワード</Label>
+              <Label htmlFor="currentPassword" className="text-zinc-300">現在のパスワード</Label>
               <Input
                 id="currentPassword"
                 name="currentPassword"
                 type="password"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 autoComplete="current-password"
               />
             </div>
             
             <div className="space-y-1">
-              <Label htmlFor="newPassword" className="text-sky-900">新しいパスワード</Label>
+              <Label htmlFor="newPassword" className="text-zinc-300">新しいパスワード</Label>
               <Input
                 id="newPassword"
                 name="newPassword"
                 type="password"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 minLength={8}
                 autoComplete="new-password"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-zinc-500 mt-1">
                 ※ 8文字以上の半角英数字を入力してください
               </p>
             </div>
             
             <div className="space-y-1">
-              <Label htmlFor="confirmPassword" className="text-sky-900">新しいパスワード（確認）</Label>
+              <Label htmlFor="confirmPassword" className="text-zinc-300">新しいパスワード（確認）</Label>
               <Input
                 id="confirmPassword"
                 name="confirmPassword"
                 type="password"
                 required
-                className="h-12"
+                className="h-12 bg-zinc-800 border-zinc-700 text-white"
                 disabled={formLoading}
                 minLength={8}
                 autoComplete="new-password"
@@ -218,13 +218,13 @@ export default function ChangePassword() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-500 bg-red-50 p-2 rounded">
+              <p className="text-sm text-red-500 bg-red-900/20 p-2 rounded">
                 {error}
               </p>
             )}
             
             {success && (
-              <p className="text-sm text-green-500 bg-green-50 p-2 rounded">
+              <p className="text-sm text-green-500 bg-zinc-900/20 p-2 rounded">
                 {success}
               </p>
             )}
@@ -232,7 +232,7 @@ export default function ChangePassword() {
             <div className="space-y-2 pt-4">
               <Button 
                 type="submit"
-                className="w-full h-12 text-lg bg-sky-600 hover:bg-sky-700"
+                className="w-full h-12 text-lg bg-[#FE2C55] hover:bg-[#FE2C55]/90 text-white"
                 disabled={formLoading}
               >
                 {formLoading ? '変更中...' : 'パスワードを変更'}
@@ -240,7 +240,7 @@ export default function ChangePassword() {
               <Button 
                 type="button" 
                 variant="outline" 
-                className="w-full h-12 text-lg text-sky-600 border-sky-600 hover:bg-sky-50"
+                className="w-full h-12 text-lg text-white border-zinc-600 hover:bg-zinc-800"
                 onClick={() => router.push('/dashboard')}
                 disabled={formLoading}
               >
