@@ -15,10 +15,11 @@ import {
   Settings,
   Eye,
   LogOut,
-  FileText
+  FileText,
+  Users
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users';
 
 type SidebarItemProps = {
   href: string;
@@ -84,6 +85,14 @@ export function Sidebar() {
           icon="Eye"
           label="ウォッチリスト"
           active={pathname === '/watchlist'}
+        />
+        <SidebarItem
+          href="#"
+          icon="Users"
+          label="インフルエンサートレンド"
+          active={false}
+          disabled={true}
+          comingSoon={true}
         />
         <SidebarItem
           href="#"
@@ -166,6 +175,8 @@ function renderIcon(iconName: IconName) {
       return <LogOut size={20} />;
     case 'FileText':
       return <FileText size={20} />;
+    case 'Users':
+      return <Users size={20} />;
     default:
       return null;
   }
