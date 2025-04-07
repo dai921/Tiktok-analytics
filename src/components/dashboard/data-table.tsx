@@ -589,14 +589,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 .filter(Boolean);
                 
               return (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 justify-center items-center">
                   {genres.map((genre, idx) => (
                     <GenreBadge key={idx} genre={genre} />
                   ))}
                 </div>
               );
             }
-            return <GenreBadge genre={category} />;
+            return <div className="flex justify-center items-center"><GenreBadge genre={category} /></div>;
           }
           
           // カテゴリが配列の場合（複数カテゴリに対応）
@@ -621,7 +621,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             });
             
             return (
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 justify-center items-center">
                 {allGenreBadges}
               </div>
             );
@@ -882,7 +882,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-red-500 peer-focus:ring-2 peer-focus:ring-red-300 transition-colors">
               <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
             </div>
-            <span className="ml-2 text-sm font-medium text-red-600">#PRを含む動画のみ</span>
+            <span className="ml-2 text-sm font-medium text-red-600">#PR動画のみ</span>
           </label>
         </div>
         

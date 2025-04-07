@@ -222,7 +222,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <main className="max-w-screen-2xl mx-auto px-4 py-4">
+      <main className="max-w-screen-2xl">
         <DataTable 
           ref={tableRef}
           initialData={data} 
