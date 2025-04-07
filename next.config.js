@@ -1,7 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ['lh3.googleusercontent.com'],  // Google Driveのドメインを許可
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+        port: '',
+        pathname: '/**'
+      },
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+        pathname: '/**',  // すべてのパスを許可
+      }
+    ]
   },
   // バックエンドAPIへのリダイレクト設定
   async rewrites() {
