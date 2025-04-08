@@ -182,7 +182,7 @@ export const FilterPopup = ({
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
-  const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'accounts'>('date')
+  const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'text'>('date')
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
@@ -200,8 +200,10 @@ export const FilterPopup = ({
     categories: [
       { id: 'category', label: '動画ジャンル', type: 'multiselect', options: categories }
     ],
-    accounts: [
-      { id: 'keywords', label: 'キーワード検索', type: 'text' }
+    text: [
+      { id: 'accountName', label: 'アカウント検索', type: 'text' },
+      { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' },
+      { id: 'audioTitle', label: 'BGM検索', type: 'text' }
     ]
   }
 
@@ -289,25 +291,15 @@ export const FilterPopup = ({
         ...prev,
         [fieldId]: apiCompatibleValue
       }));
-    } else {
-      // ソート操作の場合は数値変換をスキップ
-      if (value.type === 'sort') {
-        setTempFilters(prev => ({
-          ...prev,
-          [fieldId]: value
-        }));
-        return; // ここで終了
-      }
-      // 日付以外のフィルターはそのまま設定
+    } else if (value.type === 'sort') {
+      // ソート操作の場合
       setTempFilters(prev => ({
         ...prev,
         [fieldId]: value
       }));
-    }
-
-    if (fieldId === 'views' || fieldId === 'likes' || fieldId === 'comments' || fieldId === 'viewsIncrease') {
-      // 数値フィールドの場合は整数値に変換して2桁ずらしてから戻す（精度問題を回避）
-      const numValue = parseInt(value.value, 10);
+    } else if (value.type === 'number') {
+      // 数値フィールドの場合は数値変換を行う
+      const numValue = typeof value.value === 'string' ? parseInt(value.value, 10) : value.value;
       console.log(`数値変換前: ${value.value}, 変換後: ${numValue}`);
       
       setTempFilters(prev => ({
@@ -316,6 +308,12 @@ export const FilterPopup = ({
           ...value,
           value: numValue // 整数値に変換
         }
+      }));
+    } else {
+      // テキストや他のタイプの場合はそのまま設定
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: value
       }));
     }
   }
@@ -394,36 +392,6 @@ export const FilterPopup = ({
       delete updatedFilters['category'];
     }
     
-    // キーワード検索の処理（アカウント名、BGM、キャプションの3つに適用）
-    if (updatedFilters['keywords'] && updatedFilters['keywords'].value) {
-      const keywordValue = updatedFilters['keywords'].value;
-      
-      // キーワード検索をアカウント名、BGM、キャプションに適用
-      updatedFilters['accountName'] = {
-        field: 'accountName',
-        type: 'text',
-        comparison: 'contains',
-        value: keywordValue
-      };
-      
-      updatedFilters['audioTitle'] = {
-        field: 'audioTitle',
-        type: 'text',
-        comparison: 'contains',
-        value: keywordValue
-      };
-      
-      updatedFilters['description'] = {
-        field: 'description',
-        type: 'text',
-        comparison: 'contains',
-        value: keywordValue
-      };
-      
-      // キーワードフィルター自体は削除（代わりに個別フィールドフィルターを使用）
-      delete updatedFilters['keywords'];
-    }
-    
     console.log('FilterPopup - フィルター適用後:', {
       updatedFilters,
       createdAtFilter: updatedFilters['createdAt'],
@@ -466,7 +434,9 @@ export const FilterPopup = ({
     return (
       <div key={field.id} className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700">{field.label}</label>
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
           {isActive && (
             <button 
               onClick={() => handleClearFilter(field.id)}
@@ -582,7 +552,9 @@ export const FilterPopup = ({
       <div key={field.id} className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">{field.label}</label>
+            <label className="text-sm font-medium text-gray-700">
+              {field.label || ''}
+            </label>
             
             {/* ソート機能が必要な場合 */}
             {field.supportSort && (
@@ -701,25 +673,28 @@ export const FilterPopup = ({
   const renderTextFilter = (field: FilterField) => {
     const filterValue = tempFilters[field.id]
     const isActive = Boolean(filterValue)
+    
+    // field.labelの値をReactNodeから文字列に安全に変換する関数
+    const getLabelText = (label: React.ReactNode): string => {
+      if (typeof label === 'string') {
+        return label;
+      } else if (React.isValidElement(label)) {
+        // Reactエレメントの場合はレンダリング結果の取得が難しいので、固定値を返す
+        return field.id === 'accountName' ? 'アカウント' :
+               field.id === 'hashtags' ? 'ハッシュタグ' :
+               field.id === 'audioTitle' ? 'BGM' : '';
+      }
+      return '';
+    };
+    
+    const placeholderText = `${getLabelText(field.label).replace('検索', '')}を入力`;
 
     return (
       <div key={field.id} className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center">
-            <label className="text-sm font-medium text-gray-700">{field.label}</label>
-            
-            {/* キーワード検索の場合、ヘルプアイコンを表示 */}
-            {field.id === 'keywords' && (
-              <div className="relative ml-1 group">
-                <button className="text-gray-400 hover:text-gray-600">
-                  <HelpIcon size={14} />
-                </button>
-                <div className="absolute left-0 mt-1 w-60 px-2 py-1 bg-gray-800 rounded-lg text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                  アカウント名、BGM、キャプションから検索
-                </div>
-              </div>
-            )}
-          </div>
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
           
           {isActive && (
             <button 
@@ -735,7 +710,7 @@ export const FilterPopup = ({
           type="text"
           className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
           value={filterValue?.value || ''}
-          placeholder={`${field.label}を入力`}
+          placeholder={placeholderText}
           onChange={(e) => handleFilterChange(field.id, { 
             field: field.id,
             type: 'text', 
@@ -761,7 +736,9 @@ export const FilterPopup = ({
     return (
       <div key={field.id} className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700">{field.label}</label>
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
           {isActive && (
             <button 
               onClick={() => {
@@ -884,11 +861,11 @@ export const FilterPopup = ({
         </button>
         <button
           className={`px-3 py-2 text-xs font-medium ${
-            activeTab === 'accounts' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
           }`}
-          onClick={() => setActiveTab('accounts')}
+          onClick={() => setActiveTab('text')}
         >
-          キーワード
+          アカウント、BGM等
         </button>
       </div>
 
