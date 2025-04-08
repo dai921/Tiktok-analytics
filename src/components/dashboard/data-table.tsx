@@ -907,13 +907,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </div>
             )}
             <div className="overflow-x-auto divide-y divide-gray-200">
-              <table className="w-full text-sm leading-relaxed">
+              <table className="w-full text-sm leading-relaxed table-fixed">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     {columns.map((column) => (
                       <th 
                         key={column.accessorKey} 
-                        className="px-3 py-0.25 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
+                        className="px-3 py-0.25 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0 overflow-hidden"
                         style={{ 
                           minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
                                    column.accessorKey === 'createdAt' ? '50px' :
@@ -947,12 +947,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                           }`}
                           style={{ 
                             minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
-                                     column.accessorKey === 'createdAt' ? '70px' :
+                                     column.accessorKey === 'createdAt' ? '50px' :
                                      column.accessorKey === 'views' ? '65px' :
                                      column.accessorKey === 'viewsIncrease' ? '65px' :
                                      column.accessorKey === 'accountName' ? '100px' :
                                      column.accessorKey === 'hashtags' ? '50px' :
-                                     column.accessorKey === 'category' ? '85px' :
+                                     column.accessorKey === 'category' ? '100px' :
                                      column.accessorKey === 'description' ? '120px' : '70px',
                             maxHeight: '100px',
                             overflow: 'hidden'
