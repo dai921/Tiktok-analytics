@@ -299,14 +299,14 @@ export const FilterPopup = ({
       }));
     } else if (value.type === 'number') {
       // 数値フィールドの場合は数値変換を行う
-      const numValue = typeof value.value === 'string' ? parseInt(value.value, 10) : value.value;
+      const numValue = typeof value.value === 'string' ? Number(value.value) : value.value;
       console.log(`数値変換前: ${value.value}, 変換後: ${numValue}`);
       
       setTempFilters(prev => ({
         ...prev,
         [fieldId]: {
           ...value,
-          value: numValue // 整数値に変換
+          value: numValue // Number()で変換
         }
       }));
     } else {
@@ -659,7 +659,7 @@ export const FilterPopup = ({
                   field: field.id,
                   type: 'number', 
                   comparison: comparison, 
-                  value: Number(e.target.value)  // 文字列から数値への明示的な変換
+                  value: Number(e.target.value)  // Number()で変換
                 });
               }}
             />
