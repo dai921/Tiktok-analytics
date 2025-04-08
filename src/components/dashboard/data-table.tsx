@@ -12,6 +12,9 @@ import { getFilterOptions } from '@/lib/api'
 import { GenreBadge, HashtagBadge } from '@/components/ui/badge'
 import { TIKTOK_COLORS } from '@/lib/constants'
 
+// フィルターポップアップコンポーネントのインポートを追加
+import { FilterPopup } from '@/components/ui/filter-popup'
+
 interface DataTableProps {
   initialData: VideoData[]
   onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void
@@ -196,6 +199,22 @@ interface CategoryItem {
   category: string;
 }
 
+// フィルターアイコンを追加
+const FilterIcon = ({ size = 20 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+  </svg>
+);
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange, totalCount }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
@@ -209,6 +228,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false)
     const [sortField, setSortField] = useState<string | null>(null)
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+    
+    // フィルターポップアップの状態を管理
+    const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false)
+    const filterButtonRef = useRef<HTMLButtonElement>(null)
     
     // API関連の設定
     const API_BASE_URL = 'http://localhost:8080';
@@ -458,10 +481,49 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           setSortField(null);
           setSortDirection(null);
         }
-        // ... 既存のクリア処理 ...
+        
+        // このフィールドのフィルターを削除
+        const newFilters = { ...columnFilters };
+        delete newFilters[field];
+        setColumnFilters(newFilters);
+        
+        // 現在のフィルターからも削除
+        const newCurrentFilters = { ...currentFilters };
+        delete newCurrentFilters[field];
+        setCurrentFilters(newCurrentFilters);
+        
+        // フィルターが全て空になったかをチェック
+        const hasFilters = Object.keys(newFilters).length > 0;
+        setHasActiveFilters(hasFilters);
+        
+        // 親コンポーネントに通知
+        onFilterChange(hasFilters);
+        return;
       }
       
-      // ... 既存のフィルター処理 ...
+      // 新しいフィルターを適用
+      const newFilters = shouldMerge 
+        ? { ...columnFilters, [field]: filterValue } 
+        : { [field]: filterValue };
+      
+      setColumnFilters(newFilters);
+      
+      // 現在のフィルターに追加
+      const updatedFilter = {
+        ...currentFilters,
+        [field]: {
+          ...filterValue
+        }
+      };
+      setCurrentFilters(updatedFilter);
+      
+      // フィルターがアクティブになったことを通知
+      setHasActiveFilters(true);
+      
+      // 親コンポーネントに通知（フィルター条件を含める）
+      onFilterChange(true, {
+        ...filterValue
+      });
     };
 
     const handlePageChange = (page: number) => {
@@ -518,6 +580,40 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           return [];
       }
     }, [categoryList, accountList, hashtagList, audioTitleList, isLoadingFilterOptions, currentFilters]);
+
+    // ポップアップフィルターからの変更を処理する関数
+    const handleBulkFilterChange = (filters: Record<string, FilterValue>) => {
+      console.log('一括フィルター変更:', filters);
+      
+      // 現在のフィルター状態をリセット
+      const newColumnFilters: Record<string, FilterValue> = {};
+      const newCurrentFilters: Record<string, FilterQuery> = {};
+      
+      // 各フィルターを確認して適用
+      Object.entries(filters).forEach(([field, value]) => {
+        if (value && Object.keys(value).length > 0) {
+          // フィルタ値が実際に存在する場合のみ追加
+          newColumnFilters[field] = value;
+          newCurrentFilters[field] = {
+            ...value
+          };
+        }
+      });
+      
+      // 状態を更新
+      setColumnFilters(newColumnFilters);
+      setCurrentFilters(newCurrentFilters);
+      
+      // フィルターがアクティブかどうかを設定
+      const hasFilters = Object.keys(newColumnFilters).length > 0;
+      setHasActiveFilters(hasFilters);
+      
+      // 親コンポーネントに通知
+      onFilterChange(hasFilters, Object.values(newCurrentFilters)[0]);
+      
+      // フィルターポップアップを閉じる
+      setIsFilterPopupOpen(false);
+    };
 
     const columns: Column[] = [
       {
@@ -885,6 +981,21 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         
         <div className="flex items-center justify-between p-2">
           <div className="flex items-center space-x-2">
+            {/* フィルターボタンを追加 */}
+            <button
+              ref={filterButtonRef}
+              onClick={() => setIsFilterPopupOpen(true)}
+              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              <FilterIcon size={16} />
+              <span className="ml-1">フィルター</span>
+              {hasActiveFilters && (
+                <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {Object.keys(columnFilters).length}
+                </span>
+              )}
+            </button>
+            
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -907,6 +1018,20 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             pageSizeOptions={[10, 20, 50]}
           />
         </div>
+        
+        {/* フィルターポップアップを追加 */}
+        <FilterPopup 
+          isOpen={isFilterPopupOpen}
+          onClose={() => setIsFilterPopupOpen(false)}
+          anchorRef={filterButtonRef}
+          onFilterChange={handleBulkFilterChange}
+          currentFilters={columnFilters}
+          categories={categoryList}
+          accounts={accountList}
+          hashtags={hashtagList}
+          isLoading={isLoadingFilterOptions}
+          onClearAll={handleClearAllFilters}
+        />
         
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
