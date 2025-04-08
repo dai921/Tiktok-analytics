@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect';
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect' | 'multiple';
 
 // 比較演算子の型
 export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greater' | 'less' | 'contains';
@@ -9,7 +9,7 @@ export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greater' | 'les
 export interface FilterQuery {
   field: string
   type: FilterType
-  value: string | number
+  value: string | number | any[] // value型を拡張して配列も許可
   isHashtag?: boolean
   clear?: boolean
   sortDirection?: 'asc' | 'desc' | null
@@ -17,12 +17,14 @@ export interface FilterQuery {
   isPrimarySort?: boolean  // このソートが主ソートかどうかを示すフラグ
   sortField?: string  // ソート対象のフィールド名（明示的に指定）
   comparison?: ComparisonOperator  // 比較演算子を追加
+  filters?: Record<string, FilterValue>  // 複数フィルター用
 }
 
 export interface FilterValue extends FilterQuery {
   clear?: boolean
   isHashtag?: boolean
   comparison?: ComparisonOperator  // 比較演算子を追加
+  filterId?: string  // フィルター識別用のID（オプション）
 }
 
 // データ型

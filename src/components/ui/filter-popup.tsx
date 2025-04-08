@@ -470,8 +470,23 @@ export const FilterPopup = ({
       }
     });
     
-    // フィルターを適用
-    onFilterChange(updatedFilters);
+    // フィルターが複数あっても確実に処理されるよう、各フィルターに個別のIDを付与する
+    const wrappedFilters: Record<string, FilterValue> = {};
+    
+    // すべてのフィルターに明示的なIDを付ける
+    Object.entries(updatedFilters).forEach(([key, filter]) => {
+      // 既存のフィルターをそのまま使用するが、IDを明示的に設定
+      wrappedFilters[key] = {
+        ...filter,
+        field: key, // fieldキーを明示的に設定（既に設定されている場合は上書き）
+        filterId: key // 追加の識別子
+      };
+    });
+    
+    console.log('親コンポーネントに送信するフィルター（改良版）:', wrappedFilters);
+    
+    // 改良したフィルターを親コンポーネントに渡す
+    onFilterChange(wrappedFilters);
     onClose(); // フィルター適用後にポップアップを閉じる
   }
 

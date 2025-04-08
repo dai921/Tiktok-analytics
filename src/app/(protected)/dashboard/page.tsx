@@ -240,6 +240,66 @@ const Dashboard = () => {
     setCurrentPage(1);
   };
 
+  // 複数フィルターを処理する関数を追加
+  const handleMultipleFilters = (filters: Record<string, FilterValue>) => {
+    console.log('Dashboard - 複数フィルター処理:', filters);
+    
+    // すべてのフィルターをクリアするリセット信号をチェック
+    if (filters.reset && filters.reset.type === 'clear') {
+      console.log('Dashboard - すべてのフィルターをクリア（複数フィルター処理）');
+      setFilters({});
+      setCurrentPage(1);
+      fetchData(1, {});
+      return;
+    }
+    
+    // 新しいフィルター状態を構築
+    const newFilters: Record<string, FilterQuery> = {};
+    
+    // 各フィルターを処理
+    Object.entries(filters).forEach(([key, filterValue]) => {
+      // フィールド名を英語に逆変換
+      let field = Object.entries(COLUMN_MAP).find(([_, value]) => value === filterValue.field)?.[0] || filterValue.field;
+      
+      // ハッシュタグの場合は特別に処理
+      if (filterValue.field === 'ハッシュタグ') {
+        field = 'hashtags';
+      }
+      
+      console.log('Dashboard - フィールド変換（複数）:', {
+        key,
+        originalField: filterValue.field,
+        convertedField: field,
+        type: filterValue.type,
+        value: filterValue.value
+      });
+      
+      const filterQuery: FilterQuery = {
+        field: field,
+        type: filterValue.type,
+        value: filterValue.value,
+        ...(filterValue.isHashtag && { isHashtag: true }),
+        ...(filterValue.timestamp !== undefined && { timestamp: filterValue.timestamp }),
+        ...(filterValue.isPrimarySort !== undefined && { isPrimarySort: filterValue.isPrimarySort }),
+        ...(filterValue.sortField !== undefined && { sortField: filterValue.sortField }),
+        ...(filterValue.comparison !== undefined && { comparison: filterValue.comparison })
+      };
+      
+      // ソート処理の場合は特別なキーを使用
+      if (filterValue.type === 'sort') {
+        newFilters[`${field}_sort`] = filterQuery;
+      } else {
+        newFilters[field] = filterQuery;
+      }
+    });
+    
+    console.log('Dashboard - 構築された複数フィルター:', newFilters);
+    
+    // フィルター状態を更新
+    setFilters(newFilters);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-screen-2xl">
@@ -248,7 +308,13 @@ const Dashboard = () => {
           initialData={data} 
           onFilterChange={(hasFilters, filter) => {
             if (filter) {
-              handleFilter(filter)
+              // 複数フィルターの場合の処理を追加
+              if (filter.type === 'multiple' && filter.field === 'multipleFilters' && filter.filters) {
+                console.log('Dashboard - 複数フィルター受信:', filter.filters);
+                handleMultipleFilters(filter.filters);
+              } else {
+                handleFilter(filter);
+              }
             }
           }}
           onPageChange={(page) => setCurrentPage(page)}

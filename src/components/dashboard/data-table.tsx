@@ -509,7 +509,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         // 親コンポーネントに通知 - 明示的なクリアフラグを含む
         if (hasFilters) {
           // まだフィルターが残っている場合
-          onFilterChange(hasFilters, hasFilters ? Object.values(newCurrentFilters)[0] : undefined);
+          // 複数フィルターを配列として渡す
+          onFilterChange(hasFilters, { 
+            type: 'multiple',
+            field: 'multipleFilters',
+            value: Object.values(newCurrentFilters),
+            filters: newCurrentFilters  // 全フィルターをオブジェクトとして渡す
+          });
         } else {
           // 全てのフィルターが空になった場合、明示的にリセット信号を送る
           onFilterChange(false, { field: 'reset', type: 'clear', value: '', clear: true });
@@ -694,7 +700,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       
       // 親コンポーネントに通知 - フィルターが全て空になった場合は明示的にfalseを渡す
       if (hasFilters) {
-        onFilterChange(true, Object.values(newCurrentFilters)[0]);
+        // 複数フィルターを配列として渡す
+        onFilterChange(true, { 
+          type: 'multiple',
+          field: 'multipleFilters',
+          value: Object.values(newCurrentFilters),
+          filters: newCurrentFilters  // 全フィルターをオブジェクトとして渡す
+        });
       } else {
         // 明示的にフィルターがないことを通知
         onFilterChange(false);
