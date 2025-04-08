@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Buzmiru",
+  title: "Buzzmiru",
   icons: {
     icon: "/images/icon.png",
     apple: "/images/icon.png",

@@ -865,24 +865,26 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="flex items-center space-x-2 p-2">
+        <div className="flex items-center justify-between p-2">
+          <div className="flex items-center space-x-2">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPrOnly}
+                onChange={(e) => onPrOnlyChange(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-red-500 peer-focus:ring-2 peer-focus:ring-red-300 transition-colors">
+                <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
+              </div>
+              <span className="ml-2 text-sm font-medium text-red-600">#PR動画のみ</span>
+            </label>
+          </div>
           <Pagination 
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={handlePageChange}
           />
-          <label className="flex items-center cursor-pointer ml-4">
-            <input
-              type="checkbox"
-              checked={isPrOnly}
-              onChange={(e) => onPrOnlyChange(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-red-500 peer-focus:ring-2 peer-focus:ring-red-300 transition-colors">
-              <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
-            </div>
-            <span className="ml-2 text-sm font-medium text-red-600">#PR動画のみ</span>
-          </label>
         </div>
         
         <div className="relative">
@@ -983,7 +985,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           )}
         </div>
         
-        <div className="flex items-center p-2">
+        <div className="flex items-center justify-end p-2">
           <Pagination 
             currentPage={currentPage}
             totalPages={totalPages}
