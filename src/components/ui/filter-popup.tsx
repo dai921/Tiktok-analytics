@@ -296,6 +296,20 @@ export const FilterPopup = ({
         [fieldId]: value
       }));
     }
+
+    if (fieldId === 'views' || fieldId === 'likes' || fieldId === 'comments' || fieldId === 'viewsIncrease') {
+      // 数値フィールドの場合は整数値に変換して2桁ずらしてから戻す（精度問題を回避）
+      const numValue = parseInt(value.value, 10);
+      console.log(`数値変換前: ${value.value}, 変換後: ${numValue}`);
+      
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: {
+          ...value,
+          value: numValue // 整数値に変換
+        }
+      }));
+    }
   }
 
   // フィルタークリアハンドラー
@@ -465,7 +479,7 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="before"
                 checked={isActive && filterValue.comparison === 'before'}
-                onChange={() => handleFilterChange(field.id, { 
+                onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'date' as FilterType, 
                   comparison: 'before' as ComparisonOperator, 
@@ -482,7 +496,7 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="date"
                 checked={isActive && filterValue.comparison === 'date'}
-                onChange={() => handleFilterChange(field.id, { 
+                onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'date' as FilterType, 
                   comparison: 'date' as ComparisonOperator, 
@@ -499,7 +513,7 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="after"
                 checked={isActive && filterValue.comparison === 'after'}
-                onChange={() => handleFilterChange(field.id, { 
+                onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'date' as FilterType, 
                   comparison: 'after' as ComparisonOperator, 
@@ -607,7 +621,7 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="greater"
                 checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'greater'}
-                onChange={() => handleFilterChange(field.id, { 
+                onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'number', 
                   comparison: 'greater', 
@@ -624,7 +638,7 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="equal"
                 checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'equal'}
-                onChange={() => handleFilterChange(field.id, { 
+                onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'number', 
                   comparison: 'equal', 
@@ -641,7 +655,7 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="less"
                 checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'less'}
-                onChange={() => handleFilterChange(field.id, { 
+                onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'number', 
                   comparison: 'less', 
@@ -665,7 +679,7 @@ export const FilterPopup = ({
                   field: field.id,
                   type: 'number', 
                   comparison: comparison, 
-                  value: e.target.value 
+                  value: Number(e.target.value)  // 文字列から数値への明示的な変換
                 });
               }}
             />
