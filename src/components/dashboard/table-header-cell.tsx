@@ -74,7 +74,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // フィルターの状態をリセットする関数を更新
     const resetFilterState = useCallback(() => {
-      console.log(`TableHeaderCell(${title}) - resetFilterState called`);
       setFilterValue('')
       setFilterType('equal')
       setSortDirection(null)
@@ -84,7 +83,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // isActiveの変更を監視
     useEffect(() => {
-      console.log(`TableHeaderCell(${title}) - isActive changed:`, { isActive });
       if (!isActive) {
         // isActiveがfalseになったときだけ内部状態をリセット
         // 親への通知は行わない（無限ループ防止）
@@ -209,14 +207,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       // 現在のミリ秒タイムスタンプを取得
       const currentTimestamp = Date.now();
 
-      console.log('TableHeaderCell - ソート実行:', {
-        title,
-        direction, 
-        internalFieldMapping: title === '投稿日' ? 'createdAt' : undefined,
-        timestamp: currentTimestamp,
-        currentTime: new Date(currentTimestamp).toISOString()
-      });
-
       // 特定のフィールドは直接内部フィールド名を使用
       let fieldName = title;
       if (title === '投稿日') {
@@ -338,13 +328,17 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // 外部からアクセスできるようにする
     useImperativeHandle(ref, () => ({
       clearFilter: () => {
-        // ローカル状態のみリセット（親への通知は行わない）
-        setFilterValue('')
-        setFilterType('equal')
-        setSortDirection(null)
-        console.log(`TableHeaderCell(${title}) - 外部からのclearFilter呼び出し`);
+        resetFilterState();
+        if (onFilter) {
+          onFilter({
+            field: title,
+            type: 'clear',
+            value: '',
+            clear: true
+          });
+        }
       }
-    }), [title])
+    }), [resetFilterState, onFilter, title]);
 
     const renderFilterInput = () => {
       switch (type) {
@@ -427,38 +421,18 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // categoryDataが変更されたときのuseEffect
     useEffect(() => {
-      console.log(`TableHeaderCell(${title}) - categoryDataの変化を検知:`, {
-        receivedLength: categoryData?.length || 0,
-        sample: categoryData?.slice(0, 3) || [],
-        isEmpty: !categoryData || categoryData.length === 0
-      });
-      
       if (categoryData && categoryData.length > 0) {
-        console.log(`TableHeaderCell(${title}) - 有効なカテゴリデータを設定します`);
         setCategories(categoryData);
-        // フィルタリングされた値も更新
-        if (filterValue === '') {
-          setFilteredCategories(categoryData);
-        } else {
-          const filtered = categoryData.filter(category => 
-            category.toLowerCase().includes(filterValue.toLowerCase())
-          );
-          setFilteredCategories(filtered);
-        }
-      } else {
-        console.log(`TableHeaderCell(${title}) - カテゴリデータが空のため設定をスキップします`);
+        setFilteredCategories(categoryData);
       }
-    }, [categoryData, title, filterValue]);
+    }, [categoryData, title]);
 
     // フィルターポップアップが開かれたときのログ
     const handleToggleFilter = () => {
-      console.log(`TableHeaderCell(${title}) - フィルターポップアップ開閉:`, {
-        現在の状態: isFilterOpen,
-        新しい状態: !isFilterOpen,
-        利用可能カテゴリ数: filteredCategories.length,
-        カテゴリサンプル: filteredCategories.slice(0, 3)
-      });
       setIsFilterOpen(!isFilterOpen);
+      if (!isFilterOpen) {
+        calculatePopupPosition();
+      }
     };
 
     // カテゴリを選択する処理

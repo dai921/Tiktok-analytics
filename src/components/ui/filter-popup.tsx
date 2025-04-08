@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect, RefObject } from 'react'
-import type { FilterValue } from '@/types/dashboard'
+import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashboard'
 import { TIKTOK_COLORS, GENRE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
 
 interface FilterPopupProps {
@@ -18,7 +18,7 @@ interface FilterPopupProps {
 }
 
 // フィルターの型定義
-type FilterType = 'date' | 'number' | 'text' | 'category' | 'sort' | 'multiselect'
+// type FilterType = 'date' | 'number' | 'text' | 'category' | 'sort' | 'multiselect'
 
 // フィルター項目の定義
 interface FilterField {
@@ -201,7 +201,7 @@ export const FilterPopup = ({
       { id: 'category', label: '動画ジャンル', type: 'multiselect', options: categories }
     ],
     accounts: [
-      { id: 'hashtags', label: 'キーワード検索', type: 'text' }
+      { id: 'keywords', label: 'キーワード検索', type: 'text' }
     ]
   }
 
@@ -265,10 +265,37 @@ export const FilterPopup = ({
 
   // フィルター変更ハンドラー
   const handleFilterChange = (fieldId: string, value: FilterValue) => {
-    setTempFilters(prev => ({
-      ...prev,
-      [fieldId]: value
-    }))
+    console.log('FilterPopup - フィルター変更:', {
+      fieldId,
+      value,
+      isDateFilter: fieldId === 'createdAt',
+      comparison: value.comparison,
+      type: value.type
+    });
+    
+    // 日付フィルターの場合、type='date'になるよう確保
+    if (fieldId === 'createdAt' && value.type === 'date') {
+      // 比較演算子を変換せず、そのまま使用
+      const apiCompatibleValue = {
+        ...value,
+        comparison: value.comparison || 'date' as ComparisonOperator
+      };
+      
+      console.log('FilterPopup - 日付フィルター:', {
+        comparison: apiCompatibleValue.comparison
+      });
+      
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: apiCompatibleValue
+      }));
+    } else {
+      // 日付以外のフィルターはそのまま設定
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: value
+      }));
+    }
   }
 
   // フィルタークリアハンドラー
@@ -291,20 +318,104 @@ export const FilterPopup = ({
 
   // フィルターを適用
   const handleApplyFilters = () => {
+    // 一時フィルターのコピーを作成
+    const updatedFilters = { ...tempFilters };
+    
+    console.log('FilterPopup - フィルター適用前:', {
+      tempFilters,
+      createdAtFilter: tempFilters['createdAt'],
+      hasCreatedAt: 'createdAt' in tempFilters
+    });
+    
+    // 日付フィルターの最終確認と修正
+    if (updatedFilters['createdAt']) {
+      const dateFilter = updatedFilters['createdAt'];
+      
+      // 比較演算子が設定されていない場合はデフォルト値を設定
+      if (!dateFilter.comparison) {
+        // デフォルトで'date'を使用（「等しい」の状態）
+        updatedFilters['createdAt'] = {
+          ...dateFilter,
+          type: 'date',  // typeは'date'で固定
+          comparison: 'date' as ComparisonOperator  // comparisonをComparisonOperator型で設定
+        };
+        
+        console.log('FilterPopup - 日付フィルターのデフォルト比較演算子を設定:', {
+          defaultComparison: 'date',
+          comparison: updatedFilters['createdAt'].comparison
+        });
+      } else {
+        // 比較演算子はすでに設定されているが、typeが上書きされないようにする
+        updatedFilters['createdAt'] = {
+          ...dateFilter,
+          type: 'date'  // typeは'date'で固定
+        };
+      }
+      
+      // 値が空の場合はフィルターを削除
+      if (!dateFilter.value) {
+        delete updatedFilters['createdAt'];
+        console.log('FilterPopup - 日付フィルターの値が空のため削除');
+      }
+    }
+    
     // カテゴリーの複数選択をフィルターに適用
     if (selectedCategories.length > 0) {
-      const updatedFilters = { ...tempFilters };
       updatedFilters['category'] = {
         field: 'category',
         type: 'text',
         comparison: 'contains',
-        value: selectedCategories.join(',') // 配列を文字列に変換
+        value: selectedCategories.length === 1 ? selectedCategories[0] : selectedCategories.join(',')
       };
-      setTempFilters(updatedFilters);
-      onFilterChange(updatedFilters);
-    } else {
-      onFilterChange(tempFilters);
+    } else if ('category' in updatedFilters) {
+      // カテゴリーが選択されていない場合、既存のカテゴリーフィルターを削除
+      delete updatedFilters['category'];
     }
+    
+    // キーワード検索の処理（アカウント名、BGM、キャプションの3つに適用）
+    if (updatedFilters['keywords'] && updatedFilters['keywords'].value) {
+      const keywordValue = updatedFilters['keywords'].value;
+      
+      // キーワード検索をアカウント名、BGM、キャプションに適用
+      updatedFilters['accountName'] = {
+        field: 'accountName',
+        type: 'text',
+        comparison: 'contains',
+        value: keywordValue
+      };
+      
+      updatedFilters['audioTitle'] = {
+        field: 'audioTitle',
+        type: 'text',
+        comparison: 'contains',
+        value: keywordValue
+      };
+      
+      updatedFilters['description'] = {
+        field: 'description',
+        type: 'text',
+        comparison: 'contains',
+        value: keywordValue
+      };
+      
+      // キーワードフィルター自体は削除（代わりに個別フィールドフィルターを使用）
+      delete updatedFilters['keywords'];
+    }
+    
+    console.log('FilterPopup - フィルター適用後:', {
+      updatedFilters,
+      createdAtFilter: updatedFilters['createdAt'],
+      hasCreatedAt: 'createdAt' in updatedFilters,
+      currentState: {
+        selectedTab: activeTab,
+        dateInput: tempFilters['createdAt']?.value || '未設定',
+        dateComparison: tempFilters['createdAt']?.comparison || '未設定'
+      }
+    });
+    
+    // フィルターを適用
+    onFilterChange(updatedFilters);
+    onClose(); // フィルター適用後にポップアップを閉じる
   }
 
   // カテゴリの選択状態管理
@@ -338,6 +449,7 @@ export const FilterPopup = ({
             <button 
               onClick={() => handleClearFilter(field.id)}
               className="text-gray-400 hover:text-gray-600"
+              title="フィルターをクリア"
             >
               <ClearIcon size={14} />
             </button>
@@ -355,8 +467,8 @@ export const FilterPopup = ({
                 checked={isActive && filterValue.comparison === 'before'}
                 onChange={() => handleFilterChange(field.id, { 
                   field: field.id,
-                  type: 'date', 
-                  comparison: 'before', 
+                  type: 'date' as FilterType, 
+                  comparison: 'before' as ComparisonOperator, 
                   value: filterValue?.value || '' 
                 })}
               />
@@ -368,16 +480,16 @@ export const FilterPopup = ({
                 type="radio"
                 className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
                 name={`${field.id}-comparison`}
-                value="after"
-                checked={isActive && filterValue.comparison === 'after'}
+                value="date"
+                checked={isActive && filterValue.comparison === 'date'}
                 onChange={() => handleFilterChange(field.id, { 
                   field: field.id,
-                  type: 'date', 
-                  comparison: 'after', 
+                  type: 'date' as FilterType, 
+                  comparison: 'date' as ComparisonOperator, 
                   value: filterValue?.value || '' 
                 })}
               />
-              <span className="ml-2 text-sm text-gray-700">以降</span>
+              <span className="ml-2 text-sm text-gray-700">等しい</span>
             </label>
             
             <label className="inline-flex items-center">
@@ -385,16 +497,16 @@ export const FilterPopup = ({
                 type="radio"
                 className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
                 name={`${field.id}-comparison`}
-                value="equal"
-                checked={isActive && filterValue.comparison === 'equal'}
+                value="after"
+                checked={isActive && filterValue.comparison === 'after'}
                 onChange={() => handleFilterChange(field.id, { 
                   field: field.id,
-                  type: 'date', 
-                  comparison: 'equal', 
+                  type: 'date' as FilterType, 
+                  comparison: 'after' as ComparisonOperator, 
                   value: filterValue?.value || '' 
                 })}
               />
-              <span className="ml-2 text-sm text-gray-700">等しい</span>
+              <span className="ml-2 text-sm text-gray-700">以降</span>
             </label>
           </div>
           
@@ -407,12 +519,29 @@ export const FilterPopup = ({
                 type="date"
                 className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full pl-10 sm:text-sm border-gray-300 border rounded-md shadow-sm"
                 value={filterValue?.value || ''}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date', 
-                  comparison: filterValue?.comparison || 'before', 
-                  value: e.target.value 
-                })}
+                onChange={(e) => {
+                  console.log('投稿日フィルター - 日付変更:', {
+                    入力値: e.target.value,
+                    前回の値: filterValue?.value || '',
+                    比較演算子: filterValue?.comparison || 'equal'
+                  });
+                  
+                  // 比較演算子が設定されていない場合はラジオボタンの選択状態に基づいて設定
+                  // デフォルトは「等しい」(equal)
+                  const comparison = filterValue?.comparison || 'equal';
+                  
+                  const newFilterValue = { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: comparison as ComparisonOperator, 
+                    value: e.target.value 
+                  };
+                  
+                  console.log('投稿日フィルター - 作成されるフィルター値:', newFilterValue);
+                  
+                  handleFilterChange(field.id, newFilterValue);
+                }}
+                required={isActive}
               />
             </div>
           </div>
@@ -438,13 +567,19 @@ export const FilterPopup = ({
               <div className="flex space-x-1">
                 <button
                   onClick={() => handleSortChange(field.id, 'asc')}
-                  className={`p-1 rounded ${sortFilterValue && sortFilterValue.value === 'asc' ? 'bg-[#FE2C55]/10 text-[#FE2C55]' : 'text-gray-400 hover:text-[#FE2C55]'}`}
+                  className={`p-1 rounded ${sortFilterValue && sortFilterValue.value === 'asc' 
+                    ? 'bg-[#FE2C55]/10 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
+                    : 'text-gray-400 hover:text-[#FE2C55] hover:bg-[#FE2C55]/5'}`}
+                  title="昇順で並べ替え"
                 >
                   <SortAscIcon size={16} />
                 </button>
                 <button
                   onClick={() => handleSortChange(field.id, 'desc')}
-                  className={`p-1 rounded ${sortFilterValue && sortFilterValue.value === 'desc' ? 'bg-[#FE2C55]/10 text-[#FE2C55]' : 'text-gray-400 hover:text-[#FE2C55]'}`}
+                  className={`p-1 rounded ${sortFilterValue && sortFilterValue.value === 'desc' 
+                    ? 'bg-[#FE2C55]/10 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
+                    : 'text-gray-400 hover:text-[#FE2C55] hover:bg-[#FE2C55]/5'}`}
+                  title="降順で並べ替え"
                 >
                   <SortDescIcon size={16} />
                 </button>
@@ -456,6 +591,7 @@ export const FilterPopup = ({
             <button 
               onClick={() => handleClearFilter(field.id)}
               className="text-gray-400 hover:text-gray-600"
+              title="フィルターをクリア"
             >
               <ClearIcon size={14} />
             </button>
@@ -469,12 +605,12 @@ export const FilterPopup = ({
                 type="radio"
                 className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
                 name={`${field.id}-comparison`}
-                value="greaterThan"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'greaterThan'}
+                value="greater"
+                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'greater'}
                 onChange={() => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'number', 
-                  comparison: 'greaterThan', 
+                  comparison: 'greater', 
                   value: filterValue?.value || '' 
                 })}
               />
@@ -503,12 +639,12 @@ export const FilterPopup = ({
                 type="radio"
                 className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
                 name={`${field.id}-comparison`}
-                value="lessThan"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'lessThan'}
+                value="less"
+                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'less'}
                 onChange={() => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'number', 
-                  comparison: 'lessThan', 
+                  comparison: 'less', 
                   value: filterValue?.value || '' 
                 })}
               />
@@ -522,12 +658,16 @@ export const FilterPopup = ({
               className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
               value={filterValue?.type === 'number' ? filterValue.value || '' : ''}
               placeholder="値を入力"
-              onChange={(e) => handleFilterChange(field.id, { 
-                field: field.id,
-                type: 'number', 
-                comparison: filterValue?.type === 'number' ? filterValue.comparison || 'greaterThan' : 'greaterThan', 
-                value: e.target.value 
-              })}
+              onChange={(e) => {
+                // comparisionが設定されていない場合はデフォルトで'greater'を使用
+                const comparison = filterValue?.type === 'number' ? filterValue.comparison || 'greater' : 'greater';
+                handleFilterChange(field.id, { 
+                  field: field.id,
+                  type: 'number', 
+                  comparison: comparison, 
+                  value: e.target.value 
+                });
+              }}
             />
           </div>
         </div>
@@ -547,13 +687,13 @@ export const FilterPopup = ({
             <label className="text-sm font-medium text-gray-700">{field.label}</label>
             
             {/* キーワード検索の場合、ヘルプアイコンを表示 */}
-            {field.id === 'hashtags' && (
+            {field.id === 'keywords' && (
               <div className="relative ml-1 group">
                 <button className="text-gray-400 hover:text-gray-600">
                   <HelpIcon size={14} />
                 </button>
                 <div className="absolute left-0 mt-1 w-60 px-2 py-1 bg-gray-800 rounded-lg text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                  アカウント名やハッシュタグなどに含まれるキーワードを検索
+                  アカウント名、BGM、キャプションから検索
                 </div>
               </div>
             )}

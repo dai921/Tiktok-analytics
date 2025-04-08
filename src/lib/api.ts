@@ -1,4 +1,4 @@
-import type { VideoData, PaginatedResponse, FilterQuery, FilterType } from '@/types/dashboard'
+import type { VideoData, PaginatedResponse, FilterQuery, FilterType, ComparisonOperator } from '@/types/dashboard'
 
 // 環境変数からAPI設定を取得
 const useBackendApi = process.env.NEXT_PUBLIC_USE_BACKEND_API === 'true';
@@ -640,37 +640,63 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           return;
         }
 
-        // 投稿日フィルターの特別な処理
-        if (key === 'createdAt' || key === '投稿日') {
-          console.log('API - 投稿日のフィルタリング処理');
+        // 日付フィルターの処理
+        else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
+          console.log('日付フィルター詳細:', {
+            key,
+            filter,
+            comparison: filter.comparison,
+            type: filter.type,
+            value: filter.value
+          });
           
-          // 日付フィルターのタイプに基づいて適切なパラメータを追加
-          if (filter.type === 'after' || filter.type === 'greater') {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'after');
-          } else if (filter.type === 'before' || filter.type === 'less') {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'before');
+          // 比較演算子を決定（優先順位: comparison > type > デフォルト）
+          let comparison: string;
+          
+          if (filter.comparison) {
+            // 明示的なcomparisonがある場合はそのまま使用（すでにbefore/date/after形式）
+            comparison = filter.comparison;
+            console.log('日付フィルター - 比較演算子を使用:', comparison);
+          } else if (['after', 'before', 'date'].includes(filter.type)) {
+            // 適切なtypeの場合はそれを使用
+            comparison = filter.type;
+            console.log('日付フィルター - typeからcomparison設定:', comparison);
           } else {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'date');
+            // デフォルト値を使用
+            comparison = 'date';
+            console.log('日付フィルター - デフォルトcomparison設定:', comparison);
           }
           
-          console.log('投稿日フィルター設定:', {
-            type: filter.type,
-            value: filter.value.toString(),
-            queryParams: Object.fromEntries(params.entries())
+          // フィルターを適用
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', comparison);
+          console.log('日付フィルター適用:', {
+            created_at: filter.value.toString(),
+            created_at_type: comparison
           });
-          return;
         }
 
         // 数値フィルターの処理
-        else if (['greater', 'less', 'equal'].includes(filter.type)) {
+        else if (['greater', 'less', 'equal'].includes(filter.type) || 
+                 ['greater', 'less', 'equal'].includes(filter.comparison || '')) {
           const dbField = mapFieldToApiField(key);
           params.append(dbField, String(filter.value));
           
+          // comparisonとtypeの両方を考慮
+          const comparison = filter.comparison || filter.type;
+          
           // フィルタタイプも追加
-          params.append(`${dbField}_type`, filter.type);
+          params.append(`${dbField}_type`, comparison);
+          
+          console.log(`数値フィルター(${key})の適用:`, {
+            field: key,
+            dbField: dbField,
+            value: filter.value,
+            type: filter.type,
+            comparison: filter.comparison,
+            appliedComparison: comparison,
+            params: `${dbField}_type=${comparison}`
+          });
         }
         // クリアフィルターの特別処理
         else if (filter.type === 'clear') {
@@ -709,7 +735,21 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
   }
 
   const url = `${apiUrl}/videos?${params}`;
-  console.log('APIリクエストURL:', url);
+  console.log('APIリクエストURL [詳細]:', {
+    完全なURL: url,
+    ベースURL: apiUrl,
+    パラメータ一覧: Object.fromEntries(params.entries()),
+    日付フィルタ: {
+      created_at: params.get('created_at'),
+      created_at_type: params.get('created_at_type')
+    },
+    ソート設定: {
+      sort_by: params.get('sort_by'),
+      sort_order: params.get('sort_order'),
+      sort_by_secondary: params.get('sort_by_secondary'),
+      sort_order_secondary: params.get('sort_order_secondary')
+    }
+  });
   console.log('APIリクエストパラメータ完全一覧:', Object.fromEntries(params.entries()));
   
   try {
@@ -817,7 +857,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           return b.timestamp - a.timestamp;
         });
       
-      // 抽出したソートフィルターをsortFilters配列に追加
+      // 抽出したフィルターをsortFilters配列に追加
       sortFilters.push(...extractedSortFilters);
       
       console.log('抽出されたソートフィルター:', JSON.stringify(
@@ -942,26 +982,27 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
         }
         // 日付フィルターの処理
         else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
-          console.log('日付フィルター検出:', {
-            key,
-            apiField,
-            type: filter.type,
-            value: filter.value
-          });
-
-          // 日付フィルターのタイプに基づいて適切なパラメータを追加
-          if (filter.type === 'date' || filter.type === 'equal') {
+          console.log('日付フィルター検出:', filter);
+          
+          // filter.comparisonとfilter.typeの両方を考慮
+          let comparison = filter.comparison || filter.type;
+          
+          // 比較演算子が 'date' の場合は 'equal' に変換
+          if (comparison === 'date') {
+            comparison = 'equal';
+            console.log('日付フィルター - 比較演算子を変換: date → equal');
+          }
+          
+          // 比較演算子が指定されている場合のみフィルターを適用
+          if (comparison) {
             params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'date');
-          } else if (filter.type === 'after' || filter.type === 'greater') {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'after');
-          } else if (filter.type === 'before' || filter.type === 'less') {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'before');
+            params.append('created_at_type', comparison);
+            console.log(`日付フィルター - 比較演算子: ${comparison}`);
           } else {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'date');
+            // 比較演算子が指定されていない場合は警告を出力
+            console.warn('日付フィルター - 比較演算子が指定されていません。フィルターをスキップします。', filter);
+            // フィルターをスキップ
+            return;
           }
         }
         // 数値フィルターの処理
@@ -1103,25 +1144,57 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         }
         // 日付フィルターの処理
         else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
-          // 日付フィルターのタイプに基づいて適切なパラメータを追加
-          if (filter.type === 'after' || filter.type === 'greater') {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'after');
-          } else if (filter.type === 'before' || filter.type === 'less') {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'before');
-          } else {
-            params.append('created_at', filter.value.toString());
-            params.append('created_at_type', 'date');
+          console.log('日付フィルター検出:', filter);
+          
+          // フィルターの詳細情報をログに出力
+          console.log('日付フィルター処理 - フィルター詳細:', {
+            type: filter.type,
+            comparison: filter.comparison,
+            value: filter.value,
+            hasComparison: !!filter.comparison
+          });
+
+          // comparison属性が明示的に設定されている場合は、それを優先的に使用
+          let comparison = filter.comparison;
+          
+          // comparisonがない場合のみfilter.typeが適切な値なら使用
+          if (!comparison && ['greater', 'less', 'equal'].includes(filter.type)) {
+            comparison = filter.type as ComparisonOperator;
+            console.log('日付フィルター - typeからcomparison推測:', filter.type);
           }
+          
+          // 比較演算子が未設定の場合、デフォルト値 'equal' を使用
+          if (!comparison) {
+            comparison = 'equal';
+            console.log('日付フィルター - 比較演算子をデフォルト値に設定: equal');
+          }
+          
+          // フィルターを適用
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', comparison);
+          console.log(`日付フィルター - 最終的な比較演算子: ${comparison}`);
         }
         // 数値フィルターの処理
-        else if (['greater', 'less', 'equal'].includes(filter.type)) {
+        else if (['greater', 'less', 'equal'].includes(filter.type) || 
+                 ['greater', 'less', 'equal'].includes(filter.comparison || '')) {
           const dbField = mapFieldToApiField(key);
           params.append(dbField, String(filter.value));
           
+          // comparisonとtypeの両方を考慮
+          const comparison = filter.comparison || filter.type;
+          
           // フィルタタイプも追加
-          params.append(`${dbField}_type`, filter.type);
+          params.append(`${dbField}_type`, comparison);
+          
+          console.log(`数値フィルター(${key})の適用:`, {
+            field: key,
+            dbField: dbField,
+            value: filter.value,
+            type: filter.type,
+            comparison: filter.comparison,
+            appliedComparison: comparison,
+            params: `${dbField}_type=${comparison}`
+          });
         }
         // クリアフィルターの特別処理
         else if (filter.type === 'clear') {

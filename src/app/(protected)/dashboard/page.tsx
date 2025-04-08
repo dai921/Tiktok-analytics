@@ -104,7 +104,8 @@ const Dashboard = () => {
       ...(newFilter.isHashtag && { isHashtag: true }),
       ...(newFilter.timestamp !== undefined && { timestamp: newFilter.timestamp }),
       ...(newFilter.isPrimarySort !== undefined && { isPrimarySort: newFilter.isPrimarySort }),
-      ...(newFilter.sortField !== undefined && { sortField: newFilter.sortField })
+      ...(newFilter.sortField !== undefined && { sortField: newFilter.sortField }),
+      ...(newFilter.comparison !== undefined && { comparison: newFilter.comparison })
     };
     
     console.log('Dashboard - 作成されたフィルタークエリ:', filterQuery);

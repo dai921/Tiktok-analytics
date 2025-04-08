@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react'
 export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text';
 
 // 比較演算子の型
-export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greaterThan' | 'lessThan' | 'contains';
+export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greater' | 'less' | 'contains';
 
 export interface FilterQuery {
   field: string
