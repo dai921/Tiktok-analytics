@@ -32,6 +32,7 @@ const Dashboard = () => {
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
   const [isPrOnly, setIsPrOnly] = useState(false)
@@ -135,8 +136,8 @@ const Dashboard = () => {
   const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true);
     try {
-      const response = await getDbData(page, currentFilters);
-      console.log('APIレスポンス:', response);  // デバッグログを追加
+      const response = await getDbData(page, currentFilters, pageSize);
+      console.log('APIレスポンス:', response);
       
       if (response && response.success) {
         if (Array.isArray(response.data)) {
@@ -166,7 +167,7 @@ const Dashboard = () => {
     }, 300); // デバウンス処理を追加
 
     return () => clearTimeout(timer);
-  }, [filters, currentPage]);
+  }, [filters, currentPage, pageSize]);
 
   const handleClearAllFilters = () => {
     console.log('すべてのフィルターをクリア');
@@ -220,6 +221,11 @@ const Dashboard = () => {
     setCurrentPage(1);
   };
 
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-screen-2xl">
@@ -237,6 +243,8 @@ const Dashboard = () => {
           isLoading={isLoading}
           isPrOnly={isPrOnly}
           onPrOnlyChange={handlePrOnlyChange}
+          pageSize={pageSize}
+          onPageSizeChange={handlePageSizeChange}
         />
       </main>
     </div>

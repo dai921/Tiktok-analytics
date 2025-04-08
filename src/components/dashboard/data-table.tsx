@@ -21,6 +21,8 @@ interface DataTableProps {
   isLoading: boolean
   isPrOnly: boolean
   onPrOnlyChange: (isPrOnly: boolean) => void
+  pageSize?: number
+  onPageSizeChange?: (pageSize: number) => void
 }
 
 // フィルタ可能なカラムを定義
@@ -194,7 +196,7 @@ interface CategoryItem {
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange }, ref) => {
+  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
@@ -463,6 +465,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     const handlePageChange = (page: number) => {
       onPageChange(page)
+    }
+
+    // 表示件数変更のハンドラーを追加
+    const handlePageSizeChange = (size: number) => {
+      if (onPageSizeChange) {
+        onPageSizeChange(size);
+      }
     }
 
     // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
@@ -884,6 +893,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={handlePageChange}
+            pageSize={pageSize}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={[10, 20, 50]}
           />
         </div>
         
@@ -990,6 +1002,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={handlePageChange}
+            pageSize={pageSize}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={[10, 20, 50]}
           />
         </div>
       </div>
