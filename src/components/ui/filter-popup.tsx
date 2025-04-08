@@ -182,9 +182,12 @@ export const FilterPopup = ({
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
-  const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'text'>('date')
+  const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'text' | 'sort'>('date')
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  // ソート用の状態を追加
+  const [primarySort, setPrimarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
+  const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
 
   // フィルターフィールドの定義
   const filterFields: Record<string, FilterField[]> = {
@@ -192,10 +195,10 @@ export const FilterPopup = ({
       { id: 'createdAt', label: '投稿日時', type: 'date' }
     ],
     metrics: [
-      { id: 'views', label: '再生数', type: 'number', supportSort: true },
-      { id: 'viewsIncrease', label: '再生増加数', type: 'number', supportSort: true },
-      { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number', supportSort: true },
-      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number', supportSort: true }
+      { id: 'views', label: '再生数', type: 'number' },
+      { id: 'viewsIncrease', label: '再生増加数', type: 'number' },
+      { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number' },
+      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' }
     ],
     categories: [
       { id: 'category', label: '動画ジャンル', type: 'multiselect', options: categories }
@@ -204,6 +207,13 @@ export const FilterPopup = ({
       { id: 'accountName', label: 'アカウント検索', type: 'text' },
       { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' },
       { id: 'audioTitle', label: 'BGM検索', type: 'text' }
+    ],
+    // ソート用のフィールド - 4つに限定
+    sort: [
+      { id: 'views', label: '再生数', type: 'sort' },
+      { id: 'viewsIncrease', label: '再生増加数', type: 'sort' },
+      { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'sort' },
+      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' }
     ]
   }
 
@@ -347,6 +357,8 @@ export const FilterPopup = ({
     // ポップアップ内の入力のみをクリア
     setTempFilters({})
     setSelectedCategories([]);
+    setPrimarySort(null);
+    setSecondarySort(null);
     
     // この時点では親コンポーネントのフィルター状態は変更しない
     // onClearAll(); -- 削除：これによりAPIリクエストが発生していた
@@ -357,136 +369,52 @@ export const FilterPopup = ({
 
   // フィルターを適用
   const handleApplyFilters = () => {
-    // 一時フィルターのコピーを作成
-    const updatedFilters = { ...tempFilters };
-    
-    console.log('FilterPopup - フィルター適用前:', {
-      tempFilters,
-      createdAtFilter: tempFilters['createdAt'],
-      hasCreatedAt: 'createdAt' in tempFilters,
-      isEmpty: Object.keys(tempFilters).length === 0
-    });
-    
-    // 「すべてクリア」ボタンが押された後など、フィルターが完全に空の場合
-    if (Object.keys(updatedFilters).length === 0 && selectedCategories.length === 0) {
-      console.log('FilterPopup - 空のフィルターを適用します');
-      // 空のフィルターを適用 - 明示的なリセットフラグを追加
-      onFilterChange({ 
-        reset: {
-          field: 'reset',
-          type: 'clear',
-          value: '',
-          clear: true
-        }
-      });
-      onClose();
-      return;
-    }
-    
-    // 空の値を持つフィルターをすべて削除
-    Object.keys(updatedFilters).forEach(key => {
-      const filter = updatedFilters[key];
-      if (
-        filter.value === undefined || 
-        filter.value === null || 
-        (typeof filter.value === 'string' && filter.value.trim() === '') ||
-        (typeof filter.value === 'number' && isNaN(filter.value))
-      ) {
-        // 数値が0の場合は有効な値として扱う
-        if (!(typeof filter.value === 'number' && filter.value === 0)) {
-          delete updatedFilters[key];
-        }
-      }
-    });
-    
-    // すべてのフィルターが削除された場合は、リセット信号を送る
-    if (Object.keys(updatedFilters).length === 0 && selectedCategories.length === 0) {
-      console.log('FilterPopup - すべての値が空になったため、リセット信号を送ります');
-      onFilterChange({ 
-        reset: {
-          field: 'reset',
-          type: 'clear',
-          value: '',
-          clear: true
-        }
-      });
-      onClose();
-      return;
-    }
-    
-    // 日付フィルターの最終確認と修正
-    if (updatedFilters['createdAt']) {
-      const dateFilter = updatedFilters['createdAt'];
-      
-      // 比較演算子が設定されていない場合はデフォルト値を設定
-      if (!dateFilter.comparison) {
-        // デフォルトで'date'を使用（「等しい」の状態）
-        updatedFilters['createdAt'] = {
-          ...dateFilter,
-          type: 'date',  // typeは'date'で固定
-          comparison: 'date' as ComparisonOperator  // comparisonをComparisonOperator型で設定
-        };
-        
-        console.log('FilterPopup - 日付フィルターのデフォルト比較演算子を設定:', {
-          defaultComparison: 'date',
-          comparison: updatedFilters['createdAt'].comparison
-        });
-      } else {
-        // 比較演算子はすでに設定されているが、typeが上書きされないようにする
-        updatedFilters['createdAt'] = {
-          ...dateFilter,
-          type: 'date'  // typeは'date'で固定
-        };
-      }
-      
-      // 値が空の場合はフィルターを削除
-      if (!dateFilter.value) {
-        delete updatedFilters['createdAt'];
-        console.log('FilterPopup - 日付フィルターの値が空のため削除');
-      }
-    }
-    
-    // カテゴリーの複数選択をフィルターに適用
+    // カテゴリ選択を反映したフィルター情報
+    const wrappedFilters: Record<string, FilterValue> = {...tempFilters};
+
+    // 選択されたカテゴリがある場合は追加
     if (selectedCategories.length > 0) {
-      updatedFilters['category'] = {
+      wrappedFilters['category'] = {
         field: 'category',
-        type: 'text',
-        comparison: 'contains',
-        value: selectedCategories.length === 1 ? selectedCategories[0] : selectedCategories.join(',')
-      };
-    } else if ('category' in updatedFilters) {
-      // カテゴリーが選択されていない場合、既存のカテゴリーフィルターを削除
-      delete updatedFilters['category'];
+        type: 'multiselect',
+        value: selectedCategories,
+      } as FilterValue;
     }
-    
-    console.log('FilterPopup - フィルター適用後:', {
-      updatedFilters,
-      createdAtFilter: updatedFilters['createdAt'],
-      hasCreatedAt: 'createdAt' in updatedFilters,
-      currentState: {
-        selectedTab: activeTab,
-        dateInput: tempFilters['createdAt']?.value || '未設定',
-        dateComparison: tempFilters['createdAt']?.comparison || '未設定'
-      }
-    });
-    
-    // フィルターが複数あっても確実に処理されるよう、各フィルターに個別のIDを付与する
-    const wrappedFilters: Record<string, FilterValue> = {};
-    
-    // すべてのフィルターに明示的なIDを付ける
-    Object.entries(updatedFilters).forEach(([key, filter]) => {
-      // 既存のフィルターをそのまま使用するが、IDを明示的に設定
-      wrappedFilters[key] = {
-        ...filter,
-        field: key, // fieldキーを明示的に設定（既に設定されている場合は上書き）
-        filterId: key // 追加の識別子
-      };
-    });
-    
-    console.log('親コンポーネントに送信するフィルター（改良版）:', wrappedFilters);
-    
-    // 改良したフィルターを親コンポーネントに渡す
+
+    // フィルターを親コンポーネントに渡す
     onFilterChange(wrappedFilters);
+
+    // ソート情報を追加
+    if (primarySort) {
+      // 第一ソート情報をtempFiltersに追加
+      const updatedFilters: Record<string, FilterValue> = {
+        ...wrappedFilters
+      };
+
+      // 第一ソート情報を FilterValue 型に適合するように追加
+      updatedFilters[primarySort.field] = {
+        field: primarySort.field,
+        type: 'sort' as FilterType,
+        value: primarySort.direction,
+        isPrimarySort: true,
+        sortField: primarySort.field
+      } as FilterValue;
+
+      // 第二ソートが設定されている場合、それも追加
+      if (secondarySort) {
+        updatedFilters[secondarySort.field] = {
+          field: secondarySort.field,
+          type: 'sort' as FilterType,
+          value: secondarySort.direction,
+          isPrimarySort: false,
+          sortField: secondarySort.field
+        } as FilterValue;
+      }
+
+      // 更新したフィルターを適用
+      onFilterChange(updatedFilters);
+    }
+
     onClose(); // フィルター適用後にポップアップを閉じる
   }
 
@@ -501,11 +429,33 @@ export const FilterPopup = ({
 
   // ソート選択のハンドラー
   const handleSortChange = (fieldId: string, direction: 'asc' | 'desc') => {
-    handleFilterChange(fieldId, {
-      field: fieldId,
-      type: 'sort',
-      value: direction
-    });
+    // 既存コードを削除
+    // const newFilters = {
+    //   ...tempFilters,
+    //   [fieldId]: {
+    //     field: fieldId,
+    //     type: 'sort',
+    //     value: direction
+    //   }
+    // };
+    // setTempFilters(newFilters);
+  }
+
+  // ソート項目の設定関数
+  const handlePrimarySortChange = (fieldId: string, direction: 'asc' | 'desc') => {
+    // 同じフィールドが第二ソートに設定されている場合、第二ソートをクリア
+    if (secondarySort && secondarySort.field === fieldId) {
+      setSecondarySort(null);
+    }
+    setPrimarySort({ field: fieldId, direction });
+  }
+
+  const handleSecondarySortChange = (fieldId: string, direction: 'asc' | 'desc') => {
+    // 同じフィールドが第一ソートに設定されている場合は処理しない
+    if (primarySort && primarySort.field === fieldId) {
+      return;
+    }
+    setSecondarySort({ field: fieldId, direction });
   }
 
   // 日付用のフィルター条件セクション
@@ -630,14 +580,12 @@ export const FilterPopup = ({
     )
   }
 
-  // 数値用のフィルター条件セクション（ソート機能付き）
+  // 数値用のフィルター条件セクション
   const renderNumberFilter = (field: FilterField) => {
     const filterValue = tempFilters[field.id]
     const isActive = Boolean(filterValue)
-    const sortFilterValue = filterValue?.type === 'sort' ? filterValue : null;
     
     // 数値型の値を取得（値が無い場合は空文字列）
-    // 数値入力フィールドの空文字列表示のため、値が無い場合は空文字列を返す
     const numericValue = filterValue?.type === 'number' && filterValue.value !== undefined && filterValue.value !== null 
       ? filterValue.value 
       : '';
@@ -645,35 +593,9 @@ export const FilterPopup = ({
     return (
       <div key={field.id} className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">
-              {field.label || ''}
-            </label>
-            
-            {/* ソート機能が必要な場合 */}
-            {field.supportSort && (
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => handleSortChange(field.id, 'asc')}
-                  className={`p-1.5 rounded-full ${sortFilterValue && sortFilterValue.value === 'asc' 
-                    ? 'bg-[#FE2C55]/20 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
-                    : 'text-gray-500 hover:text-[#FE2C55] hover:bg-[#FE2C55]/10'}`}
-                  title="昇順で並べ替え"
-                >
-                  <SortAscIcon size={14} />
-                </button>
-                <button
-                  onClick={() => handleSortChange(field.id, 'desc')}
-                  className={`p-1.5 rounded-full ${sortFilterValue && sortFilterValue.value === 'desc' 
-                    ? 'bg-[#FE2C55]/20 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
-                    : 'text-gray-500 hover:text-[#FE2C55] hover:bg-[#FE2C55]/10'}`}
-                  title="降順で並べ替え"
-                >
-                  <SortDescIcon size={14} />
-                </button>
-              </div>
-            )}
-          </div>
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
           
           {isActive && (
             <button 
@@ -908,19 +830,185 @@ export const FilterPopup = ({
     )
   }
 
-  // アクティブなタブに応じたフィルター項目を表示
-  const renderActiveTabContent = () => {
-    const fields = filterFields[activeTab] || []
+  // ソートタブのレンダリング関数
+  const renderSortContent = () => {
+    const sortableFields = filterFields['sort'] || [];
+    
+    // ソート対象のプルダウン用オプション
+    const fieldOptions = sortableFields.map(field => {
+      // ReactNodeからテキスト表示用のラベルを抽出
+      let label = '';
+      if (typeof field.label === 'string') {
+        label = field.label;
+      } else if (React.isValidElement(field.label)) {
+        // React要素の場合は、fieldIdからラベルを判断
+        label = field.id === 'views' ? '再生数' :
+                field.id === 'viewsIncrease' ? '再生増加数' :
+                field.id === 'likes' ? 'いいね数' :
+                field.id === 'comments' ? 'コメント数' : field.id;
+      }
+      
+      return {
+        id: field.id,
+        label
+      };
+    });
+    
+    const directionOptions = [
+      { value: 'desc', label: '降順（大きい順）', icon: <SortDescIcon size={14} /> },
+      { value: 'asc', label: '昇順（小さい順）', icon: <SortAscIcon size={14} /> }
+    ];
+    
     return (
       <div className="p-4">
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">第一優先ソート</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                ソート対象
+              </label>
+              <select
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border-2 border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none"
+                value={primarySort?.field || ''}
+                onChange={(e) => {
+                  const selectedField = e.target.value;
+                  if (selectedField) {
+                    // 既存のdirectionを保持するか、デフォルトで降順を設定
+                    const direction = primarySort?.direction || 'desc';
+                    handlePrimarySortChange(selectedField, direction);
+                  } else {
+                    // 未選択の場合はソートをクリア
+                    setPrimarySort(null);
+                  }
+                }}
+              >
+                <option value="">選択してください</option>
+                {fieldOptions.map(option => (
+                  <option 
+                    key={option.id} 
+                    value={option.id}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            {primarySort && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ソート順
+                </label>
+                <select
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border-2 border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none"
+                  value={primarySort.direction}
+                  onChange={(e) => {
+                    if (primarySort) {
+                      handlePrimarySortChange(primarySort.field, e.target.value as 'asc' | 'desc');
+                    }
+                  }}
+                >
+                  {directionOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">第二優先ソート</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                ソート対象
+              </label>
+              <select
+                className={`mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border-2 ${!primarySort ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-gray-300'} shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none`}
+                value={secondarySort?.field || ''}
+                onChange={(e) => {
+                  const selectedField = e.target.value;
+                  // 第一ソートと同じフィールドは選択できないようにする
+                  if (selectedField && (!primarySort || primarySort.field !== selectedField)) {
+                    // 既存のdirectionを保持するか、デフォルトで降順を設定
+                    const direction = secondarySort?.direction || 'desc';
+                    handleSecondarySortChange(selectedField, direction);
+                  } else if (!selectedField) {
+                    // 未選択の場合はソートをクリア
+                    setSecondarySort(null);
+                  }
+                }}
+                disabled={!primarySort}
+              >
+                <option value="">選択してください</option>
+                {fieldOptions
+                  .filter(option => !primarySort || option.id !== primarySort.field)
+                  .map(option => (
+                    <option 
+                      key={option.id} 
+                      value={option.id}
+                    >
+                      {option.label}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+            
+            {secondarySort && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ソート順
+                </label>
+                <select
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border-2 border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none"
+                  value={secondarySort.direction}
+                  onChange={(e) => {
+                    if (secondarySort) {
+                      handleSecondarySortChange(secondarySort.field, e.target.value as 'asc' | 'desc');
+                    }
+                  }}
+                >
+                  {directionOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // アクティブなタブに応じたフィルター項目を表示
+  const renderActiveTabContent = () => {
+    // ソートタブの場合は専用レンダリング関数を使用
+    if (activeTab === 'sort') {
+      return renderSortContent();
+    }
+
+    const fields = filterFields[activeTab] || []
+    
+    return (
+      <div className="space-y-4 p-4">
         {fields.map((field) => {
           if (field.type === 'date') {
             return renderDateFilter(field)
-          } else if (field.type === 'number') {
+          }
+          if (field.type === 'number') {
             return renderNumberFilter(field)
-          } else if (field.type === 'text') {
+          }
+          if (field.type === 'text') {
             return renderTextFilter(field)
-          } else if (field.type === 'multiselect') {
+          }
+          if (field.type === 'multiselect') {
             return renderMultiSelectFilter(field)
           }
           return null
@@ -951,25 +1039,25 @@ export const FilterPopup = ({
         </button>
       </div>
 
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b sticky top-0 bg-white z-10">
         <button
-          className={`px-3 py-2 text-xs font-medium ${
+          className={`px-3 py-2 text-sm font-medium ${
             activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
           }`}
           onClick={() => setActiveTab('date')}
         >
-          投稿日
+          <span className="flex items-center"><CalendarIcon size={12} /><span className="ml-1">日付</span></span>
         </button>
         <button
-          className={`px-3 py-2 text-xs font-medium ${
+          className={`px-3 py-2 text-sm font-medium ${
             activeTab === 'metrics' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
           }`}
           onClick={() => setActiveTab('metrics')}
         >
-          再生数、いいね数等
+          数値
         </button>
         <button
-          className={`px-3 py-2 text-xs font-medium ${
+          className={`px-3 py-2 text-sm font-medium ${
             activeTab === 'categories' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
           }`}
           onClick={() => setActiveTab('categories')}
@@ -977,12 +1065,20 @@ export const FilterPopup = ({
           ジャンル
         </button>
         <button
-          className={`px-3 py-2 text-xs font-medium ${
+          className={`px-3 py-2 text-sm font-medium ${
             activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
           }`}
           onClick={() => setActiveTab('text')}
         >
-          アカウント、BGM等
+          テキスト
+        </button>
+        <button
+          className={`px-3 py-2 text-sm font-medium ${
+            activeTab === 'sort' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+          }`}
+          onClick={() => setActiveTab('sort')}
+        >
+          並び替え
         </button>
       </div>
 

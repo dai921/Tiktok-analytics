@@ -22,6 +22,7 @@ interface TableHeaderCellProps {
   categoryData?: string[]  // カテゴリデータの型を追加
   sortDirection?: 'asc' | 'desc' | null  // ソート方向を追加
   isLoadingFilterOptions?: boolean
+  sortPriority?: 1 | 2 | null  // ソートの優先順位を追加（1: 第一ソート、2: 第二ソート）
 }
 
 export interface TableHeaderCellRef {
@@ -57,7 +58,7 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
 }
 
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'center', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
+  ({ title, type = 'text', align = 'center', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false, sortPriority = null }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterTypeLocal>('equal')
@@ -376,7 +377,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               <select 
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
-                className="w-full px-2 py-1 border rounded text-xs"
+                className="px-2 py-1 border rounded text-xs border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
               >
                 {getFilterOptions('date').map(option => (
                   <option key={option.value} value={option.value}>
@@ -674,8 +675,24 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           )}>
             <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
             {localSortDirection && (
-              <span className="ml-1 text-blue-700 font-bold">
-                {localSortDirection === 'asc' ? '↑' : '↓'}
+              <span className="ml-1 flex items-center">
+                <span className={cn(
+                  "font-bold",
+                  sortPriority === 1 ? "text-[#FE2C55]" : 
+                  sortPriority === 2 ? "text-orange-500" : "text-blue-700"
+                )}>
+                  {localSortDirection === 'asc' ? '↑' : '↓'}
+                </span>
+                {sortPriority && (
+                  <span className={cn(
+                    "ml-0.5 text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center",
+                    sortPriority === 1 ? "bg-[#FE2C55] text-white" : 
+                    sortPriority === 2 ? "bg-orange-500 text-white" : 
+                    "bg-blue-700 text-white"
+                  )}>
+                    {sortPriority}
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -722,7 +739,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                       <select 
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
-                        className="px-2 py-1 border rounded text-xs"
+                        className="px-2 py-1 border rounded text-xs border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
                       >
                         {getFilterOptions(type).map(option => (
                           <option key={option.value} value={option.value}>

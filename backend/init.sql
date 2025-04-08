@@ -284,3 +284,79 @@ PARTITION BY RANGE (TO_DAYS(collection_date)) (
     PARTITION p_current VALUES LESS THAN (TO_DAYS('2025-05-01')),
     PARTITION p_future VALUES LESS THAN MAXVALUE
 );
+
+CREATE TABLE User_Display_Settings (
+  setting_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  setting_name VARCHAR(100) NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (email) REFERENCES Users(email) ON DELETE CASCADE,
+  INDEX idx_email (email)
+);
+
+CREATE TABLE Column_Settings (
+  column_setting_id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_id INT NOT NULL,
+  column_name VARCHAR(50) NOT NULL,
+  is_visible BOOLEAN DEFAULT TRUE,
+  display_order INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (setting_id) REFERENCES User_Display_Settings(setting_id) ON DELETE CASCADE,
+  INDEX idx_setting_id (setting_id)
+);
+
+-- フィルター設定テーブル
+CREATE TABLE Filter_Settings (
+  filter_id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_id INT NOT NULL,
+  filter_type VARCHAR(50) NOT NULL,
+  operator VARCHAR(30) NOT NULL,
+  value VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (setting_id) REFERENCES User_Display_Settings(setting_id) ON DELETE CASCADE,
+  INDEX idx_setting_id (setting_id)
+);
+
+-- ソート設定テーブル
+CREATE TABLE Sort_Settings (
+  sort_id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_id INT NOT NULL,
+  sort_field VARCHAR(50) NOT NULL,
+  sort_order ENUM('ASC', 'DESC') DEFAULT 'DESC',
+  priority INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (setting_id) REFERENCES User_Display_Settings(setting_id) ON DELETE CASCADE,
+  INDEX idx_setting_id (setting_id)
+);
+
+-- 動画ブックマークテーブル
+CREATE TABLE Video_Watchlists (
+  watchlist_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  url VARCHAR(255) NOT NULL,
+  watchlist_name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (email) REFERENCES Users(email) ON DELETE CASCADE,
+  FOREIGN KEY (url) REFERENCES Video_Master(url) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_video (email, url),
+  INDEX idx_email (email)
+);
+
+-- アカウントブックマークテーブル
+CREATE TABLE Account_Bookmarks (
+  bookmark_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  account_name VARCHAR(100) NOT NULL,
+  bookmark_name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (email) REFERENCES Users(email) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_account (email, account_name),
+  INDEX idx_email (email)
+);
