@@ -239,12 +239,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     // 最後にクリックしたソートフィールドを追跡
     const [lastClickedSort, setLastClickedSort] = useState<string | null>(null);
 
-    // 参照を設定
-    useImperativeHandle(ref, () => ({
-      clearAllFilters: handleClearAllFilters
-    }));
-
-    // フィルターをクリアする関数
+    // フィルターをクリアする関数 - データテーブルとAPIの両方を更新
     const handleClearAllFilters = useCallback(() => {
       console.log('DataTable - handleClearAllFilters called');
       console.log('DataTable - columnFilters before clear:', columnFilters);
@@ -258,11 +253,24 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       
       console.log('DataTable - columnFilters after clear: {}');
       
-      // 親コンポーネントに通知
-      onFilterChange(false);
+      // 親コンポーネントに通知 - 明示的なフィルターリセット信号を送る
+      onFilterChange(false, { field: 'reset', type: 'clear', value: '' });
       
-      // 遅延実行は無限ループの原因になる可能性があるため削除
-    }, [onFilterChange]);
+      // フィルターポップアップを閉じる
+      setIsFilterPopupOpen(false);
+    }, [onFilterChange, columnFilters]);
+
+    // ポップアップ内のフィルター入力のみをクリアする関数 - ポップアップの入力のみクリア（APIリクエストなし）
+    const handleClearFilterInputs = useCallback(() => {
+      console.log('FilterPopup内の入力のみをクリア');
+      // 明示的にFilterPopupを直接クリアするのではなく、ポップアップ内部のClearAllボタンに任せる
+      // 実際のデータのクリアはhandleBulkFilterChangeで処理される
+    }, []);
+
+    // 参照を設定
+    useImperativeHandle(ref, () => ({
+      clearAllFilters: handleClearAllFilters
+    }));
 
     // columnFiltersの変更を監視
     useEffect(() => {
@@ -476,6 +484,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
       
       if (filterValue.type === 'clear') {
+        console.log(`明示的なクリア処理: ${field}`, filterValue);
+        
         // ソートもクリアする
         if (sortField === field) {
           setSortField(null);
@@ -496,8 +506,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         const hasFilters = Object.keys(newFilters).length > 0;
         setHasActiveFilters(hasFilters);
         
-        // 親コンポーネントに通知
-        onFilterChange(hasFilters);
+        // 親コンポーネントに通知 - 明示的なクリアフラグを含む
+        if (hasFilters) {
+          // まだフィルターが残っている場合
+          onFilterChange(hasFilters, hasFilters ? Object.values(newCurrentFilters)[0] : undefined);
+        } else {
+          // 全てのフィルターが空になった場合、明示的にリセット信号を送る
+          onFilterChange(false, { field: 'reset', type: 'clear', value: '', clear: true });
+        }
         return;
       }
       
@@ -581,10 +597,52 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
     }, [categoryList, accountList, hashtagList, audioTitleList, isLoadingFilterOptions, currentFilters]);
 
-    // ポップアップフィルターからの変更を処理する関数
+    // handleBulkFilterChange関数を修正 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
     const handleBulkFilterChange = (filters: Record<string, FilterValue>) => {
       console.log('一括フィルター変更:', filters);
       
+      // 明示的なリセット信号をチェック
+      if (filters.reset && filters.reset.type === 'clear') {
+        console.log('DataTable - 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
+        
+        // 状態をリセット
+        setColumnFilters({});
+        setCurrentFilters({});
+        setSortField(null);
+        setSortDirection(null);
+        setHasActiveFilters(false);
+        
+        // 親コンポーネントに通知 - リセット信号を含める
+        onFilterChange(false, { field: 'reset', type: 'clear', value: '' });
+        
+        // フィルターポップアップを閉じる
+        setIsFilterPopupOpen(false);
+        return;
+      }
+      
+      // フィルターが空オブジェクトかどうか確認（filterPopupから空のフィルターが渡された場合）
+      const isEmptyFilter = Object.keys(filters).length === 0;
+      
+      // 完全に空のフィルターの場合は、すべてのフィルターをクリア
+      if (isEmptyFilter) {
+        console.log('DataTable - 空のフィルターを受け取りました。すべてのフィルターをクリアします');
+        
+        // 状態をリセット
+        setColumnFilters({});
+        setCurrentFilters({});
+        setSortField(null);
+        setSortDirection(null);
+        setHasActiveFilters(false);
+        
+        // 親コンポーネントに通知 - 明示的にフィルターがないことを通知
+        onFilterChange(false);
+        
+        // フィルターポップアップを閉じる
+        setIsFilterPopupOpen(false);
+        return;
+      }
+      
+      // フィルターが空でない場合の処理（既存のコード）
       // 現在のフィルター状態をリセット
       const newColumnFilters: Record<string, FilterValue> = {};
       const newCurrentFilters: Record<string, FilterQuery> = {};
@@ -595,18 +653,33 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       
       // 各フィルターを確認して適用
       Object.entries(filters).forEach(([field, value]) => {
-        if (value && Object.keys(value).length > 0) {
-          // ソート情報の処理
-          if (value.type === 'sort') {
-            newSortField = field;
-            newSortDirection = value.value as 'asc' | 'desc';
+        // 空のフィルターをスキップ
+        if (!value || Object.keys(value).length === 0) return;
+        
+        // 値が空の場合はスキップ
+        if (
+          value.value === undefined || 
+          value.value === null || 
+          (typeof value.value === 'string' && value.value.trim() === '') ||
+          (typeof value.value === 'number' && !Number.isFinite(value.value))
+        ) {
+          // 数値が0の場合は有効な値として処理
+          if (!(typeof value.value === 'number' && value.value === 0)) {
+            return;
           }
-          
-          newColumnFilters[field] = value;
-          newCurrentFilters[field] = {
-            ...value
-          };
         }
+        
+        // ソート情報の処理
+        if (value.type === 'sort') {
+          newSortField = field;
+          newSortDirection = value.value as 'asc' | 'desc';
+        }
+        
+        // 有効なフィルターを追加
+        newColumnFilters[field] = value;
+        newCurrentFilters[field] = {
+          ...value
+        };
       });
       
       // 状態を更新
@@ -615,12 +688,17 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSortField(newSortField);
       setSortDirection(newSortDirection);
       
-      // フィルターがアクティブかどうかを設定
+      // フィルターがアクティブかどうかを設定 - 空のフィルターセットの場合は必ずfalse
       const hasFilters = Object.keys(newColumnFilters).length > 0;
       setHasActiveFilters(hasFilters);
       
-      // 親コンポーネントに通知
-      onFilterChange(hasFilters, Object.values(newCurrentFilters)[0]);
+      // 親コンポーネントに通知 - フィルターが全て空になった場合は明示的にfalseを渡す
+      if (hasFilters) {
+        onFilterChange(true, Object.values(newCurrentFilters)[0]);
+      } else {
+        // 明示的にフィルターがないことを通知
+        onFilterChange(false);
+      }
       
       // フィルターポップアップを閉じる
       setIsFilterPopupOpen(false);
@@ -1041,7 +1119,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           accounts={accountList}
           hashtags={hashtagList}
           isLoading={isLoadingFilterOptions}
-          onClearAll={handleClearAllFilters}
+          onClearAll={handleClearFilterInputs}
         />
         
         <div className="relative">

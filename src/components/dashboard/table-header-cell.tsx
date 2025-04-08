@@ -1,15 +1,15 @@
 'use client'
 //テスト用に変更
 import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react'
-import type { FilterValue } from '@/types/dashboard'
+import type { FilterValue, ComparisonOperator } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 import { cn } from '@/lib/utils'
 import { fetchCategories } from '@/lib/api'  // カテゴリ取得用のAPIを追加
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-// FilterType定義を更新
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear';
+// FilterType定義を更新 - エクスポートしない
+type FilterTypeLocal = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'number' | 'date' | 'text' | 'multiselect';
 
 interface TableHeaderCellProps {
   title: string
@@ -60,7 +60,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
   ({ title, type = 'text', align = 'center', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
-    const [filterType, setFilterType] = useState<FilterType>('equal')
+    const [filterType, setFilterType] = useState<FilterTypeLocal>('equal')
     const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
     const [categories, setCategories] = useState<string[]>([])
@@ -83,14 +83,18 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // isActiveの変更を監視
     useEffect(() => {
-      if (!isActive) {
+      console.log(`TableHeaderCell ${title} - isActive変更: ${isActive}`);
+      // リセットが必要かどうか明示的にチェック（フィルターが解除された場合）
+      if (isActive === false) {
         // isActiveがfalseになったときだけ内部状態をリセット
         // 親への通知は行わない（無限ループ防止）
-        setFilterValue('')
-        setFilterType('equal')
-        setSortDirection(null)
+        setFilterValue('');
+        setFilterType('equal');
+        setSortDirection(null);
+        
+        console.log(`TableHeaderCell ${title} - フィルター状態をリセットしました`);
       }
-    }, [isActive, title])
+    }, [isActive, title]);
 
     // ポップアップの位置を計算する関数
     const calculatePopupPosition = useCallback(() => {
@@ -186,6 +190,12 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     useEffect(() => {
       if (sortDirection !== localSortDirection) {
         setSortDirection(sortDirection);
+        
+        // フィルターボタンがある場合のみソート状態を更新
+        const headerElement = buttonRef.current?.closest('[data-header-cell]');
+        if (headerElement) {
+          headerElement.setAttribute('data-sort-active', sortDirection ? 'true' : 'false');
+        }
       }
     }, [sortDirection, localSortDirection]);
 
@@ -276,17 +286,21 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           actualFieldName = 'likes';
         } else if (title === 'コメント数') {
           actualFieldName = 'comments';
+        } else if (title === '再生増加数') {
+          actualFieldName = 'viewsIncrease';
         }
         
+        // 明示的なクリアフラグを送る
         onFilter({ 
           type: 'clear', 
           value: '', 
-          field: actualFieldName 
+          field: actualFieldName,
+          clear: true  // 明示的なクリアフラグ
         });
       }
     };
 
-    const handleFilter = (value: string, type: FilterType) => {
+    const handleFilter = (value: string, type: FilterTypeLocal) => {
       if (!onFilter) return;
       
       // キャプションの場合のみ部分一致を適用
@@ -303,6 +317,20 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           value: value,
           type: type
         }, true);
+      } else if (type === 'number') {
+        // 数値フィールドの場合は値を数値に変換
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+          onFilter({
+            field: title,
+            value: numValue,  // 明示的に数値型として渡す
+            type: type,
+            comparison: type as ComparisonOperator
+          }, true);
+        } else if (value === '') {
+          // 空の値の場合はクリア
+          handleClear();
+        }
       } else {
         // その他のフィールドは通常通りの処理
         onFilter({
@@ -347,7 +375,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <div className="flex flex-col gap-2">
               <select 
                 value={filterType}
-                onChange={(e) => setFilterType(e.target.value as FilterType)}
+                onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
                 className="w-full px-2 py-1 border rounded text-xs"
               >
                 {getFilterOptions('date').map(option => (
@@ -385,10 +413,45 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <input
               type="number"
               value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                // 空文字列の場合
+                if (newValue === '') {
+                  setFilterValue('');
+                } else {
+                  setFilterValue(newValue);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  handleFilter(filterValue, filterType);
+                  // 空文字列の場合はフィルターをクリア
+                  if (e.currentTarget.value === '') {
+                    handleClear();
+                    return;
+                  }
+                  
+                  // 数値に変換
+                  const numVal = parseFloat(e.currentTarget.value);
+                  if (!isNaN(numVal)) {
+                    // 直接onFilterを使用
+                    if (onFilter) {
+                      const fieldName = 
+                        title === '再生数' ? 'views' : 
+                        title === 'いいね数' ? 'likes' : 
+                        title === 'コメント数' ? 'comments' : 
+                        title === '再生増加数' ? 'viewsIncrease' : 
+                        String(title);
+                      
+                      onFilter({
+                        field: fieldName,
+                        value: numVal,
+                        type: 'number',
+                        comparison: filterType as unknown as ComparisonOperator
+                      }, true);
+                      
+                      setIsFilterOpen(false);
+                    }
+                  }
                 }
               }}
               placeholder="フィルター..."
@@ -594,109 +657,112 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     };
 
     return (
-      <div 
+      <div
+        className={`relative`}
         data-header-cell
-        className={cn(
+      >
+        <div className={cn(
           "flex items-center gap-1 whitespace-nowrap",
           "px-2 py-1 text-[12px]", // text-sm から text-[8px] に変更
           align === 'center' ? 'justify-center' : '',
           (isActive || localSortDirection) ? "text-blue-600 font-medium" : "text-gray-700"
-        )}
-      >
-        <div className={cn(
-          "flex items-center cursor-default", 
-          alignmentClass,
-          localSortDirection ? "font-semibold" : ""
         )}>
-          <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
-          {localSortDirection && (
-            <span className="ml-1 text-blue-700 font-bold">
-              {localSortDirection === 'asc' ? '↑' : '↓'}
-            </span>
+          <div className={cn(
+            "flex items-center cursor-default", 
+            alignmentClass,
+            localSortDirection ? "font-semibold" : ""
+          )}>
+            <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
+            {localSortDirection && (
+              <span className="ml-1 text-blue-700 font-bold">
+                {localSortDirection === 'asc' ? '↑' : '↓'}
+              </span>
+            )}
+          </div>
+          {/* キャプションの場合はフィルターボタンを表示しない */}
+          {onFilter && title !== 'キャプション' && (
+            <button 
+              ref={buttonRef}
+              onClick={handleToggleFilter}
+              className={cn(
+                "p-1 rounded hover:bg-gray-100",
+                isActive ? "text-sky-500 font-bold" : "",
+                localSortDirection ? "bg-blue-50 text-blue-600" : ""
+              )}
+              data-active={isActive ? "true" : "false"}
+              data-sort-active={localSortDirection ? "true" : "false"}
+            >
+              <svg 
+                className="w-4 h-4"
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor"
+                strokeWidth={isActive || localSortDirection ? "3" : "2"}
+              >
+                <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
+              </svg>
+            </button>
+          )}
+          
+          {isFilterOpen && (
+            <Portal>
+              <div 
+                ref={popupRef}
+                className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
+                style={{ 
+                  top: `${popupPosition.top}px`,
+                  left: `${popupPosition.left}px`,
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                }}
+              >
+                <div className="p-2 border-b">
+                  <div className="flex items-center gap-2 mb-2">
+                    {type === 'number' && (
+                      <select 
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
+                        className="px-2 py-1 border rounded text-xs"
+                      >
+                        {getFilterOptions(type).map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {renderFilterInput()}
+                  </div>
+                  <button
+                    onClick={() => handleFilter(filterValue, filterType)}
+                    className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
+                  >
+                    フィルターを適用
+                  </button>
+                  {(filterValue || localSortDirection) && (
+                    <button
+                      onClick={() => {
+                        console.log(`フィルタークリアボタンがクリックされました: ${title}`);
+                        handleClear();
+                      }}
+                      className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
+                    >
+                      フィルターをクリア
+                    </button>
+                  )}
+                </div>
+                
+                {/* カテゴリリストを表示 */}
+                {renderCategoryList()}
+                
+                {/* ソートセクションを条件付きで表示 */}
+                {renderSortSection()}
+              </div>
+            </Portal>
           )}
         </div>
-        {/* キャプションの場合はフィルターボタンを表示しない */}
-        {onFilter && title !== 'キャプション' && (
-          <button 
-            ref={buttonRef}
-            onClick={handleToggleFilter}
-            className={cn(
-              "p-1 rounded hover:bg-gray-100",
-              isActive ? "text-sky-500 font-bold" : "",
-              localSortDirection ? "bg-blue-50 text-blue-600" : ""
-            )}
-            data-active={isActive || localSortDirection ? "true" : "false"}
-          >
-            <svg 
-              className="w-4 h-4"
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor"
-              strokeWidth={isActive || localSortDirection ? "3" : "2"}
-            >
-              <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
-            </svg>
-          </button>
-        )}
-        
-        {isFilterOpen && (
-          <Portal>
-            <div 
-              ref={popupRef}
-              className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
-              style={{ 
-                top: `${popupPosition.top}px`,
-                left: `${popupPosition.left}px`,
-                maxHeight: '300px',
-                overflowY: 'auto',
-              }}
-            >
-              <div className="p-2 border-b">
-                <div className="flex items-center gap-2 mb-2">
-                  {type === 'number' && (
-                    <select 
-                      value={filterType}
-                      onChange={(e) => setFilterType(e.target.value as FilterType)}
-                      className="px-2 py-1 border rounded text-xs"
-                    >
-                      {getFilterOptions(type).map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {renderFilterInput()}
-                </div>
-                <button
-                  onClick={() => handleFilter(filterValue, filterType)}
-                  className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
-                >
-                  フィルターを適用
-                </button>
-                {(filterValue || localSortDirection) && (
-                  <button
-                    onClick={() => {
-                      console.log(`フィルタークリアボタンがクリックされました: ${title}`);
-                      handleClear();
-                    }}
-                    className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
-                  >
-                    フィルターをクリア
-                  </button>
-                )}
-              </div>
-              
-              {/* カテゴリリストを表示 */}
-              {renderCategoryList()}
-              
-              {/* ソートセクションを条件付きで表示 */}
-              {renderSortSection()}
-            </div>
-          </Portal>
-        )}
       </div>
-    )
+    );
   }
 )
 

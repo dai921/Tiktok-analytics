@@ -59,21 +59,29 @@ const Dashboard = () => {
     console.log('Dashboard - フィルター受信:', newFilter);
     
     // クリア操作を明示的に検出
-    if (newFilter.type === 'clear' || !newFilter.value) {
+    if (newFilter.type === 'clear') {
       console.log(`Dashboard - フィルター削除: ${newFilter.field}`);
       
-      // フィールドが存在する場合のみ削除（エラー防止）
+      // 特殊なリセット信号を検出
+      if (newFilter.field === 'reset') {
+        console.log('Dashboard - すべてのフィルターをクリア');
+        // すべてのフィルターをクリア
+        setFilters({});
+        setCurrentPage(1);
+        fetchData(1, {});
+        return;
+      }
+      
+      // 通常のフィルタークリア処理（既存の処理）
       if (newFilter.field && filters[newFilter.field]) {
         const updatedFilters = { ...filters };
         delete updatedFilters[newFilter.field];
         setFilters(updatedFilters);
         
-        // 更新後のフィルターでデータを再取得
         console.log('Dashboard - 更新後のフィルター:', updatedFilters);
         fetchData(1, updatedFilters);
       } else {
         console.log(`Dashboard - 削除するフィールド ${newFilter.field} が見つからないか空です`);
-        // 念のためすべてのフィルターで再取得
         fetchData(1, filters);
       }
       return;

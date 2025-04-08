@@ -275,6 +275,20 @@ export const FilterPopup = ({
       type: value.type
     });
     
+    // 値が空の場合はフィルターをクリア
+    if (
+      (typeof value.value === 'string' && value.value.trim() === '') || 
+      value.value === null || 
+      value.value === undefined ||
+      (typeof value.value === 'number' && isNaN(value.value))
+    ) {
+      // 数値が0の場合は有効な値として扱う（0より小さいなどのフィルターのため）
+      if (!(typeof value.value === 'number' && value.value === 0)) {
+        handleClearFilter(fieldId);
+        return;
+      }
+    }
+    
     // 日付フィルターの場合、type='date'になるよう確保
     if (fieldId === 'createdAt' && value.type === 'date') {
       // 比較演算子を変換せず、そのまま使用
@@ -298,15 +312,14 @@ export const FilterPopup = ({
         [fieldId]: value
       }));
     } else if (value.type === 'number') {
-      // 数値フィールドの場合は数値変換を行う
-      const numValue = typeof value.value === 'string' ? Number(value.value) : value.value;
-      console.log(`数値変換前: ${value.value}, 変換後: ${numValue}`);
+      // 数値フィールドの場合は値をそのまま使用（すでにnumber型）
+      console.log(`数値フィルター適用: ${value.value}`);
       
       setTempFilters(prev => ({
         ...prev,
         [fieldId]: {
           ...value,
-          value: numValue // Number()で変換
+          value: value.value // すでにnumber型なのでそのまま使用
         }
       }));
     } else {
@@ -331,9 +344,15 @@ export const FilterPopup = ({
 
   // すべてのフィルターをクリア
   const handleClearAllFilters = () => {
+    // ポップアップ内の入力のみをクリア
     setTempFilters({})
     setSelectedCategories([]);
-    onClearAll()
+    
+    // この時点では親コンポーネントのフィルター状態は変更しない
+    // onClearAll(); -- 削除：これによりAPIリクエストが発生していた
+    
+    // フィルターポップアップは閉じない
+    // onClose(); -- 削除：ユーザーがクリアした後に引き続き操作できるようにする
   }
 
   // フィルターを適用
@@ -344,8 +363,56 @@ export const FilterPopup = ({
     console.log('FilterPopup - フィルター適用前:', {
       tempFilters,
       createdAtFilter: tempFilters['createdAt'],
-      hasCreatedAt: 'createdAt' in tempFilters
+      hasCreatedAt: 'createdAt' in tempFilters,
+      isEmpty: Object.keys(tempFilters).length === 0
     });
+    
+    // 「すべてクリア」ボタンが押された後など、フィルターが完全に空の場合
+    if (Object.keys(updatedFilters).length === 0 && selectedCategories.length === 0) {
+      console.log('FilterPopup - 空のフィルターを適用します');
+      // 空のフィルターを適用 - 明示的なリセットフラグを追加
+      onFilterChange({ 
+        reset: {
+          field: 'reset',
+          type: 'clear',
+          value: '',
+          clear: true
+        }
+      });
+      onClose();
+      return;
+    }
+    
+    // 空の値を持つフィルターをすべて削除
+    Object.keys(updatedFilters).forEach(key => {
+      const filter = updatedFilters[key];
+      if (
+        filter.value === undefined || 
+        filter.value === null || 
+        (typeof filter.value === 'string' && filter.value.trim() === '') ||
+        (typeof filter.value === 'number' && isNaN(filter.value))
+      ) {
+        // 数値が0の場合は有効な値として扱う
+        if (!(typeof filter.value === 'number' && filter.value === 0)) {
+          delete updatedFilters[key];
+        }
+      }
+    });
+    
+    // すべてのフィルターが削除された場合は、リセット信号を送る
+    if (Object.keys(updatedFilters).length === 0 && selectedCategories.length === 0) {
+      console.log('FilterPopup - すべての値が空になったため、リセット信号を送ります');
+      onFilterChange({ 
+        reset: {
+          field: 'reset',
+          type: 'clear',
+          value: '',
+          clear: true
+        }
+      });
+      onClose();
+      return;
+    }
     
     // 日付フィルターの最終確認と修正
     if (updatedFilters['createdAt']) {
@@ -473,7 +540,7 @@ export const FilterPopup = ({
                 className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
                 name={`${field.id}-comparison`}
                 value="date"
-                checked={isActive && filterValue.comparison === 'date'}
+                checked={isActive && filterValue.comparison === 'date' as ComparisonOperator}
                 onChange={(e) => handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'date' as FilterType, 
@@ -518,6 +585,12 @@ export const FilterPopup = ({
                     比較演算子: filterValue?.comparison || 'equal'
                   });
                   
+                  // 空の値の場合はフィルターをクリア
+                  if (!e.target.value) {
+                    handleClearFilter(field.id);
+                    return;
+                  }
+                  
                   // 比較演算子が設定されていない場合はラジオボタンの選択状態に基づいて設定
                   // デフォルトは「等しい」(equal)
                   const comparison = filterValue?.comparison || 'equal';
@@ -547,6 +620,12 @@ export const FilterPopup = ({
     const filterValue = tempFilters[field.id]
     const isActive = Boolean(filterValue)
     const sortFilterValue = filterValue?.type === 'sort' ? filterValue : null;
+    
+    // 数値型の値を取得（値が無い場合は空文字列）
+    // 数値入力フィールドの空文字列表示のため、値が無い場合は空文字列を返す
+    const numericValue = filterValue?.type === 'number' && filterValue.value !== undefined && filterValue.value !== null 
+      ? filterValue.value 
+      : '';
 
     return (
       <div key={field.id} className="mb-6">
@@ -605,7 +684,7 @@ export const FilterPopup = ({
                   field: field.id,
                   type: 'number', 
                   comparison: 'greater', 
-                  value: filterValue?.value || '' 
+                  value: typeof numericValue === 'number' ? numericValue : 0 
                 })}
               />
               <span className="ml-2 text-sm text-gray-700">より大きい</span>
@@ -622,7 +701,7 @@ export const FilterPopup = ({
                   field: field.id,
                   type: 'number', 
                   comparison: 'equal', 
-                  value: filterValue?.value || '' 
+                  value: typeof numericValue === 'number' ? numericValue : 0
                 })}
               />
               <span className="ml-2 text-sm text-gray-700">等しい</span>
@@ -639,7 +718,7 @@ export const FilterPopup = ({
                   field: field.id,
                   type: 'number', 
                   comparison: 'less', 
-                  value: filterValue?.value || '' 
+                  value: typeof numericValue === 'number' ? numericValue : 0
                 })}
               />
               <span className="ml-2 text-sm text-gray-700">より小さい</span>
@@ -649,17 +728,32 @@ export const FilterPopup = ({
           <div className="flex items-center">
             <input
               type="number"
+              step="any"
               className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
-              value={filterValue?.type === 'number' ? filterValue.value || '' : ''}
+              value={numericValue}
               placeholder="値を入力"
               onChange={(e) => {
+                // 空の値の場合はフィルターをクリア
+                if (e.target.value === '') {
+                  handleClearFilter(field.id);
+                  return;
+                }
+                
+                // 入力値を数値として処理（stepをanyにしたので小数点も扱える）
+                const numValue = e.target.valueAsNumber;
+                
+                // NaNの場合は処理しない
+                if (isNaN(numValue)) {
+                  return;
+                }
+                
                 // comparisionが設定されていない場合はデフォルトで'greater'を使用
                 const comparison = filterValue?.type === 'number' ? filterValue.comparison || 'greater' : 'greater';
                 handleFilterChange(field.id, { 
                   field: field.id,
                   type: 'number', 
                   comparison: comparison, 
-                  value: Number(e.target.value)  // Number()で変換
+                  value: numValue // 明示的に数値型
                 });
               }}
             />
@@ -711,12 +805,20 @@ export const FilterPopup = ({
           className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
           value={filterValue?.value || ''}
           placeholder={placeholderText}
-          onChange={(e) => handleFilterChange(field.id, { 
-            field: field.id,
-            type: 'text', 
-            comparison: 'contains', 
-            value: e.target.value 
-          })}
+          onChange={(e) => {
+            // 空の値の場合はフィルターをクリア
+            if (e.target.value.trim() === '') {
+              handleClearFilter(field.id);
+              return;
+            }
+            
+            handleFilterChange(field.id, { 
+              field: field.id,
+              type: 'text', 
+              comparison: 'contains', 
+              value: e.target.value 
+            })
+          }}
         />
       </div>
     )
