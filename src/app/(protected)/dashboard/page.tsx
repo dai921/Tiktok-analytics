@@ -36,6 +36,7 @@ const Dashboard = () => {
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
   const [isPrOnly, setIsPrOnly] = useState(false)
+  const [totalCount, setTotalCount] = useState(0)
 
   const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
     // ハッシュタグ用のフラグを引き継ぐ
@@ -144,17 +145,21 @@ const Dashboard = () => {
           setData(response.data);
           setCurrentPage(response.currentPage || page);
           setTotalPages(response.totalPages || 1);
+          setTotalCount(response.totalCount || response.data.length);
         } else {
           console.error('データの形式が不正です:', response.data);
           setData([]);
+          setTotalCount(0);
         }
       } else {
         console.error('APIエラー:', response?.error || '不明なエラー');
         setData([]);
+        setTotalCount(0);
       }
     } catch (error) {
       console.error('データ取得エラー:', error);
       setData([]);
+      setTotalCount(0);
     } finally {
       setIsLoading(false);
     }
@@ -245,6 +250,7 @@ const Dashboard = () => {
           onPrOnlyChange={handlePrOnlyChange}
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
+          totalCount={totalCount}
         />
       </main>
     </div>

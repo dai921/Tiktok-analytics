@@ -23,6 +23,7 @@ interface DataTableProps {
   onPrOnlyChange: (isPrOnly: boolean) => void
   pageSize?: number
   onPageSizeChange?: (pageSize: number) => void
+  totalCount?: number
 }
 
 // フィルタ可能なカラムを定義
@@ -196,7 +197,7 @@ interface CategoryItem {
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
+  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange, totalCount }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
@@ -649,7 +650,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               isActive={Boolean(columnFilters['createdAt'])}
               sortDirection={sortField === 'createdAt' ? sortDirection : null}
               isLoadingFilterOptions={isLoadingFilterOptions}
-              align="right"
+              align="center"
             />
           );
         },
@@ -666,7 +667,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
               const day = dateObj.getDate().toString().padStart(2, '0');
               return (
-                <div className="text-right font-medium text-gray-700">
+                <div className="text-center font-medium text-gray-700">
                   {`${year}/${month}/${day}`}
                 </div>
               );
@@ -681,17 +682,17 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 const month = match[2];
                 const day = match[3];
                 return (
-                  <div className="text-right font-medium text-gray-700">
+                  <div className="text-center font-medium text-gray-700">
                     {`${year}/${month}/${day}`}
                   </div>
                 );
               }
             }
             
-            return <div className="text-right text-gray-700">{date}</div>;
+            return <div className="text-center text-gray-700">{date}</div>;
           } catch (e) {
             console.error('日付変換エラー:', e);
-            return <div className="text-right text-gray-700">{date}</div>;
+            return <div className="text-center text-gray-700">{date}</div>;
           }
         },
       },
@@ -874,6 +875,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        {/* 最新動画一覧と件数表示セクションを追加 */}
+        <div className="flex items-center p-3">
+          <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
+          <div className="ml-2 px-3 py-1 bg-gray-200 rounded-full text-sm text-gray-700">
+            全 {totalCount?.toLocaleString() || '0'} 件
+          </div>
+        </div>
+        
         <div className="flex items-center justify-between p-2">
           <div className="flex items-center space-x-2">
             <label className="flex items-center cursor-pointer">
@@ -915,15 +924,32 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         key={column.accessorKey} 
                         className="px-3 py-0.25 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0 overflow-hidden"
                         style={{ 
-                          minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
-                                   column.accessorKey === 'createdAt' ? '50px' :
-                                   column.accessorKey === 'views' ? '65px' :
-                                   column.accessorKey === 'viewsIncrease' ? '65px' :
-                                   column.accessorKey === 'accountName' ? '100px' :
-                                   column.accessorKey === 'hashtags' ? '50px' :
-                                   column.accessorKey === 'category' ? '100px' :
-                                   column.accessorKey === 'description' ? '120px' : '70px',
-                          color: Boolean(columnFilters[column.accessorKey]) ? 'var(--color-sky-500)' : undefined
+                          width: column.accessorKey === 'thumbnail' ? '160px' :
+                                column.accessorKey === 'category' ? '160px' :
+                                column.accessorKey === 'createdAt' ? '80px' : 
+                                column.accessorKey === 'views' ? '100px' :
+                                column.accessorKey === 'viewsIncrease' ? '100px' :
+                                column.accessorKey === 'likes' ? '100px' :
+                                column.accessorKey === 'comments' ? '100px' : undefined,
+                          minWidth: column.accessorKey === 'thumbnail' ? '160px' :
+                                   column.accessorKey === 'category' ? '160px' :
+                                   column.accessorKey === 'createdAt' ? '80px' : 
+                                   column.accessorKey === 'views' ? '100px' :
+                                   column.accessorKey === 'viewsIncrease' ? '100px' :
+                                   column.accessorKey === 'likes' ? '100px' :
+                                  column.accessorKey === 'comments' ? '100px' :
+                                   column.accessorKey === 'accountName' ? '120px' :
+                                   column.accessorKey === 'hashtags' ? '100px' :
+                                   column.accessorKey === 'audioTitle' ? '120px' :
+                                   column.accessorKey === 'description' ? '150px' : '70px',
+                          maxWidth: column.accessorKey === 'thumbnail' ? '160px' :
+                                   column.accessorKey === 'category' ? '160px' :
+                                   column.accessorKey === 'createdAt' ? '80px' : 
+                                   column.accessorKey === 'views' ? '100px' :
+                                   column.accessorKey === 'viewsIncrease' ? '100px' :
+                                   column.accessorKey === 'likes' ? '100px' :
+                                   column.accessorKey === 'comments' ? '100px' : undefined,
+                          overflow: 'hidden'
                         }}
                       >
                         {column.header({ column })}
@@ -946,15 +972,31 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                               : ''
                           }`}
                           style={{ 
-                            minWidth: column.accessorKey === 'thumbnail' ? '100px' : 
-                                     column.accessorKey === 'createdAt' ? '50px' :
-                                     column.accessorKey === 'views' ? '65px' :
-                                     column.accessorKey === 'viewsIncrease' ? '65px' :
-                                     column.accessorKey === 'accountName' ? '100px' :
-                                     column.accessorKey === 'hashtags' ? '50px' :
-                                     column.accessorKey === 'category' ? '100px' :
-                                     column.accessorKey === 'description' ? '120px' : '70px',
-                            maxHeight: '100px',
+                            width: column.accessorKey === 'thumbnail' ? '160px' :
+                                  column.accessorKey === 'category' ? '160px' :
+                                  column.accessorKey === 'createdAt' ? '80px' : 
+                                  column.accessorKey === 'views' ? '100px' :
+                                  column.accessorKey === 'viewsIncrease' ? '100px' :
+                                  column.accessorKey === 'likes' ? '100px' :
+                                  column.accessorKey === 'comments' ? '100px' : undefined,
+                            minWidth: column.accessorKey === 'thumbnail' ? '160px' :
+                                     column.accessorKey === 'category' ? '160px' :
+                                     column.accessorKey === 'createdAt' ? '80px' : 
+                                     column.accessorKey === 'views' ? '100px' :
+                                     column.accessorKey === 'viewsIncrease' ? '100px' :
+                                     column.accessorKey === 'likes' ? '100px' :
+                                     column.accessorKey === 'comments' ? '100px' :
+                                     column.accessorKey === 'accountName' ? '120px' :
+                                     column.accessorKey === 'hashtags' ? '100px' :
+                                     column.accessorKey === 'audioTitle' ? '120px' :
+                                     column.accessorKey === 'description' ? '150px' : '70px',
+                            maxWidth: column.accessorKey === 'thumbnail' ? '160px' :
+                                     column.accessorKey === 'category' ? '160px' :
+                                     column.accessorKey === 'createdAt' ? '80px' : 
+                                     column.accessorKey === 'views' ? '100px' :
+                                     column.accessorKey === 'viewsIncrease' ? '100px' :
+                                     column.accessorKey === 'likes' ? '100px' :
+                                     column.accessorKey === 'comments' ? '100px' : undefined,
                             overflow: 'hidden'
                           }}
                         >

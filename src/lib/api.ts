@@ -731,7 +731,8 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
         success: false,
         data: [],
         currentPage: 1,
-        totalPages: 1
+        totalPages: 1,
+        totalCount: 0
       };
     }
     
@@ -742,7 +743,8 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
       success: true,
       data: formattedData,
       currentPage: result.currentPage || 1,
-      totalPages: result.totalPages || 1
+      totalPages: result.totalPages || 1,
+      totalCount: result.totalCount || result.total || formattedData.length
     };
   } catch (error) {
     console.error('APIデータの取得エラー:', error);
@@ -751,6 +753,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
       data: [],
       currentPage: 1,
       totalPages: 1,
+      totalCount: 0,
       error: error instanceof Error ? error.message : '不明なエラー'
     };
   }
