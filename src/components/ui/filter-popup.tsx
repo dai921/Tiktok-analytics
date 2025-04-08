@@ -290,6 +290,14 @@ export const FilterPopup = ({
         [fieldId]: apiCompatibleValue
       }));
     } else {
+      // ソート操作の場合は数値変換をスキップ
+      if (value.type === 'sort') {
+        setTempFilters(prev => ({
+          ...prev,
+          [fieldId]: value
+        }));
+        return; // ここで終了
+      }
       // 日付以外のフィルターはそのまま設定
       setTempFilters(prev => ({
         ...prev,
@@ -578,24 +586,24 @@ export const FilterPopup = ({
             
             {/* ソート機能が必要な場合 */}
             {field.supportSort && (
-              <div className="flex space-x-1">
+              <div className="flex items-center space-x-1">
                 <button
                   onClick={() => handleSortChange(field.id, 'asc')}
-                  className={`p-1 rounded ${sortFilterValue && sortFilterValue.value === 'asc' 
-                    ? 'bg-[#FE2C55]/10 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
-                    : 'text-gray-400 hover:text-[#FE2C55] hover:bg-[#FE2C55]/5'}`}
+                  className={`p-1.5 rounded-full ${sortFilterValue && sortFilterValue.value === 'asc' 
+                    ? 'bg-[#FE2C55]/20 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
+                    : 'text-gray-500 hover:text-[#FE2C55] hover:bg-[#FE2C55]/10'}`}
                   title="昇順で並べ替え"
                 >
-                  <SortAscIcon size={16} />
+                  <SortAscIcon size={14} />
                 </button>
                 <button
                   onClick={() => handleSortChange(field.id, 'desc')}
-                  className={`p-1 rounded ${sortFilterValue && sortFilterValue.value === 'desc' 
-                    ? 'bg-[#FE2C55]/10 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
-                    : 'text-gray-400 hover:text-[#FE2C55] hover:bg-[#FE2C55]/5'}`}
+                  className={`p-1.5 rounded-full ${sortFilterValue && sortFilterValue.value === 'desc' 
+                    ? 'bg-[#FE2C55]/20 text-[#FE2C55] ring-1 ring-[#FE2C55]' 
+                    : 'text-gray-500 hover:text-[#FE2C55] hover:bg-[#FE2C55]/10'}`}
                   title="降順で並べ替え"
                 >
-                  <SortDescIcon size={16} />
+                  <SortDescIcon size={14} />
                 </button>
               </div>
             )}

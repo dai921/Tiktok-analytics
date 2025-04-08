@@ -589,10 +589,19 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       const newColumnFilters: Record<string, FilterValue> = {};
       const newCurrentFilters: Record<string, FilterQuery> = {};
       
+      // ソート情報をリセット
+      let newSortField: string | null = null;
+      let newSortDirection: 'asc' | 'desc' | null = null;
+      
       // 各フィルターを確認して適用
       Object.entries(filters).forEach(([field, value]) => {
         if (value && Object.keys(value).length > 0) {
-          // フィルタ値が実際に存在する場合のみ追加
+          // ソート情報の処理
+          if (value.type === 'sort') {
+            newSortField = field;
+            newSortDirection = value.value as 'asc' | 'desc';
+          }
+          
           newColumnFilters[field] = value;
           newCurrentFilters[field] = {
             ...value
@@ -603,6 +612,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       // 状態を更新
       setColumnFilters(newColumnFilters);
       setCurrentFilters(newCurrentFilters);
+      setSortField(newSortField);
+      setSortDirection(newSortDirection);
       
       // フィルターがアクティブかどうかを設定
       const hasFilters = Object.keys(newColumnFilters).length > 0;

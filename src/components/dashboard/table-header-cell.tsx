@@ -569,8 +569,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <button 
               onClick={() => handleSortDirection('desc')}
               className={cn(
-                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
-                localSortDirection === 'desc' ? "bg-gray-100 font-semibold" : ""
+                "w-full text-left px-2 py-1 rounded text-xs",
+                localSortDirection === 'desc' 
+                  ? "bg-blue-100 font-semibold text-blue-700" 
+                  : "hover:bg-gray-50 text-gray-700"
               )}
             >
               {getDescSortLabel()}
@@ -578,8 +580,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <button 
               onClick={() => handleSortDirection('asc')}
               className={cn(
-                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
-                localSortDirection === 'asc' ? "bg-gray-100 font-semibold" : ""
+                "w-full text-left px-2 py-1 rounded text-xs",
+                localSortDirection === 'asc' 
+                  ? "bg-blue-100 font-semibold text-blue-700" 
+                  : "hover:bg-gray-50 text-gray-700"
               )}
             >
               {getAscSortLabel()}
@@ -594,15 +598,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         data-header-cell
         className={cn(
           "flex items-center gap-1 whitespace-nowrap",
-          "px-2 py-1 text-gray-700 text-[12px]", // text-sm から text-[8px] に変更
+          "px-2 py-1 text-[12px]", // text-sm から text-[8px] に変更
           align === 'center' ? 'justify-center' : '',
-          isActive || localSortDirection ? "text-blue-600 font-medium" : ""
+          (isActive || localSortDirection) ? "text-blue-600 font-medium" : "text-gray-700"
         )}
       >
-        <div className={cn("flex items-center cursor-default", alignmentClass)}>
-          <span>{title}</span>
+        <div className={cn(
+          "flex items-center cursor-default", 
+          alignmentClass,
+          localSortDirection ? "font-semibold" : ""
+        )}>
+          <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
           {localSortDirection && (
-            <span className="ml-1 text-blue-600">
+            <span className="ml-1 text-blue-700 font-bold">
               {localSortDirection === 'asc' ? '↑' : '↓'}
             </span>
           )}
@@ -612,15 +620,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           <button 
             ref={buttonRef}
             onClick={handleToggleFilter}
-            className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500 font-bold' : ''}`}
-            data-active={isActive}
+            className={cn(
+              "p-1 rounded hover:bg-gray-100",
+              isActive ? "text-sky-500 font-bold" : "",
+              localSortDirection ? "bg-blue-50 text-blue-600" : ""
+            )}
+            data-active={isActive || localSortDirection ? "true" : "false"}
           >
             <svg 
               className="w-4 h-4"
               viewBox="0 0 24 24" 
               fill="none" 
               stroke="currentColor"
-              strokeWidth={isActive ? "3" : "2"}
+              strokeWidth={isActive || localSortDirection ? "3" : "2"}
             >
               <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
             </svg>
