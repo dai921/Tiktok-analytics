@@ -985,12 +985,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <button
               ref={filterButtonRef}
               onClick={() => setIsFilterPopupOpen(true)}
-              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              className="inline-flex items-center px-2.5 py-1.5 border border-[#FE2C55] shadow-sm text-xs font-medium rounded text-[#FE2C55] bg-white hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
             >
               <FilterIcon size={16} />
               <span className="ml-1">フィルター</span>
               {hasActiveFilters && (
-                <span className="ml-1 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                <span className="ml-1 px-1.5 py-0.5 bg-[#FE2C55] text-white text-xs rounded-full">
                   {Object.keys(columnFilters).length}
                 </span>
               )}
@@ -1003,7 +1003,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 onChange={(e) => onPrOnlyChange(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-red-500 peer-focus:ring-2 peer-focus:ring-red-300 transition-colors">
+              <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-[#FE2C55] peer-focus:ring-2 peer-focus:ring-[#FE2C55]/30 transition-colors">
                 <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
               </div>
               <span className="ml-2 text-sm font-medium text-black">#PR動画のみ</span>

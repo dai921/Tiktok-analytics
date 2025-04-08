@@ -100,4 +100,38 @@ def disable_delayed_schedule():
         logger.info("3分後実行のスケジュールを削除しました")
         
     except NotFound:
-        logger.info("3分後実行のスケジュールは既に削除されています") 
+        logger.info("3分後実行のスケジュールは既に削除されています")
+
+# 最後の動画かどうかを確認
+last_video_id = message_data.get('last_video_id')
+if last_video_id and last_video_id == message_data.get('video_id'):
+    logger.info(f"last_video_idとvideo_idが一致しました: {last_video_id}")
+    
+    # バッチ処理が完全に終了したかチェック
+    cursor_query = """
+        SELECT last_cursor_id
+        FROM processing_cursors
+        WHERE processor_name = 'video_collector'
+        ORDER BY updated_at DESC
+        LIMIT 1
+    """
+    cursor_results = execute_query(cursor_query)
+    
+    if cursor_results and cursor_results[0]['last_cursor_id'] == 0:
+        # 全バッチ完了の場合はスケジューラー停止
+        scheduler_message = {
+            "action": "stop_scheduler",
+            "processor_name": "video_collector",
+            "timestamp": datetime.now().isoformat()
+        }
+    else:
+        # まだバッチが残っている場合は次のバッチ開始
+        scheduler_message = {
+            "action": "start_batch_controller",
+            "processor_name": "video_collector",
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    # スケジューラーにメッセージ送信
+    scheduler_topic = "video-collector-status"
+    publish_message(scheduler_topic, scheduler_message) 
