@@ -678,18 +678,12 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               <span className="ml-1 flex items-center">
                 <span className={cn(
                   "font-bold",
-                  sortPriority === 1 ? "text-[#FE2C55]" : 
-                  sortPriority === 2 ? "text-orange-500" : "text-blue-700"
+                  "text-blue-700"
                 )}>
                   {localSortDirection === 'asc' ? '↑' : '↓'}
                 </span>
                 {sortPriority && (
-                  <span className={cn(
-                    "ml-0.5 text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center",
-                    sortPriority === 1 ? "bg-[#FE2C55] text-white" : 
-                    sortPriority === 2 ? "bg-orange-500 text-white" : 
-                    "bg-blue-700 text-white"
-                  )}>
+                  <span className="ml-0.5 text-[10px] font-bold text-blue-700">
                     {sortPriority}
                   </span>
                 )}

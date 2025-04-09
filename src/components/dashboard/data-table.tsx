@@ -820,7 +820,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               onFilter={(value) => handleFilter('category')(value)}
               isActive={Boolean(columnFilters['category'])}
               categoryData={options}
-              sortDirection={sortField === 'category' ? sortDirection : null}
+              sortDirection={
+                primarySort?.field === 'category' 
+                  ? primarySort.direction 
+                  : secondarySort?.field === 'category' 
+                    ? secondarySort.direction 
+                    : null
+              }
               sortPriority={primarySort?.field === 'category' ? 1 : secondarySort?.field === 'category' ? 2 : null}
               isLoadingFilterOptions={isLoadingFilterOptions}
             />
@@ -891,7 +897,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               type="date"
               onFilter={(value) => handleFilter('createdAt')(value)}
               isActive={Boolean(columnFilters['createdAt'])}
-              sortDirection={sortField === 'createdAt' ? sortDirection : null}
+              sortDirection={
+                primarySort?.field === 'createdAt' 
+                  ? primarySort.direction 
+                  : secondarySort?.field === 'createdAt' 
+                    ? secondarySort.direction 
+                    : null
+              }
               sortPriority={primarySort?.field === 'createdAt' ? 1 : secondarySort?.field === 'createdAt' ? 2 : null}
               isLoadingFilterOptions={isLoadingFilterOptions}
               align="center"
@@ -949,7 +961,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('views')(value)}
             isActive={Boolean(columnFilters['views'])}
-            sortDirection={sortField === 'views' ? sortDirection : null}
+            sortDirection={
+              primarySort?.field === 'views' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'views' 
+                  ? secondarySort.direction 
+                  : null
+            }
             sortPriority={primarySort?.field === 'views' ? 1 : secondarySort?.field === 'views' ? 2 : null}
           />
         ),
@@ -964,7 +982,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('viewsIncrease')(value)}
             isActive={Boolean(columnFilters['viewsIncrease'])}
-            sortDirection={sortField === 'viewsIncrease' ? sortDirection : null}
+            sortDirection={
+              primarySort?.field === 'viewsIncrease' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'viewsIncrease' 
+                  ? secondarySort.direction 
+                  : null
+            }
             sortPriority={primarySort?.field === 'viewsIncrease' ? 1 : secondarySort?.field === 'viewsIncrease' ? 2 : null}
           />
         ),
@@ -979,7 +1003,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('likes')(value)}
             isActive={Boolean(columnFilters['likes'])}
-            sortDirection={sortField === 'likes' ? sortDirection : null}
+            sortDirection={
+              primarySort?.field === 'likes' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'likes' 
+                  ? secondarySort.direction 
+                  : null
+            }
             sortPriority={primarySort?.field === 'likes' ? 1 : secondarySort?.field === 'likes' ? 2 : null}
           />
         ),
@@ -994,7 +1024,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             align="center"
             onFilter={(value) => handleFilter('comments')(value)}
             isActive={Boolean(columnFilters['comments'])}
-            sortDirection={sortField === 'comments' ? sortDirection : null}
+            sortDirection={
+              primarySort?.field === 'comments' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'comments' 
+                  ? secondarySort.direction 
+                  : null
+            }
             sortPriority={primarySort?.field === 'comments' ? 1 : secondarySort?.field === 'comments' ? 2 : null}
           />
         ),
