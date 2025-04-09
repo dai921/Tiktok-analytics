@@ -37,7 +37,7 @@ export interface VideoData {
     valueType: 'IMAGE'
     url: string
   } | null
-  authorName: string
+  displayName: string
   description: string
   likes: number
   views: number
@@ -65,7 +65,24 @@ export interface VideoData {
   products: string
   ten_days_increase: number
   content_type: string
+  account_type: string
+  likes_count_increase: number
+  ten_days_likes_increase: number
+  comment_count_increase: number
+  ten_days_comment_increase: number
 }
+
+// 数値フォーマット用の型定義を追加
+export type NumberFormatType = 
+  | 'views' 
+  | 'viewsIncrease' 
+  | 'likes' 
+  | 'comments'
+  | 'likes_count_increase'
+  | 'ten_days_likes_increase'
+  | 'comment_count_increase'
+  | 'ten_days_comment_increase'
+  | 'ten_days_increase'
 
 // テーブル関連の型
 export interface Column {
@@ -134,9 +151,30 @@ export interface TikTokVideo {
   commentCount: number;
   accountName: string;
   audioInfo?: { title: string } | string;
-  music_info?: { title: string } | string;  // 追加
+  music_info?: { title: string } | string;
   hashtags: string[];
   caption: string;
   category: string;
+  account_type: string;
+  likes_count_increase: number;
+  ten_days_likes_increase: number;
+  comment_count_increase: number;
+  ten_days_comment_increase: number;
+  ten_days_increase: number;
+}
+
+export interface AccountData {
+  account_name: string;
+  display_name?: string;
+}
+
+export interface CategoryData {
+  category: string;
+  count: number;
+}
+
+export interface HashtagData {
+  hashtag: string;
+  count: number;
 }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, forwardRef, useCallback, useImperativeHandle, ReactElement } from 'react'
-import type { VideoData, FilterValue, Column, FilterQuery } from '@/types/dashboard'
+import type { VideoData, FilterValue, Column, FilterQuery, NumberFormatType } from '@/types/dashboard'
 import { TableHeaderCell } from './table-header-cell'
 import Image from 'next/image'
 import { TextPopup } from '@/components/ui/text-popup'
@@ -35,9 +35,16 @@ const FILTERABLE_COLUMNS = [
   'likes',
   'comments',
   'category',
-  'accountName',
+  'account_name',
   'hashtags',
   'content_type',
+  'product',
+  'account_type',
+  'likes_count_increase',
+  'ten_days_likes_increase',
+  'comment_count_increase',
+  'ten_days_comment_increase',
+  'ten_days_increase'
 ] as const
 
 type FilterableColumn = typeof FILTERABLE_COLUMNS[number]
@@ -145,16 +152,23 @@ const UpArrowIcon = ({ size = 16 }: { size?: number }) => (
 );
 
 // 数値フォーマット関数を修正 - num と type を受け取るように変更
-const formatNumber = (num: number, type?: 'views' | 'viewsIncrease' | 'likes' | 'comments'): ReactElement => {
+const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
   const formattedNum = new Intl.NumberFormat('ja-JP').format(num);
   
-  // 再生増加数の場合
-  if (type === 'viewsIncrease' && num > 0) {
+  // 増加数の場合
+  if (type && (
+    type === 'viewsIncrease' ||
+    type === 'likes_count_increase' ||
+    type === 'ten_days_likes_increase' ||
+    type === 'comment_count_increase' ||
+    type === 'ten_days_comment_increase' ||
+    type === 'ten_days_increase'
+  )) {
     return (
       <div className="text-center font-medium text-green-600 flex items-center justify-center">
         <UpArrowIcon size={14} />
         <span className="tabular-nums ml-1">
-          {formattedNum}
+          {num > 0 ? `+${formattedNum}` : formattedNum}
         </span>
       </div>
     );
@@ -760,35 +774,40 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     const columns: Column[] = [
       {
-        accessorKey: 'thumbnail',
+        accessorKey: 'thumbnail_url',
         header: ({ column }) => (
           <TableHeaderCell
             title="サムネイル"
           />
         ),
         cell: ({ row }) => {
-          if (!row.thumbnail) {
-            return <NoThumbnail />
+          console.log('Thumbnail data:', {
+            row,
+            thumbnail: row.thumbnail_url,
+            type: typeof row.thumbnail_url
+          });
+
+          let thumbnailUrl = null;
+          if (typeof row.thumbnail_url === 'string') {
+            thumbnailUrl = row.thumbnail_url;
+          } else if (row.thumbnail_url && typeof row.thumbnail_url === 'object') {
+            thumbnailUrl = row.thumbnail_url.url;
           }
 
-          const imageUrl = typeof row.thumbnail === 'string' 
-            ? row.thumbnail  
-            : row.thumbnail.url;  
-
-          if (!imageUrl) {
-            return <NoThumbnail />
+          if (!thumbnailUrl) {
+            return <NoThumbnail />;
           }
 
           return (
-            <div className="relative">
-              <ImageHover 
-                src={imageUrl} 
-                alt="サムネイル" 
-                videoUrl={row.url}
-                videoData={row}
-              />
-              <div className="absolute -bottom-1 -right-1">
-                <div className="bg-white p-0.2 rounded-lg shadow-sm">
+            <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+              <div className="relative w-full h-full overflow-hidden rounded">
+                <ImageHover 
+                  src={thumbnailUrl} 
+                  alt="サムネイル" 
+                  videoUrl={row.url}
+                  videoData={row}
+                />
+                <div className="absolute bottom-[8px] right-[8px] bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-0.2">
                   {row.content_type === 'video' ? (
                     <VideoTypeIcon size={32} />
                   ) : (
@@ -797,7 +816,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 </div>
               </div>
             </div>
-          )
+          );
         }
       },
       {
@@ -1034,30 +1053,56 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         cell: ({ row }) => formatNumber(row.comments, 'comments')
       },
       {
-        accessorKey: 'accountName',
+        accessorKey: 'products',
         header: ({ column }) => (
           <TableHeaderCell
-            title="アカウント名"
+            title="商品名"
             type="text"
-            onFilter={(value) => handleFilter('accountName')(value)}
-            isActive={Boolean(columnFilters['accountName'])}
-            categoryData={getFilteredOptions('アカウント名')}
-            sortDirection={sortField === 'accountName' ? sortDirection : null}
-            sortPriority={primarySort?.field === 'accountName' ? 1 : secondarySort?.field === 'accountName' ? 2 : null}
+            onFilter={(value) => handleFilter('products')(value)}
+            isActive={Boolean(columnFilters['products'])}
+            categoryData={getFilteredOptions('商品名')}
+            sortDirection={
+              primarySort?.field === 'products' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'products' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'products' ? 1 : secondarySort?.field === 'products' ? 2 : null}
           />
         ),
         cell: ({ row }) => (
           <div className="w-[120px] min-w-[120px]">
-            <div className="flex flex-col">
-              <span className="font-bold truncate text-base">
-                {row.accountName}
-              </span>
-              {row.display_name && (
-                <span className="text-xs text-gray-500 truncate">
-                  {row.display_name}
-                </span>
-              )}
-            </div>
+            <span className="truncate text-sm">
+              {row.products}
+            </span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'account_type',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウントジャンル"
+            type="text"
+            onFilter={(value) => handleFilter('account_type')(value)}
+            isActive={Boolean(columnFilters['account_type'])}
+            categoryData={getFilteredOptions('アカウントジャンル')}
+            sortDirection={
+              primarySort?.field === 'account_type' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'account_type' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <span className="truncate text-sm">
+              {row.account_type}
+            </span>
           </div>
         ),
       },
@@ -1117,6 +1162,144 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         }
       },
       {
+        accessorKey: 'ten_days_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日間再生増加数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('ten_days_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_increase'])}
+            sortDirection={
+              primarySort?.field === 'ten_days_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_increase' ? 1 : secondarySort?.field === 'ten_days_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.ten_days_increase, 'ten_days_increase')
+      },
+      {
+        accessorKey: 'likes_count_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="いいね増加数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('likes_count_increase')(value)}
+            isActive={Boolean(columnFilters['likes_count_increase'])}
+            sortDirection={
+              primarySort?.field === 'likes_count_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'likes_count_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'likes_count_increase' ? 1 : secondarySort?.field === 'likes_count_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.likes_count_increase, 'likes_count_increase')
+      },
+      {
+        accessorKey: 'ten_days_likes_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日間いいね増加数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('ten_days_likes_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_likes_increase'])}
+            sortDirection={
+              primarySort?.field === 'ten_days_likes_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_likes_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_likes_increase' ? 1 : secondarySort?.field === 'ten_days_likes_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.ten_days_likes_increase, 'ten_days_likes_increase')
+      },
+      {
+        accessorKey: 'comment_count_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="コメント増加数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('comment_count_increase')(value)}
+            isActive={Boolean(columnFilters['comment_count_increase'])}
+            sortDirection={
+              primarySort?.field === 'comment_count_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'comment_count_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'comment_count_increase' ? 1 : secondarySort?.field === 'comment_count_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.comment_count_increase, 'comment_count_increase')
+      },
+      {
+        accessorKey: 'ten_days_comment_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日間コメント増加数"
+            type="number"
+            align="center"
+            onFilter={(value) => handleFilter('ten_days_comment_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_comment_increase'])}
+            sortDirection={
+              primarySort?.field === 'ten_days_comment_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_comment_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_comment_increase' ? 1 : secondarySort?.field === 'ten_days_comment_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => formatNumber(row.ten_days_comment_increase, 'ten_days_comment_increase')
+      },
+      {
+        accessorKey: 'account_name',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウント名"
+            type="text"
+            onFilter={(value) => handleFilter('account_name')(value)}
+            isActive={Boolean(columnFilters['account_name'])}
+            sortDirection={
+              primarySort?.field === 'account_name' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'account_name' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'account_name' ? 1 : secondarySort?.field === 'account_name' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <div className="flex flex-col">
+              <span className="font-bold truncate text-base">
+                {row.account_name || '不明'}
+              </span>
+              {row.display_name && (
+                <span className="text-xs text-gray-500 truncate">
+                  {row.display_name}
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      },
+      {
         accessorKey: 'audioTitle',
         header: ({ column }) => (
           <TableHeaderCell
@@ -1125,10 +1308,41 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilter={(value) => handleFilter('audioTitle')(value)}
             isActive={Boolean(columnFilters['audioTitle'])}
             categoryData={getFilteredOptions('BGM')}
-            sortDirection={sortField === 'audioTitle' ? sortDirection : null}
+            sortDirection={
+              primarySort?.field === 'audioTitle' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'audioTitle' 
+                  ? secondarySort.direction 
+                  : null
+            }
             sortPriority={primarySort?.field === 'audioTitle' ? 1 : secondarySort?.field === 'audioTitle' ? 2 : null}
           />
         ),
+        cell: ({ row }) => {
+          // デバッグログを追加
+          console.log('BGM Row Data:', {
+            fullRow: row,
+            audioTitle: row.audioTitle,
+            audio_title: row.audio_title, // スネークケースも確認
+            music: row.music, // 別の可能性のある名前も確認
+          });
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <button 
+                onClick={() => setSelectedText({ 
+                  title: 'BGM情報', 
+                  content: `${row.audioTitle || 'BGMなし'}${row.artist ? `\nアーティスト: ${row.artist}` : ''}`
+                })}
+                className="text-left w-full"
+              >
+                <span className="line-clamp-2 text-sm">
+                  {row.audioTitle || 'BGMなし'}
+                </span>
+              </button>
+            </div>
+          );
+        }
       },
       {
         accessorKey: 'description',
@@ -1144,7 +1358,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <div className="w-[150px] min-w-[150px]">
             <button 
               onClick={() => setSelectedText({ 
-                title: '文字起こし', 
+                title: 'キャプション', 
                 content: row.description 
               })}
               className="text-left w-full"
@@ -1154,7 +1368,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </span>
             </button>
           </div>
-        ),
+        )
       },
       {
         accessorKey: 'url',
@@ -1166,6 +1380,18 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'url' ? 1 : secondarySort?.field === 'url' ? 2 : null}
           />
         ),
+        cell: ({ row }) => (
+          <div className="w-[70px] min-w-[70px]">
+            <a 
+              href={row.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 underline"
+            >
+              リンク
+            </a>
+          </div>
+        )
       },
     ]
 
@@ -1237,41 +1463,35 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500" />
               </div>
             )}
-            <div className="overflow-x-auto divide-y divide-gray-200">
-              <table className="w-full text-sm leading-relaxed table-fixed">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     {columns.map((column) => (
                       <th 
                         key={column.accessorKey} 
-                        className="px-3 py-0.25 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0 overflow-hidden"
+                        className="px-3 py-2 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
-                          width: column.accessorKey === 'thumbnail' ? '160px' :
-                                column.accessorKey === 'category' ? '160px' :
-                                column.accessorKey === 'createdAt' ? '80px' : 
-                                column.accessorKey === 'views' ? '100px' :
-                                column.accessorKey === 'viewsIncrease' ? '100px' :
-                                column.accessorKey === 'likes' ? '100px' :
-                                column.accessorKey === 'comments' ? '100px' : undefined,
-                          minWidth: column.accessorKey === 'thumbnail' ? '160px' :
-                                   column.accessorKey === 'category' ? '160px' :
-                                   column.accessorKey === 'createdAt' ? '80px' : 
-                                   column.accessorKey === 'views' ? '100px' :
-                                   column.accessorKey === 'viewsIncrease' ? '100px' :
-                                   column.accessorKey === 'likes' ? '100px' :
-                                  column.accessorKey === 'comments' ? '100px' :
-                                   column.accessorKey === 'accountName' ? '120px' :
-                                   column.accessorKey === 'hashtags' ? '100px' :
-                                   column.accessorKey === 'audioTitle' ? '120px' :
-                                   column.accessorKey === 'description' ? '150px' : '70px',
-                          maxWidth: column.accessorKey === 'thumbnail' ? '160px' :
-                                   column.accessorKey === 'category' ? '160px' :
-                                   column.accessorKey === 'createdAt' ? '80px' : 
-                                   column.accessorKey === 'views' ? '100px' :
-                                   column.accessorKey === 'viewsIncrease' ? '100px' :
-                                   column.accessorKey === 'likes' ? '100px' :
-                                   column.accessorKey === 'comments' ? '100px' : undefined,
-                          overflow: 'hidden'
+                          width: column.accessorKey === 'thumbnail_url' ? '160px' :
+                                 column.accessorKey === 'category' ? '160px' :
+                                 column.accessorKey === 'createdAt' ? '80px' : 
+                                 column.accessorKey === 'account_name' ? '120px' :
+                                 column.accessorKey === 'audioTitle' ? '120px' :
+                                 column.accessorKey === 'description' ? '150px' :
+                                 column.accessorKey === 'url' ? '70px' :
+                                 column.accessorKey === 'views' ? '100px' :
+                                 column.accessorKey === 'viewsIncrease' ? '100px' :
+                                 column.accessorKey === 'likes' ? '100px' :
+                                 column.accessorKey === 'comments' ? '100px' :
+                                 column.accessorKey === 'products' ? '120px' :
+                                 column.accessorKey === 'account_type' ? '120px' :
+                                 column.accessorKey === 'hashtags' ? '120px' :
+                                 column.accessorKey === 'ten_days_increase' ? '120px' :
+                                 column.accessorKey === 'likes_count_increase' ? '120px' :
+                                 column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                 column.accessorKey === 'comment_count_increase' ? '120px' :
+                                 column.accessorKey === 'ten_days_comment_increase' ? '140px' : '100px',
+                          whiteSpace: 'nowrap'
                         }}
                       >
                         {column.header({ column })}
@@ -1294,31 +1514,51 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                               : ''
                           }`}
                           style={{ 
-                            width: column.accessorKey === 'thumbnail' ? '160px' :
+                            width: column.accessorKey === 'thumbnail_url' ? '160px' :
                                   column.accessorKey === 'category' ? '160px' :
                                   column.accessorKey === 'createdAt' ? '80px' : 
                                   column.accessorKey === 'views' ? '100px' :
                                   column.accessorKey === 'viewsIncrease' ? '100px' :
                                   column.accessorKey === 'likes' ? '100px' :
-                                  column.accessorKey === 'comments' ? '100px' : undefined,
-                            minWidth: column.accessorKey === 'thumbnail' ? '160px' :
+                                  column.accessorKey === 'comments' ? '100px' :
+                                  column.accessorKey === 'products' ? '120px' :
+                                  column.accessorKey === 'account_type' ? '120px' :
+                                  column.accessorKey === 'hashtags' ? '120px' :
+                                  column.accessorKey === 'ten_days_increase' ? '120px' :
+                                  column.accessorKey === 'likes_count_increase' ? '120px' :
+                                  column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                  column.accessorKey === 'comment_count_increase' ? '120px' :
+                                  column.accessorKey === 'ten_days_comment_increase' ? '140px' : undefined,
+                            minWidth: column.accessorKey === 'thumbnail_url' ? '160px' :
                                      column.accessorKey === 'category' ? '160px' :
                                      column.accessorKey === 'createdAt' ? '80px' : 
                                      column.accessorKey === 'views' ? '100px' :
                                      column.accessorKey === 'viewsIncrease' ? '100px' :
                                      column.accessorKey === 'likes' ? '100px' :
                                      column.accessorKey === 'comments' ? '100px' :
-                                     column.accessorKey === 'accountName' ? '120px' :
-                                     column.accessorKey === 'hashtags' ? '100px' :
-                                     column.accessorKey === 'audioTitle' ? '120px' :
-                                     column.accessorKey === 'description' ? '150px' : '70px',
-                            maxWidth: column.accessorKey === 'thumbnail' ? '160px' :
+                                     column.accessorKey === 'products' ? '120px' :
+                                     column.accessorKey === 'account_type' ? '120px' :
+                                     column.accessorKey === 'hashtags' ? '120px' :
+                                     column.accessorKey === 'ten_days_increase' ? '120px' :
+                                     column.accessorKey === 'likes_count_increase' ? '120px' :
+                                     column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                     column.accessorKey === 'comment_count_increase' ? '120px' :
+                                     column.accessorKey === 'ten_days_comment_increase' ? '140px' : undefined,
+                            maxWidth: column.accessorKey === 'thumbnail_url' ? '160px' :
                                      column.accessorKey === 'category' ? '160px' :
                                      column.accessorKey === 'createdAt' ? '80px' : 
                                      column.accessorKey === 'views' ? '100px' :
                                      column.accessorKey === 'viewsIncrease' ? '100px' :
                                      column.accessorKey === 'likes' ? '100px' :
-                                     column.accessorKey === 'comments' ? '100px' : undefined,
+                                     column.accessorKey === 'comments' ? '100px' :
+                                     column.accessorKey === 'products' ? '120px' :
+                                     column.accessorKey === 'account_type' ? '120px' :
+                                     column.accessorKey === 'hashtags' ? '120px' :
+                                     column.accessorKey === 'ten_days_increase' ? '120px' :
+                                     column.accessorKey === 'likes_count_increase' ? '120px' :
+                                     column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                     column.accessorKey === 'comment_count_increase' ? '120px' :
+                                     column.accessorKey === 'ten_days_comment_increase' ? '140px' : undefined,
                             overflow: 'hidden'
                           }}
                         >

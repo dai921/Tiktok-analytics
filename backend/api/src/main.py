@@ -105,7 +105,15 @@ async def get_videos(
         print(f"Request params: page={page}, limit={limit}, account_name={account_name}, category={category}, ...")
 
         # 基本クエリ
-        query = "SELECT * FROM frontend_data"
+        query = """
+            SELECT 
+                url, thumbnail_url, created_at, play_count, play_count_increase, 
+                ten_days_increase, account_name, display_name, content_type, 
+                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
+                comment_count_increase, ten_days_comment_increase, account_type,
+                hashtags, music_info, caption, category, product
+            FROM frontend_data
+        """
         params = []
         where_clauses = []
 
@@ -260,6 +268,9 @@ async def get_videos(
         # ページネーション用にLIMIT/OFFSETを追加
         offset = (page - 1) * limit
         
+        # メインクエリからLIMIT/OFFSETを除いたベースクエリを作成
+        base_query = query
+
         # limit=-1の場合は全件取得（ページングなし）
         if limit == -1:
             print("全件取得モードが指定されました - ページングを無効化")
@@ -276,7 +287,7 @@ async def get_videos(
         rows = cursor.fetchall()
 
         # 総件数取得（フィルタパラメータを使用）
-        count_query = f"SELECT COUNT(*) FROM ({query}) as count_query"
+        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
         cursor.execute(count_query, filter_params)
         total = cursor.fetchone()[0]
 
@@ -285,8 +296,8 @@ async def get_videos(
         global_latest_date = cursor.fetchone()[0]
         global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
 
-        # フィルター適用後の最新投稿日を取得
-        filtered_latest_query = f"SELECT MAX(created_at) FROM ({query}) as latest_query"
+        # フィルター適用後の最新投稿日を取得（base_queryを使用）
+        filtered_latest_query = f"SELECT MAX(created_at) FROM ({base_query}) as latest_query"
         cursor.execute(filtered_latest_query, filter_params)
         filtered_latest_date = cursor.fetchone()[0]
         filtered_last_updated = format_last_updated(filtered_latest_date) if filtered_latest_date else None
@@ -358,7 +369,15 @@ async def get_videos_alt(
         cursor = conn.cursor()
 
         # 基本クエリ
-        query = "SELECT * FROM frontend_data"
+        query = """
+            SELECT 
+                url, thumbnail_url, created_at, play_count, play_count_increase, 
+                ten_days_increase, account_name, display_name, content_type, 
+                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
+                comment_count_increase, ten_days_comment_increase, account_type,
+                hashtags, music_info, caption, category, product
+            FROM frontend_data
+        """
         params = []
         where_clauses = []
 
@@ -525,15 +544,15 @@ async def get_videos_alt(
             # デフォルトのソート順
             query += " ORDER BY created_at DESC"
 
-        # 基本クエリを保存（LIMIT/OFFSET なし）
-        base_query = query
-
         # フィルタパラメータを保持
         filter_params = params.copy()
 
         # ページネーション用にLIMIT/OFFSETを追加
         offset = (page - 1) * limit
         
+        # メインクエリからLIMIT/OFFSETを除いたベースクエリを作成
+        base_query = query
+
         # limit=-1の場合は全件取得（ページングなし）
         if limit == -1:
             print("全件取得モードが指定されました - ページングを無効化")

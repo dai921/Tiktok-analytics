@@ -1,4 +1,5 @@
-import type { VideoData, PaginatedResponse, FilterQuery, FilterType, ComparisonOperator } from '@/types/dashboard'
+import type { VideoData, TikTokVideo, AccountData, CategoryData, HashtagData } from '@/types/dashboard'
+import type { PaginatedResponse, FilterQuery, FilterType, ComparisonOperator } from '@/types/dashboard'
 
 // 環境変数からAPI設定を取得
 const useBackendApi = process.env.NEXT_PUBLIC_USE_BACKEND_API === 'true';
@@ -124,7 +125,11 @@ const adaptApiResponse = (apiResponse: any) => {
       commentCount: video.comment_count,
       accountName: video.account_name,
       audioInfo: video.audioInfo || video.music_info,
-      hashtags: video.hashtags,
+      hashtags: Array.isArray(video.hashtags) 
+        ? video.hashtags 
+        : typeof video.hashtags === 'string'
+          ? video.hashtags.split(/[,#]/).map((tag: string) => tag.trim()).filter(Boolean)
+          : [],
       caption: video.caption,
       category: video.category
     })),
@@ -251,20 +256,30 @@ export async function fetchHashtags(limit: number | null = null): Promise<ApiRes
   }
 }
 
+// ソートフィルターの型定義を修正
+interface SortFilter {
+  key: string;
+  field: string;
+  apiField: string;
+  direction: string | number;
+  timestamp: number;
+  isPrimarySort: boolean;
+}
+
 // カラム名のマッピング（sheets.tsと同じ定義）
 export const COLUMN_MAP: Record<string, string> = {
   'views': '再生数',
   'likes': 'いいね数',
   'comments': 'コメント数',
-  'accountName': 'アカウント名',
+  'account_name': 'アカウント名',
   'category': '動画ジャンル',
   'hashtags': 'ハッシュタグ',
   'description': '説明',
   'audioTitle': '音声タイトル',
   'url': 'URL',
   'videoId': '動画ID',
-  'thumbnail': 'カバー画像',
-  'authorName': '作成者表示名',
+  'thumbnail_url': 'カバー画像',
+  'display_name': '作成者表示名',
   'shares': '共有数',
   'saves': '保存数',
   'createdAt': '投稿日',
@@ -277,7 +292,13 @@ export const COLUMN_MAP: Record<string, string> = {
   'product': '商材',
   'audioId': '音声ID',
   'artist': 'アーティスト',
-  'content_type': 'コンテンツタイプ'
+  'content_type': 'コンテンツタイプ',
+  'account_type': 'アカウントジャンル',
+  'likes_count_increase': 'いいね増加数',
+  'ten_days_likes_increase': '10日間いいね増加数',
+  'comment_count_increase': 'コメント増加数',
+  'ten_days_comment_increase': '10日間コメント増加数',
+  'ten_days_increase': '10日間再生増加数'
 }
 
 // COLUMN_MAPの逆引きマップを作成
@@ -338,14 +359,19 @@ const mapFieldToApiField = (field: string): string => {
     'likes': 'likes_count',
     'comments': 'comment_count',
     'createdAt': 'created_at',
-    'accountName': 'account_name',
+    'account_name': 'account_name',
     'description': 'caption',
     'hashtags': 'hashtag', // hashtag（単数形）に変換
     'audioTitle': 'music_info', // audioTitleをmusic_infoに変換
     'category': 'category',    // categoryをそのまま保持
     'viewsIncrease': 'play_count_increase', // 再生増加数の対応を追加
     'content_type': 'content_type', // コンテンツタイプのマッピングを追加
-    // 他のフィールドも必要に応じて追加
+    'account_type': 'account_type',
+    'likes_count_increase': 'likes_count_increase',
+    'ten_days_likes_increase': 'ten_days_likes_increase',
+    'comment_count_increase': 'comment_count_increase',
+    'ten_days_comment_increase': 'ten_days_comment_increase',
+    'ten_days_increase': 'ten_days_increase'
   };
   
   const result = fieldMapping[internalField] || internalField;
@@ -357,108 +383,93 @@ const mapFieldToApiField = (field: string): string => {
   return result;
 }
 
+// 数値を安全に変換する関数
+const parseNumberSafely = (value: any): number => {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
 // バックエンドのレスポンスとVideoDataのマッピング
 const convertToVideoData = (video: any): VideoData => {
-  // デバッグ用：受け取ったデータを確認
-  console.log('APIレスポンスの生データ:', video);
-  
-  // hashtagsの処理（文字列から配列へ）
-  let hashtagsArray: string[] = [];
-  try {
-    // キャプションからハッシュタグを抽出
-    const caption = video.caption || '';
-    const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
-    
-    if (video.hashtags) {
-      if (typeof video.hashtags === 'string') {
-        if (video.hashtags.includes(',')) {
-          hashtagsArray = video.hashtags.split(',').map((tag: string) => tag.trim());
-        } else if (video.hashtags.includes(' ')) {
-          hashtagsArray = video.hashtags.split(' ').filter(Boolean);
-        } else {
-          try {
-            const parsed = JSON.parse(video.hashtags);
-            hashtagsArray = Array.isArray(parsed) ? parsed : [video.hashtags];
-          } catch (e) {
-            hashtagsArray = [video.hashtags];
-          }
-        }
-      } else if (Array.isArray(video.hashtags)) {
-        hashtagsArray = video.hashtags;
-      }
+  // デバッグ用のログ出力を追加
+  console.log('Converting video data:', {
+    thumbnail: video.thumbnail_url,
+    account: video.account_name,
+    type: typeof video.thumbnail_url,
+    // BGM関連の情報を追加
+    music: {
+      info: video.music_info,
+      id: video.music_id,
+      title: video.music_title,
+      artist: video.music_artist
     }
-    
-    // キャプションから抽出したハッシュタグを追加（重複を除去）
-    hashtagsArray = [...new Set([...hashtagsArray, ...hashtagsFromCaption])];
-  } catch (error) {
-    console.error('ハッシュタグの処理エラー:', error);
-    hashtagsArray = [];
-  }
+  });
 
-  // music_infoの処理
-  let musicInfo: any = {};
+  // music_infoからの情報抽出を試みる
+  let musicInfo = null;
   try {
-    if (video.music_info) {
-      if (typeof video.music_info === 'string') {
-        try {
-          musicInfo = JSON.parse(video.music_info);
-        } catch (e) {
-          musicInfo = { title: video.music_info };
-        }
-      } else {
-        musicInfo = video.music_info;
-      }
+    if (typeof video.music_info === 'string') {
+      musicInfo = JSON.parse(video.music_info);
+    } else if (typeof video.music_info === 'object') {
+      musicInfo = video.music_info;
     }
-  } catch (error) {
-    console.error('音楽情報の処理エラー:', error);
-    musicInfo = {};
+  } catch (e) {
+    console.warn('music_infoのパース失敗:', e);
   }
-
-  // 数値の処理（文字列から数値へ）
-  const parseNumberSafely = (value: any): number => {
-    if (value === null || value === undefined) return 0;
-    const num = Number(value);
-    return isNaN(num) ? 0 : num;
-  };
 
   return {
-    id: video.id?.toString() || video.url?.split('/').pop() || '',
-    url: video.url || '',
-    videoId: video.url?.split('/').pop() || '',
-    accountName: video.account_name || '',  // DB名に合わせて修正
-    thumbnail: {
+    id: video.id,
+    url: video.url,
+    videoId: video.video_id,
+    account_name: video.account_name || '',
+    thumbnail_url: video.thumbnail_url && typeof video.thumbnail_url === 'string' ? {
       valueType: 'IMAGE',
-      url: video.thumbnail_url || video.thumbnail || ''  // DB名に合わせて修正
-    },
-    authorName: video.account_name || '',  // DB名に合わせて修正
-    description: video.caption || '',  // DB名に合わせて修正
-    likes: parseNumberSafely(video.likes_count),  // DB名に合わせて修正
-    views: parseNumberSafely(video.play_count),   // DB名に合わせて修正
-    comments: parseNumberSafely(video.comment_count), // DB名に合わせて修正
-    shares: 0,
-    saves: 0,
-    createdAt: video.created_at || '',  // DB名に合わせて修正
-    hashtags: hashtagsArray,
-    duration: 0,
-    isViral: parseNumberSafely(video.play_count) > 100000,
-    prevFetchDate: '',
-    currentFetchDate: new Date().toISOString(),
-    prevViews: 0,
-    viewsIncrease: parseNumberSafely(video.play_count_increase), // DB名に合わせて修正
-    prevLikes: 0,
-    likesIncrease: 0,
-    product: '',
+      url: video.thumbnail_url
+    } : null,
+    description: video.caption || '',
+    likes: parseNumberSafely(video.likes_count),
+    views: parseNumberSafely(video.play_count),
+    comments: parseNumberSafely(video.comment_count),
+    shares: parseNumberSafely(video.share_count),
+    saves: parseNumberSafely(video.save_count),
+    createdAt: video.created_at,
+    hashtags: Array.isArray(video.hashtags) 
+      ? video.hashtags 
+      : typeof video.hashtags === 'string'
+        ? video.hashtags.split(/[,#]/).map((tag: string) => tag.trim()).filter(Boolean)
+        : [],
+    duration: parseNumberSafely(video.duration),
+    isViral: Boolean(video.isViral),
+    prevFetchDate: video.prev_fetch_date,
+    currentFetchDate: video.current_fetch_date,
+    prevViews: parseNumberSafely(video.prev_play_count),
+    viewsIncrease: parseNumberSafely(video.play_count_increase),
+    prevLikes: parseNumberSafely(video.prev_likes_count),
+    likesIncrease: parseNumberSafely(video.likes_count_increase),
+    product: video.product || '',
     category: video.category || '',
-    audioId: musicInfo.id || '',
-    audioTitle: musicInfo.title || '',
-    artist: musicInfo.artist || '',
-    predictedViews: 0,
+    audioId: musicInfo?.id || video.music_id || '',
+    audioTitle: musicInfo?.title || video.music_title || '',
+    artist: musicInfo?.artist || video.music_artist || '',
+    rank: video.rank,
+    predictedViews: parseNumberSafely(video.predicted_views),
     display_name: video.display_name || '',
-    products: video.products || '',
+    products: video.product || '',
     ten_days_increase: parseNumberSafely(video.ten_days_increase),
-    content_type: video.content_type || ''
+    content_type: video.content_type || 'video',
+    account_type: video.account_type || '',
+    likes_count_increase: parseNumberSafely(video.likes_count_increase),
+    ten_days_likes_increase: parseNumberSafely(video.ten_days_likes_increase),
+    comment_count_increase: parseNumberSafely(video.comment_count_increase),
+    ten_days_comment_increase: parseNumberSafely(video.ten_days_comment_increase)
   };
-}
+};
 
 // バックエンドAPIからデータを取得する関数
 export async function getDbData(page: number = 1, filters?: Record<string, FilterQuery>, limit: number = 50) {
@@ -493,11 +504,16 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           ? Number(filter.timestamp) 
           : Date.now();
           
+        // directionの型を適切に変換
+        const direction = Array.isArray(filter.value) 
+          ? filter.value[0]?.toString() || 'desc'
+          : filter.value;
+          
         return {
           key,
           field: key.replace('_sort', ''),
           apiField: mapFieldToApiField(key.replace('_sort', '')),
-          direction: filter.value,
+          direction,
           timestamp,
           isPrimarySort: !!filter.isPrimarySort
         };
@@ -902,11 +918,16 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
             ? Number(filter.timestamp) 
             : Date.now();
           
+          // directionの型を適切に変換
+          const direction = Array.isArray(filter.value) 
+            ? filter.value[0]?.toString() || 'desc'
+            : filter.value;
+          
           return {
             key,
             field: key.replace('_sort', ''),
             apiField: mapFieldToApiField(key.replace('_sort', '')),
-            direction: filter.value,
+            direction,
             timestamp,
             isPrimarySort: !!filter.isPrimarySort
           };
@@ -1025,6 +1046,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
             value: filter.value.toString(),
             queryParams: Object.fromEntries(params.entries())
           });
+          return;
         }
         // カテゴリフィルターの処理
         else if (key === 'category' || apiField === 'category') {

@@ -86,7 +86,7 @@ export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
             src={src}
             alt={alt}
             fill
-            sizes="120px"
+            sizes="160px"
             className="object-cover"
             unoptimized
           />

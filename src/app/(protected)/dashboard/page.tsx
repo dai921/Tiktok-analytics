@@ -11,13 +11,19 @@ const headers = [
   { key: 'createdAt', title: '作成日時', type: 'date' as const },
   { key: 'views', title: '再生数', type: 'number' as const },
   { key: 'viewsIncrease', title: '再生増加数', type: 'number' as const },
+  { key: 'ten_days_increase', title: '10日間再生増加数', type: 'number' as const },
   { key: 'category', title: 'ジャンル' },
   { key: 'product', title: '商材' },
-  { key: 'accountName', title: 'アカウント名' },
+  { key: 'account_name', title: 'アカウント名' },
+  { key: 'account_type', title: 'アカウントジャンル' },
   { key: 'description', title: '説明' },
   { key: 'hashtags', title: 'ハッシュタグ' },
   { key: 'likes', title: 'いいね数', type: 'number' as const },
+  { key: 'likes_count_increase', title: 'いいね増加数', type: 'number' as const },
+  { key: 'ten_days_likes_increase', title: '10日間いいね増加数', type: 'number' as const },
   { key: 'comments', title: 'コメント数', type: 'number' as const },
+  { key: 'comment_count_increase', title: 'コメント増加数', type: 'number' as const },
+  { key: 'ten_days_comment_increase', title: '10日間コメント増加数', type: 'number' as const },
   { key: 'shares', title: '共有数', type: 'number' as const },
   { key: 'saves', title: '保存数', type: 'number' as const },
   { key: 'duration', title: '動画時間(秒)', type: 'number' as const },
@@ -168,26 +174,19 @@ const Dashboard = () => {
     try {
       console.log('フェッチデータ - 使用するフィルター:', currentFilters);
       
-      // 各フィルターの値と型を確認してログに出力
-      if (currentFilters) {
-        Object.entries(currentFilters).forEach(([key, filter]) => {
-          console.log(`フィルター[${key}]:`, {
-            field: filter.field,
-            type: filter.type,
-            value: filter.value,
-            comparison: filter.comparison,
-            isHashtag: filter.isHashtag
-          });
-          
-          // 値が配列の場合は特別にチェック
-          if (Array.isArray(filter.value)) {
-            console.log(`${key}の値は配列:`, filter.value);
-          }
-        });
-      }
-      
       const response = await getDbData(page, currentFilters, pageSize);
       console.log('APIレスポンス:', response);
+      
+      // データの構造を詳細に確認
+      if (response && response.success && Array.isArray(response.data) && response.data.length > 0) {
+        console.log('データサンプル（最初の項目）:', {
+          account_name: response.data[0].account_name,
+          audioTitle: response.data[0].audioTitle,
+          description: response.data[0].description,
+          url: response.data[0].url,
+          keys: Object.keys(response.data[0])
+        });
+      }
       
       if (response && response.success) {
         if (Array.isArray(response.data)) {

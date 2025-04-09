@@ -51,87 +51,75 @@ def get_db_connection():
 def format_video(row):
     try:
         # 日付処理
-        created_at = row[3]  # created_atカラムのインデックス
+        created_at = row[2]  # created_atのインデックス
         if isinstance(created_at, date):
             created_at_str = created_at.isoformat()
         else:
             created_at_str = str(created_at)
-        
-        # hashtags処理
-        hashtags = []
-        hashtags_raw = row[9]  # hashtagsのインデックス
-        if hashtags_raw:
-            if isinstance(hashtags_raw, str):
-                if hashtags_raw.startswith('['):
-                    try:
-                        hashtags = json.loads(hashtags_raw)
-                    except json.JSONDecodeError:
-                        print(f"JSONパースエラー（hashtags）: {hashtags_raw}")
-                        # カンマ区切りまたは#区切りのハッシュタグを処理
-                        if ',' in hashtags_raw:
-                            hashtags = [tag.strip() for tag in hashtags_raw.split(',') if tag.strip()]
-                        elif '#' in hashtags_raw:
-                            hashtags = [tag.strip() for tag in hashtags_raw.split('#') if tag.strip()]
-                elif ',' in hashtags_raw:
-                    hashtags = [tag.strip() for tag in hashtags_raw.split(',') if tag.strip()]
-                elif '#' in hashtags_raw:
-                    hashtags = [tag.strip() for tag in hashtags_raw.split('#') if tag.strip()]
-        
-        # 音楽情報処理 - テキストとして扱う
-        audio_info = {}
-        audio_raw = row[10]  # audio_infoのインデックス
-        if audio_raw:
-            if isinstance(audio_raw, str):
-                if audio_raw.startswith('{') or audio_raw.startswith('['):
-                    try:
-                        audio_info = json.loads(audio_raw)
-                    except json.JSONDecodeError:
-                        audio_info = {"title": audio_raw}
-                else:
-                    # JSONではない場合、テキストとして格納
-                    audio_info = {"title": audio_raw}
-            else:
-                audio_info = {"title": str(audio_raw)}
-        
-        # サムネイルパスをURLに変換
-        thumbnail = row[2]  # サムネイルカラムのインデックス
+
+        # サムネイル処理
+        thumbnail = row[1]  # thumbnail_urlのインデックス
         if thumbnail and isinstance(thumbnail, str) and thumbnail.startswith('gs://'):
-            # Google Cloud Storageのパスをpublicなurlに変換
             bucket_name = thumbnail.split('/')[2]
             object_path = '/'.join(thumbnail.split('/')[3:])
             thumbnail = f"https://storage.googleapis.com/{bucket_name}/{object_path}"
-        
-        # 動画データの整形
-        # 注意: idフィールドを削除し、music_infoをaudioInfoの別名として追加
+
+        # ハッシュタグ処理
+        hashtags = []
+        hashtags_raw = row[16]  # hashtagsのインデックス
+        if hashtags_raw:
+            try:
+                if isinstance(hashtags_raw, str):
+                    if hashtags_raw.startswith('['):
+                        hashtags = json.loads(hashtags_raw)
+                    else:
+                        hashtags = [tag.strip() for tag in hashtags_raw.split(',') if tag.strip()]
+            except json.JSONDecodeError:
+                hashtags = []
+
+        # 音楽情報処理
+        music_info = {}
+        music_raw = row[17]  # music_infoのインデックス
+        if music_raw:
+            try:
+                if isinstance(music_raw, str):
+                    if music_raw.startswith('{'):
+                        music_info = json.loads(music_raw)
+                    else:
+                        music_info = {"title": music_raw}
+            except json.JSONDecodeError:
+                music_info = {"title": str(music_raw)}
+
         return {
-            # "id": row[0],  # IDフィールドを削除
-            "url": row[1],
-            "thumbnail": thumbnail,
+            "url": row[0],
+            "thumbnail_url": thumbnail,
             "created_at": created_at_str,
-            "play_count": row[4] or 0,
-            "comment_count": row[8] or 0,
+            "play_count": int(row[3]) if row[3] else 0,
+            "play_count_increase": int(row[4]) if row[4] else 0,
+            "ten_days_increase": int(row[5]) if row[5] else 0,
             "account_name": row[6],
-            "likes_count": row[7] or 0,
-            "play_count_increase": row[5] if len(row) > 5 and row[5] is not None else 0, # 再生増加数を追加
-            "audioInfo": audio_info,       # 既存のaudioInfoを保持
-            "music_info": audio_info,      # 新しくmusic_infoとして同じ内容を追加
+            "display_name": row[7],
+            "content_type": row[8],
+            "likes_count": int(row[9]) if row[9] else 0,
+            "comment_count": int(row[10]) if row[10] else 0,
+            "likes_count_increase": int(row[11]) if row[11] else 0,
+            "ten_days_likes_increase": int(row[12]) if row[12] else 0,
+            "comment_count_increase": int(row[13]) if row[13] else 0,
+            "ten_days_comment_increase": int(row[14]) if row[14] else 0,
+            "account_type": row[15] if row[15] else None,
             "hashtags": hashtags,
-            "caption": row[11] if len(row) > 11 else "",
-            "category": row[12] if len(row) > 12 else "その他",
-            # 新しいフィールドを追加
-            "display_name": row[13] if len(row) > 13 else "",
-            "content_type": row[14] ,
-            "ten_days_increase": row[15] if len(row) > 15 else 0,
-            "products": row[16] if len(row) > 16 else ""
+            "music_info": music_info,
+            "audioInfo": music_info,  # 互換性のために残す
+            "caption": row[18] if row[18] else None,
+            "category": row[19] if row[19] else None,
+            "products": row[20] if row[20] else None
         }
     except Exception as e:
-        print(f"行のフォーマット中にエラーが発生: {e}")
-        print(f"問題の行: {row}")
-        # エラーが発生しても最低限のデータを返す
+        logger.error(f"Error formatting video: {e}")
+        logger.error(f"Row data: {row}")
         return {
-            # "id": row[0] if len(row) > 0 else "unknown",  # IDフィールドを削除
-            "url": row[1] if len(row) > 1 else "",
-            "thumbnail": "",
+            "url": row[0] if len(row) > 0 else "",
+            "thumbnail_url": "",
             "created_at": "",
             "error": str(e)
         }
