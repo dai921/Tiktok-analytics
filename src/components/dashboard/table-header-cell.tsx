@@ -57,13 +57,29 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
   }
 }
 
+// FilterIconコンポーネントを追加
+const FilterIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+  </svg>
+);
+
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'center', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false, sortPriority = null }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false, sortPriority = null }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterTypeLocal>('equal')
     const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-    const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+    const alignmentClass = align === 'right' ? 'text-right' : 'text-left'
     const [categories, setCategories] = useState<string[]>([])
     const [filteredCategories, setFilteredCategories] = useState<string[]>([]) // フィルタリングされたカテゴリリスト
     const [isLoadingCategories, setIsLoadingCategories] = useState(false)
@@ -608,7 +624,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       return '▼ 降順に並び替え';
     };
 
-    // 数値カラムかどうかを判定する関数を追加
+    // 数値カラムかどうかを判定する関数を更新
     const isNumericColumn = (title: string): boolean => {
       return ['再生数', 'いいね数', 'コメント数', '再生増加数'].includes(title);
     }
@@ -658,24 +674,28 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     };
 
     return (
-      <div
-        className={`relative`}
-        data-header-cell
+      <div 
+        className={cn(
+          "relative p-0",  // パディングを0に設定
+          isNumericColumn(title) ? "w-24" : "",
+        )}
+        data-header-cell 
       >
         <div className={cn(
-          "flex items-center gap-1 whitespace-nowrap",
-          "px-2 py-1 text-[12px]", // text-sm から text-[8px] に変更
-          align === 'center' ? 'justify-center' : '',
+          "whitespace-nowrap h-full",  // 高さを100%に
+          "bg-gray-50",  // 背景色を設定（必要に応じて調整）
+          isNumericColumn(title) ? "pl-2 pr-0" : "pl-0 pr-2",
+          "py-1 text-[12px]",
+          alignmentClass,
           (isActive || localSortDirection) ? "text-blue-600 font-medium" : "text-gray-700"
         )}>
-          <div className={cn(
-            "flex items-center cursor-default", 
-            alignmentClass,
+          <span className={cn(
+            "cursor-default", 
             localSortDirection ? "font-semibold" : ""
           )}>
             <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
             {localSortDirection && (
-              <span className="ml-1 flex items-center">
+              <span className="ml-1 inline-block">
                 <span className={cn(
                   "font-bold",
                   "text-blue-700"
@@ -689,90 +709,65 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                 )}
               </span>
             )}
-          </div>
-          {/* フィルターアイコンを非表示にするが、クリックイベントは維持 */}
-          {onFilter && title !== 'キャプション' && (
-            <button 
-              ref={buttonRef}
-              onClick={handleToggleFilter}
-              className={cn(
-                "p-1 rounded hover:bg-gray-100",
-                isActive ? "text-sky-500 font-bold" : "",
-                localSortDirection ? "bg-blue-50 text-blue-600" : "",
-                "invisible" // アイコンを非表示にするがボタン自体は残す
-              )}
-              data-active={isActive ? "true" : "false"}
-              data-sort-active={localSortDirection ? "true" : "false"}
-            >
-              <svg 
-                className="w-4 h-4"
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor"
-                strokeWidth={isActive || localSortDirection ? "3" : "2"}
-              >
-                <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
-              </svg>
-            </button>
-          )}
-          
-          {isFilterOpen && (
-            <Portal>
-              <div 
-                ref={popupRef}
-                className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
-                style={{ 
-                  top: `${popupPosition.top}px`,
-                  left: `${popupPosition.left}px`,
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                }}
-              >
-                <div className="p-2 border-b">
-                  <div className="flex items-center gap-2 mb-2">
-                    {type === 'number' && (
-                      <select 
-                        value={filterType}
-                        onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
-                        className="px-2 py-1 border rounded text-xs border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
-                      >
-                        {getFilterOptions(type).map(option => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {renderFilterInput()}
-                  </div>
-                  <button
-                    onClick={() => handleFilter(filterValue, filterType)}
-                    className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
-                  >
-                    フィルターを適用
-                  </button>
-                  {(filterValue || localSortDirection) && (
-                    <button
-                      onClick={() => {
-                        console.log(`フィルタークリアボタンがクリックされました: ${title}`);
-                        handleClear();
-                      }}
-                      className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
-                    >
-                      フィルターをクリア
-                    </button>
-                  )}
-                </div>
-                
-                {/* カテゴリリストを表示 */}
-                {renderCategoryList()}
-                
-                {/* ソートセクションを条件付きで表示 */}
-                {renderSortSection()}
-              </div>
-            </Portal>
-          )}
+          </span>
         </div>
+        
+        {isFilterOpen && (
+          <Portal>
+            <div 
+              ref={popupRef}
+              className="absolute bg-white border rounded shadow-lg z-[9999] text-sm w-[200px]"
+              style={{ 
+                top: `${popupPosition.top}px`,
+                left: `${popupPosition.left}px`,
+                maxHeight: '300px',
+                overflowY: 'auto',
+              }}
+            >
+              <div className="p-2 border-b">
+                <div className="flex items-center gap-2 mb-2">
+                  {type === 'number' && (
+                    <select 
+                      value={filterType}
+                      onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
+                      className="px-2 py-1 border rounded text-xs border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                    >
+                      {getFilterOptions(type).map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {renderFilterInput()}
+                </div>
+                <button
+                  onClick={() => handleFilter(filterValue, filterType)}
+                  className="w-full text-left px-2 py-1 text-xs bg-sky-500 text-white hover:bg-sky-600 rounded mb-2"
+                >
+                  フィルターを適用
+                </button>
+                {(filterValue || localSortDirection) && (
+                  <button
+                    onClick={() => {
+                      console.log(`フィルタークリアボタンがクリックされました: ${title}`);
+                      handleClear();
+                    }}
+                    className="w-full text-left px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded"
+                  >
+                    フィルターをクリア
+                  </button>
+                )}
+              </div>
+              
+              {/* カテゴリリストを表示 */}
+              {renderCategoryList()}
+              
+              {/* ソートセクションを条件付きで表示 */}
+              {renderSortSection()}
+            </div>
+          </Portal>
+        )}
       </div>
     );
   }

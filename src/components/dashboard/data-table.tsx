@@ -165,7 +165,7 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
     type === 'ten_days_increase'
   )) {
     return (
-      <div className="text-center font-medium text-green-600 flex items-center justify-center">
+      <div className="font-medium text-green-600 flex items-center justify-end">
         <UpArrowIcon size={14} />
         <span className="tabular-nums ml-1">
           {num > 0 ? `+${formattedNum}` : formattedNum}
@@ -177,7 +177,7 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
   // いいね数の場合
   if (type === 'likes') {
     return (
-      <div className="text-center font-medium text-gray-700 flex items-center justify-center">
+      <div className="font-medium text-gray-700 flex items-center justify-end">
         <HeartIcon size={14} />
         <span className="tabular-nums ml-1">
           {formattedNum}
@@ -189,7 +189,7 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
   // コメント数の場合
   if (type === 'comments') {
     return (
-      <div className="text-center font-medium text-gray-700 flex items-center justify-center">
+      <div className="font-medium text-gray-700 flex items-center justify-end">
         <CommentIcon size={14} />
         <span className="tabular-nums ml-1">
           {formattedNum}
@@ -200,7 +200,7 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
   
   // 通常の数値表示
   return (
-    <div className="text-center font-medium text-gray-700">
+    <div className="font-medium text-gray-700 flex items-center justify-end">
       <span className="tabular-nums">
         {formattedNum}
       </span>
@@ -833,6 +833,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <TableHeaderCell
               title="動画ジャンル"
               type="text"
+              align="left"
               onFilter={(value) => handleFilter('category')(value)}
               isActive={Boolean(columnFilters['category'])}
               categoryData={options}
@@ -863,14 +864,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 .filter(Boolean);
                 
               return (
-                <div className="flex flex-wrap gap-1 justify-center items-center">
+                <div className="flex flex-wrap gap-1 justify-start items-center">
                   {genres.map((genre, idx) => (
                     <GenreBadge key={idx} genre={genre} />
                   ))}
                 </div>
               );
             }
-            return <div className="flex justify-center items-center"><GenreBadge genre={category} /></div>;
+            return <div className="flex justify-start items-center"><GenreBadge genre={category} /></div>;
           }
           
           // カテゴリが配列の場合（複数カテゴリに対応）
@@ -895,7 +896,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             });
             
             return (
-              <div className="flex flex-wrap gap-1 justify-center items-center">
+              <div className="flex flex-wrap gap-1 justify-start items-center">
                 {allGenreBadges}
               </div>
             );
@@ -906,26 +907,24 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       },
       {
         accessorKey: 'createdAt',
-        header: ({ column }) => {
-          return (
-            <TableHeaderCell
-              title="投稿日"
-              type="date"
-              onFilter={(value) => handleFilter('createdAt')(value)}
-              isActive={Boolean(columnFilters['createdAt'])}
-              sortDirection={
-                primarySort?.field === 'createdAt' 
-                  ? primarySort.direction 
-                  : secondarySort?.field === 'createdAt' 
-                    ? secondarySort.direction 
-                    : null
-              }
-              sortPriority={primarySort?.field === 'createdAt' ? 1 : secondarySort?.field === 'createdAt' ? 2 : null}
-              isLoadingFilterOptions={isLoadingFilterOptions}
-              align="center"
-            />
-          );
-        },
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="投稿日"
+            type="date"
+            align="right"
+            onFilter={(value) => handleFilter('createdAt')(value)}
+            isActive={Boolean(columnFilters['createdAt'])}
+            sortDirection={
+              primarySort?.field === 'createdAt' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'createdAt' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'createdAt' ? 1 : secondarySort?.field === 'createdAt' ? 2 : null}
+            isLoadingFilterOptions={isLoadingFilterOptions}
+          />
+        ),
         cell: ({ row }) => {
           const date = row.createdAt;
           if (!date) return null;
@@ -939,7 +938,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
               const day = dateObj.getDate().toString().padStart(2, '0');
               return (
-                <div className="text-center font-medium text-gray-700">
+                <div className="text-right font-medium text-gray-700">
                   {`${year}/${month}/${day}`}
                 </div>
               );
@@ -954,17 +953,17 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 const month = match[2];
                 const day = match[3];
                 return (
-                  <div className="text-center font-medium text-gray-700">
+                  <div className="text-right font-medium text-gray-700">
                     {`${year}/${month}/${day}`}
                   </div>
                 );
               }
             }
             
-            return <div className="text-center text-gray-700">{date}</div>;
+            return <div className="text-right text-gray-700">{date}</div>;
           } catch (e) {
             console.error('日付変換エラー:', e);
-            return <div className="text-center text-gray-700">{date}</div>;
+            return <div className="text-right text-gray-700">{date}</div>;
           }
         },
       },
@@ -974,7 +973,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="再生数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('views')(value)}
             isActive={Boolean(columnFilters['views'])}
             sortDirection={
@@ -987,7 +986,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'views' ? 1 : secondarySort?.field === 'views' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.views, 'views')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.views, 'views')}
+          </div>
+        )
       },
       {
         accessorKey: 'viewsIncrease',
@@ -995,7 +998,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="再生増加数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('viewsIncrease')(value)}
             isActive={Boolean(columnFilters['viewsIncrease'])}
             sortDirection={
@@ -1008,7 +1011,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'viewsIncrease' ? 1 : secondarySort?.field === 'viewsIncrease' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.viewsIncrease, 'viewsIncrease')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.viewsIncrease, 'viewsIncrease')}
+          </div>
+        )
       },
       {
         accessorKey: 'likes',
@@ -1016,7 +1023,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="いいね数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('likes')(value)}
             isActive={Boolean(columnFilters['likes'])}
             sortDirection={
@@ -1029,7 +1036,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'likes' ? 1 : secondarySort?.field === 'likes' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.likes, 'likes')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.likes, 'likes')}
+          </div>
+        )
       },
       {
         accessorKey: 'comments',
@@ -1037,7 +1048,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="コメント数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('comments')(value)}
             isActive={Boolean(columnFilters['comments'])}
             sortDirection={
@@ -1050,7 +1061,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'comments' ? 1 : secondarySort?.field === 'comments' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.comments, 'comments')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.comments, 'comments')}
+          </div>
+        )
       },
       {
         accessorKey: 'products',
@@ -1167,7 +1182,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="10日間再生増加数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('ten_days_increase')(value)}
             isActive={Boolean(columnFilters['ten_days_increase'])}
             sortDirection={
@@ -1180,7 +1195,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'ten_days_increase' ? 1 : secondarySort?.field === 'ten_days_increase' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.ten_days_increase, 'ten_days_increase')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.ten_days_increase, 'ten_days_increase')}
+          </div>
+        )
       },
       {
         accessorKey: 'likes_count_increase',
@@ -1188,7 +1207,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="いいね増加数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('likes_count_increase')(value)}
             isActive={Boolean(columnFilters['likes_count_increase'])}
             sortDirection={
@@ -1201,7 +1220,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'likes_count_increase' ? 1 : secondarySort?.field === 'likes_count_increase' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.likes_count_increase, 'likes_count_increase')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.likes_count_increase, 'likes_count_increase')}
+          </div>
+        )
       },
       {
         accessorKey: 'ten_days_likes_increase',
@@ -1209,7 +1232,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="10日間いいね増加数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('ten_days_likes_increase')(value)}
             isActive={Boolean(columnFilters['ten_days_likes_increase'])}
             sortDirection={
@@ -1222,7 +1245,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'ten_days_likes_increase' ? 1 : secondarySort?.field === 'ten_days_likes_increase' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.ten_days_likes_increase, 'ten_days_likes_increase')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.ten_days_likes_increase, 'ten_days_likes_increase')}
+          </div>
+        )
       },
       {
         accessorKey: 'comment_count_increase',
@@ -1230,7 +1257,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="コメント増加数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('comment_count_increase')(value)}
             isActive={Boolean(columnFilters['comment_count_increase'])}
             sortDirection={
@@ -1243,7 +1270,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'comment_count_increase' ? 1 : secondarySort?.field === 'comment_count_increase' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.comment_count_increase, 'comment_count_increase')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.comment_count_increase, 'comment_count_increase')}
+          </div>
+        )
       },
       {
         accessorKey: 'ten_days_comment_increase',
@@ -1251,7 +1282,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           <TableHeaderCell
             title="10日間コメント増加数"
             type="number"
-            align="center"
+            align="right"
             onFilter={(value) => handleFilter('ten_days_comment_increase')(value)}
             isActive={Boolean(columnFilters['ten_days_comment_increase'])}
             sortDirection={
@@ -1264,7 +1295,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'ten_days_comment_increase' ? 1 : secondarySort?.field === 'ten_days_comment_increase' ? 2 : null}
           />
         ),
-        cell: ({ row }) => formatNumber(row.ten_days_comment_increase, 'ten_days_comment_increase')
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.ten_days_comment_increase, 'ten_days_comment_increase')}
+          </div>
+        )
       },
       {
         accessorKey: 'account_name',
@@ -1468,7 +1503,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                     {columns.map((column) => (
                       <th 
                         key={column.accessorKey} 
-                        className="px-3 py-2 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
+                        className="px-2 py-2 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
                         style={{ 
                           width: column.accessorKey === 'thumbnail_url' ? '160px' :
                                  column.accessorKey === 'category' ? '160px' :
@@ -1506,9 +1541,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                       {columns.map((column, colIndex) => (
                         <td 
                           key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
-                          className={`px-3 py-3 bg-white ${
+                          className={`px-2 py-1 bg-white ${
                             ['views', 'viewsIncrease', 'likes', 'comments'].includes(column.accessorKey) 
-                              ? 'text-center font-medium' 
+                              ? 'font-medium' 
                               : ''
                           }`}
                           style={{ 
