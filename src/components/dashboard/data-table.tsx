@@ -657,35 +657,48 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       // フィルター情報を処理
       const normalFilters: Record<string, FilterValue> = {};
       
-      // フィルターを処理し、ソート情報とフィルター情報を分離
-      Object.entries(filters).forEach(([key, filter]) => {
-        // ソート情報の処理
-        if (key.startsWith('sort_') && filter.type === 'sort') {
-          sortUpdated = true;
-          const fieldName = key.replace('sort_', '');
-          
-          if (filter.isPrimarySort) {
-            // 第一ソートの設定
-            newPrimarySort = {
-              field: fieldName,
-              direction: filter.value as 'asc' | 'desc'
-            };
+      // ソート関連のフラグ - ソート関連のキーがあるかどうかを確認
+      const hasSortKeys = Object.keys(filters).some(key => key.startsWith('sort_'));
+      
+      // ソート情報が含まれているが、primary/secondaryソートがない場合は解除されたと判断
+      if (hasSortKeys && !Object.values(filters).some(filter => filter.type === 'sort')) {
+        console.log('ソート情報が解除されました');
+        newPrimarySort = null;
+        newSecondarySort = null;
+        setSortField(null);
+        setSortDirection(null);
+        sortUpdated = true;
+      } else {
+        // フィルターを処理し、ソート情報とフィルター情報を分離
+        Object.entries(filters).forEach(([key, filter]) => {
+          // ソート情報の処理
+          if (key.startsWith('sort_') && filter.type === 'sort') {
+            sortUpdated = true;
+            const fieldName = key.replace('sort_', '');
             
-            // 後方互換性のために従来の状態も更新
-            setSortField(fieldName);
-            setSortDirection(filter.value as 'asc' | 'desc');
+            if (filter.isPrimarySort) {
+              // 第一ソートの設定
+              newPrimarySort = {
+                field: fieldName,
+                direction: filter.value as 'asc' | 'desc'
+              };
+              
+              // 後方互換性のために従来の状態も更新
+              setSortField(fieldName);
+              setSortDirection(filter.value as 'asc' | 'desc');
+            } else {
+              // 第二ソートの設定
+              newSecondarySort = {
+                field: fieldName,
+                direction: filter.value as 'asc' | 'desc'
+              };
+            }
           } else {
-            // 第二ソートの設定
-            newSecondarySort = {
-              field: fieldName,
-              direction: filter.value as 'asc' | 'desc'
-            };
+            // 通常のフィルター情報
+            normalFilters[key] = filter;
           }
-        } else {
-          // 通常のフィルター情報
-          normalFilters[key] = filter;
-        }
-      });
+        });
+      }
       
       // ソート情報を更新
       if (sortUpdated) {
@@ -727,6 +740,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               value: newSecondarySort.direction,
               isPrimarySort: false,
               sortField: newSecondarySort.field
+            }
+          }),
+          // ソートが解除された場合は明示的に解除信号を送る
+          ...(hasSortKeys && !newPrimarySort && {
+            'sort_clear': {
+              field: 'sort',
+              type: 'clear',
+              value: ''
             }
           })
         }

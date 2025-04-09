@@ -430,6 +430,14 @@ export const FilterPopup = ({
           sortField: secondarySort.field
         } as FilterValue;
       }
+    } else {
+      // ソートが解除された場合は、明示的にそのことを伝える
+      // 前回のソート情報を示す空のキーを設定
+      wrappedFilters['sort_indicator'] = {
+        field: '',
+        type: 'indicator',
+        value: ''
+      } as FilterValue;
     }
 
     // フィルターを親コンポーネントに渡す
