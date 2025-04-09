@@ -31,6 +31,8 @@ import { CSS } from '@dnd-kit/utilities'
 
 // フィルターポップアップコンポーネントのインポートを追加
 import { FilterPopup } from '@/components/ui/filter-popup'
+import { SettingsIcon } from '@/components/ui/settings-icon'
+import { ColumnSettings } from '@/components/ui/column-settings'
 
 interface DataTableProps {
   data: VideoData[];
@@ -43,6 +45,8 @@ interface DataTableProps {
   onPrOnlyChange: (isPrOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (pageSize: number) => void;
+  defaultVisibleColumns?: string[];
+  onColumnSettingsChange?: (visibleColumns: string[]) => void;
 }
 
 // フィルタ可能なカラムを定義
@@ -354,7 +358,7 @@ const SortableHeaderCell = ({ column, index }: { column: Column; index: number }
 };
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
+  ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange, defaultVisibleColumns, onColumnSettingsChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
@@ -1573,6 +1577,26 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       },
     ]
 
+    // カラム設定の状態を追加
+    const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false)
+    const [visibleColumns, setVisibleColumns] = useState<string[]>(
+      defaultVisibleColumns || columns.map(col => col.accessorKey)
+    )
+    const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>
+
+    // カラムの表示/非表示を切り替える関数
+    const handleColumnVisibilityChange = (columnKey: string, isVisible: boolean) => {
+      const newVisibleColumns = isVisible
+        ? [...visibleColumns, columnKey]
+        : visibleColumns.filter(key => key !== columnKey)
+      
+      setVisibleColumns(newVisibleColumns)
+      onColumnSettingsChange?.(newVisibleColumns)
+    }
+
+    // フィルタされたカラムを取得
+    const filteredColumns = columns.filter(col => visibleColumns.includes(col.accessorKey))
+
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -1609,6 +1633,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </div>
               <span className="ml-2 text-sm font-medium text-black">#PR動画のみ</span>
             </label>
+            
+            {/* 表示設定ボタンを追加 */}
+            <button
+              ref={columnSettingsButtonRef}
+              onClick={() => setIsColumnSettingsOpen(true)}
+              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
+            >
+              <SettingsIcon size={16} />
+              <span className="ml-1">表示設定</span>
+            </button>
           </div>
           <Pagination 
             currentPage={currentPage}
@@ -1634,6 +1668,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           onClearAll={handleClearFilterInputs}
         />
         
+        {/* カラム設定ポップアップを追加 */}
+        <ColumnSettings
+          isOpen={isColumnSettingsOpen}
+          onClose={() => setIsColumnSettingsOpen(false)}
+          anchorRef={columnSettingsButtonRef}
+          columns={columns}
+          visibleColumns={visibleColumns}
+          onColumnVisibilityChange={handleColumnVisibilityChange}
+        />
+        
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
             {isLoading && (
@@ -1651,10 +1695,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <SortableContext
-                        items={orderedColumns.map(col => col.accessorKey)}
+                        items={filteredColumns.map(col => col.accessorKey)}
                         strategy={horizontalListSortingStrategy}
                       >
-                        {orderedColumns.map((column, index) => (
+                        {filteredColumns.map((column, index) => (
                           <SortableHeaderCell
                             key={column.accessorKey}
                             column={column}
@@ -1671,7 +1715,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                       key={`row-${row.id || rowIndex}`}
                       className="border-b hover:bg-gray-50 transition-colors duration-150 h-[100px]"
                     >
-                      {orderedColumns.map((column, colIndex) => (
+                      {filteredColumns.map((column, colIndex) => (
                         <td 
                           key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
                           className={`px-2 py-1 bg-white ${
