@@ -690,7 +690,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               </span>
             )}
           </div>
-          {/* キャプションの場合はフィルターボタンを表示しない */}
+          {/* フィルターアイコンを非表示にする */}
+          {/* 以下の部分をコメントアウト
           {onFilter && title !== 'キャプション' && (
             <button 
               ref={buttonRef}
@@ -714,6 +715,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               </svg>
             </button>
           )}
+          */}
           
           {isFilterOpen && (
             <Portal>
