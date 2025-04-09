@@ -136,7 +136,7 @@ const CommentIcon = ({ size = 16 }: { size?: number }) => (
 );
 
 // 上矢印アイコンを追加
-const UpArrowIcon = ({ size = 16 }: { size?: number }) => (
+const UpArrowIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
   <svg 
     width={size} 
     height={size} 
@@ -146,6 +146,7 @@ const UpArrowIcon = ({ size = 16 }: { size?: number }) => (
     strokeWidth="2" 
     strokeLinecap="round" 
     strokeLinejoin="round"
+    className={className}
   >
     <path d="M12 19V5M5 12L12 5l7 7"/>
   </svg>
@@ -155,13 +156,41 @@ const UpArrowIcon = ({ size = 16 }: { size?: number }) => (
 const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
   const formattedNum = new Intl.NumberFormat('ja-JP').format(num);
   
-  // 増加数の場合
+  // いいね関連の増加数の場合
+  if (type && (
+    type === 'likes_count_increase' ||
+    type === 'ten_days_likes_increase'
+  )) {
+    return (
+      <div className="font-medium text-green-600 flex items-center justify-end">
+        <HeartIcon size={14} />
+        <UpArrowIcon size={14} className="ml-1" />
+        <span className="tabular-nums ml-1">
+          {num > 0 ? `+${formattedNum}` : formattedNum}
+        </span>
+      </div>
+    );
+  }
+
+  // コメント関連の増加数の場合
+  if (type && (
+    type === 'comment_count_increase' ||
+    type === 'ten_days_comment_increase'
+  )) {
+    return (
+      <div className="font-medium text-green-600 flex items-center justify-end">
+        <CommentIcon size={14} />
+        <UpArrowIcon size={14} className="ml-1" />
+        <span className="tabular-nums ml-1">
+          {num > 0 ? `+${formattedNum}` : formattedNum}
+        </span>
+      </div>
+    );
+  }
+  
+  // 再生数増加の場合
   if (type && (
     type === 'viewsIncrease' ||
-    type === 'likes_count_increase' ||
-    type === 'ten_days_likes_increase' ||
-    type === 'comment_count_increase' ||
-    type === 'ten_days_comment_increase' ||
     type === 'ten_days_increase'
   )) {
     return (
