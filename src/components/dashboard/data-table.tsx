@@ -11,6 +11,23 @@ import { ImageHover } from '@/components/ui/image-hover'
 import { getFilterOptions } from '@/lib/api'
 import { GenreBadge, HashtagBadge } from '@/components/ui/badge'
 import { TIKTOK_COLORS } from '@/lib/constants'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  horizontalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 // フィルターポップアップコンポーネントのインポートを追加
 import { FilterPopup } from '@/components/ui/filter-popup'
@@ -303,6 +320,39 @@ const MusicNoteIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
+// ソータブルヘッダーセルコンポーネント
+const SortableHeaderCell = ({ column, index }: { column: Column; index: number }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({
+    id: column.accessorKey
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 1000 : undefined,
+    cursor: 'move'
+  };
+
+  return (
+    <th
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="px-2 py-2 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
+    >
+      {column.header({ column })}
+    </th>
+  );
+};
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
@@ -328,6 +378,38 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     // 最後にクリックしたソートフィールドを追跡
     const [lastClickedSort, setLastClickedSort] = useState<string | null>(null);
+
+    // カラムの順序を管理するstate
+    const [orderedColumns, setOrderedColumns] = useState<Column[]>([]);
+    
+    // 初期化時にカラムの順序を設定
+    useEffect(() => {
+      setOrderedColumns(columns);
+    }, []);
+
+    // センサーの設定
+    const sensors = useSensors(
+      useSensor(PointerSensor),
+      useSensor(KeyboardSensor, {
+        coordinateGetter: sortableKeyboardCoordinates,
+      })
+    );
+
+    // ドラッグ終了時のハンドラー
+    const handleDragEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      setOrderedColumns((items) => {
+        const oldIndex = items.findIndex((item) => item.accessorKey === active.id);
+        const newIndex = items.findIndex((item) => item.accessorKey === over.id);
+        
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    };
 
     // フィルターをクリアする関数 - データテーブルとAPIの両方を更新
     const handleClearAllFilters = useCallback(() => {
@@ -980,6 +1062,77 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         }
       },
       {
+        accessorKey: 'product',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="商品名"
+            type="text"
+            onFilter={(value) => handleFilter('product')(value)}
+            isActive={Boolean(columnFilters['product'])}
+            categoryData={getFilteredOptions('商品名')}
+            sortDirection={
+              primarySort?.field === 'product' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'product' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => {
+          // カテゴリ（動画ジャンル）を取得
+          const category = row.category;
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <div className="flex flex-wrap gap-1 justify-start items-center">
+                {row.product && (
+                  <GenreBadge 
+                    genre={row.product} 
+                    // カテゴリを渡して同じ色を使用
+                    categoryForColor={category}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        }
+      },
+      {
+        accessorKey: 'account_type',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウントジャンル"
+            type="text"
+            onFilter={(value) => handleFilter('account_type')(value)}
+            isActive={Boolean(columnFilters['account_type'])}
+            categoryData={getFilteredOptions('アカウントジャンル')}
+            sortDirection={
+              primarySort?.field === 'account_type' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'account_type' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <div className="flex flex-wrap gap-1 justify-start items-center">
+              {row.account_type ? (
+                <div className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                  {row.account_type}
+                </div>
+              ) : (
+                <span className="text-gray-400 text-xs">未設定</span>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
         accessorKey: 'createdAt',
         header: ({ column }) => (
           <TableHeaderCell
@@ -1092,182 +1245,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         )
       },
       {
-        accessorKey: 'likes',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="いいね数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('likes')(value)}
-            isActive={Boolean(columnFilters['likes'])}
-            sortDirection={
-              primarySort?.field === 'likes' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'likes' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'likes' ? 1 : secondarySort?.field === 'likes' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.likes, 'likes')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'comments',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="コメント数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('comments')(value)}
-            isActive={Boolean(columnFilters['comments'])}
-            sortDirection={
-              primarySort?.field === 'comments' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'comments' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'comments' ? 1 : secondarySort?.field === 'comments' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.comments, 'comments')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'product',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="商品名"
-            type="text"
-            onFilter={(value) => handleFilter('product')(value)}
-            isActive={Boolean(columnFilters['product'])}
-            categoryData={getFilteredOptions('商品名')}
-            sortDirection={
-              primarySort?.field === 'product' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'product' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => {
-          // カテゴリ（動画ジャンル）を取得
-          const category = row.category;
-          
-          return (
-            <div className="w-[120px] min-w-[120px]">
-              <div className="flex flex-wrap gap-1 justify-start items-center">
-                {row.product && (
-                  <GenreBadge 
-                    genre={row.product} 
-                    // カテゴリを渡して同じ色を使用
-                    categoryForColor={category}
-                  />
-                )}
-              </div>
-            </div>
-          );
-        }
-      },
-      {
-        accessorKey: 'account_type',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="アカウントジャンル"
-            type="text"
-            onFilter={(value) => handleFilter('account_type')(value)}
-            isActive={Boolean(columnFilters['account_type'])}
-            categoryData={getFilteredOptions('アカウントジャンル')}
-            sortDirection={
-              primarySort?.field === 'account_type' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'account_type' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[120px] min-w-[120px]">
-            <div className="flex flex-wrap gap-1 justify-start items-center">
-              {row.account_type ? (
-                <div className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                  {row.account_type}
-                </div>
-              ) : (
-                <span className="text-gray-400 text-xs">未設定</span>
-              )}
-            </div>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'hashtags',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="ハッシュタグ"
-            type="text"
-            onFilter={(value) => handleFilter('hashtags')(value)}
-            isActive={Boolean(columnFilters['hashtags'])}
-            categoryData={getFilteredOptions('ハッシュタグ')}
-            sortDirection={sortField === 'hashtags' ? sortDirection : null}
-            sortPriority={primarySort?.field === 'hashtags' ? 1 : secondarySort?.field === 'hashtags' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => {
-          // キャプションからのみハッシュタグを抽出する
-          const caption = row.description || '';
-          
-          // キャプションからハッシュタグを抽出（#付きの形式で）
-          const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
-          
-          // 重複を除去
-          const uniqueTags = [...new Set(hashtagsFromCaption)].filter(Boolean);
-          
-          if (uniqueTags.length === 0) {
-            return <span className="text-gray-400 text-xs">ハッシュタグなし</span>;
-          }
-          
-          // ハッシュタグの表示（最大3つまで表示し、それ以上は省略）
-          const displayTags = uniqueTags.slice(0, 3);
-          const remainingCount = uniqueTags.length - displayTags.length;
-          
-          return (
-            <div className="w-[120px] min-w-[120px]">
-              <button 
-                onClick={() => setSelectedText({ 
-                  title: 'ハッシュタグ', 
-                  content: uniqueTags.join(', ') || 'ハッシュタグなし'
-                })}
-                className="text-left w-full"
-              >
-                <div className="flex flex-wrap">
-                  {displayTags.map((tag: string, idx: number) => (
-                    <HashtagBadge key={idx} tag={tag.substring(1)} />
-                  ))}
-                  {remainingCount > 0 && (
-                    <span className="text-xs text-gray-500 mt-1">
-                      他{remainingCount}個...
-                    </span>
-                  )}
-                </div>
-              </button>
-            </div>
-          );
-        }
-      },
-      {
         accessorKey: 'ten_days_increase',
         header: ({ column }) => (
           <TableHeaderCell
@@ -1289,6 +1266,31 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         cell: ({ row }) => (
           <div className="text-right">
             {formatNumber(row.ten_days_increase, 'ten_days_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'likes',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="いいね数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('likes')(value)}
+            isActive={Boolean(columnFilters['likes'])}
+            sortDirection={
+              primarySort?.field === 'likes' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'likes' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'likes' ? 1 : secondarySort?.field === 'likes' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.likes, 'likes')}
           </div>
         )
       },
@@ -1339,6 +1341,31 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         cell: ({ row }) => (
           <div className="text-right">
             {formatNumber(row.ten_days_likes_increase, 'ten_days_likes_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'comments',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="コメント数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('comments')(value)}
+            isActive={Boolean(columnFilters['comments'])}
+            sortDirection={
+              primarySort?.field === 'comments' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'comments' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'comments' ? 1 : secondarySort?.field === 'comments' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.comments, 'comments')}
           </div>
         )
       },
@@ -1426,6 +1453,61 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         )
       },
       {
+        accessorKey: 'hashtags',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="ハッシュタグ"
+            type="text"
+            onFilter={(value) => handleFilter('hashtags')(value)}
+            isActive={Boolean(columnFilters['hashtags'])}
+            categoryData={getFilteredOptions('ハッシュタグ')}
+            sortDirection={sortField === 'hashtags' ? sortDirection : null}
+            sortPriority={primarySort?.field === 'hashtags' ? 1 : secondarySort?.field === 'hashtags' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => {
+          // キャプションからのみハッシュタグを抽出する
+          const caption = row.description || '';
+          
+          // キャプションからハッシュタグを抽出（#付きの形式で）
+          const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
+          
+          // 重複を除去
+          const uniqueTags = [...new Set(hashtagsFromCaption)].filter(Boolean);
+          
+          if (uniqueTags.length === 0) {
+            return <span className="text-gray-400 text-xs">ハッシュタグなし</span>;
+          }
+          
+          // ハッシュタグの表示（最大3つまで表示し、それ以上は省略）
+          const displayTags = uniqueTags.slice(0, 3);
+          const remainingCount = uniqueTags.length - displayTags.length;
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <button 
+                onClick={() => setSelectedText({ 
+                  title: 'ハッシュタグ', 
+                  content: uniqueTags.join(', ') || 'ハッシュタグなし'
+                })}
+                className="text-left w-full"
+              >
+                <div className="flex flex-wrap">
+                  {displayTags.map((tag: string, idx: number) => (
+                    <HashtagBadge key={idx} tag={tag.substring(1)} />
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="text-xs text-gray-500 mt-1">
+                      他{remainingCount}個...
+                    </span>
+                  )}
+                </div>
+              </button>
+            </div>
+          );
+        }
+      },
+      {
         accessorKey: 'audioTitle',
         header: ({ column }) => (
           <TableHeaderCell
@@ -1444,32 +1526,24 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             sortPriority={primarySort?.field === 'audioTitle' ? 1 : secondarySort?.field === 'audioTitle' ? 2 : null}
           />
         ),
-        cell: ({ row }) => {
-          // デバッグログを追加
-          console.log('BGM Row Data:', {
-            fullRow: row,
-            audioTitle: row.audioTitle,
-          });
-          
-          return (
-            <div className="w-[120px] min-w-[120px]">
-              <button 
-                onClick={() => setSelectedText({ 
-                  title: 'BGM情報', 
-                  content: `${row.audioTitle || 'BGMなし'}${row.artist ? `\nアーティスト: ${row.artist}` : ''}`
-                })}
-                className="text-left w-full"
-              >
-                <div className="flex items-center gap-1">
-                  <MusicNoteIcon size={14} />
-                  <span className="line-clamp-2 text-xs text-gray-600">
-                    {row.audioTitle || 'BGMなし'}
-                  </span>
-                </div>
-              </button>
-            </div>
-          );
-        }
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <button 
+              onClick={() => setSelectedText({ 
+                title: 'BGM情報', 
+                content: `${row.audioTitle || 'BGMなし'}${row.artist ? `\nアーティスト: ${row.artist}` : ''}`
+              })}
+              className="text-left w-full"
+            >
+              <div className="flex items-center gap-1">
+                <MusicNoteIcon size={14} />
+                <span className="line-clamp-2 text-xs text-gray-600">
+                  {row.audioTitle || 'BGMなし'}
+                </span>
+              </div>
+            </button>
+          </div>
+        )
       },
       {
         accessorKey: 'description',
@@ -1494,29 +1568,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 {row.description}
               </span>
             </button>
-          </div>
-        )
-      },
-      {
-        accessorKey: 'url',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="動画URL"
-            onFilter={(value) => handleFilter('url')(value)}
-            isActive={Boolean(columnFilters['url'])}
-            sortPriority={primarySort?.field === 'url' ? 1 : secondarySort?.field === 'url' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[70px] min-w-[70px]">
-            <a 
-              href={row.url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 underline"
-            >
-              リンク
-            </a>
           </div>
         )
       },
@@ -1592,47 +1643,35 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             )}
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    {columns.map((column) => (
-                      <th 
-                        key={column.accessorKey} 
-                        className="px-2 py-2 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
-                        style={{ 
-                          width: column.accessorKey === 'thumbnail_url' ? '160px' :
-                                 column.accessorKey === 'category' ? '160px' :
-                                 column.accessorKey === 'createdAt' ? '80px' : 
-                                 column.accessorKey === 'account_name' ? '120px' :
-                                 column.accessorKey === 'audioTitle' ? '120px' :
-                                 column.accessorKey === 'description' ? '150px' :
-                                 column.accessorKey === 'url' ? '70px' :
-                                 column.accessorKey === 'views' ? '100px' :
-                                 column.accessorKey === 'viewsIncrease' ? '100px' :
-                                 column.accessorKey === 'likes' ? '100px' :
-                                 column.accessorKey === 'comments' ? '100px' :
-                                 column.accessorKey === 'product' ? '120px' :
-                                 column.accessorKey === 'account_type' ? '120px' :
-                                 column.accessorKey === 'hashtags' ? '120px' :
-                                 column.accessorKey === 'ten_days_increase' ? '120px' :
-                                 column.accessorKey === 'likes_count_increase' ? '120px' :
-                                 column.accessorKey === 'ten_days_likes_increase' ? '140px' :
-                                 column.accessorKey === 'comment_count_increase' ? '120px' :
-                                 column.accessorKey === 'ten_days_comment_increase' ? '140px' : '100px',
-                          whiteSpace: 'nowrap'
-                        }}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <SortableContext
+                        items={orderedColumns.map(col => col.accessorKey)}
+                        strategy={horizontalListSortingStrategy}
                       >
-                        {column.header({ column })}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+                        {orderedColumns.map((column, index) => (
+                          <SortableHeaderCell
+                            key={column.accessorKey}
+                            column={column}
+                            index={index}
+                          />
+                        ))}
+                      </SortableContext>
+                    </tr>
+                  </thead>
+                </DndContext>
                 <tbody>
                   {data.map((row: VideoData, rowIndex: number) => (
                     <tr 
                       key={`row-${row.id || rowIndex}`}
                       className="border-b hover:bg-gray-50 transition-colors duration-150 h-[100px]"
                     >
-                      {columns.map((column, colIndex) => (
+                      {orderedColumns.map((column, colIndex) => (
                         <td 
                           key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
                           className={`px-2 py-1 bg-white ${
@@ -1644,6 +1683,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                             width: column.accessorKey === 'thumbnail_url' ? '160px' :
                                   column.accessorKey === 'category' ? '160px' :
                                   column.accessorKey === 'createdAt' ? '80px' : 
+                                  column.accessorKey === 'account_name' ? '120px' :
+                                  column.accessorKey === 'audioTitle' ? '120px' :
+                                  column.accessorKey === 'description' ? '150px' :
+                                  column.accessorKey === 'url' ? '70px' :
                                   column.accessorKey === 'views' ? '100px' :
                                   column.accessorKey === 'viewsIncrease' ? '100px' :
                                   column.accessorKey === 'likes' ? '100px' :
@@ -1691,23 +1734,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                         >
                           {column.cell 
                             ? column.cell({ row }) 
-                            : column.accessorKey === 'hashtags'
-                              ? (() => {
-                                  const value = row[column.accessorKey] as unknown;
-                                  console.log('Hashtags value:', value);
-                                  console.log('Hashtags type:', typeof value);
-                                  console.log('Is array:', Array.isArray(value));
-                                  if (Array.isArray(value)) {
-                                    return (value as string[]).join(', ');
-                                  }
-                                  if (typeof value === 'string') {
-                                    return value.split(',').filter(Boolean).join(', ');
-                                  }
-                                  return '';
-                                })()
-                              : typeof row[column.accessorKey] === 'object'
-                                ? JSON.stringify(row[column.accessorKey])
-                                : String(row[column.accessorKey])
+                            : typeof row[column.accessorKey] === 'object'
+                              ? JSON.stringify(row[column.accessorKey])
+                              : String(row[column.accessorKey])
                           }
                         </td>
                       ))}
