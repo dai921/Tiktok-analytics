@@ -649,113 +649,88 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         return;
       }
       
-      // フィルターが空オブジェクトかどうか確認（filterPopupから空のフィルターが渡された場合）
-      const isEmptyFilter = Object.keys(filters).length === 0;
+      // ソート処理のための変数
+      let newPrimarySort = primarySort;
+      let newSecondarySort = secondarySort;
+      let sortUpdated = false;
       
-      // 完全に空のフィルターの場合は、すべてのフィルターをクリア
-      if (isEmptyFilter) {
-        console.log('DataTable - 空のフィルターを受け取りました。すべてのフィルターをクリアします');
-        
-        // 状態をリセット
-        setColumnFilters({});
-        setCurrentFilters({});
-        setPrimarySort(null);
-        setSecondarySort(null);
-        setSortField(null);
-        setSortDirection(null);
-        setHasActiveFilters(false);
-        
-        // 親コンポーネントに通知 - 明示的にフィルターがないことを通知
-        onFilterChange(false);
-        
-        // フィルターポップアップを閉じる
-        setIsFilterPopupOpen(false);
-        return;
-      }
+      // フィルター情報を処理
+      const normalFilters: Record<string, FilterValue> = {};
       
-      // フィルターが空でない場合の処理
-      // 現在のフィルター状態をリセット
-      const newColumnFilters: Record<string, FilterValue> = {};
-      const newCurrentFilters: Record<string, FilterQuery> = {};
-      
-      // ソート情報を保持する変数
-      let newPrimarySort: {field: string; direction: 'asc' | 'desc'} | null = null;
-      let newSecondarySort: {field: string; direction: 'asc' | 'desc'} | null = null;
-      
-      // 後方互換性のために保持
-      let newSortField: string | null = null;
-      let newSortDirection: 'asc' | 'desc' | null = null;
-      
-      // 各フィルターを確認して適用
-      Object.entries(filters).forEach(([field, value]) => {
-        // 空のフィルターをスキップ
-        if (!value || Object.keys(value).length === 0) return;
-        
-        // 値が空の場合はスキップ
-        if (
-          value.value === undefined || 
-          value.value === null || 
-          (typeof value.value === 'string' && value.value.trim() === '') ||
-          (typeof value.value === 'number' && !Number.isFinite(value.value))
-        ) {
-          // 数値が0の場合は有効な値として処理
-          if (!(typeof value.value === 'number' && value.value === 0)) {
-            return;
-          }
-        }
-        
+      // フィルターを処理し、ソート情報とフィルター情報を分離
+      Object.entries(filters).forEach(([key, filter]) => {
         // ソート情報の処理
-        if (value.type === 'sort') {
-          const direction = value.value as 'asc' | 'desc';
+        if (key.startsWith('sort_') && filter.type === 'sort') {
+          sortUpdated = true;
+          const fieldName = key.replace('sort_', '');
           
-          // 第一ソートか第二ソートかを判定
-          if (value.isPrimarySort === true) {
-            newPrimarySort = { field, direction };
+          if (filter.isPrimarySort) {
+            // 第一ソートの設定
+            newPrimarySort = {
+              field: fieldName,
+              direction: filter.value as 'asc' | 'desc'
+            };
             
             // 後方互換性のために従来の状態も更新
-            newSortField = field;
-            newSortDirection = direction;
-          } else if (value.isPrimarySort === false) {
-            newSecondarySort = { field, direction };
+            setSortField(fieldName);
+            setSortDirection(filter.value as 'asc' | 'desc');
           } else {
-            // isPrimarySort指定がない場合は従来通り
-            newSortField = field;
-            newSortDirection = direction;
+            // 第二ソートの設定
+            newSecondarySort = {
+              field: fieldName,
+              direction: filter.value as 'asc' | 'desc'
+            };
           }
+        } else {
+          // 通常のフィルター情報
+          normalFilters[key] = filter;
         }
-        
-        // 有効なフィルターを追加
-        newColumnFilters[field] = value;
-        newCurrentFilters[field] = {
-          ...value
-        };
       });
       
-      // 状態を更新
-      setColumnFilters(newColumnFilters);
-      setCurrentFilters(newCurrentFilters);
-      setPrimarySort(newPrimarySort);
-      setSecondarySort(newSecondarySort);
-      setSortField(newSortField);
-      setSortDirection(newSortDirection);
+      // ソート情報を更新
+      if (sortUpdated) {
+        setPrimarySort(newPrimarySort);
+        setSecondarySort(newSecondarySort);
+      }
       
-      // フィルターがアクティブかどうかを設定 - 空のフィルターセットの場合は必ずfalse
-      const hasFilters = Object.keys(newColumnFilters).length > 0;
+      // フィルター情報を設定
+      setColumnFilters(normalFilters);
+      
+      // 現在のフィルターも更新（ソート情報は含めない）
+      setCurrentFilters(normalFilters);
+      
+      // フィルターがアクティブになったことを通知
+      const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
       setHasActiveFilters(hasFilters);
       
-      // 親コンポーネントに通知 - フィルターが全て空になった場合は明示的にfalseを渡す
-      if (hasFilters) {
-        // 複数フィルターを配列として渡す
-        onFilterChange(true, { 
-          type: 'multiple',
-          field: 'multipleFilters',
-          value: Object.values(newCurrentFilters),
-          filters: newCurrentFilters  // 全フィルターをオブジェクトとして渡す
-        });
-      } else {
-        // 明示的にフィルターがないことを通知
-        onFilterChange(false);
-      }
+      // 親コンポーネントに通知
+      onFilterChange(hasFilters, {
+        type: 'multiple',
+        field: 'multipleFilters',
+        value: Object.values(normalFilters),
+        filters: {
+          ...normalFilters,
+          // ソート情報も追加
+          ...(newPrimarySort && {
+            [`sort_${newPrimarySort.field}`]: {
+              field: newPrimarySort.field,
+              type: 'sort',
+              value: newPrimarySort.direction,
+              isPrimarySort: true,
+              sortField: newPrimarySort.field
+            }
+          }),
+          ...(newSecondarySort && {
+            [`sort_${newSecondarySort.field}`]: {
+              field: newSecondarySort.field,
+              type: 'sort',
+              value: newSecondarySort.direction,
+              isPrimarySort: false,
+              sortField: newSecondarySort.field
+            }
+          })
+        }
+      });
       
       // フィルターポップアップを閉じる
       setIsFilterPopupOpen(false);

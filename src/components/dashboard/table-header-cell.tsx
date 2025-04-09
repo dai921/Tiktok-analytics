@@ -690,8 +690,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               </span>
             )}
           </div>
-          {/* フィルターアイコンを非表示にする */}
-          {/* 以下の部分をコメントアウト
+          {/* フィルターアイコンを非表示にするが、クリックイベントは維持 */}
           {onFilter && title !== 'キャプション' && (
             <button 
               ref={buttonRef}
@@ -699,7 +698,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               className={cn(
                 "p-1 rounded hover:bg-gray-100",
                 isActive ? "text-sky-500 font-bold" : "",
-                localSortDirection ? "bg-blue-50 text-blue-600" : ""
+                localSortDirection ? "bg-blue-50 text-blue-600" : "",
+                "invisible" // アイコンを非表示にするがボタン自体は残す
               )}
               data-active={isActive ? "true" : "false"}
               data-sort-active={localSortDirection ? "true" : "false"}
@@ -715,7 +715,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
               </svg>
             </button>
           )}
-          */}
           
           {isFilterOpen && (
             <Portal>

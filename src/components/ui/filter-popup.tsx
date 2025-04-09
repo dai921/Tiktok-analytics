@@ -272,6 +272,30 @@ export const FilterPopup = ({
   useEffect(() => {
     if (isOpen) {
       setTempFilters(currentFilters || {})
+      
+      // ソート情報も初期化
+      let foundPrimarySort = null;
+      let foundSecondarySort = null;
+      
+      // 現在のフィルターからソート情報を抽出
+      Object.entries(currentFilters || {}).forEach(([key, filter]) => {
+        if (key.startsWith('sort_') && filter.type === 'sort') {
+          const fieldName = key.replace('sort_', '');
+          const direction = filter.value as 'asc' | 'desc';
+          
+          if (filter.isPrimarySort) {
+            // 第一ソート
+            foundPrimarySort = { field: fieldName, direction };
+          } else {
+            // 第二ソート
+            foundSecondarySort = { field: fieldName, direction };
+          }
+        }
+      });
+      
+      // 抽出したソート情報を設定
+      setPrimarySort(foundPrimarySort);
+      setSecondarySort(foundSecondarySort);
     }
   }, [isOpen, currentFilters])
 
