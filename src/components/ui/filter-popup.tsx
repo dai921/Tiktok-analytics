@@ -201,7 +201,12 @@ export const FilterPopup = ({
       { id: 'views', label: '再生数', type: 'number' },
       { id: 'viewsIncrease', label: '再生増加数', type: 'number' },
       { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number' },
-      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' }
+      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' },
+      { id: 'ten_days_increase', label: '10日間再生増加数', type: 'number' },
+      { id: 'likes_count_increase', label: 'いいね増加数', type: 'number' },
+      { id: 'ten_days_likes_increase', label: '10日間いいね増加数', type: 'number' },
+      { id: 'comment_count_increase', label: 'コメント増加数', type: 'number' },
+      { id: 'ten_days_comment_increase', label: '10日間コメント増加数', type: 'number' }
     ],
     categories: [
       { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect', options: ['video', 'carousel'] },
@@ -217,7 +222,12 @@ export const FilterPopup = ({
       { id: 'views', label: '再生数', type: 'sort' },
       { id: 'viewsIncrease', label: '再生増加数', type: 'sort' },
       { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'sort' },
-      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' }
+      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' },
+      { id: 'ten_days_increase', label: '10日間再生増加数', type: 'sort' },
+      { id: 'likes_count_increase', label: 'いいね増加数', type: 'sort' },
+      { id: 'ten_days_likes_increase', label: '10日間いいね増加数', type: 'sort' },
+      { id: 'comment_count_increase', label: 'コメント増加数', type: 'sort' },
+      { id: 'ten_days_comment_increase', label: '10日間コメント増加数', type: 'sort' }
     ]
   }
 
@@ -961,7 +971,12 @@ export const FilterPopup = ({
         label = field.id === 'views' ? '再生数' :
                 field.id === 'viewsIncrease' ? '再生増加数' :
                 field.id === 'likes' ? 'いいね数' :
-                field.id === 'comments' ? 'コメント数' : field.id;
+                field.id === 'comments' ? 'コメント数' :
+                field.id === 'ten_days_increase' ? '10日間再生増加数' :
+                field.id === 'likes_count_increase' ? 'いいね増加数' :
+                field.id === 'ten_days_likes_increase' ? '10日間いいね増加数' :
+                field.id === 'comment_count_increase' ? 'コメント増加数' :
+                field.id === 'ten_days_comment_increase' ? '10日間コメント増加数' : field.id;
       }
       
       return {

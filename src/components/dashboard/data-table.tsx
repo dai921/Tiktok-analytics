@@ -807,7 +807,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   videoUrl={row.url}
                   videoData={row}
                 />
-                <div className="absolute bottom-[8px] right-[8px] bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-0.2">
+                <div className="absolute bottom-[0px] right-[0px] bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-0.2">
                   {row.content_type === 'video' ? (
                     <VideoTypeIcon size={32} />
                   ) : (
@@ -1323,8 +1323,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           console.log('BGM Row Data:', {
             fullRow: row,
             audioTitle: row.audioTitle,
-            audio_title: row.audio_title, // スネークケースも確認
-            music: row.music, // 別の可能性のある名前も確認
           });
           
           return (
