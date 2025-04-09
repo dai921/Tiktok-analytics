@@ -280,12 +280,28 @@ async def get_videos(
         cursor.execute(count_query, filter_params)
         total = cursor.fetchone()[0]
 
+        # 全体の最新投稿日を取得（フィルターに関係なく）
+        cursor.execute("SELECT MAX(created_at) FROM frontend_data")
+        global_latest_date = cursor.fetchone()[0]
+        global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
+
+        # フィルター適用後の最新投稿日を取得
+        filtered_latest_query = f"SELECT MAX(created_at) FROM ({query}) as latest_query"
+        cursor.execute(filtered_latest_query, filter_params)
+        filtered_latest_date = cursor.fetchone()[0]
+        filtered_last_updated = format_last_updated(filtered_latest_date) if filtered_latest_date else None
+
         return {
             "data": [format_video(row) for row in rows],
             "total": total,
             "currentPage": page,
             "totalPages": (total + limit - 1) // limit,
-            "success": True
+            "success": True,
+            "lastUpdated": {
+                "date": filtered_last_updated,
+                "isFiltered": bool(where_clauses),
+                "globalLastUpdated": global_last_updated
+            }
         }
 
     except Exception as e:
@@ -1365,3 +1381,14 @@ if __name__ == "__main__":
         proxy_headers=True,  # プロキシヘッダーを信頼
         forwarded_allow_ips="*"  # すべてのIPからのフォワードを許可
         )
+
+# 最終更新日のフォーマット関数を追加
+def format_last_updated(date):
+    if not date:
+        return None
+    
+    # 日付を2日後に設定
+    update_date = date + timedelta(days=2)
+    
+    # YY/MM/DD形式でフォーマット
+    return update_date.strftime("%y/%m/%d")

@@ -506,7 +506,7 @@ const Dashboard = () => {
       <main className="max-w-screen-2xl">
         <DataTable 
           ref={tableRef}
-          initialData={data} 
+          data={data}
           onFilterChange={(hasFilters, filter) => {
             if (filter) {
               // 複数フィルターの場合の処理を追加
@@ -526,7 +526,6 @@ const Dashboard = () => {
           onPrOnlyChange={handlePrOnlyChange}
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
-          totalCount={totalCount}
         />
       </main>
     </div>

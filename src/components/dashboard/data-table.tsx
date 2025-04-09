@@ -16,17 +16,16 @@ import { TIKTOK_COLORS } from '@/lib/constants'
 import { FilterPopup } from '@/components/ui/filter-popup'
 
 interface DataTableProps {
-  initialData: VideoData[]
-  onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void
-  onPageChange: (page: number) => void
-  currentPage: number
-  totalPages: number
-  isLoading: boolean
-  isPrOnly: boolean
-  onPrOnlyChange: (isPrOnly: boolean) => void
-  pageSize?: number
-  onPageSizeChange?: (pageSize: number) => void
-  totalCount?: number
+  data: VideoData[];
+  onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void;
+  onPageChange: (page: number) => void;
+  currentPage: number;
+  totalPages: number;
+  isLoading: boolean;
+  isPrOnly: boolean;
+  onPrOnlyChange: (isPrOnly: boolean) => void;
+  pageSize?: number;
+  onPageSizeChange?: (pageSize: number) => void;
 }
 
 // フィルタ可能なカラムを定義
@@ -217,7 +216,7 @@ const FilterIcon = ({ size = 20 }: { size?: number }) => (
 );
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ initialData = [], onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange, totalCount }, ref) => {
+  ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
@@ -917,7 +916,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             const dateObj = new Date(date);
             if (!isNaN(dateObj.getTime())) {
               // YY/MM/DD形式に変換
-              const year = dateObj.getFullYear().toString().slice(2); // 下2桁のみ
+              const year = dateObj.getFullYear().toString().slice(-2);
               const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
               const day = dateObj.getDate().toString().padStart(2, '0');
               return (
@@ -932,7 +931,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               // YYYY-MM-DDパターンにマッチ
               const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
               if (match) {
-                const year = match[1].slice(2); // 下2桁
+                const year = match[1].slice(-2);
                 const month = match[2];
                 const day = match[3];
                 return (
@@ -1172,12 +1171,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        {/* 最新動画一覧と件数表示セクションを追加 */}
+        {/* 最新動画一覧のタイトルのみ表示 */}
         <div className="flex items-center p-3">
           <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
-          <div className="ml-2 px-3 py-1 bg-gray-200 rounded-full text-sm text-gray-700">
-            全 {totalCount?.toLocaleString() || '0'} 件
-          </div>
         </div>
         
         <div className="flex items-center justify-between p-2">
@@ -1284,14 +1280,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   </tr>
                 </thead>
                 <tbody>
-                  {initialData.map((row, rowIndex) => (
+                  {data.map((row: VideoData, rowIndex: number) => (
                     <tr 
                       key={`row-${row.id || rowIndex}`}
                       className="border-b hover:bg-gray-50 transition-colors duration-150 h-[100px]"
                     >
                       {columns.map((column, colIndex) => (
                         <td 
-                          key={`cell-${row.id || rowIndex}-${column.accessorKey || colIndex}`}
+                          key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
                           className={`px-3 py-3 bg-white ${
                             ['views', 'viewsIncrease', 'likes', 'comments'].includes(column.accessorKey) 
                               ? 'text-center font-medium' 

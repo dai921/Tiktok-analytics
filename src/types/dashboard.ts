@@ -97,9 +97,24 @@ export interface TableHeaderCellProps {
 }
 
 export interface DataTableProps {
-  initialData: VideoData[]
+  initialData: {
+    data: VideoData[];
+    lastUpdated?: {
+      date: string;
+      isFiltered: boolean;
+      globalLastUpdated: string;
+    };
+  }
   onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void
+  onPageChange: (page: number) => void
+  currentPage: number
+  totalPages: number
   isLoading: boolean
+  isPrOnly: boolean
+  onPrOnlyChange: (isPrOnly: boolean) => void
+  pageSize?: number
+  onPageSizeChange?: (pageSize: number) => void
+  totalCount?: number
 }
 
 export interface FilterPopoverProps {

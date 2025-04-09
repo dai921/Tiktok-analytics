@@ -98,7 +98,14 @@ export const fetchVideosFromBackend = async (options: {
     }
     
     const data = await response.json();
-    return data;
+    return {
+      success: true,
+      data: data.data,
+      currentPage: data.currentPage,
+      totalPages: data.totalPages,
+      total: data.total,
+      lastUpdated: data.lastUpdated
+    };
   } catch (error) {
     console.error('API error:', error);
     throw error;
@@ -842,7 +849,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
       data: formattedData,
       currentPage: result.currentPage || 1,
       totalPages: result.totalPages || 1,
-      totalCount: result.totalCount || result.total || formattedData.length
+      totalCount: result.total || result.total || formattedData.length
     };
   } catch (error) {
     console.error('APIデータの取得エラー:', error);
