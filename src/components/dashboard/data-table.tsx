@@ -357,6 +357,25 @@ const SortableHeaderCell = ({ column, index }: { column: Column; index: number }
   );
 };
 
+// デフォルトで表示するカラムのリスト
+const DEFAULT_VISIBLE_COLUMNS = [
+  'thumbnail_url',    // サムネイル
+  'category',         // 動画ジャンル
+  'product',         // 商品名
+  'createdAt',       // 投稿日
+  'views',           // 再生数
+  'viewsIncrease',   // 再生増加数
+  'ten_days_increase', // 10日間再生増加数
+  'likes',           // いいね数
+  'comments',        // コメント数
+  'account_name',    // アカウント名
+  'hashtags',        // ハッシュタグ
+  'audioTitle',      // BGM
+]
+
+// 表示設定から除外するカラムのリスト
+const EXCLUDED_COLUMNS = ['description'] // キャプションは表示設定から除外
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange, defaultVisibleColumns, onColumnSettingsChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
@@ -1549,38 +1568,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           </div>
         )
       },
-      {
-        accessorKey: 'description',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="キャプション"
-            onFilter={(value) => handleFilter('description')(value)}
-            isActive={Boolean(columnFilters['description'])}
-            sortPriority={primarySort?.field === 'description' ? 1 : secondarySort?.field === 'description' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[150px] min-w-[150px]">
-            <button 
-              onClick={() => setSelectedText({ 
-                title: 'キャプション', 
-                content: row.description 
-              })}
-              className="text-left w-full"
-            >
-              <span className="line-clamp-2 text-sm">
-                {row.description}
-              </span>
-            </button>
-          </div>
-        )
-      },
     ]
 
     // カラム設定の状態を追加
     const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false)
     const [visibleColumns, setVisibleColumns] = useState<string[]>(
-      defaultVisibleColumns || columns.map(col => col.accessorKey)
+      defaultVisibleColumns || DEFAULT_VISIBLE_COLUMNS
     )
     const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>
 
@@ -1595,13 +1588,42 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     }
 
     // フィルタされたカラムを取得
-    const filteredColumns = columns.filter(col => visibleColumns.includes(col.accessorKey))
+    const filteredColumns = columns.filter(col => 
+      !EXCLUDED_COLUMNS.includes(col.accessorKey) && 
+      visibleColumns.includes(col.accessorKey)
+    )
+
+    // スクロール制御のためのeffect
+    useEffect(() => {
+      if (isColumnSettingsOpen) {
+        // スクロールを無効化
+        document.body.style.overflow = 'hidden'
+      } else {
+        // スクロールを有効化
+        document.body.style.overflow = 'unset'
+      }
+      
+      return () => {
+        // クリーンアップ時にスクロールを有効化
+        document.body.style.overflow = 'unset'
+      }
+    }, [isColumnSettingsOpen])
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
-        <div className="flex items-center p-3">
+        <div className="flex items-center justify-between p-3">
           <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
+          
+          {/* 表示設定ボタンをヘッダー右上に移動 */}
+          <button
+            ref={columnSettingsButtonRef}
+            onClick={() => setIsColumnSettingsOpen(true)}
+            className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
+          >
+            <SettingsIcon size={16} />
+            <span className="ml-1">表示設定</span>
+          </button>
         </div>
         
         <div className="flex items-center justify-between p-2">
@@ -1633,16 +1655,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </div>
               <span className="ml-2 text-sm font-medium text-black">#PR動画のみ</span>
             </label>
-            
-            {/* 表示設定ボタンを追加 */}
-            <button
-              ref={columnSettingsButtonRef}
-              onClick={() => setIsColumnSettingsOpen(true)}
-              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
-            >
-              <SettingsIcon size={16} />
-              <span className="ml-1">表示設定</span>
-            </button>
           </div>
           <Pagination 
             currentPage={currentPage}

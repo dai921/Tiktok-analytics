@@ -140,6 +140,15 @@ export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
                       )}
                     </div>
                     
+                    {videoData?.description && (
+                      <div>
+                        <div className="text-gray-500 text-xs mb-1">キャプション:</div>
+                        <div className="text-gray-900 text-sm whitespace-pre-wrap break-words">
+                          {videoData.description}
+                        </div>
+                      </div>
+                    )}
+                    
                     <div>
                       <div className="text-gray-500 text-xs mb-1">投稿日:</div>
                       <div className="text-gray-900">{videoData?.createdAt || '不明'}</div>
