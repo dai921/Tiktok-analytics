@@ -82,8 +82,8 @@ async def get_videos(
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
-    sort_by_secondary: Optional[str] = None,  # 二次ソートカラム
-    sort_order_secondary: Optional[str] = "desc",  # 二次ソート順序
+    sort_by_secondary: Optional[str] = "play_count",  # デフォルトで再生数を二次ソートに設定
+    sort_order_secondary: Optional[str] = "desc",  # 降順
     play_count: Optional[int] = None,
     play_count_type: Optional[str] = None,
     likes_count: Optional[int] = None,

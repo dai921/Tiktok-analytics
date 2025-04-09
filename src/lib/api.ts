@@ -541,6 +541,8 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
         // デフォルトのソート設定
         params.append('sort_by', 'created_at');
         params.append('sort_order', 'desc');
+        params.append('sort_by_secondary', 'play_count');
+        params.append('sort_order_secondary', 'desc');
       }
 
       // 通常のフィルターの処理
