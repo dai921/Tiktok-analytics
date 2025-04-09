@@ -290,6 +290,19 @@ const FilterIcon = ({ size = 20 }: { size?: number }) => (
   </svg>
 );
 
+// 八分音符アイコンを追加
+const MusicNoteIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="currentColor"
+    className="text-gray-600"
+  >
+    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+  </svg>
+);
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
   ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
@@ -1447,9 +1460,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 })}
                 className="text-left w-full"
               >
-                <span className="line-clamp-2 text-sm">
-                  {row.audioTitle || 'BGMなし'}
-                </span>
+                <div className="flex items-center gap-1">
+                  <MusicNoteIcon size={14} />
+                  <span className="line-clamp-2 text-xs text-gray-600">
+                    {row.audioTitle || 'BGMなし'}
+                  </span>
+                </div>
               </button>
             </div>
           );
