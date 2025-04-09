@@ -618,10 +618,22 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
         // カテゴリーフィルターの特別な処理
         if (key === 'category' || key === '動画ジャンル') {
           console.log('API - カテゴリーのフィルタリング処理');
-          params.append('category', filter.value.toString());
+          
+          // 配列の場合は個別のパラメータとして追加
+          if (Array.isArray(filter.value)) {
+            // category_1, category_2, ... として送信
+            filter.value.forEach((category, index) => {
+              params.append(`category_${index}`, category.toString());
+            });
+            // 何個のカテゴリがあるかを送信
+            params.append('category_count', filter.value.length.toString());
+          } else {
+            // 従来通り単一カテゴリの場合はそのまま送信
+            params.append('category', filter.value.toString());
+          }
           
           console.log('カテゴリーフィルター設定:', {
-            value: filter.value.toString(),
+            value: filter.value,
             queryParams: Object.fromEntries(params.entries())
           });
           return;
@@ -1140,7 +1152,26 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         }
         // カテゴリフィルターの処理
         else if (key === 'category' || apiField === 'category') {
-          params.append('category', filter.value.toString());
+          console.log('API - カテゴリーのフィルタリング処理');
+          
+          // 配列の場合は個別のパラメータとして追加
+          if (Array.isArray(filter.value)) {
+            // category_1, category_2, ... として送信
+            filter.value.forEach((category, index) => {
+              params.append(`category_${index}`, category.toString());
+            });
+            // 何個のカテゴリがあるかを送信
+            params.append('category_count', filter.value.length.toString());
+          } else {
+            // 従来通り単一カテゴリの場合はそのまま送信
+            params.append('category', filter.value.toString());
+          }
+          
+          console.log('カテゴリーフィルター設定:', {
+            value: filter.value,
+            queryParams: Object.fromEntries(params.entries())
+          });
+          return;
         }
         // 日付フィルターの処理
         else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {

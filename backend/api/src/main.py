@@ -115,12 +115,31 @@ async def get_videos(
             where_clauses.append("account_name LIKE %s")
             params.append(f"%{escaped_account_name}%")
         
-        if category:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+        # カテゴリフィルターのOR条件処理
+        category_filters = []
+        category_params = []
+
+        # category_countパラメータがある場合は複数カテゴリ
+        category_count = request.query_params.get('category_count')
+        if category_count and category_count.isdigit():
+            count = int(category_count)
+            for i in range(count):
+                cat_param = request.query_params.get(f'category_{i}')
+                if cat_param:
+                    escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
+                    category_filters.append("category LIKE %s")
+                    category_params.append(f"%{escaped_cat}%")
+        
+        # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
+        if category_filters:
+            where_clauses.append(f"({' OR '.join(category_filters)})")
+            params.extend(category_params)
+        # 従来の単一カテゴリ処理
+        elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
-            
+        
         if hashtag:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
@@ -330,12 +349,31 @@ async def get_videos_alt(
             where_clauses.append("account_name LIKE %s")
             params.append(f"%{escaped_account_name}%")
         
-        if category:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+        # カテゴリフィルターのOR条件処理
+        category_filters = []
+        category_params = []
+
+        # category_countパラメータがある場合は複数カテゴリ
+        category_count = request.query_params.get('category_count')
+        if category_count and category_count.isdigit():
+            count = int(category_count)
+            for i in range(count):
+                cat_param = request.query_params.get(f'category_{i}')
+                if cat_param:
+                    escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
+                    category_filters.append("category LIKE %s")
+                    category_params.append(f"%{escaped_cat}%")
+        
+        # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
+        if category_filters:
+            where_clauses.append(f"({' OR '.join(category_filters)})")
+            params.extend(category_params)
+        # 従来の単一カテゴリ処理
+        elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
-            
+        
         if hashtag:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
@@ -840,12 +878,31 @@ async def get_filter_options(
             where_clauses.append("account_name LIKE %s")
             params.append(f"%{escaped_account_name}%")
         
-        if category:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+        # カテゴリフィルターのOR条件処理
+        category_filters = []
+        category_params = []
+
+        # category_countパラメータがある場合は複数カテゴリ
+        category_count = request.query_params.get('category_count')
+        if category_count and category_count.isdigit():
+            count = int(category_count)
+            for i in range(count):
+                cat_param = request.query_params.get(f'category_{i}')
+                if cat_param:
+                    escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
+                    category_filters.append("category LIKE %s")
+                    category_params.append(f"%{escaped_cat}%")
+        
+        # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
+        if category_filters:
+            where_clauses.append(f"({' OR '.join(category_filters)})")
+            params.extend(category_params)
+        # 従来の単一カテゴリ処理
+        elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
-            
+        
         if hashtag:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
