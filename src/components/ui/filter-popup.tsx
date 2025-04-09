@@ -186,6 +186,8 @@ export const FilterPopup = ({
   const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'text' | 'sort'>('date')
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  // コンテンツタイプ用の複数選択状態
+  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['video', 'carousel'])
   // ソート用の状態を追加
   const [primarySort, setPrimarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
   const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
@@ -202,6 +204,7 @@ export const FilterPopup = ({
       { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' }
     ],
     categories: [
+      { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect', options: ['video', 'carousel'] },
       { id: 'category', label: '動画ジャンル', type: 'multiselect', options: categories }
     ],
     text: [
@@ -235,6 +238,19 @@ export const FilterPopup = ({
         }
       } else {
         setSelectedCategories([]);
+      }
+
+      // コンテンツタイプの選択初期化
+      const contentTypeFilter = currentFilters['content_type'];
+      if (contentTypeFilter && contentTypeFilter.value) {
+        if (typeof contentTypeFilter.value === 'string') {
+          setSelectedContentTypes([contentTypeFilter.value]);
+        } else if (Array.isArray(contentTypeFilter.value)) {
+          setSelectedContentTypes(contentTypeFilter.value as string[]);
+        }
+      } else {
+        // デフォルトで両方選択された状態に
+        setSelectedContentTypes(['video', 'carousel']);
       }
       
       // ソート状態の初期化
@@ -356,6 +372,18 @@ export const FilterPopup = ({
           value: value.value // すでにnumber型なのでそのまま使用
         }
       }));
+    } else if (value.type === 'multiselect' && fieldId === 'content_type') {
+      // content_typeのmultiselect処理を特別に扱う
+      console.log('FilterPopup - content_typeマルチセレクト処理:', value);
+      
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: {
+          ...value,
+          comparison: 'contains', // 明示的にcomparison値を設定
+          field: fieldId
+        }
+      }));
     } else {
       // テキストや他のタイプの場合はそのまま設定
       setTempFilters(prev => ({
@@ -381,6 +409,7 @@ export const FilterPopup = ({
     // ポップアップ内の入力のみをクリア
     setTempFilters({})
     setSelectedCategories([]);
+    setSelectedContentTypes(['video', 'carousel']);
     setPrimarySort(null);
     setSecondarySort(null);
     
@@ -393,57 +422,66 @@ export const FilterPopup = ({
 
   // フィルターを適用
   const handleApplyFilters = () => {
-    // カテゴリ選択を反映したフィルター情報
-    const wrappedFilters: Record<string, FilterValue> = {...tempFilters};
-
-    // 選択されたカテゴリがある場合は追加
+    console.log('フィルターポップアップ - フィルター適用開始');
+    
+    // 最終的なフィルター状態を構築
+    const finalFilters: Record<string, FilterValue> = {};
+    
+    // 1. 通常のフィルターを処理
+    Object.entries(tempFilters).forEach(([key, filter]) => {
+      if (filter.type !== 'sort') {
+        finalFilters[key] = filter;
+      }
+    });
+    
+    // 2. カテゴリフィルターの処理
     if (selectedCategories.length > 0) {
-      wrappedFilters['category'] = {
+      finalFilters['category'] = {
         field: 'category',
         type: 'multiselect',
         value: selectedCategories,
-      } as FilterValue;
+        comparison: 'contains'
+      };
     }
-
-    // ソート情報を追加
+    
+    // 3. コンテンツタイプフィルターの処理
+    if (selectedContentTypes.length > 0 && selectedContentTypes.length < 3) {
+      finalFilters['content_type'] = {
+        field: 'content_type',
+        type: 'multiselect',
+        value: selectedContentTypes,
+        comparison: 'contains'
+      };
+    }
+    
+    // 4. ソート情報の処理
     if (primarySort) {
-      // ソート情報用のキーにプレフィックスを付けて、フィルターと競合しないようにする
-      const primarySortKey = `sort_${primarySort.field}`;
-      
-      // 更新されたフィルター（フィルター情報 + ソート情報）
-      wrappedFilters[primarySortKey] = {
+      finalFilters[`sort_${primarySort.field}`] = {
         field: primarySort.field,
-        type: 'sort' as FilterType,
+        type: 'sort',
         value: primarySort.direction,
         isPrimarySort: true,
         sortField: primarySort.field
-      } as FilterValue;
-
-      // 第二ソートが設定されている場合、それも追加
+      };
+      
+      // 第二ソートが設定されている場合
       if (secondarySort) {
-        const secondarySortKey = `sort_${secondarySort.field}`;
-        wrappedFilters[secondarySortKey] = {
+        finalFilters[`sort_${secondarySort.field}`] = {
           field: secondarySort.field,
-          type: 'sort' as FilterType,
+          type: 'sort',
           value: secondarySort.direction,
           isPrimarySort: false,
           sortField: secondarySort.field
-        } as FilterValue;
+        };
       }
-    } else {
-      // ソートが解除された場合は、明示的にそのことを伝える
-      // 前回のソート情報を示す空のキーを設定
-      wrappedFilters['sort_indicator'] = {
-        field: '',
-        type: 'indicator' as FilterType,
-        value: ''
-      } as FilterValue;
     }
-
+    
+    console.log('フィルターポップアップ - 最終フィルター:', finalFilters);
+    
     // フィルターを親コンポーネントに渡す
-    onFilterChange(wrappedFilters);
-    onClose(); // フィルター適用後にポップアップを閉じる
-  }
+    onFilterChange(finalFilters);
+    onClose();
+  };
 
   // カテゴリの選択状態管理
   const handleCategoryChange = (category: string, checked: boolean) => {
@@ -456,17 +494,22 @@ export const FilterPopup = ({
 
   // ソート選択のハンドラー
   const handleSortChange = (fieldId: string, direction: 'asc' | 'desc') => {
-    // 既存コードを削除
-    // const newFilters = {
-    //   ...tempFilters,
-    //   [fieldId]: {
-    //     field: fieldId,
-    //     type: 'sort',
-    //     value: direction
-    //   }
-    // };
-    // setTempFilters(newFilters);
-  }
+    console.log('フィルターポップアップ - ソート変更:', { fieldId, direction });
+    
+    // 新しいソート情報を作成
+    const sortFilter: FilterValue = {
+      field: fieldId,
+      type: 'sort',
+      value: direction,
+      sortField: fieldId
+    };
+    
+    // 一時フィルターを更新
+    setTempFilters(prev => ({
+      ...prev,
+      [`sort_${fieldId}`]: sortFilter
+    }));
+  };
 
   // ソート項目の設定関数
   const handlePrimarySortChange = (fieldId: string, direction: 'asc' | 'desc') => {
@@ -617,6 +660,36 @@ export const FilterPopup = ({
       ? filterValue.value 
       : '';
 
+    // 数値フィルターの変更を処理
+    const handleNumberFilterChange = (value: string, comparison: ComparisonOperator = 'equal') => {
+      console.log('数値フィルター変更:', {
+        field: field.id,
+        value,
+        comparison
+      });
+
+      // 空の値の場合はフィルターをクリア
+      if (value.trim() === '') {
+        handleClearFilter(field.id);
+        return;
+      }
+
+      // 数値に変換
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) {
+        console.error('無効な数値:', value);
+        return;
+      }
+
+      // フィルター値を更新
+      handleFilterChange(field.id, {
+        field: field.id,
+        type: 'number',
+        value: numValue,
+        comparison
+      });
+    };
+
     return (
       <div key={field.id} className="mb-6">
         <div className="flex items-center justify-between mb-2">
@@ -644,12 +717,11 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="greater"
                 checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'greater'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'number', 
-                  comparison: 'greater', 
-                  value: typeof numericValue === 'number' ? numericValue : 0 
-                })}
+                onChange={() => {
+                  if (numericValue !== '') {
+                    handleNumberFilterChange(numericValue.toString(), 'greater');
+                  }
+                }}
               />
               <span className="ml-2 text-sm text-gray-700">より大きい</span>
             </label>
@@ -661,12 +733,11 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="equal"
                 checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'equal'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'number', 
-                  comparison: 'equal', 
-                  value: typeof numericValue === 'number' ? numericValue : 0
-                })}
+                onChange={() => {
+                  if (numericValue !== '') {
+                    handleNumberFilterChange(numericValue.toString(), 'equal');
+                  }
+                }}
               />
               <span className="ml-2 text-sm text-gray-700">等しい</span>
             </label>
@@ -678,12 +749,11 @@ export const FilterPopup = ({
                 name={`${field.id}-comparison`}
                 value="less"
                 checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'less'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'number', 
-                  comparison: 'less', 
-                  value: typeof numericValue === 'number' ? numericValue : 0
-                })}
+                onChange={() => {
+                  if (numericValue !== '') {
+                    handleNumberFilterChange(numericValue.toString(), 'less');
+                  }
+                }}
               />
               <span className="ml-2 text-sm text-gray-700">より小さい</span>
             </label>
@@ -692,40 +762,22 @@ export const FilterPopup = ({
           <div className="flex items-center">
             <input
               type="number"
-              step="any"
               className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
               value={numericValue}
-              placeholder="値を入力"
               onChange={(e) => {
-                // 空の値の場合はフィルターをクリア
-                if (e.target.value === '') {
-                  handleClearFilter(field.id);
-                  return;
-                }
-                
-                // 入力値を数値として処理（stepをanyにしたので小数点も扱える）
-                const numValue = e.target.valueAsNumber;
-                
-                // NaNの場合は処理しない
-                if (isNaN(numValue)) {
-                  return;
-                }
-                
-                // comparisionが設定されていない場合はデフォルトで'greater'を使用
-                const comparison = filterValue?.type === 'number' ? filterValue.comparison || 'greater' : 'greater';
-                handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'number', 
-                  comparison: comparison, 
-                  value: numValue // 明示的に数値型
-                });
+                const newValue = e.target.value;
+                // 現在選択されている比較演算子を取得（デフォルトは'equal'）
+                const currentComparison = filterValue?.comparison || 'equal';
+                handleNumberFilterChange(newValue, currentComparison as ComparisonOperator);
               }}
+              placeholder="数値を入力"
+              min="0"
             />
           </div>
         </div>
       </div>
-    )
-  }
+    );
+  };
 
   // テキスト入力用のフィルター条件セクション
   const renderTextFilter = (field: FilterField) => {
@@ -790,6 +842,43 @@ export const FilterPopup = ({
 
   // カテゴリー用の複数選択フィルターセクション
   const renderMultiSelectFilter = (field: FilterField) => {
+    // フィールドに応じた選択状態と更新関数を選択
+    const selectedItems = field.id === 'category' ? selectedCategories : 
+                         field.id === 'content_type' ? selectedContentTypes : [];
+    const setSelectedItems = field.id === 'category' ? setSelectedCategories : 
+                            field.id === 'content_type' ? setSelectedContentTypes : () => {};
+    
+    // コンテンツタイプの場合は表示名を変換
+    const getDisplayName = (option: string) => {
+      if (field.id === 'content_type') {
+        return option === 'video' ? '動画' : option === 'carousel' ? 'カルーセル' : option;
+      }
+      return option;
+    };
+
+    const handleCheckboxChange = (option: string, checked: boolean) => {
+      if (field.id === 'category') {
+        handleCategoryChange(option, checked);
+      } else if (field.id === 'content_type') {
+        // コンテンツタイプの選択状態を更新
+        if (checked) {
+          setSelectedContentTypes(prev => [...prev, option]);
+        } else {
+          setSelectedContentTypes(prev => prev.filter(item => item !== option));
+        }
+        
+        // フィルター状態を更新
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains', // comparison値を明示的に設定
+          value: checked 
+            ? [...selectedItems.filter(item => item !== option), option] 
+            : selectedItems.filter(item => item !== option)
+        });
+      }
+    };
+
     // カテゴリーの並び替え（「その他」を最後に配置）
     const sortedOptions = field.options ? [...field.options].sort((a, b) => {
       if (a === 'その他') return 1;
@@ -797,7 +886,7 @@ export const FilterPopup = ({
       return a.localeCompare(b);
     }) : [];
     
-    const isActive = selectedCategories.length > 0
+    const isActive = selectedItems.length > 0
 
     return (
       <div key={field.id} className="mb-4">
@@ -809,7 +898,7 @@ export const FilterPopup = ({
             <button 
               onClick={() => {
                 handleClearFilter(field.id);
-                setSelectedCategories([]);
+                setSelectedItems([]);
               }}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -828,13 +917,13 @@ export const FilterPopup = ({
             return (
               <div key={index} className="flex items-center mb-2">
                 <input
-                  id={`category-${index}`}
+                  id={`${field.id}-${index}`}
                   type="checkbox"
                   className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300 rounded"
-                  checked={selectedCategories.includes(option)}
-                  onChange={(e) => handleCategoryChange(option, e.target.checked)}
+                  checked={selectedItems.includes(option)}
+                  onChange={(e) => handleCheckboxChange(option, e.target.checked)}
                 />
-                <label htmlFor={`category-${index}`} className="ml-2">
+                <label htmlFor={`${field.id}-${index}`} className="ml-2">
                   <div 
                     className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold"
                     style={{ 
@@ -843,7 +932,7 @@ export const FilterPopup = ({
                       border: `1px solid ${colors.border}`
                     }}
                   >
-                    {option}
+                    {getDisplayName(option)}
                   </div>
                 </label>
               </div>
@@ -1058,78 +1147,93 @@ export const FilterPopup = ({
     >
       <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b border-gray-200">
         <h3 className="text-lg font-medium text-gray-800">フィルター</h3>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600"
-        >
-          <CloseIcon size={18} />
-        </button>
-      </div>
-
-      <div className="flex border-b sticky top-0 bg-white z-10">
-        <button
-          className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-          }`}
-          onClick={() => setActiveTab('date')}
-        >
-          <span className="flex items-center"><CalendarIcon size={12} /><span className="ml-1">日付</span></span>
-        </button>
-        <button
-          className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'metrics' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-          }`}
-          onClick={() => setActiveTab('metrics')}
-        >
-          数値
-        </button>
-        <button
-          className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'categories' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-          }`}
-          onClick={() => setActiveTab('categories')}
-        >
-          ジャンル
-        </button>
-        <button
-          className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-          }`}
-          onClick={() => setActiveTab('text')}
-        >
-          テキスト
-        </button>
-        <button
-          className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'sort' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-          }`}
-          onClick={() => setActiveTab('sort')}
-        >
-          並び替え
-        </button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FE2C55]" />
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleClearAllFilters}
+            className="text-gray-400 hover:text-gray-600"
+            title="すべてクリア"
+          >
+            <ClearIcon size={18} />
+          </button>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <CloseIcon size={18} />
+          </button>
         </div>
-      ) : (
-        renderActiveTabContent()
-      )}
+      </div>
 
-      <div className="px-4 py-3 bg-gray-50 flex justify-between border-t border-gray-200">
-        <button
-          onClick={handleClearAllFilters}
-          className="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55]"
-        >
-          すべてクリア
-        </button>
-        <button
-          onClick={handleApplyFilters}
-          className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-[#FE2C55] hover:bg-[#FE2C55]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55]"
-        >
-          適用
-        </button>
+      {/* タブコンテンツ */}
+      <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+        <div className="flex border-b sticky top-0 bg-white z-10">
+          <button
+            className={`px-3 py-2 text-sm font-medium ${
+              activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('date')}
+          >
+            <span className="flex items-center"><CalendarIcon size={12} /><span className="ml-1">日付</span></span>
+          </button>
+          <button
+            className={`px-3 py-2 text-sm font-medium ${
+              activeTab === 'metrics' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('metrics')}
+          >
+            数値
+          </button>
+          <button
+            className={`px-3 py-2 text-sm font-medium ${
+              activeTab === 'categories' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('categories')}
+          >
+            ジャンル
+          </button>
+          <button
+            className={`px-3 py-2 text-sm font-medium ${
+              activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('text')}
+          >
+            テキスト
+          </button>
+          <button
+            className={`px-3 py-2 text-sm font-medium ${
+              activeTab === 'sort' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('sort')}
+          >
+            並び替え
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="p-4 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FE2C55] mx-auto"></div>
+          </div>
+        ) : (
+          renderActiveTabContent()
+        )}
+      </div>
+
+      {/* フッター: 適用ボタン */}
+      <div className="border-t border-gray-200 p-4 bg-gray-50 sticky bottom-0">
+        <div className="flex justify-end space-x-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55]"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={handleApplyFilters}
+            className="px-4 py-2 text-sm font-medium text-white bg-[#FE2C55] border border-transparent rounded-md shadow-sm hover:bg-[#DE1B47] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55]"
+          >
+            適用
+          </button>
+        </div>
       </div>
     </div>
   )

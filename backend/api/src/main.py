@@ -92,6 +92,7 @@ async def get_videos(
     comment_count_type: Optional[str] = None,
     play_count_increase: Optional[int] = None, # 再生増加数
     play_count_increase_type: Optional[str] = None, # 再生増加数のフィルタータイプ
+    content_type: Optional[str] = None, # コンテンツタイプ（video/carousel）
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
@@ -207,6 +208,22 @@ async def get_videos(
             else:  # equal
                 where_clauses.append(f"play_count_increase = {play_count_increase}")
 
+        # コンテンツタイプのフィルタリング
+        if content_type:
+            # カンマ区切りの場合は複数条件のORで処理
+            if ',' in content_type:
+                content_types = content_type.split(',')
+                content_type_clauses = []
+                for ct in content_types:
+                    content_type_clauses.append("content_type = %s")
+                    params.append(ct.strip())
+                where_clauses.append(f"({' OR '.join(content_type_clauses)})")
+                print(f"複数コンテンツタイプフィルター適用: {content_types}")
+            else:
+                where_clauses.append("content_type = %s")
+                params.append(content_type)
+                print(f"単一コンテンツタイプフィルター適用: {content_type}")
+
         # フィルター条件のデバッグログ
         if play_count is not None:
             print(f"Applying play_count filter: {play_count} ({play_count_type})")
@@ -315,6 +332,7 @@ async def get_videos_alt(
     created_at_type: Optional[str] = None,
     play_count_increase: Optional[int] = None, # 再生増加数
     play_count_increase_type: Optional[str] = None, # 再生増加数のフィルタータイプ
+    content_type: Optional[str] = None, # コンテンツタイプ（video/carousel）
 ):
     print(f"Received request with params: {request.query_params}")
     conn = None
@@ -443,6 +461,22 @@ async def get_videos_alt(
             else:
                 where_clauses.append("play_count_increase = %s")
                 params.append(play_count_increase)
+
+        # コンテンツタイプのフィルタリング
+        if content_type:
+            # カンマ区切りの場合は複数条件のORで処理
+            if ',' in content_type:
+                content_types = content_type.split(',')
+                content_type_clauses = []
+                for ct in content_types:
+                    content_type_clauses.append("content_type = %s")
+                    params.append(ct.strip())
+                where_clauses.append(f"({' OR '.join(content_type_clauses)})")
+                print(f"複数コンテンツタイプフィルター適用: {content_types}")
+            else:
+                where_clauses.append("content_type = %s")
+                params.append(content_type)
+                print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
         # WHERE句の追加
         if where_clauses:

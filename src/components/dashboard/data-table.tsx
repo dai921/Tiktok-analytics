@@ -38,6 +38,7 @@ const FILTERABLE_COLUMNS = [
   'category',
   'accountName',
   'hashtags',
+  'content_type',
 ] as const
 
 type FilterableColumn = typeof FILTERABLE_COLUMNS[number]

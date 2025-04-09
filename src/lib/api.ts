@@ -21,6 +21,7 @@ export const fetchVideosFromBackend = async (options: {
   sortOrder?: string;
   sortBySecondary?: string;  // 二次ソート用のフィールドを追加
   sortOrderSecondary?: string;  // 二次ソート順序を追加
+  content_type?: string | string[]; // コンテンツタイプフィルタを追加
 }) => {
   const {
     page = 1,
@@ -36,6 +37,7 @@ export const fetchVideosFromBackend = async (options: {
     sortOrder = 'desc',
     sortBySecondary = 'play_count',  // デフォルトの二次ソートフィールド
     sortOrderSecondary = 'desc',  // デフォルトの二次ソート順序
+    content_type,
   } = options;
 
   // クエリパラメータの構築
@@ -52,6 +54,25 @@ export const fetchVideosFromBackend = async (options: {
   if (accountName) params.append('account_name', accountName);
   if (category) params.append('category', category);
   if (hashtag) params.append('hashtag', hashtag);
+  
+  // 複数のcontent_typeを処理する改良されたロジック
+  if (content_type) {
+    if (Array.isArray(content_type)) {
+      console.log('content_typeは配列形式:', content_type);
+      if (content_type.length === 1) {
+        params.append('content_type', content_type[0]);
+        console.log(`単一コンテンツタイプを設定 (配列から): ${content_type[0]}`);
+      } else if (content_type.length > 1) {
+        // 複数のcontent_typeをカンマ区切りの文字列として送信
+        params.append('content_type', content_type.join(','));
+        console.log(`複数コンテンツタイプをカンマ区切りで設定: ${content_type.join(',')}`);
+      }
+    } else {
+      // content_typeが文字列の場合（既存の処理）
+      params.append('content_type', content_type);
+      console.log(`単一コンテンツタイプを設定 (文字列): ${content_type}`);
+    }
+  }
   
   // 日付フィルターの処理
   // 注意: バックエンドAPIの現在の実装では、startDateとendDateの両方を同時に処理できません
@@ -117,42 +138,41 @@ export const fetchVideos = async (
     // デバッグ用に完全なfiltersオブジェクトを表示
     console.log('フィルタ完全オブジェクト:', JSON.stringify(filters, null, 2));
     
-    // 基本パラメータ
-    let baseUrl = `${apiUrl}/videos?page=${page}&limit=${limit}`;
+    // APIオプションの準備
+    const apiOptions: any = {
+      page,
+      limit
+    };
     
-    // フィルタパラメータを直接URLに追加（既存のコードは変更せず、ここで確実に追加）
+    // フィルター処理
     if (filters) {
       Object.keys(filters).forEach(field => {
         const filter = filters[field];
-        if (filter && filter.value) {
+        if (filter && filter.value !== undefined && filter.value !== null) {
           // APIフィールド名を取得
-          const apiField = filter.apiFieldName || field;
+          const apiField = mapFieldToApiField(filter.field || field);
           
-          // URLにパラメータを追加（URLSearchParamsを使わず直接構築）
-          if (baseUrl.includes('?')) {
-            baseUrl += `&${apiField}=${encodeURIComponent(filter.value)}`;
+          // 特別な処理が必要なフィールド
+          if (apiField === 'content_type') {
+            apiOptions['content_type'] = filter.value;
           } else {
-            baseUrl += `?${apiField}=${encodeURIComponent(filter.value)}`;
+            // 通常のフィルターフィールド
+            apiOptions[apiField] = filter.value;
           }
-          
-          console.log(`パラメータ追加: ${apiField}=${filter.value}`);
         }
       });
     }
     
-    // 最終的なURL
-    const url = baseUrl;
-    console.log('最終APIリクエストURL:', url);
-    
-    // APIリクエスト実行
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
+    // ソート処理
+    if (sort) {
+      // ソート処理のロジック...
     }
-
-    const data = await response.json();
-    return data;
+    
+    console.log('APIリクエストオプション:', apiOptions);
+    
+    // バックエンドAPIを呼び出す
+    const response = await fetchVideosFromBackend(apiOptions);
+    return response;
   } catch (error) {
     console.error('APIリクエスト失敗:', error);
     throw error;
@@ -249,7 +269,8 @@ export const COLUMN_MAP: Record<string, string> = {
   'likesIncrease': 'いいね数伸び',
   'product': '商材',
   'audioId': '音声ID',
-  'artist': 'アーティスト'
+  'artist': 'アーティスト',
+  'content_type': 'コンテンツタイプ'
 }
 
 // COLUMN_MAPの逆引きマップを作成
@@ -316,6 +337,7 @@ const mapFieldToApiField = (field: string): string => {
     'audioTitle': 'music_info', // audioTitleをmusic_infoに変換
     'category': 'category',    // categoryをそのまま保持
     'viewsIncrease': 'play_count_increase', // 再生増加数の対応を追加
+    'content_type': 'content_type', // コンテンツタイプのマッピングを追加
     // 他のフィールドも必要に応じて追加
   };
   
@@ -615,7 +637,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           return;
         }
 
-        // カテゴリーフィルターの特別な処理
+        // カテゴリフィルターの処理
         if (key === 'category' || key === '動画ジャンル') {
           console.log('API - カテゴリーのフィルタリング処理');
           
@@ -639,8 +661,32 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           return;
         }
         
+        // コンテンツタイプフィルターの処理
+        else if (key === 'content_type') {
+          console.log('API - コンテンツタイプフィルタリング処理');
+          
+          // content_typeは完全一致で検索
+          if (Array.isArray(filter.value) && filter.value.length > 0) {
+            // 配列の場合は各値をカンマ区切りで送信
+            const contentTypeValue = filter.value.join(',');
+            params.append('content_type', contentTypeValue);
+            console.log('コンテンツタイプフィルター設定(配列):', {
+              originalValue: filter.value,
+              sentValue: contentTypeValue,
+              queryParams: Object.fromEntries(params.entries())
+            });
+          } else {
+            params.append('content_type', filter.value.toString());
+            console.log('コンテンツタイプフィルター設定(単一値):', {
+              value: filter.value,
+              queryParams: Object.fromEntries(params.entries())
+            });
+          }
+          return;
+        }
+        
         // 音楽情報フィルターの特別な処理
-        if (key === 'audioTitle' || key === 'BGM') {
+        else if (key === 'audioTitle' || key === 'BGM') {
           console.log('API - 音楽情報のフィルタリング処理');
           params.append('music_info', filter.value.toString());
           
@@ -651,7 +697,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           });
           return;
         }
-
+        
         // 日付フィルターの処理
         else if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
           console.log('日付フィルター詳細:', {

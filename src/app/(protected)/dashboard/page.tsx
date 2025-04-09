@@ -87,8 +87,19 @@ const Dashboard = () => {
       return;
     }
     
-    // フィールド名を英語に逆変換
-    let field = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0] || newFilter.field;
+    // フィールド名を英語に逆変換（改善されたロジック）
+    let field = '';
+    
+    // COLUMN_MAPを使った変換は、newFilter.fieldが日本語の場合のみ行う
+    if (typeof newFilter.field === 'string' && newFilter.field) {
+      const mappedField = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0];
+      if (mappedField) {
+        field = mappedField;
+      } else {
+        // マッピングが見つからない場合は、元のフィールド名を使用
+        field = newFilter.field;
+      }
+    }
     
     // ハッシュタグの場合は特別に処理
     if (newFilter.field === 'ハッシュタグ') {
@@ -134,8 +145,17 @@ const Dashboard = () => {
           ...(existingFilter && { [field]: existingFilter })
         };
       });
+    } else if (newFilter.type === 'multiselect') {
+      // マルチセレクトタイプの場合は特別な処理
+      setFilters(prev => ({
+        ...prev,
+        [field]: {
+          ...filterQuery,
+          comparison: 'contains' // 必ず 'contains' 比較演算子を使用
+        }
+      }));
     } else {
-      // 通常のフィルター処理（既存のコード）
+      // 通常のフィルター処理
       setFilters(prev => ({
         ...prev,
         [field]: filterQuery
@@ -146,6 +166,26 @@ const Dashboard = () => {
   const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true);
     try {
+      console.log('フェッチデータ - 使用するフィルター:', currentFilters);
+      
+      // 各フィルターの値と型を確認してログに出力
+      if (currentFilters) {
+        Object.entries(currentFilters).forEach(([key, filter]) => {
+          console.log(`フィルター[${key}]:`, {
+            field: filter.field,
+            type: filter.type,
+            value: filter.value,
+            comparison: filter.comparison,
+            isHashtag: filter.isHashtag
+          });
+          
+          // 値が配列の場合は特別にチェック
+          if (Array.isArray(filter.value)) {
+            console.log(`${key}の値は配列:`, filter.value);
+          }
+        });
+      }
+      
       const response = await getDbData(page, currentFilters, pageSize);
       console.log('APIレスポンス:', response);
       
@@ -176,9 +216,37 @@ const Dashboard = () => {
 
   useEffect(() => {
     console.log('Dashboard - フィルター変更を検知:', filters);
+    
+    // 空のフィルターオブジェクトをチェック
+    if (Object.keys(filters).length === 0) {
+      // フィルターが空の場合は即時データ取得
+      fetchData(currentPage, {});
+      return;
+    }
+    
+    // フィルター内容をログに出力（デバッグ用）
+    Object.entries(filters).forEach(([key, filter]) => {
+      console.log(`フィルターチェック[${key}]:`, {
+        field: filter.field,
+        type: filter.type,
+        value: filter.value,
+        comparison: filter.comparison
+      });
+    });
+    
+    // 数値フィルター（特に再生数）が含まれているか確認
+    const hasNumberFilter = Object.values(filters).some(
+      filter => filter.type === 'number'
+    );
+    
+    if (hasNumberFilter) {
+      console.log('数値フィルターが検出されました');
+    }
+    
+    // デバウンス処理を追加
     const timer = setTimeout(() => {
       fetchData(currentPage, filters);
-    }, 300); // デバウンス処理を追加
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [filters, currentPage, pageSize]);
@@ -257,61 +325,89 @@ const Dashboard = () => {
     if (filters['sort_clear'] || filters['sort_indicator']) {
       console.log('Dashboard - ソート解除シグナルを検出');
       
-      // 既存のフィルターからソート関連のキーを削除
-      const updatedFilters = { ...filters };
+      // sort_clearとsort_indicatorを除外した新しいフィルター群を構築する
+      // filters引数から渡された最新のフィルター情報を使用
+      const newFilterSet: Record<string, FilterQuery> = {};
       
-      // sort_clearまたはsort_indicatorを削除
-      delete updatedFilters['sort_clear'];
-      delete updatedFilters['sort_indicator'];
+      // 1. まず現在のfilters状態（既存）を起点とする
+      const currentState = { ...filters };
       
-      // 既存のフィルターからソートキーを削除
-      const newFilters: Record<string, FilterQuery> = {};
+      // 2. 既存のfilter状態からソート関連のキーを削除
+      Object.keys(currentState)
+        .filter(key => key.endsWith('_sort'))
+        .forEach(key => delete currentState[key]);
+      
+      // sort_clearとsort_indicatorも削除
+      delete currentState['sort_clear'];
+      delete currentState['sort_indicator'];
+      
+      // 3. filtersに含まれる通常のフィルターを追加（更新）
+      // - ソート関連以外の新しいフィルターがあれば追加・更新
       Object.entries(filters)
-        .filter(([key]) => !key.startsWith('sort_')) // ソート関連キーをフィルタリング
-        .forEach(([key, filterValue]) => {
-          // フィールド名を英語に逆変換
-          let field = Object.entries(COLUMN_MAP).find(([_, value]) => value === filterValue.field)?.[0] || filterValue.field;
+        .filter(([key]) => !key.startsWith('sort_') && key !== 'sort_clear' && key !== 'sort_indicator')
+        .forEach(([key, value]) => {
+          // COLUMN_MAPを使った変換は、value.fieldが日本語の場合のみ行う
+          let field = key;
+          if (typeof value.field === 'string' && value.field) {
+            const mappedField = Object.entries(COLUMN_MAP).find(([_, v]) => v === value.field)?.[0];
+            if (mappedField) {
+              field = mappedField;
+            } else {
+              field = value.field;
+            }
+          }
           
           // ハッシュタグの場合は特別に処理
-          if (filterValue.field === 'ハッシュタグ') {
+          if (value.field === 'ハッシュタグ') {
             field = 'hashtags';
           }
           
-          const filterQuery: FilterQuery = {
+          // 新しいフィルターセットに追加（更新）
+          newFilterSet[field] = {
             field: field,
-            type: filterValue.type,
-            value: filterValue.value,
-            ...(filterValue.isHashtag && { isHashtag: true }),
-            ...(filterValue.timestamp !== undefined && { timestamp: filterValue.timestamp }),
-            ...(filterValue.isPrimarySort !== undefined && { isPrimarySort: filterValue.isPrimarySort }),
-            ...(filterValue.sortField !== undefined && { sortField: filterValue.sortField }),
-            ...(filterValue.comparison !== undefined && { comparison: filterValue.comparison })
+            type: value.type,
+            value: value.value,
+            ...(value.isHashtag && { isHashtag: true }),
+            ...(value.comparison && { comparison: value.comparison })
           };
-          
-          newFilters[field] = filterQuery;
         });
       
-      console.log('Dashboard - ソート解除後のフィルター:', newFilters);
+      // デバッグログを出力
+      console.log('Dashboard - ソート解除後の新しいフィルターセット:', newFilterSet);
       
-      // 既存のフィルターからソート関連のキーを削除
-      const existingFilters = { ...filters };
-      Object.keys(existingFilters)
-        .filter(key => key.endsWith('_sort'))
-        .forEach(key => delete existingFilters[key]);
-      
-      // 更新されたフィルター状態を設定
-      setFilters({ ...existingFilters, ...newFilters });
+      // フィルター状態を更新
+      setFilters(newFilterSet);
       setCurrentPage(1);
+      
+      // 新しいフィルター状態でデータ取得
+      fetchData(1, newFilterSet);
       return;
     }
     
     // 新しいフィルター状態を構築
     const newFilters: Record<string, FilterQuery> = {};
+    let hasSortFilters = false;
     
     // 各フィルターを処理
     Object.entries(filters).forEach(([key, filterValue]) => {
-      // フィールド名を英語に逆変換
-      let field = Object.entries(COLUMN_MAP).find(([_, value]) => value === filterValue.field)?.[0] || filterValue.field;
+      // ソートフィルターの確認
+      if (filterValue.type === 'sort') {
+        hasSortFilters = true;
+      }
+      
+      // フィールド名を英語に逆変換 (改善されたロジック)
+      let field = key;
+      
+      // COLUMN_MAPを使った変換は、filterValue.fieldが日本語の場合のみ行う
+      if (typeof filterValue.field === 'string' && filterValue.field) {
+        const mappedField = Object.entries(COLUMN_MAP).find(([_, value]) => value === filterValue.field)?.[0];
+        if (mappedField) {
+          field = mappedField;
+        } else {
+          // マッピングが見つからない場合は、元のフィールド名を使用
+          field = filterValue.field;
+        }
+      }
       
       // ハッシュタグの場合は特別に処理
       if (filterValue.field === 'ハッシュタグ') {
@@ -326,6 +422,7 @@ const Dashboard = () => {
         value: filterValue.value
       });
       
+      // フィルタークエリの構築
       const filterQuery: FilterQuery = {
         field: field,
         type: filterValue.type,
@@ -337,8 +434,57 @@ const Dashboard = () => {
         ...(filterValue.comparison !== undefined && { comparison: filterValue.comparison })
       };
       
+      // コンテンツタイプの場合は特別処理 (multiselectの場合)
+      if (field === 'content_type' && filterValue.type === 'multiselect') {
+        console.log('Dashboard - content_typeフィルター処理:', {
+          value: filterValue.value,
+          type: filterValue.type,
+          comparison: filterValue.comparison || 'contains' // デフォルト値を表示
+        });
+        
+        // フィルター値をより完全な形に整形
+        newFilters['content_type'] = {
+          field: 'content_type', // 直接英語の名前を使用
+          type: 'multiselect',
+          value: filterValue.value,
+          comparison: 'contains', // 明示的に比較演算子を指定
+          ...(filterValue.isHashtag && { isHashtag: true }),
+          ...(filterValue.timestamp !== undefined && { timestamp: filterValue.timestamp }),
+          ...(filterValue.isPrimarySort !== undefined && { isPrimarySort: filterValue.isPrimarySort }),
+          ...(filterValue.sortField !== undefined && { sortField: filterValue.sortField })
+        };
+      }
+      // カテゴリフィルターも同様に特別処理
+      else if (field === 'category' && filterValue.type === 'multiselect') {
+        console.log('Dashboard - categoryフィルター処理:', {
+          value: filterValue.value,
+          type: filterValue.type
+        });
+        
+        newFilters['category'] = {
+          field: 'category',
+          type: 'multiselect',
+          value: filterValue.value,
+          comparison: 'contains', // 明示的に比較演算子を指定
+        };
+      }
+      // 数値フィルターの特別処理
+      else if (filterValue.type === 'number') {
+        console.log('Dashboard - 数値フィルター処理:', {
+          field,
+          value: filterValue.value,
+          comparison: filterValue.comparison || 'equal' // デフォルト値を表示
+        });
+        
+        newFilters[field] = {
+          field: field,
+          type: 'number',
+          value: filterValue.value,
+          comparison: filterValue.comparison || 'equal', // 比較演算子を明示
+        };
+      }
       // ソート処理の場合は特別なキーを使用
-      if (filterValue.type === 'sort') {
+      else if (filterValue.type === 'sort') {
         newFilters[`${field}_sort`] = filterQuery;
       } else if (filterValue.type !== 'indicator') { // indicator以外のタイプを処理
         newFilters[field] = filterQuery;
@@ -350,6 +496,9 @@ const Dashboard = () => {
     // フィルター状態を更新
     setFilters(newFilters);
     setCurrentPage(1);
+    
+    // 新しいフィルター状態でデータを取得
+    fetchData(1, newFilters);
   };
 
   return (
