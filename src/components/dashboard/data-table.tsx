@@ -161,12 +161,23 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
     type === 'likes_count_increase' ||
     type === 'ten_days_likes_increase'
   )) {
+    // 値が0の場合は通常表示
+    if (num === 0) {
+      return (
+        <div className="font-medium text-gray-700 flex items-center justify-end">
+          <HeartIcon size={14} />
+          <span className="tabular-nums ml-1">
+            {formattedNum}
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="font-medium text-green-600 flex items-center justify-end">
         <HeartIcon size={14} />
         <UpArrowIcon size={14} className="ml-1" />
         <span className="tabular-nums ml-1">
-          {num > 0 ? `+${formattedNum}` : formattedNum}
+          {formattedNum}
         </span>
       </div>
     );
@@ -177,12 +188,23 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
     type === 'comment_count_increase' ||
     type === 'ten_days_comment_increase'
   )) {
+    // 値が0の場合は通常表示
+    if (num === 0) {
+      return (
+        <div className="font-medium text-gray-700 flex items-center justify-end">
+          <CommentIcon size={14} />
+          <span className="tabular-nums ml-1">
+            {formattedNum}
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="font-medium text-green-600 flex items-center justify-end">
         <CommentIcon size={14} />
         <UpArrowIcon size={14} className="ml-1" />
         <span className="tabular-nums ml-1">
-          {num > 0 ? `+${formattedNum}` : formattedNum}
+          {formattedNum}
         </span>
       </div>
     );
@@ -193,11 +215,21 @@ const formatNumber = (num: number, type?: NumberFormatType): ReactElement => {
     type === 'viewsIncrease' ||
     type === 'ten_days_increase'
   )) {
+    // 値が0の場合は通常表示
+    if (num === 0) {
+      return (
+        <div className="font-medium text-gray-700 flex items-center justify-end">
+          <span className="tabular-nums">
+            {formattedNum}
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="font-medium text-green-600 flex items-center justify-end">
         <UpArrowIcon size={14} />
         <span className="tabular-nums ml-1">
-          {num > 0 ? `+${formattedNum}` : formattedNum}
+          {formattedNum}
         </span>
       </div>
     );
