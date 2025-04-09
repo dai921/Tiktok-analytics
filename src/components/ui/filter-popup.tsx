@@ -381,18 +381,13 @@ export const FilterPopup = ({
       } as FilterValue;
     }
 
-    // フィルターを親コンポーネントに渡す
-    onFilterChange(wrappedFilters);
-
     // ソート情報を追加
     if (primarySort) {
-      // 第一ソート情報をtempFiltersに追加
-      const updatedFilters: Record<string, FilterValue> = {
-        ...wrappedFilters
-      };
-
-      // 第一ソート情報を FilterValue 型に適合するように追加
-      updatedFilters[primarySort.field] = {
+      // ソート情報用のキーにプレフィックスを付けて、フィルターと競合しないようにする
+      const primarySortKey = `sort_${primarySort.field}`;
+      
+      // 更新されたフィルター（フィルター情報 + ソート情報）
+      wrappedFilters[primarySortKey] = {
         field: primarySort.field,
         type: 'sort' as FilterType,
         value: primarySort.direction,
@@ -402,7 +397,8 @@ export const FilterPopup = ({
 
       // 第二ソートが設定されている場合、それも追加
       if (secondarySort) {
-        updatedFilters[secondarySort.field] = {
+        const secondarySortKey = `sort_${secondarySort.field}`;
+        wrappedFilters[secondarySortKey] = {
           field: secondarySort.field,
           type: 'sort' as FilterType,
           value: secondarySort.direction,
@@ -410,11 +406,10 @@ export const FilterPopup = ({
           sortField: secondarySort.field
         } as FilterValue;
       }
-
-      // 更新したフィルターを適用
-      onFilterChange(updatedFilters);
     }
 
+    // フィルターを親コンポーネントに渡す
+    onFilterChange(wrappedFilters);
     onClose(); // フィルター適用後にポップアップを閉じる
   }
 
