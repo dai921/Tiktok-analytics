@@ -44,9 +44,15 @@ const nextConfig = {
  
   // 実行時の環境変数を優先して使用
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_API_URL: 'http://localhost:8080',
   },
   
+  // 動的レンダリングを強制
+  experimental: {
+    // 動的なページのみを生成
+    workerThreads: false,
+    cpus: 1
+  }
 }
 
 console.log("Next.js config:", JSON.stringify(nextConfig, null, 2));

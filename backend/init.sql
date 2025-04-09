@@ -72,6 +72,10 @@ CREATE TABLE video_master (
   ten_days_increase INT DEFAULT NULL,
   prevLikesCount INT UNSIGNED DEFAULT NULL,
   likesCountIncrease INT DEFAULT NULL,
+  ten_days_likes_increase INT DEFAULT NULL,
+  prevCommentCount INT UNSIGNED DEFAULT NULL,
+  commentCountIncrease INT DEFAULT NULL,
+  ten_days_comment_increase INT DEFAULT NULL,
   product VARCHAR(255) DEFAULT NULL,
   category VARCHAR(255) DEFAULT NULL,
   music_id VARCHAR(50) DEFAULT NULL,
@@ -89,6 +93,9 @@ CREATE TABLE video_master (
   KEY idx_play_count (play_count),
   KEY idx_created_at (created_at),
   KEY idx_playCountIncrease (playCountIncrease),
+  KEY idx_ten_days_likes_increase (ten_days_likes_increase),
+  KEY idx_commentCountIncrease (commentCountIncrease),
+  KEY idx_ten_days_comment_increase (ten_days_comment_increase),
   KEY idx_currentFetchDate (currentFetchDate)
 )
 ENGINE = InnoDB
@@ -177,12 +184,33 @@ CREATE TABLE frontend_data (
   content_type VARCHAR(50) DEFAULT NULL,
   likes_count INT UNSIGNED DEFAULT NULL,
   comment_count INT UNSIGNED DEFAULT NULL,
+  likes_count_increase INT DEFAULT NULL,
+  ten_days_likes_increase INT DEFAULT NULL,
+  comment_count_increase INT DEFAULT NULL,
+  ten_days_comment_increase INT DEFAULT NULL,
+  account_type VARCHAR(50) DEFAULT NULL,
   hashtags TEXT,
   music_info TEXT,
   caption TEXT,
   category VARCHAR(255) DEFAULT NULL,
+  product VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY url (url)
+  UNIQUE KEY url (url),
+  KEY idx_play_count (play_count),
+  KEY idx_play_count_increase (play_count_increase),
+  KEY idx_ten_days_increase (ten_days_increase),
+  KEY idx_account_name (account_name),
+  KEY idx_content_type (content_type),
+  KEY idx_likes_count (likes_count),
+  KEY idx_comment_count (comment_count),
+  KEY idx_likes_count_increase (likes_count_increase),
+  KEY idx_ten_days_likes_increase (ten_days_likes_increase),
+  KEY idx_comment_count_increase (comment_count_increase),
+  KEY idx_ten_days_comment_increase (ten_days_comment_increase),
+  KEY idx_account_type (account_type),
+  KEY idx_category (category),
+  KEY idx_product (product),
+  KEY idx_created_at (created_at)
 )
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
@@ -283,4 +311,80 @@ COLLATE = utf8mb4_0900_ai_ci
 PARTITION BY RANGE (TO_DAYS(collection_date)) (
     PARTITION p_current VALUES LESS THAN (TO_DAYS('2025-05-01')),
     PARTITION p_future VALUES LESS THAN MAXVALUE
+);
+
+CREATE TABLE user_display_settings (
+  setting_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  setting_name VARCHAR(100) NOT NULL,
+  is_default BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
+  INDEX idx_email (email)
+);
+
+CREATE TABLE column_settings (
+  column_setting_id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_id INT NOT NULL,
+  column_name VARCHAR(50) NOT NULL,
+  is_visible BOOLEAN DEFAULT TRUE,
+  display_order INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (setting_id) REFERENCES user_display_settings(setting_id) ON DELETE CASCADE,
+  INDEX idx_setting_id (setting_id)
+);
+
+-- フィルター設定テーブル
+CREATE TABLE filter_settings (
+  filter_id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_id INT NOT NULL,
+  filter_type VARCHAR(50) NOT NULL,
+  operator VARCHAR(30) NOT NULL,
+  value VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (setting_id) REFERENCES user_display_settings(setting_id) ON DELETE CASCADE,
+  INDEX idx_setting_id (setting_id)
+);
+
+-- ソート設定テーブル
+CREATE TABLE sort_settings (
+  sort_id INT AUTO_INCREMENT PRIMARY KEY,
+  setting_id INT NOT NULL,
+  sort_field VARCHAR(50) NOT NULL,
+  sort_order ENUM('ASC', 'DESC') DEFAULT 'DESC',
+  priority INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (setting_id) REFERENCES user_display_settings(setting_id) ON DELETE CASCADE,
+  INDEX idx_setting_id (setting_id)
+);
+
+-- 動画ブックマークテーブル
+CREATE TABLE video_watchlists (
+  watchlist_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  url VARCHAR(255) NOT NULL,
+  watchlist_name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
+  FOREIGN KEY (url) REFERENCES video_master(url) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_video (email, url),
+  INDEX idx_email (email)
+);
+
+-- アカウントブックマークテーブル
+CREATE TABLE account_bookmarks (
+  bookmark_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  account_name VARCHAR(100) NOT NULL,
+  bookmark_name VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_account (email, account_name),
+  INDEX idx_email (email)
 );

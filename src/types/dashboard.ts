@@ -1,23 +1,30 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear';
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect' | 'multiple' | 'indicator';
+
+// 比較演算子の型
+export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greater' | 'less' | 'contains';
 
 export interface FilterQuery {
   field: string
   type: FilterType
-  value: string | number
+  value: string | number | any[] // value型を拡張して配列も許可
   isHashtag?: boolean
   clear?: boolean
   sortDirection?: 'asc' | 'desc' | null
   timestamp?: number  // ソート操作の順序を特定するためのタイムスタンプ
   isPrimarySort?: boolean  // このソートが主ソートかどうかを示すフラグ
   sortField?: string  // ソート対象のフィールド名（明示的に指定）
+  comparison?: ComparisonOperator  // 比較演算子を追加
+  filters?: Record<string, FilterValue>  // 複数フィルター用
 }
 
 export interface FilterValue extends FilterQuery {
   clear?: boolean
   isHashtag?: boolean
+  comparison?: ComparisonOperator  // 比較演算子を追加
+  filterId?: string  // フィルター識別用のID（オプション）
 }
 
 // データ型
@@ -30,7 +37,7 @@ export interface VideoData {
     valueType: 'IMAGE'
     url: string
   } | null
-  authorName: string
+  displayName: string
   description: string
   likes: number
   views: number
@@ -58,7 +65,24 @@ export interface VideoData {
   products: string
   ten_days_increase: number
   content_type: string
+  account_type: string
+  likes_count_increase: number
+  ten_days_likes_increase: number
+  comment_count_increase: number
+  ten_days_comment_increase: number
 }
+
+// 数値フォーマット用の型定義を追加
+export type NumberFormatType = 
+  | 'views' 
+  | 'viewsIncrease' 
+  | 'likes' 
+  | 'comments'
+  | 'likes_count_increase'
+  | 'ten_days_likes_increase'
+  | 'comment_count_increase'
+  | 'ten_days_comment_increase'
+  | 'ten_days_increase'
 
 // テーブル関連の型
 export interface Column {
@@ -86,12 +110,28 @@ export interface TableHeaderCellProps {
   isActive?: boolean
   categoryData?: string[]
   sortDirection?: 'asc' | 'desc' | null
+  isLoadingFilterOptions?: boolean
 }
 
 export interface DataTableProps {
-  initialData: VideoData[]
+  initialData: {
+    data: VideoData[];
+    lastUpdated?: {
+      date: string;
+      isFiltered: boolean;
+      globalLastUpdated: string;
+    };
+  }
   onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void
+  onPageChange: (page: number) => void
+  currentPage: number
+  totalPages: number
   isLoading: boolean
+  isPrOnly: boolean
+  onPrOnlyChange: (isPrOnly: boolean) => void
+  pageSize?: number
+  onPageSizeChange?: (pageSize: number) => void
+  totalCount?: number
 }
 
 export interface FilterPopoverProps {
@@ -111,9 +151,30 @@ export interface TikTokVideo {
   commentCount: number;
   accountName: string;
   audioInfo?: { title: string } | string;
-  music_info?: { title: string } | string;  // 追加
+  music_info?: { title: string } | string;
   hashtags: string[];
   caption: string;
   category: string;
+  account_type: string;
+  likes_count_increase: number;
+  ten_days_likes_increase: number;
+  comment_count_increase: number;
+  ten_days_comment_increase: number;
+  ten_days_increase: number;
+}
+
+export interface AccountData {
+  account_name: string;
+  display_name?: string;
+}
+
+export interface CategoryData {
+  category: string;
+  count: number;
+}
+
+export interface HashtagData {
+  hashtag: string;
+  count: number;
 }
 

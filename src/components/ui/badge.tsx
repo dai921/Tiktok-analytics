@@ -2,6 +2,7 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from "@/lib/constants"
 
 const badgeVariants = cva(
   "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
@@ -33,4 +34,56 @@ function Badge({ className, variant, ...props }: BadgeProps) {
   )
 }
 
-export { Badge, badgeVariants }
+// ハッシュタグバッジのプロパティ
+export interface HashtagBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  tag: string;
+  withHash?: boolean;
+}
+
+// ハッシュタグバッジコンポーネント
+function HashtagBadge({ tag, className, withHash = true, ...props }: HashtagBadgeProps) {
+  return (
+    <div 
+      className={cn(
+        "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200 mr-1 mb-1",
+        className
+      )} 
+      {...props}
+    >
+      {withHash ? `#${tag}` : tag}
+    </div>
+  )
+}
+
+// ジャンルバッジのプロパティ
+export interface GenreBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  genre: string;
+  categoryForColor?: string;
+}
+
+// ジャンルバッジコンポーネント
+function GenreBadge({ genre, categoryForColor, className, ...props }: GenreBadgeProps) {
+  // カテゴリに基づいて色を決定
+  // categoryForColorが指定されている場合はそれを使用し、なければgenreを使用
+  const colorKey = categoryForColor || genre;
+  const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+  
+  return (
+    <div 
+      className={cn(
+        "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold",
+        className
+      )}
+      style={{ 
+        backgroundColor: colors.bg,
+        color: colors.text,
+        border: `1px solid ${colors.border}`
+      }}
+      {...props}
+    >
+      {genre}
+    </div>
+  )
+}
+
+export { Badge, HashtagBadge, GenreBadge, badgeVariants }

@@ -64,7 +64,7 @@ def enable_frequent_schedule():
             "schedule": "*/5 * * * *",
             "time_zone": "Asia/Tokyo",
             "http_target": {
-                "uri": f"https://{LOCATION}-{PROJECT_ID}.cloudfunctions.net/video-url-sync",
+                "uri": f"https://{LOCATION}-{PROJECT_ID}.cloudfunctions.net/sync-video-urls",
                 "http_method": scheduler_v1.HttpMethod.POST,
                 "oidc_token": {
                     "service_account_email": "cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com",

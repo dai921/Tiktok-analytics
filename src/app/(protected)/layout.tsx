@@ -28,7 +28,7 @@ export default function ProtectedLayout({ children }: ProtectedLayoutProps) {
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Header {...headerProps} />
-          <main className="flex-1 p-4 overflow-auto">{children}</main>
+          <main className="flex-1 overflow-auto">{children}</main>
         </div>
       </div>
     </FilterProvider>

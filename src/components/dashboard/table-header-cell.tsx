@@ -1,15 +1,15 @@
 'use client'
 //テスト用に変更
 import { useState, ReactNode, useRef, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react'
-import type { FilterValue } from '@/types/dashboard'
+import type { FilterValue, ComparisonOperator } from '@/types/dashboard'
 import { Portal } from '@radix-ui/react-portal'
 import { cn } from '@/lib/utils'
 import { fetchCategories } from '@/lib/api'  // カテゴリ取得用のAPIを追加
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-// FilterType定義を更新
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear';
+// FilterType定義を更新 - エクスポートしない
+type FilterTypeLocal = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'number' | 'date' | 'text' | 'multiselect';
 
 interface TableHeaderCellProps {
   title: string
@@ -22,6 +22,7 @@ interface TableHeaderCellProps {
   categoryData?: string[]  // カテゴリデータの型を追加
   sortDirection?: 'asc' | 'desc' | null  // ソート方向を追加
   isLoadingFilterOptions?: boolean
+  sortPriority?: 1 | 2 | null  // ソートの優先順位を追加（1: 第一ソート、2: 第二ソート）
 }
 
 export interface TableHeaderCellRef {
@@ -56,13 +57,29 @@ const getFilterOptions = (type: 'text' | 'number' | 'date') => {
   }
 }
 
+// FilterIconコンポーネントを追加
+const FilterIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+  </svg>
+);
+
 export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellProps>(
-  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false }, ref) => {
+  ({ title, type = 'text', align = 'left', onFilter, style, currentFilters, isActive = false, categoryData = [], sortDirection = null, isLoadingFilterOptions = false, sortPriority = null }, ref) => {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
-    const [filterType, setFilterType] = useState<FilterType>('equal')
+    const [filterType, setFilterType] = useState<FilterTypeLocal>('equal')
     const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-    const alignmentClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+    const alignmentClass = align === 'right' ? 'text-right' : 'text-left'
     const [categories, setCategories] = useState<string[]>([])
     const [filteredCategories, setFilteredCategories] = useState<string[]>([]) // フィルタリングされたカテゴリリスト
     const [isLoadingCategories, setIsLoadingCategories] = useState(false)
@@ -74,7 +91,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // フィルターの状態をリセットする関数を更新
     const resetFilterState = useCallback(() => {
-      console.log(`TableHeaderCell(${title}) - resetFilterState called`);
       setFilterValue('')
       setFilterType('equal')
       setSortDirection(null)
@@ -84,15 +100,18 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // isActiveの変更を監視
     useEffect(() => {
-      console.log(`TableHeaderCell(${title}) - isActive changed:`, { isActive });
-      if (!isActive) {
+      console.log(`TableHeaderCell ${title} - isActive変更: ${isActive}`);
+      // リセットが必要かどうか明示的にチェック（フィルターが解除された場合）
+      if (isActive === false) {
         // isActiveがfalseになったときだけ内部状態をリセット
         // 親への通知は行わない（無限ループ防止）
-        setFilterValue('')
-        setFilterType('equal')
-        setSortDirection(null)
+        setFilterValue('');
+        setFilterType('equal');
+        setSortDirection(null);
+        
+        console.log(`TableHeaderCell ${title} - フィルター状態をリセットしました`);
       }
-    }, [isActive, title])
+    }, [isActive, title]);
 
     // ポップアップの位置を計算する関数
     const calculatePopupPosition = useCallback(() => {
@@ -188,6 +207,12 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     useEffect(() => {
       if (sortDirection !== localSortDirection) {
         setSortDirection(sortDirection);
+        
+        // フィルターボタンがある場合のみソート状態を更新
+        const headerElement = buttonRef.current?.closest('[data-header-cell]');
+        if (headerElement) {
+          headerElement.setAttribute('data-sort-active', sortDirection ? 'true' : 'false');
+        }
       }
     }, [sortDirection, localSortDirection]);
 
@@ -209,17 +234,9 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       // 現在のミリ秒タイムスタンプを取得
       const currentTimestamp = Date.now();
 
-      console.log('TableHeaderCell - ソート実行:', {
-        title,
-        direction, 
-        internalFieldMapping: title === '投稿日時' ? 'createdAt' : undefined,
-        timestamp: currentTimestamp,
-        currentTime: new Date(currentTimestamp).toISOString()
-      });
-
       // 特定のフィールドは直接内部フィールド名を使用
       let fieldName = title;
-      if (title === '投稿日時') {
+      if (title === '投稿日') {
         fieldName = 'createdAt';
       } else if (title === '再生数') {
         fieldName = 'views';
@@ -278,7 +295,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         
         // フィールド名のマッピング
         let actualFieldName = fieldName;
-        if (title === '投稿日時') {
+        if (title === '投稿日') {
           actualFieldName = 'createdAt';
         } else if (title === '再生数') {
           actualFieldName = 'views';
@@ -286,17 +303,21 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           actualFieldName = 'likes';
         } else if (title === 'コメント数') {
           actualFieldName = 'comments';
+        } else if (title === '再生増加数') {
+          actualFieldName = 'viewsIncrease';
         }
         
+        // 明示的なクリアフラグを送る
         onFilter({ 
           type: 'clear', 
           value: '', 
-          field: actualFieldName 
+          field: actualFieldName,
+          clear: true  // 明示的なクリアフラグ
         });
       }
     };
 
-    const handleFilter = (value: string, type: FilterType) => {
+    const handleFilter = (value: string, type: FilterTypeLocal) => {
       if (!onFilter) return;
       
       // キャプションの場合のみ部分一致を適用
@@ -306,13 +327,27 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           value: value,
           type: 'contains'  // キャプションは常に部分一致
         }, true);
-      } else if (title === 'ジャンル') {
+      } else if (title === '動画ジャンル') {
         // ジャンルの既存の特別処理を維持
         onFilter({
           field: title,
           value: value,
           type: type
         }, true);
+      } else if (type === 'number') {
+        // 数値フィールドの場合は値を数値に変換
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+          onFilter({
+            field: title,
+            value: numValue,  // 明示的に数値型として渡す
+            type: type,
+            comparison: type as ComparisonOperator
+          }, true);
+        } else if (value === '') {
+          // 空の値の場合はクリア
+          handleClear();
+        }
       } else {
         // その他のフィールドは通常通りの処理
         onFilter({
@@ -338,13 +373,17 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // 外部からアクセスできるようにする
     useImperativeHandle(ref, () => ({
       clearFilter: () => {
-        // ローカル状態のみリセット（親への通知は行わない）
-        setFilterValue('')
-        setFilterType('equal')
-        setSortDirection(null)
-        console.log(`TableHeaderCell(${title}) - 外部からのclearFilter呼び出し`);
+        resetFilterState();
+        if (onFilter) {
+          onFilter({
+            field: title,
+            type: 'clear',
+            value: '',
+            clear: true
+          });
+        }
       }
-    }), [title])
+    }), [resetFilterState, onFilter, title]);
 
     const renderFilterInput = () => {
       switch (type) {
@@ -353,8 +392,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <div className="flex flex-col gap-2">
               <select 
                 value={filterType}
-                onChange={(e) => setFilterType(e.target.value as FilterType)}
-                className="w-full px-2 py-1 border rounded text-xs"
+                onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
+                className="px-2 py-1 border rounded text-xs border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
               >
                 {getFilterOptions('date').map(option => (
                   <option key={option.value} value={option.value}>
@@ -391,10 +430,45 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <input
               type="number"
               value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                // 空文字列の場合
+                if (newValue === '') {
+                  setFilterValue('');
+                } else {
+                  setFilterValue(newValue);
+                }
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  handleFilter(filterValue, filterType);
+                  // 空文字列の場合はフィルターをクリア
+                  if (e.currentTarget.value === '') {
+                    handleClear();
+                    return;
+                  }
+                  
+                  // 数値に変換
+                  const numVal = parseFloat(e.currentTarget.value);
+                  if (!isNaN(numVal)) {
+                    // 直接onFilterを使用
+                    if (onFilter) {
+                      const fieldName = 
+                        title === '再生数' ? 'views' : 
+                        title === 'いいね数' ? 'likes' : 
+                        title === 'コメント数' ? 'comments' : 
+                        title === '再生増加数' ? 'viewsIncrease' : 
+                        String(title);
+                      
+                      onFilter({
+                        field: fieldName,
+                        value: numVal,
+                        type: 'number',
+                        comparison: filterType as unknown as ComparisonOperator
+                      }, true);
+                      
+                      setIsFilterOpen(false);
+                    }
+                  }
                 }
               }}
               placeholder="フィルター..."
@@ -427,38 +501,18 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // categoryDataが変更されたときのuseEffect
     useEffect(() => {
-      console.log(`TableHeaderCell(${title}) - categoryDataの変化を検知:`, {
-        receivedLength: categoryData?.length || 0,
-        sample: categoryData?.slice(0, 3) || [],
-        isEmpty: !categoryData || categoryData.length === 0
-      });
-      
       if (categoryData && categoryData.length > 0) {
-        console.log(`TableHeaderCell(${title}) - 有効なカテゴリデータを設定します`);
         setCategories(categoryData);
-        // フィルタリングされた値も更新
-        if (filterValue === '') {
-          setFilteredCategories(categoryData);
-        } else {
-          const filtered = categoryData.filter(category => 
-            category.toLowerCase().includes(filterValue.toLowerCase())
-          );
-          setFilteredCategories(filtered);
-        }
-      } else {
-        console.log(`TableHeaderCell(${title}) - カテゴリデータが空のため設定をスキップします`);
+        setFilteredCategories(categoryData);
       }
-    }, [categoryData, title, filterValue]);
+    }, [categoryData, title]);
 
     // フィルターポップアップが開かれたときのログ
     const handleToggleFilter = () => {
-      console.log(`TableHeaderCell(${title}) - フィルターポップアップ開閉:`, {
-        現在の状態: isFilterOpen,
-        新しい状態: !isFilterOpen,
-        利用可能カテゴリ数: filteredCategories.length,
-        カテゴリサンプル: filteredCategories.slice(0, 3)
-      });
       setIsFilterOpen(!isFilterOpen);
+      if (!isFilterOpen) {
+        calculatePopupPosition();
+      }
     };
 
     // カテゴリを選択する処理
@@ -483,7 +537,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // カテゴリリストを描画する関数を改善
     const renderCategoryList = () => {
       // カテゴリーデータが関連するカラムにのみ表示
-      if (!['ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title)) {
+      if (!['動画ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title)) {
         return null;
       }
 
@@ -538,7 +592,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // タイトルに応じたラベルを取得
     const getTitleLabel = () => {
       switch (title) {
-        case 'ジャンル':
+        case '動画ジャンル':
           return 'カテゴリ';
         case 'アカウント名':
           return 'アカウント';
@@ -570,7 +624,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       return '▼ 降順に並び替え';
     };
 
-    // 数値カラムかどうかを判定する関数を追加
+    // 数値カラムかどうかを判定する関数を更新
     const isNumericColumn = (title: string): boolean => {
       return ['再生数', 'いいね数', 'コメント数', '再生増加数'].includes(title);
     }
@@ -595,8 +649,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <button 
               onClick={() => handleSortDirection('desc')}
               className={cn(
-                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
-                localSortDirection === 'desc' ? "bg-gray-100 font-semibold" : ""
+                "w-full text-left px-2 py-1 rounded text-xs",
+                localSortDirection === 'desc' 
+                  ? "bg-blue-100 font-semibold text-blue-700" 
+                  : "hover:bg-gray-50 text-gray-700"
               )}
             >
               {getDescSortLabel()}
@@ -604,8 +660,10 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
             <button 
               onClick={() => handleSortDirection('asc')}
               className={cn(
-                "w-full text-left px-2 py-1 hover:bg-gray-50 rounded text-xs",
-                localSortDirection === 'asc' ? "bg-gray-100 font-semibold" : ""
+                "w-full text-left px-2 py-1 rounded text-xs",
+                localSortDirection === 'asc' 
+                  ? "bg-blue-100 font-semibold text-blue-700" 
+                  : "hover:bg-gray-50 text-gray-700"
               )}
             >
               {getAscSortLabel()}
@@ -617,41 +675,42 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     return (
       <div 
-        data-header-cell
         className={cn(
-          "flex items-center gap-1 whitespace-nowrap",
-          "px-2 py-1 text-gray-700 text-sm",
-          align === 'center' ? 'justify-center' : '',
-          isActive || localSortDirection ? "text-blue-600 font-medium" : ""
+          "relative p-0",  // パディングを0に設定
+          isNumericColumn(title) ? "w-24" : "",
         )}
+        data-header-cell 
       >
-        <div className="flex items-center cursor-default">
-          <span>{title}</span>
-          {localSortDirection && (
-            <span className="ml-1 text-blue-600">
-              {localSortDirection === 'asc' ? '↑' : '↓'}
-            </span>
-          )}
+        <div className={cn(
+          "whitespace-nowrap h-full",  // 高さを100%に
+          "bg-gray-50",  // 背景色を設定（必要に応じて調整）
+          isNumericColumn(title) ? "pl-2 pr-0" : "pl-0 pr-2",
+          "py-1 text-[12px]",
+          alignmentClass,
+          (isActive || localSortDirection) ? "text-blue-600 font-medium" : "text-gray-700"
+        )}>
+          <span className={cn(
+            "cursor-default", 
+            localSortDirection ? "font-semibold" : ""
+          )}>
+            <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
+            {localSortDirection && (
+              <span className="ml-1 inline-block">
+                <span className={cn(
+                  "font-bold",
+                  "text-blue-700"
+                )}>
+                  {localSortDirection === 'asc' ? '↑' : '↓'}
+                </span>
+                {sortPriority && (
+                  <span className="ml-0.5 text-[10px] font-bold text-blue-700">
+                    {sortPriority}
+                  </span>
+                )}
+              </span>
+            )}
+          </span>
         </div>
-        {/* キャプションの場合はフィルターボタンを表示しない */}
-        {onFilter && title !== 'キャプション' && (
-          <button 
-            ref={buttonRef}
-            onClick={handleToggleFilter}
-            className={`p-1 hover:bg-gray-100 rounded ${isActive ? 'text-sky-500 font-bold' : ''}`}
-            data-active={isActive}
-          >
-            <svg 
-              className="w-4 h-4"
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor"
-              strokeWidth={isActive ? "3" : "2"}
-            >
-              <path d="M3 4h18M6 9h12M9 14h6M11 19h2" />
-            </svg>
-          </button>
-        )}
         
         {isFilterOpen && (
           <Portal>
@@ -670,8 +729,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
                   {type === 'number' && (
                     <select 
                       value={filterType}
-                      onChange={(e) => setFilterType(e.target.value as FilterType)}
-                      className="px-2 py-1 border rounded text-xs"
+                      onChange={(e) => setFilterType(e.target.value as FilterTypeLocal)}
+                      className="px-2 py-1 border rounded text-xs border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
                     >
                       {getFilterOptions(type).map(option => (
                         <option key={option.value} value={option.value}>
@@ -710,7 +769,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           </Portal>
         )}
       </div>
-    )
+    );
   }
 )
 

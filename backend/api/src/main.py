@@ -82,16 +82,27 @@ async def get_videos(
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
-    sort_by_secondary: Optional[str] = None,  # 二次ソートカラム
-    sort_order_secondary: Optional[str] = "desc",  # 二次ソート順序
+    sort_by_secondary: Optional[str] = "play_count",  # デフォルトで再生数を二次ソートに設定
+    sort_order_secondary: Optional[str] = "desc",  # 降順
     play_count: Optional[int] = None,
     play_count_type: Optional[str] = None,
     likes_count: Optional[int] = None,
     likes_count_type: Optional[str] = None,
     comment_count: Optional[int] = None,
     comment_count_type: Optional[str] = None,
-    play_count_increase: Optional[int] = None, # 再生増加数
-    play_count_increase_type: Optional[str] = None, # 再生増加数のフィルタータイプ
+    play_count_increase: Optional[int] = None,
+    play_count_increase_type: Optional[str] = None,
+    content_type: Optional[str] = None,
+    ten_days_increase: Optional[int] = None,
+    ten_days_increase_type: Optional[str] = None,
+    likes_count_increase: Optional[int] = None,
+    likes_count_increase_type: Optional[str] = None,
+    ten_days_likes_increase: Optional[int] = None,
+    ten_days_likes_increase_type: Optional[str] = None,
+    comment_count_increase: Optional[int] = None,
+    comment_count_increase_type: Optional[str] = None,
+    ten_days_comment_increase: Optional[int] = None,
+    ten_days_comment_increase_type: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
@@ -104,7 +115,15 @@ async def get_videos(
         print(f"Request params: page={page}, limit={limit}, account_name={account_name}, category={category}, ...")
 
         # 基本クエリ
-        query = "SELECT * FROM frontend_data"
+        query = """
+            SELECT 
+                url, thumbnail_url, created_at, play_count, play_count_increase, 
+                ten_days_increase, account_name, display_name, content_type, 
+                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
+                comment_count_increase, ten_days_comment_increase, account_type,
+                hashtags, music_info, caption, category, product
+            FROM frontend_data
+        """
         params = []
         where_clauses = []
 
@@ -115,12 +134,31 @@ async def get_videos(
             where_clauses.append("account_name LIKE %s")
             params.append(f"%{escaped_account_name}%")
         
-        if category:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+        # カテゴリフィルターのOR条件処理
+        category_filters = []
+        category_params = []
+
+        # category_countパラメータがある場合は複数カテゴリ
+        category_count = request.query_params.get('category_count')
+        if category_count and category_count.isdigit():
+            count = int(category_count)
+            for i in range(count):
+                cat_param = request.query_params.get(f'category_{i}')
+                if cat_param:
+                    escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
+                    category_filters.append("category LIKE %s")
+                    category_params.append(f"%{escaped_cat}%")
+        
+        # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
+        if category_filters:
+            where_clauses.append(f"({' OR '.join(category_filters)})")
+            params.extend(category_params)
+        # 従来の単一カテゴリ処理
+        elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
-            
+        
         if hashtag:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
@@ -182,11 +220,86 @@ async def get_videos(
 
         if play_count_increase is not None and play_count_increase_type:
             if play_count_increase_type == "greater":
-                where_clauses.append(f"play_count_increase > {play_count_increase}")
+                where_clauses.append("play_count_increase >= %s")
+                params.append(play_count_increase)
             elif play_count_increase_type == "less":
-                where_clauses.append(f"play_count_increase < {play_count_increase}")
+                where_clauses.append("play_count_increase <= %s")
+                params.append(play_count_increase)
             else:  # equal
-                where_clauses.append(f"play_count_increase = {play_count_increase}")
+                where_clauses.append("play_count_increase = %s")
+                params.append(play_count_increase)
+
+        # 新しいフィルター条件の追加
+        if ten_days_increase is not None:
+            if ten_days_increase_type == "greater":
+                where_clauses.append("ten_days_increase >= %s")
+                params.append(ten_days_increase)
+            elif ten_days_increase_type == "less":
+                where_clauses.append("ten_days_increase <= %s")
+                params.append(ten_days_increase)
+            else:
+                where_clauses.append("ten_days_increase = %s")
+                params.append(ten_days_increase)
+
+        if likes_count_increase is not None:
+            if likes_count_increase_type == "greater":
+                where_clauses.append("likes_count_increase >= %s")
+                params.append(likes_count_increase)
+            elif likes_count_increase_type == "less":
+                where_clauses.append("likes_count_increase <= %s")
+                params.append(likes_count_increase)
+            else:
+                where_clauses.append("likes_count_increase = %s")
+                params.append(likes_count_increase)
+
+        if ten_days_likes_increase is not None:
+            if ten_days_likes_increase_type == "greater":
+                where_clauses.append("ten_days_likes_increase >= %s")
+                params.append(ten_days_likes_increase)
+            elif ten_days_likes_increase_type == "less":
+                where_clauses.append("ten_days_likes_increase <= %s")
+                params.append(ten_days_likes_increase)
+            else:
+                where_clauses.append("ten_days_likes_increase = %s")
+                params.append(ten_days_likes_increase)
+
+        if comment_count_increase is not None:
+            if comment_count_increase_type == "greater":
+                where_clauses.append("comment_count_increase >= %s")
+                params.append(comment_count_increase)
+            elif comment_count_increase_type == "less":
+                where_clauses.append("comment_count_increase <= %s")
+                params.append(comment_count_increase)
+            else:
+                where_clauses.append("comment_count_increase = %s")
+                params.append(comment_count_increase)
+
+        if ten_days_comment_increase is not None:
+            if ten_days_comment_increase_type == "greater":
+                where_clauses.append("ten_days_comment_increase >= %s")
+                params.append(ten_days_comment_increase)
+            elif ten_days_comment_increase_type == "less":
+                where_clauses.append("ten_days_comment_increase <= %s")
+                params.append(ten_days_comment_increase)
+            else:
+                where_clauses.append("ten_days_comment_increase = %s")
+                params.append(ten_days_comment_increase)
+
+        # コンテンツタイプのフィルタリング
+        if content_type:
+            # カンマ区切りの場合は複数条件のORで処理
+            if ',' in content_type:
+                content_types = content_type.split(',')
+                content_type_clauses = []
+                for ct in content_types:
+                    content_type_clauses.append("content_type = %s")
+                    params.append(ct.strip())
+                where_clauses.append(f"({' OR '.join(content_type_clauses)})")
+                print(f"複数コンテンツタイプフィルター適用: {content_types}")
+            else:
+                where_clauses.append("content_type = %s")
+                params.append(content_type)
+                print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
         # フィルター条件のデバッグログ
         if play_count is not None:
@@ -224,6 +337,9 @@ async def get_videos(
         # ページネーション用にLIMIT/OFFSETを追加
         offset = (page - 1) * limit
         
+        # メインクエリからLIMIT/OFFSETを除いたベースクエリを作成
+        base_query = query
+
         # limit=-1の場合は全件取得（ページングなし）
         if limit == -1:
             print("全件取得モードが指定されました - ページングを無効化")
@@ -240,16 +356,32 @@ async def get_videos(
         rows = cursor.fetchall()
 
         # 総件数取得（フィルタパラメータを使用）
-        count_query = f"SELECT COUNT(*) FROM ({query}) as count_query"
+        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
         cursor.execute(count_query, filter_params)
         total = cursor.fetchone()[0]
+
+        # 全体の最新投稿日を取得（フィルターに関係なく）
+        cursor.execute("SELECT MAX(created_at) FROM frontend_data")
+        global_latest_date = cursor.fetchone()[0]
+        global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
+
+        # フィルター適用後の最新投稿日を取得（base_queryを使用）
+        filtered_latest_query = f"SELECT MAX(created_at) FROM ({base_query}) as latest_query"
+        cursor.execute(filtered_latest_query, filter_params)
+        filtered_latest_date = cursor.fetchone()[0]
+        filtered_last_updated = format_last_updated(filtered_latest_date) if filtered_latest_date else None
 
         return {
             "data": [format_video(row) for row in rows],
             "total": total,
             "currentPage": page,
             "totalPages": (total + limit - 1) // limit,
-            "success": True
+            "success": True,
+            "lastUpdated": {
+                "date": filtered_last_updated,
+                "isFiltered": bool(where_clauses),
+                "globalLastUpdated": global_last_updated
+            }
         }
 
     except Exception as e:
@@ -284,8 +416,8 @@ async def get_videos_alt(
     is_viral: Optional[bool] = None,
     sort_by: Optional[str] = "created_at",
     sort_order: Optional[str] = "desc",
-    sort_by_secondary: Optional[str] = None,  # 二次ソートカラム
-    sort_order_secondary: Optional[str] = "desc",  # 二次ソート順序
+    sort_by_secondary: Optional[str] = None,
+    sort_order_secondary: Optional[str] = "desc",
     play_count: Optional[int] = None,
     play_count_type: Optional[str] = None,
     likes_count: Optional[int] = None,
@@ -294,8 +426,19 @@ async def get_videos_alt(
     comment_count_type: Optional[str] = None,
     created_at: Optional[str] = None,
     created_at_type: Optional[str] = None,
-    play_count_increase: Optional[int] = None, # 再生増加数
-    play_count_increase_type: Optional[str] = None, # 再生増加数のフィルタータイプ
+    play_count_increase: Optional[int] = None,
+    play_count_increase_type: Optional[str] = None,
+    content_type: Optional[str] = None,
+    likes_count_increase: Optional[int] = None,
+    likes_count_increase_type: Optional[str] = None,
+    ten_days_increase: Optional[int] = None,
+    ten_days_increase_type: Optional[str] = None,
+    ten_days_likes_increase: Optional[int] = None,
+    ten_days_likes_increase_type: Optional[str] = None,
+    comment_count_increase: Optional[int] = None,
+    comment_count_increase_type: Optional[str] = None,
+    ten_days_comment_increase: Optional[int] = None,
+    ten_days_comment_increase_type: Optional[str] = None
 ):
     print(f"Received request with params: {request.query_params}")
     conn = None
@@ -305,174 +448,144 @@ async def get_videos_alt(
         cursor = conn.cursor()
 
         # 基本クエリ
-        query = "SELECT * FROM frontend_data"
+        query = """
+            SELECT 
+                url, thumbnail_url, created_at, play_count, play_count_increase, 
+                ten_days_increase, account_name, display_name, content_type, 
+                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
+                comment_count_increase, ten_days_comment_increase, account_type,
+                hashtags, music_info, caption, category, product
+            FROM frontend_data
+        """
         params = []
         where_clauses = []
 
-        # 日付フィルターの処理
-        if created_at:
-            print(f"Applying date filter: created_at={created_at}, type={created_at_type}")
-            
-            if created_at_type == 'date':
-                where_clauses.append("DATE(created_at) = DATE(%s)")
-                params.append(created_at)
-            elif created_at_type == 'after':
-                where_clauses.append("DATE(created_at) >= DATE(%s)")
-                params.append(created_at)
-            elif created_at_type == 'before':
-                where_clauses.append("DATE(created_at) <= DATE(%s)")
-                params.append(created_at)
-
-        # フィルター処理
-        if account_name:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_name LIKE %s")
-            params.append(f"%{escaped_account_name}%")
-        
-        if category:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_category = category.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("category LIKE %s")
-            params.append(f"%{escaped_category}%")
-            
-        if hashtag:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{escaped_hashtag}%")
-            
-        if music_info:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("music_info LIKE %s")
-            params.append(f"%{escaped_music_info}%")
-            
-        if min_play_count:
-            where_clauses.append("play_count >= %s")
-            params.append(min_play_count)
-            
-        if min_likes_count:
-            where_clauses.append("likes_count >= %s")
-            params.append(min_likes_count)
-            
-        if is_viral is not None:
-            # is_viral の定義に基づいて条件を追加
-            # 例: is_viral = True の場合、play_count > 10000 など
-            where_clauses.append("play_count > %s")
-            params.append(10000)  # viral動画の定義に合わせて調整
-
-        if play_count is not None:
-            if play_count_type == "greater":
-                where_clauses.append("play_count >= %s")
-                params.append(play_count)
-            elif play_count_type == "less":
-                where_clauses.append("play_count <= %s")
-                params.append(play_count)
+        # 新しいフィルター条件を追加
+        if likes_count_increase is not None:
+            if likes_count_increase_type == "greater":
+                where_clauses.append("likes_count_increase >= %s")
+                params.append(likes_count_increase)
+            elif likes_count_increase_type == "less":
+                where_clauses.append("likes_count_increase <= %s")
+                params.append(likes_count_increase)
             else:
-                where_clauses.append("play_count = %s")
-                params.append(play_count)
+                where_clauses.append("likes_count_increase = %s")
+                params.append(likes_count_increase)
 
-        if likes_count is not None:
-            if likes_count_type == "greater":
-                where_clauses.append("likes_count >= %s")
-                params.append(likes_count)
-            elif likes_count_type == "less":
-                where_clauses.append("likes_count <= %s")
-                params.append(likes_count)
+        if ten_days_increase is not None:
+            if ten_days_increase_type == "greater":
+                where_clauses.append("ten_days_increase >= %s")
+                params.append(ten_days_increase)
+            elif ten_days_increase_type == "less":
+                where_clauses.append("ten_days_increase <= %s")
+                params.append(ten_days_increase)
             else:
-                where_clauses.append("likes_count = %s")
-                params.append(likes_count)
+                where_clauses.append("ten_days_increase = %s")
+                params.append(ten_days_increase)
 
-        if comment_count is not None:
-            if comment_count_type == "greater":
-                where_clauses.append("comment_count >= %s")
-                params.append(comment_count)
-            elif comment_count_type == "less":
-                where_clauses.append("comment_count <= %s")
-                params.append(comment_count)
+        if ten_days_likes_increase is not None:
+            if ten_days_likes_increase_type == "greater":
+                where_clauses.append("ten_days_likes_increase >= %s")
+                params.append(ten_days_likes_increase)
+            elif ten_days_likes_increase_type == "less":
+                where_clauses.append("ten_days_likes_increase <= %s")
+                params.append(ten_days_likes_increase)
             else:
-                where_clauses.append("comment_count = %s")
-                params.append(comment_count)
+                where_clauses.append("ten_days_likes_increase = %s")
+                params.append(ten_days_likes_increase)
 
-        if play_count_increase is not None:
-            if play_count_increase_type == "greater":
-                where_clauses.append("play_count_increase >= %s")
-                params.append(play_count_increase)
-            elif play_count_increase_type == "less":
-                where_clauses.append("play_count_increase <= %s")
-                params.append(play_count_increase)
+        if comment_count_increase is not None:
+            if comment_count_increase_type == "greater":
+                where_clauses.append("comment_count_increase >= %s")
+                params.append(comment_count_increase)
+            elif comment_count_increase_type == "less":
+                where_clauses.append("comment_count_increase <= %s")
+                params.append(comment_count_increase)
             else:
-                where_clauses.append("play_count_increase = %s")
-                params.append(play_count_increase)
+                where_clauses.append("comment_count_increase = %s")
+                params.append(comment_count_increase)
+
+        if ten_days_comment_increase is not None:
+            if ten_days_comment_increase_type == "greater":
+                where_clauses.append("ten_days_comment_increase >= %s")
+                params.append(ten_days_comment_increase)
+            elif ten_days_comment_increase_type == "less":
+                where_clauses.append("ten_days_comment_increase <= %s")
+                params.append(ten_days_comment_increase)
+            else:
+                where_clauses.append("ten_days_comment_increase = %s")
+                params.append(ten_days_comment_increase)
+
+        # コンテンツタイプのフィルタリング
+        if content_type:
+            if ',' in content_type:
+                content_types = content_type.split(',')
+                content_type_clauses = []
+                for ct in content_types:
+                    content_type_clauses.append("content_type = %s")
+                    params.append(ct.strip())
+                where_clauses.append(f"({' OR '.join(content_type_clauses)})")
+            else:
+                where_clauses.append("content_type = %s")
+                params.append(content_type)
 
         # WHERE句の追加
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
 
-        # ソート処理の追加
-        if sort_by:
-            # フィールド名のマッピング
-            field_mapping = {
-                'play_count': 'play_count',
-                'likes_count': 'likes_count',
-                'comment_count': 'comment_count',
-                'created_at': 'created_at',
-                # 必要に応じて他のフィールドも追加
-            }
+        # ソート処理
+        valid_sort_fields = {
+            'created_at', 'play_count', 'likes_count', 'comment_count',
+            'play_count_increase', 'likes_count_increase', 'comment_count_increase',
+            'ten_days_increase', 'ten_days_likes_increase', 'ten_days_comment_increase'
+        }
+        
+        valid_sort_orders = {'asc', 'desc'}
+
+        if sort_by in valid_sort_fields:
+            # sort_orderのサニタイズ
+            clean_sort_order = sort_order.lower().split()[0] if sort_order else 'desc'
+            clean_sort_order = clean_sort_order if clean_sort_order in valid_sort_orders else 'desc'
             
-            # マッピングされたフィールド名を使用
-            db_field = field_mapping.get(sort_by, sort_by)
-            sort_clause = f" ORDER BY {db_field} {sort_order.upper()}"
+            query += f" ORDER BY {sort_by} {clean_sort_order}"
             
-            # 二次ソートの適用
-            if sort_by_secondary:
-                db_field_secondary = field_mapping.get(sort_by_secondary, sort_by_secondary)
-                sort_clause += f", {db_field_secondary} {sort_order_secondary.upper()}"
-                print(f"Applied secondary sort: {db_field_secondary} {sort_order_secondary.upper()}")
-            
-            query += sort_clause
-            print(f"Sort clause: {sort_clause}")
+            if sort_by_secondary in valid_sort_fields:
+                # secondary_sort_orderのサニタイズ
+                clean_secondary_order = sort_order_secondary.lower().split()[0] if sort_order_secondary else 'desc'
+                clean_secondary_order = clean_secondary_order if clean_secondary_order in valid_sort_orders else 'desc'
+                
+                query += f", {sort_by_secondary} {clean_secondary_order}"
         else:
-            # デフォルトのソート順
             query += " ORDER BY created_at DESC"
 
-        # 基本クエリを保存（LIMIT/OFFSET なし）
-        base_query = query
-
-        # フィルタパラメータを保持
-        filter_params = params.copy()
-
-        # ページネーション用にLIMIT/OFFSETを追加
-        offset = (page - 1) * limit
-        
-        # limit=-1の場合は全件取得（ページングなし）
-        if limit == -1:
-            print("全件取得モードが指定されました - ページングを無効化")
-        else:
+        # ページネーション
+        if limit != -1:
             query += " LIMIT %s OFFSET %s"
+            offset = (page - 1) * limit
             params.extend([limit, offset])
 
         print(f"Executing query: {query}")
-        print(f"With params: {params}")
+        print(f"With parameters: {params}")
 
-        # メインクエリ実行
+        # クエリ実行
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-        # 総件数取得（フィルタパラメータを使用）
-        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
-        cursor.execute(count_query, filter_params)
+        # 総件数取得
+        count_query = """
+            SELECT COUNT(*) FROM frontend_data
+        """
+        if where_clauses:
+            count_query += " WHERE " + " AND ".join(where_clauses)
+        
+        cursor.execute(count_query, params[:-2] if limit != -1 else params)
         total = cursor.fetchone()[0]
-
-        # 総ページ数を計算
-        total_pages = (total + limit - 1) // limit
 
         return {
             "success": True,
             "data": [format_video(row) for row in rows],
             "currentPage": page,
-            "totalPages": total_pages,
+            "totalPages": (total + limit - 1) // limit if limit != -1 else 1,
             "total": total
         }
 
@@ -840,12 +953,31 @@ async def get_filter_options(
             where_clauses.append("account_name LIKE %s")
             params.append(f"%{escaped_account_name}%")
         
-        if category:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+        # カテゴリフィルターのOR条件処理
+        category_filters = []
+        category_params = []
+
+        # category_countパラメータがある場合は複数カテゴリ
+        category_count = request.query_params.get('category_count')
+        if category_count and category_count.isdigit():
+            count = int(category_count)
+            for i in range(count):
+                cat_param = request.query_params.get(f'category_{i}')
+                if cat_param:
+                    escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
+                    category_filters.append("category LIKE %s")
+                    category_params.append(f"%{escaped_cat}%")
+        
+        # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
+        if category_filters:
+            where_clauses.append(f"({' OR '.join(category_filters)})")
+            params.extend(category_params)
+        # 従来の単一カテゴリ処理
+        elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
-            
+        
         if hashtag:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
@@ -1274,3 +1406,14 @@ if __name__ == "__main__":
         proxy_headers=True,  # プロキシヘッダーを信頼
         forwarded_allow_ips="*"  # すべてのIPからのフォワードを許可
         )
+
+# 最終更新日のフォーマット関数を追加
+def format_last_updated(date):
+    if not date:
+        return None
+    
+    # 日付を2日後に設定
+    update_date = date + timedelta(days=2)
+    
+    # YY/MM/DD形式でフォーマット
+    return update_date.strftime("%y/%m/%d")
