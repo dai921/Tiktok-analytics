@@ -58,17 +58,20 @@ function HashtagBadge({ tag, className, withHash = true, ...props }: HashtagBadg
 // ジャンルバッジのプロパティ
 export interface GenreBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   genre: string;
+  categoryForColor?: string;
 }
 
 // ジャンルバッジコンポーネント
-function GenreBadge({ genre, className, ...props }: GenreBadgeProps) {
-  // ジャンルに対応する色を取得、なければデフォルト色を使用
-  const colors = GENRE_COLORS[genre as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+function GenreBadge({ genre, categoryForColor, className, ...props }: GenreBadgeProps) {
+  // カテゴリに基づいて色を決定
+  // categoryForColorが指定されている場合はそれを使用し、なければgenreを使用
+  const colorKey = categoryForColor || genre;
+  const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
   
   return (
     <div 
       className={cn(
-        "inline-flex items-center rounded-md px-2.5 py-1 text-sm font-semibold",
+        "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold",
         className
       )}
       style={{ 

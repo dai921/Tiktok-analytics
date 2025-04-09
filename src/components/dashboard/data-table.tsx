@@ -1068,31 +1068,42 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         )
       },
       {
-        accessorKey: 'products',
+        accessorKey: 'product',
         header: ({ column }) => (
           <TableHeaderCell
             title="商品名"
             type="text"
-            onFilter={(value) => handleFilter('products')(value)}
-            isActive={Boolean(columnFilters['products'])}
+            onFilter={(value) => handleFilter('product')(value)}
+            isActive={Boolean(columnFilters['product'])}
             categoryData={getFilteredOptions('商品名')}
             sortDirection={
-              primarySort?.field === 'products' 
+              primarySort?.field === 'product' 
                 ? primarySort.direction 
-                : secondarySort?.field === 'products' 
+                : secondarySort?.field === 'product' 
                   ? secondarySort.direction 
                   : null
             }
-            sortPriority={primarySort?.field === 'products' ? 1 : secondarySort?.field === 'products' ? 2 : null}
+            sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
           />
         ),
-        cell: ({ row }) => (
-          <div className="w-[120px] min-w-[120px]">
-            <span className="truncate text-sm">
-              {row.products}
-            </span>
-          </div>
-        ),
+        cell: ({ row }) => {
+          // カテゴリ（動画ジャンル）を取得
+          const category = row.category;
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <div className="flex flex-wrap gap-1 justify-start items-center">
+                {row.product && (
+                  <GenreBadge 
+                    genre={row.product} 
+                    // カテゴリを渡して同じ色を使用
+                    categoryForColor={category}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        }
       },
       {
         accessorKey: 'account_type',
@@ -1115,9 +1126,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         ),
         cell: ({ row }) => (
           <div className="w-[120px] min-w-[120px]">
-            <span className="truncate text-sm">
-              {row.account_type}
-            </span>
+            <div className="flex flex-wrap gap-1 justify-start items-center">
+              {row.account_type ? (
+                <div className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                  {row.account_type}
+                </div>
+              ) : (
+                <span className="text-gray-400 text-xs">未設定</span>
+              )}
+            </div>
           </div>
         ),
       },
@@ -1516,7 +1533,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                  column.accessorKey === 'viewsIncrease' ? '100px' :
                                  column.accessorKey === 'likes' ? '100px' :
                                  column.accessorKey === 'comments' ? '100px' :
-                                 column.accessorKey === 'products' ? '120px' :
+                                 column.accessorKey === 'product' ? '120px' :
                                  column.accessorKey === 'account_type' ? '120px' :
                                  column.accessorKey === 'hashtags' ? '120px' :
                                  column.accessorKey === 'ten_days_increase' ? '120px' :
@@ -1554,7 +1571,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                   column.accessorKey === 'viewsIncrease' ? '100px' :
                                   column.accessorKey === 'likes' ? '100px' :
                                   column.accessorKey === 'comments' ? '100px' :
-                                  column.accessorKey === 'products' ? '120px' :
+                                  column.accessorKey === 'product' ? '120px' :
                                   column.accessorKey === 'account_type' ? '120px' :
                                   column.accessorKey === 'hashtags' ? '120px' :
                                   column.accessorKey === 'ten_days_increase' ? '120px' :
@@ -1569,7 +1586,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                      column.accessorKey === 'viewsIncrease' ? '100px' :
                                      column.accessorKey === 'likes' ? '100px' :
                                      column.accessorKey === 'comments' ? '100px' :
-                                     column.accessorKey === 'products' ? '120px' :
+                                     column.accessorKey === 'product' ? '120px' :
                                      column.accessorKey === 'account_type' ? '120px' :
                                      column.accessorKey === 'hashtags' ? '120px' :
                                      column.accessorKey === 'ten_days_increase' ? '120px' :
@@ -1584,7 +1601,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                      column.accessorKey === 'viewsIncrease' ? '100px' :
                                      column.accessorKey === 'likes' ? '100px' :
                                      column.accessorKey === 'comments' ? '100px' :
-                                     column.accessorKey === 'products' ? '120px' :
+                                     column.accessorKey === 'product' ? '120px' :
                                      column.accessorKey === 'account_type' ? '120px' :
                                      column.accessorKey === 'hashtags' ? '120px' :
                                      column.accessorKey === 'ten_days_increase' ? '120px' :

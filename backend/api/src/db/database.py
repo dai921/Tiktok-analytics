@@ -112,7 +112,7 @@ def format_video(row):
             "audioInfo": music_info,  # 互換性のために残す
             "caption": row[18] if row[18] else None,
             "category": row[19] if row[19] else None,
-            "products": row[20] if row[20] else None
+            "product": row[20] if row[20] else None
         }
     except Exception as e:
         logger.error(f"Error formatting video: {e}")
