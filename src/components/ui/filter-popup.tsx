@@ -869,7 +869,7 @@ export const FilterPopup = ({
                 ソート対象
               </label>
               <select
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none"
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none"
                 value={primarySort?.field || ''}
                 onChange={(e) => {
                   const selectedField = e.target.value;
@@ -901,7 +901,7 @@ export const FilterPopup = ({
                   ソート順
                 </label>
                 <select
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none"
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none"
                   value={primarySort.direction}
                   onChange={(e) => {
                     if (primarySort) {
@@ -928,7 +928,7 @@ export const FilterPopup = ({
                 ソート対象
               </label>
               <select
-                className={`mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border ${!primarySort ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-gray-300'} shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none`}
+                className={`mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border ${!primarySort ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-gray-300'} shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none`}
                 value={secondarySort?.field || ''}
                 onChange={(e) => {
                   const selectedField = e.target.value;
@@ -965,7 +965,7 @@ export const FilterPopup = ({
                   ソート順
                 </label>
                 <select
-                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:border-[#FE2C55] sm:text-sm rounded-md appearance-none"
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none"
                   value={secondarySort.direction}
                   onChange={(e) => {
                     if (secondarySort) {
