@@ -674,7 +674,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           // ソート情報の処理
           if (key.startsWith('sort_') && filter.type === 'sort') {
             sortUpdated = true;
-            const fieldName = key.replace('sort_', '');
+            // キーから純粋なフィールド名を取得（sort_PREFIX_を削除）
+            const fieldName = key.replace(/^sort_/, '').replace(/_primary$/, '').replace(/_secondary$/, '');
             
             if (filter.isPrimarySort) {
               // 第一ソートの設定
@@ -1188,7 +1189,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             >
               <FilterIcon size={16} />
               <span className="ml-1">フィルター</span>
-              {hasActiveFilters && (
+              {hasActiveFilters && Object.keys(columnFilters).length > 0 && (
                 <span className="ml-1 px-1.5 py-0.5 bg-[#FE2C55] text-white text-xs rounded-full">
                   {Object.keys(columnFilters).length}
                 </span>

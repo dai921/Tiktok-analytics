@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, RefObject } from 'react'
 import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashboard'
 import { TIKTOK_COLORS, GENRE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
+import { cn } from '@/lib/utils'
 
 interface FilterPopupProps {
   isOpen: boolean
@@ -217,10 +218,13 @@ export const FilterPopup = ({
     ]
   }
 
-  // コンポーネントマウント時にカテゴリの選択状態を初期化
+  // ポップアップが開かれたときにcurrentFiltersから状態を初期化する
   useEffect(() => {
     if (isOpen) {
-      // カテゴリフィルターがある場合その値を取得
+      // すべてのフィルターをコピー
+      setTempFilters({...currentFilters});
+      
+      // カテゴリ選択の初期化
       const categoryFilter = currentFilters['category'];
       if (categoryFilter && categoryFilter.value) {
         // 文字列の場合は配列に変換
@@ -231,6 +235,33 @@ export const FilterPopup = ({
         }
       } else {
         setSelectedCategories([]);
+      }
+      
+      // ソート状態の初期化
+      let foundPrimarySort = false;
+      
+      // currentFiltersからソート情報を抽出
+      Object.entries(currentFilters).forEach(([key, filter]) => {
+        // ソートフィルターを検出
+        if (filter.type === 'sort') {
+          const field = filter.sortField || filter.field;
+          const direction = filter.value as 'asc' | 'desc';
+          
+          // プライマリソートとして設定
+          if (filter.isPrimarySort || !foundPrimarySort) {
+            setPrimarySort({field, direction});
+            foundPrimarySort = true;
+          } else {
+            // セカンダリソート
+            setSecondarySort({field, direction});
+          }
+        }
+      });
+      
+      // ソートが見つからなかった場合はnullに設定
+      if (!foundPrimarySort) {
+        setPrimarySort(null);
+        setSecondarySort(null);
       }
     }
   }, [isOpen, currentFilters]);
@@ -267,37 +298,6 @@ export const FilterPopup = ({
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [isOpen, onClose, anchorRef])
-
-  // コンポーネントマウント時に現在のフィルターを取得
-  useEffect(() => {
-    if (isOpen) {
-      setTempFilters(currentFilters || {})
-      
-      // ソート情報も初期化
-      let foundPrimarySort = null;
-      let foundSecondarySort = null;
-      
-      // 現在のフィルターからソート情報を抽出
-      Object.entries(currentFilters || {}).forEach(([key, filter]) => {
-        if (key.startsWith('sort_') && filter.type === 'sort') {
-          const fieldName = key.replace('sort_', '');
-          const direction = filter.value as 'asc' | 'desc';
-          
-          if (filter.isPrimarySort) {
-            // 第一ソート
-            foundPrimarySort = { field: fieldName, direction };
-          } else {
-            // 第二ソート
-            foundSecondarySort = { field: fieldName, direction };
-          }
-        }
-      });
-      
-      // 抽出したソート情報を設定
-      setPrimarySort(foundPrimarySort);
-      setSecondarySort(foundSecondarySort);
-    }
-  }, [isOpen, currentFilters])
 
   // フィルター変更ハンドラー
   const handleFilterChange = (fieldId: string, value: FilterValue) => {
@@ -435,7 +435,7 @@ export const FilterPopup = ({
       // 前回のソート情報を示す空のキーを設定
       wrappedFilters['sort_indicator'] = {
         field: '',
-        type: 'indicator',
+        type: 'indicator' as FilterType,
         value: ''
       } as FilterValue;
     }
@@ -892,57 +892,57 @@ export const FilterPopup = ({
           <h3 className="text-sm font-semibold text-gray-700 mb-2">第一優先ソート</h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                ソート対象
-              </label>
-              <select
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none"
-                value={primarySort?.field || ''}
-                onChange={(e) => {
-                  const selectedField = e.target.value;
-                  if (selectedField) {
-                    // 既存のdirectionを保持するか、デフォルトで降順を設定
-                    const direction = primarySort?.direction || 'desc';
-                    handlePrimarySortChange(selectedField, direction);
-                  } else {
-                    // 未選択の場合はソートをクリア
-                    setPrimarySort(null);
-                  }
-                }}
-              >
-                <option value="">選択してください</option>
-                {fieldOptions.map(option => (
-                  <option 
-                    key={option.id} 
-                    value={option.id}
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            {primarySort && (
-              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ソート順
+                  ソート対象
                 </label>
                 <select
                   className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none"
-                  value={primarySort.direction}
+                  value={primarySort?.field || ''}
                   onChange={(e) => {
-                    if (primarySort) {
-                      handlePrimarySortChange(primarySort.field, e.target.value as 'asc' | 'desc');
+                    const selectedField = e.target.value;
+                    if (selectedField) {
+                      // 既存のdirectionを保持するか、デフォルトで降順を設定
+                      const direction = primarySort?.direction || 'desc';
+                      handlePrimarySortChange(selectedField, direction);
+                    } else {
+                      // 未選択の場合はソートをクリア
+                      setPrimarySort(null);
                     }
                   }}
                 >
-                  {directionOptions.map(option => (
-                    <option key={option.value} value={option.value}>
+                  <option value="">選択してください</option>
+                  {fieldOptions.map(option => (
+                    <option 
+                      key={option.id} 
+                      value={option.id}
+                    >
                       {option.label}
                     </option>
                   ))}
                 </select>
-              </div>
+            </div>
+
+            {primarySort && (
+              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    ソート順
+                  </label>
+                  <select
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white border border-gray-300 shadow-sm focus:outline-none focus:ring-1 focus:ring-gray-300 focus:border-gray-300 sm:text-sm rounded-md appearance-none"
+                    value={primarySort.direction}
+                    onChange={(e) => {
+                      if (primarySort) {
+                        handlePrimarySortChange(primarySort.field, e.target.value as 'asc' | 'desc');
+                      }
+                    }}
+                  >
+                    {directionOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
             )}
           </div>
         </div>
