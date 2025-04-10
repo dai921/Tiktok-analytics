@@ -31,13 +31,12 @@ export interface FilterValue extends FilterQuery {
 export interface VideoData {
   id: string
   url: string
-  accountName: string
+  account_name: string
   videoId: string
-  thumbnail: {
+  thumbnail_url: {
     valueType: 'IMAGE'
     url: string
   } | null
-  displayName: string
   description: string
   likes: number
   views: number

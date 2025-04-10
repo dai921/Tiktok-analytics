@@ -3,6 +3,7 @@ from typing import Optional, Dict, List
 from src.db.database import get_db_connection, format_video
 from src.utils.logger_config import setup_logger
 from src.auth.router import router as auth_router
+from src.display_settings.router import router as display_settings_router
 import traceback
 import uvicorn
 import sys
@@ -51,6 +52,8 @@ app.add_middleware(
 
 # 認証ルーターの追加
 app.include_router(auth_router)
+# 表示設定ルーターの追加
+app.include_router(display_settings_router)
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)

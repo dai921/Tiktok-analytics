@@ -2,6 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Column } from '@/types/dashboard'
+import { Button } from "@/components/ui/button"
+import { SaveIcon } from "lucide-react"
+import { displaySettingsApi } from '@/lib/display_settings_api'
+import { toast } from "@/hooks/use-toast"
 
 interface ColumnSettingsProps {
   isOpen: boolean
@@ -31,6 +35,7 @@ export const ColumnSettings = ({
   onColumnVisibilityChange,
 }: ColumnSettingsProps) => {
   const [position, setPosition] = useState({ top: 0, left: 0 })
+  const [isSaving, setIsSaving] = useState(false)
   const popupRef = useRef<HTMLDivElement>(null)
 
   // ポップアップの位置を計算（一度だけ）
@@ -78,6 +83,49 @@ export const ColumnSettings = ({
     column => !EXCLUDED_COLUMNS.includes(column.accessorKey)
   )
 
+  // 設定保存処理
+  const handleSaveSettings = async () => {
+    try {
+      setIsSaving(true);
+
+      // 表示設定から除外されたカラムをフィルタリング
+      const settableColumns = columns.filter(
+        column => !EXCLUDED_COLUMNS.includes(column.accessorKey)
+      );
+
+      // APIに送信するデータの形式に変換
+      const settings = {
+        is_default: true, // ベータ版では1ユーザー1設定
+        columns: settableColumns.map((column, index) => ({
+          column_name: column.accessorKey,
+          is_visible: visibleColumns.includes(column.accessorKey),
+          display_order: index
+        }))
+      };
+
+      const response = await displaySettingsApi.saveSettings(settings);
+
+      if (response.success) {
+        toast({
+          title: "設定を保存しました",
+          description: "表示設定が正常に保存されました。",
+        });
+        onClose(); // 保存成功時にポップアップを閉じる
+      } else {
+        throw new Error(response.error || '保存に失敗しました');
+      }
+    } catch (error) {
+      console.error('設定保存エラー:', error);
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "設定の保存に失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (!isOpen) return null
 
   return (
@@ -123,6 +171,18 @@ export const ColumnSettings = ({
             </label>
           )
         })}
+      </div>
+
+      {/* 保存ボタンを追加 */}
+      <div className="mt-4 pt-3 border-t border-gray-200">
+        <Button
+          onClick={handleSaveSettings}
+          disabled={isSaving}
+          className="w-full flex items-center justify-center gap-2"
+        >
+          <SaveIcon className="h-4 w-4" />
+          {isSaving ? "保存中..." : "設定を保存"}
+        </Button>
       </div>
     </div>
   )
