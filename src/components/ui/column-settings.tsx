@@ -13,7 +13,7 @@ interface ColumnSettingsProps {
   anchorRef: React.RefObject<HTMLButtonElement>
   columns: Column[]
   visibleColumns: string[]
-  onColumnVisibilityChange: (columnKey: string, isVisible: boolean) => void
+  onColumnVisibilityChange: (columnKey: string, isVisible: boolean, newColumns?: string[]) => void
 }
 
 // ヘッダーコンテンツの型を定義
@@ -77,25 +77,7 @@ export const ColumnSettings = ({
   // デフォルト設定を適用する処理
   const handleApplyDefault = () => {
     // デフォルト設定のカラムを一括で更新
-    defaultColumns.forEach(columnKey => {
-      const isCurrentlyVisible = visibleColumns.includes(columnKey);
-      const shouldBeVisible = defaultColumns.includes(columnKey);
-      
-      // 現在の状態と異なる場合のみ更新
-      if (isCurrentlyVisible !== shouldBeVisible) {
-        onColumnVisibilityChange(columnKey, shouldBeVisible);
-      }
-    });
-
-    // デフォルトに含まれていないカラムを非表示に
-    columns
-      .map(col => col.accessorKey)
-      .filter(key => !defaultColumns.includes(key))
-      .forEach(key => {
-        if (visibleColumns.includes(key)) {
-          onColumnVisibilityChange(key, false);
-        }
-      });
+    onColumnVisibilityChange('', false, defaultColumns);
   };
 
   // 設定保存処理

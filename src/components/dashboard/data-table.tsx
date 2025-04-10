@@ -1578,14 +1578,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>
 
     // カラムの表示/非表示を切り替える関数
-    const handleColumnVisibilityChange = (columnKey: string, isVisible: boolean) => {
+    const handleColumnVisibilityChange = (columnKey: string, isVisible: boolean, newColumns?: string[]) => {
+      if (newColumns) {
+        // 一括更新の場合
+        setVisibleColumns(newColumns);
+        onColumnSettingsChange?.(newColumns);
+        return;
+      }
+
+      // 個別更新の場合
       const newVisibleColumns = isVisible
         ? [...visibleColumns, columnKey]
-        : visibleColumns.filter(key => key !== columnKey)
+        : visibleColumns.filter(key => key !== columnKey);
       
-      setVisibleColumns(newVisibleColumns)
-      onColumnSettingsChange?.(newVisibleColumns)
-    }
+      setVisibleColumns(newVisibleColumns);
+      onColumnSettingsChange?.(newVisibleColumns);
+    };
 
     // フィルタされたカラムを取得
     const filteredColumns = columns.filter(col => 
