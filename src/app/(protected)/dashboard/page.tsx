@@ -5,6 +5,8 @@ import { DataTable } from '@/components/dashboard/data-table'
 import { getDbData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
+import { displaySettingsApi } from '@/lib/display_settings_api'
+import { toast } from "@/hooks/use-toast"
 
 
 const headers = [
@@ -43,6 +45,8 @@ const Dashboard = () => {
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
   const [isPrOnly, setIsPrOnly] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([])
+  const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
 
   const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
     // ハッシュタグ用のフラグを引き継ぐ
@@ -308,7 +312,7 @@ const Dashboard = () => {
   };
 
   // 複数フィルターを処理する関数を追加
-  const handleMultipleFilters = (filters: Record<string, FilterValue>) => {
+  const handleMultipleFilters = (filters: Record<string, FilterQuery>) => {
     console.log('Dashboard - 複数フィルター処理:', filters);
     
     // すべてのフィルターをクリアするリセット信号をチェック
@@ -500,12 +504,54 @@ const Dashboard = () => {
     fetchData(1, newFilters);
   };
 
+  // 初期読み込み時に設定を取得
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const response = await displaySettingsApi.getSettings();
+        if (response.success && response.settings) {
+          const visibleColumnNames = response.settings.columns
+            .filter(col => col.is_visible)
+            .map(col => col.column_name);
+          setVisibleColumns(visibleColumnNames);
+        }
+        setIsSettingsLoaded(true);
+      } catch (error) {
+        console.error('設定読み込みエラー:', error);
+        toast({
+          title: "エラー",
+          description: "表示設定の読み込みに失敗しました",
+          variant: "destructive",
+        });
+        setIsSettingsLoaded(true);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // 設定の変更を処理
+  const handleColumnSettingsChange = (columns: string[]) => {
+    setVisibleColumns(columns);
+  };
+
+  // DataTableコンポーネントは設定のロードが完了してから表示
+  if (!isSettingsLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-screen-2xl">
         <DataTable 
           ref={tableRef}
           data={data}
+          defaultVisibleColumns={visibleColumns}
+          onColumnSettingsChange={handleColumnSettingsChange}
           onFilterChange={(hasFilters, filter) => {
             if (filter) {
               // 複数フィルターの場合の処理を追加

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Column } from '@/types/dashboard'
 import { Button } from "@/components/ui/button"
-import { SaveIcon } from "lucide-react"
+import { SaveIcon, RotateCcw } from "lucide-react"
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
 
@@ -23,8 +23,16 @@ interface HeaderProps {
   };
 }
 
-// 表示設定から除外するカラムのリスト
-const EXCLUDED_COLUMNS = ['description'] // キャプションのaccessorKeyを指定
+// デフォルト設定のカラム
+const defaultColumns = [
+  'url',
+  'thumbnail',
+  'account_name',
+  'created_at',
+  'play_count',
+  'likes_count',
+  'comment_count',
+]
 
 export const ColumnSettings = ({
   isOpen,
@@ -59,44 +67,26 @@ export const ColumnSettings = ({
         left: adjustedLeft
       })
     }
-  }, [isOpen]) // isOpenのみを依存配列に含める
+  }, [isOpen])
 
-  // 外側クリックで閉じる
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        popupRef.current &&
-        !popupRef.current.contains(event.target as Node) &&
-        anchorRef.current &&
-        !anchorRef.current.contains(event.target as Node)
-      ) {
-        onClose()
+  // デフォルト設定を適用する処理
+  const handleApplyDefault = () => {
+    columns.forEach(column => {
+      const shouldBeVisible = defaultColumns.includes(column.accessorKey);
+      if (visibleColumns.includes(column.accessorKey) !== shouldBeVisible) {
+        onColumnVisibilityChange(column.accessorKey, shouldBeVisible);
       }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [onClose])
-
-  // 表示設定から除外されたカラムをフィルタリング
-  const settableColumns = columns.filter(
-    column => !EXCLUDED_COLUMNS.includes(column.accessorKey)
-  )
+    });
+  };
 
   // 設定保存処理
   const handleSaveSettings = async () => {
     try {
       setIsSaving(true);
 
-      // 表示設定から除外されたカラムをフィルタリング
-      const settableColumns = columns.filter(
-        column => !EXCLUDED_COLUMNS.includes(column.accessorKey)
-      );
-
-      // APIに送信するデータの形式に変換
       const settings = {
-        is_default: true, // ベータ版では1ユーザー1設定
-        columns: settableColumns.map((column, index) => ({
+        is_default: false,
+        columns: columns.map((column, index) => ({
           column_name: column.accessorKey,
           is_visible: visibleColumns.includes(column.accessorKey),
           display_order: index
@@ -110,7 +100,7 @@ export const ColumnSettings = ({
           title: "設定を保存しました",
           description: "表示設定が正常に保存されました。",
         });
-        onClose(); // 保存成功時にポップアップを閉じる
+        onClose();
       } else {
         throw new Error(response.error || '保存に失敗しました');
       }
@@ -126,7 +116,7 @@ export const ColumnSettings = ({
     }
   };
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div
@@ -135,8 +125,8 @@ export const ColumnSettings = ({
       style={{ 
         top: `${position.top}px`,
         left: `${position.left}px`,
-        maxHeight: '80vh', // ビューポートの80%を最大高さに設定
-        overflowY: 'auto'  // 内容が多い場合はスクロール可能に
+        maxHeight: '80vh',
+        overflowY: 'auto'
       }}
     >
       <div className="flex justify-between items-center mb-4">
@@ -150,11 +140,11 @@ export const ColumnSettings = ({
           </svg>
         </button>
       </div>
-      
+
       <div className="space-y-2 max-h-[400px] overflow-y-auto">
-        {settableColumns.map((column) => {
-          const headerContent = column.header({ column }) as HeaderProps
-          const title = headerContent?.props?.title || column.accessorKey
+        {columns.map((column) => {
+          const headerContent = column.header({ column }) as HeaderProps;
+          const title = headerContent?.props?.title || column.accessorKey;
 
           return (
             <label
@@ -169,12 +159,20 @@ export const ColumnSettings = ({
               />
               <span className="text-sm text-gray-700">{title}</span>
             </label>
-          )
+          );
         })}
       </div>
 
-      {/* 保存ボタンを追加 */}
-      <div className="mt-4 pt-3 border-t border-gray-200">
+      <div className="mt-4 pt-3 border-t border-gray-200 space-y-2">
+        <Button
+          onClick={handleApplyDefault}
+          variant="outline"
+          className="w-full flex items-center justify-center gap-2"
+        >
+          <RotateCcw className="h-4 w-4" />
+          デフォルト設定に戻す
+        </Button>
+        
         <Button
           onClick={handleSaveSettings}
           disabled={isSaving}
@@ -185,5 +183,5 @@ export const ColumnSettings = ({
         </Button>
       </div>
     </div>
-  )
-} 
+  );
+}; 
