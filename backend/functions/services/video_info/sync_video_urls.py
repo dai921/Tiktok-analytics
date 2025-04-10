@@ -95,7 +95,7 @@ def sync_video_urls():
         print(f"バッチ処理情報: processor={processor_name}, target={target_table}, " 
               f"last_row={last_cursor_row}, batch_size={batch_size}, batch_number={batch_number}")
 
-        # SPREADSHEETの確認のみ行う
+        # SPREADSHEETの確認
         SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
         if not SPREADSHEET_ID:
             print("環境変数エラー: SPREADSHEET_IDが設定されていません")
@@ -149,6 +149,33 @@ def sync_video_urls():
         print("Sheetsサービス構築開始")
         service = build('sheets', 'v4', credentials=credentials)
         print("Sheetsサービス構築完了")
+
+        # 全体の処理対象件数を取得
+        print("全体の処理対象件数を取得中...")
+        total_range = '動画URL!B:E'  # B列からE列までの全範囲
+        total_result = service.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=total_range
+        ).execute()
+        total_values = total_result.get('values', [])
+        
+        # ヘッダー行を除いた処理対象の総件数を計算
+        total_rows = len(total_values) - 1 if total_values else 0
+        # フラグが1の行数をカウント（実際の処理対象件数）
+        total_target_rows = sum(1 for row in total_values[1:] if len(row) > 3 and row[3].strip() == '1')
+        
+        print(f"総行数: {total_rows}, 処理対象件数: {total_target_rows}")
+        
+        # 処理対象が0件の場合は終了
+        if total_target_rows == 0:
+            print("処理対象のデータが見つかりませんでした")
+            reset_cursor(processor_name, target_table)
+            publish_message('video-url-sync-status', {
+                'status': 'completed',
+                'message': '処理対象データなし',
+                'timestamp': datetime.now().isoformat()
+            })
+            return 'No data to process', 200
 
         # スプレッドシートからデータを読み取る（動画URLシート）
         print("動画URLシートデータ取得開始")
@@ -286,21 +313,23 @@ def sync_video_urls():
         remaining_values = remaining_result.get('values', [])
         remaining_count = len(remaining_values)
 
-        # Pub/Subメッセージを送信
+        # 進捗状況の更新（Pub/Subメッセージ送信部分を修正）
         if remaining_count > 0:
-            # 処理継続が必要な場合
+            progress_percentage = ((total_target_rows - remaining_count) / total_target_rows) * 100
             publish_message('video-url-sync-status', {
                 'status': 'in_progress',
-                'message': f'バッチ#{batch_number}完了、残り{remaining_count}件',
+                'message': f'バッチ#{batch_number}完了、残り{remaining_count}件（進捗: {progress_percentage:.1f}%）',
                 'batch_number': batch_number,
                 'remaining': remaining_count,
+                'total_targets': total_target_rows,
+                'progress_percentage': progress_percentage,
                 'timestamp': datetime.now().isoformat()
             })
         else:
-            # 全ての処理が完了した場合
             publish_message('video-url-sync-status', {
                 'status': 'completed',
                 'message': '全バッチの処理が完了しました',
+                'total_processed': total_target_rows,
                 'timestamp': datetime.now().isoformat()
             })
             

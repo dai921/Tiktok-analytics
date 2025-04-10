@@ -31,13 +31,12 @@ export interface FilterValue extends FilterQuery {
 export interface VideoData {
   id: string
   url: string
-  accountName: string
+  account_name: string
   videoId: string
-  thumbnail: {
+  thumbnail_url: {
     valueType: 'IMAGE'
     url: string
   } | null
-  displayName: string
   description: string
   likes: number
   views: number
@@ -114,24 +113,18 @@ export interface TableHeaderCellProps {
 }
 
 export interface DataTableProps {
-  initialData: {
-    data: VideoData[];
-    lastUpdated?: {
-      date: string;
-      isFiltered: boolean;
-      globalLastUpdated: string;
-    };
-  }
-  onFilterChange: (hasFilters: boolean, filter?: FilterQuery) => void
-  onPageChange: (page: number) => void
-  currentPage: number
-  totalPages: number
-  isLoading: boolean
-  isPrOnly: boolean
-  onPrOnlyChange: (isPrOnly: boolean) => void
-  pageSize?: number
-  onPageSizeChange?: (pageSize: number) => void
-  totalCount?: number
+  data: VideoData[];
+  onFilterChange: (hasFilters: boolean, filter: FilterValue) => void;
+  onPageChange: (page: number) => void;
+  currentPage: number;
+  totalPages: number;
+  isLoading?: boolean;
+  isPrOnly?: boolean;
+  onPrOnlyChange?: (isPrOnly: boolean) => void;
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
+  defaultVisibleColumns?: string[];
+  onColumnSettingsChange?: (columns: string[]) => void;
 }
 
 export interface FilterPopoverProps {
@@ -176,5 +169,10 @@ export interface CategoryData {
 export interface HashtagData {
   hashtag: string;
   count: number;
+}
+
+export interface Sort {
+  field: string;
+  direction: 'asc' | 'desc';
 }
 

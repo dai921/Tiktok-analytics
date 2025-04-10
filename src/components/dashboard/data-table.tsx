@@ -31,6 +31,8 @@ import { CSS } from '@dnd-kit/utilities'
 
 // フィルターポップアップコンポーネントのインポートを追加
 import { FilterPopup } from '@/components/ui/filter-popup'
+import { SettingsIcon } from '@/components/ui/settings-icon'
+import { ColumnSettings } from '@/components/ui/column-settings'
 
 interface DataTableProps {
   data: VideoData[];
@@ -43,6 +45,8 @@ interface DataTableProps {
   onPrOnlyChange: (isPrOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (pageSize: number) => void;
+  defaultVisibleColumns?: string[];
+  onColumnSettingsChange?: (visibleColumns: string[]) => void;
 }
 
 // フィルタ可能なカラムを定義
@@ -353,8 +357,27 @@ const SortableHeaderCell = ({ column, index }: { column: Column; index: number }
   );
 };
 
+// デフォルトで表示するカラムのリスト
+const DEFAULT_VISIBLE_COLUMNS = [
+  'thumbnail_url',    // サムネイル
+  'category',         // 動画ジャンル
+  'product',         // 商品名
+  'createdAt',       // 投稿日
+  'views',           // 再生数
+  'viewsIncrease',   // 再生増加数
+  'ten_days_increase', // 10日間再生増加数
+  'likes',           // いいね数
+  'comments',        // コメント数
+  'account_name',    // アカウント名
+  'hashtags',        // ハッシュタグ
+  'audioTitle',      // BGM
+]
+
+// 表示設定から除外するカラムのリスト
+const EXCLUDED_COLUMNS = ['description'] // キャプションは表示設定から除外
+
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
-  ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange }, ref) => {
+  ({ data, onFilterChange, onPageChange, currentPage, totalPages, isLoading = false, isPrOnly = false, onPrOnlyChange, pageSize = 10, onPageSizeChange, defaultVisibleColumns, onColumnSettingsChange }, ref) => {
     const [hasActiveFilters, setHasActiveFilters] = useState(false)
     const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({})
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null)
@@ -1545,39 +1568,70 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           </div>
         )
       },
-      {
-        accessorKey: 'description',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="キャプション"
-            onFilter={(value) => handleFilter('description')(value)}
-            isActive={Boolean(columnFilters['description'])}
-            sortPriority={primarySort?.field === 'description' ? 1 : secondarySort?.field === 'description' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[150px] min-w-[150px]">
-            <button 
-              onClick={() => setSelectedText({ 
-                title: 'キャプション', 
-                content: row.description 
-              })}
-              className="text-left w-full"
-            >
-              <span className="line-clamp-2 text-sm">
-                {row.description}
-              </span>
-            </button>
-          </div>
-        )
-      },
     ]
+
+    // カラム設定の状態を追加
+    const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false)
+    const [visibleColumns, setVisibleColumns] = useState<string[]>(
+      defaultVisibleColumns || DEFAULT_VISIBLE_COLUMNS
+    )
+    const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>
+
+    // カラムの表示/非表示を切り替える関数
+    const handleColumnVisibilityChange = (columnKey: string, isVisible: boolean, newColumns?: string[]) => {
+      if (newColumns) {
+        // 一括更新の場合
+        setVisibleColumns(newColumns);
+        onColumnSettingsChange?.(newColumns);
+        return;
+      }
+
+      // 個別更新の場合
+      const newVisibleColumns = isVisible
+        ? [...visibleColumns, columnKey]
+        : visibleColumns.filter(key => key !== columnKey);
+      
+      setVisibleColumns(newVisibleColumns);
+      onColumnSettingsChange?.(newVisibleColumns);
+    };
+
+    // フィルタされたカラムを取得
+    const filteredColumns = columns.filter(col => 
+      !EXCLUDED_COLUMNS.includes(col.accessorKey) && 
+      visibleColumns.includes(col.accessorKey)
+    )
+
+    // スクロール制御のためのeffect
+    useEffect(() => {
+      if (isColumnSettingsOpen) {
+        // スクロールを無効化
+        document.body.style.overflow = 'hidden'
+      } else {
+        // スクロールを有効化
+        document.body.style.overflow = 'unset'
+      }
+      
+      return () => {
+        // クリーンアップ時にスクロールを有効化
+        document.body.style.overflow = 'unset'
+      }
+    }, [isColumnSettingsOpen])
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
-        <div className="flex items-center p-3">
+        <div className="flex items-center justify-between p-3">
           <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
+          
+          {/* 表示設定ボタンをヘッダー右上に移動 */}
+          <button
+            ref={columnSettingsButtonRef}
+            onClick={() => setIsColumnSettingsOpen(true)}
+            className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
+          >
+            <SettingsIcon size={16} />
+            <span className="ml-1">表示設定</span>
+          </button>
         </div>
         
         <div className="flex items-center justify-between p-2">
@@ -1634,6 +1688,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           onClearAll={handleClearFilterInputs}
         />
         
+        {/* カラム設定ポップアップを追加 */}
+        <ColumnSettings
+          isOpen={isColumnSettingsOpen}
+          onClose={() => setIsColumnSettingsOpen(false)}
+          anchorRef={columnSettingsButtonRef}
+          columns={columns}
+          visibleColumns={visibleColumns}
+          onColumnVisibilityChange={handleColumnVisibilityChange}
+        />
+        
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
             {isLoading && (
@@ -1651,10 +1715,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <SortableContext
-                        items={orderedColumns.map(col => col.accessorKey)}
+                        items={filteredColumns.map(col => col.accessorKey)}
                         strategy={horizontalListSortingStrategy}
                       >
-                        {orderedColumns.map((column, index) => (
+                        {filteredColumns.map((column, index) => (
                           <SortableHeaderCell
                             key={column.accessorKey}
                             column={column}
@@ -1671,7 +1735,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                       key={`row-${row.id || rowIndex}`}
                       className="border-b hover:bg-gray-50 transition-colors duration-150 h-[100px]"
                     >
-                      {orderedColumns.map((column, colIndex) => (
+                      {filteredColumns.map((column, colIndex) => (
                         <td 
                           key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
                           className={`px-2 py-1 bg-white ${

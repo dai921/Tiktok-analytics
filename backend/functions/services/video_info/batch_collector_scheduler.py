@@ -18,6 +18,7 @@ PROJECT_ID = os.getenv('PROJECT_ID', 'tiktok-analytics-prod-451609')
 LOCATION = 'asia-northeast1'
 SCHEDULER_CLIENT = scheduler_v1.CloudSchedulerClient()
 
+@functions_framework.http
 def manage_video_collector_schedule(event, context):
     """
     Pub/Subからのメッセージを受け取り、video-collector関数のスケジュールを管理する
@@ -26,30 +27,20 @@ def manage_video_collector_schedule(event, context):
         if 'data' in event:
             message_data = base64.b64decode(event['data']).decode('utf-8')
             message_json = json.loads(message_data)
+            status = message_json.get("status")
+            last_video_id = message_json.get('last_video_id')
             
-            # アクションを取得
-            action = message_json.get("action")
-            processor_name = message_json.get("processor_name")
+            logger.info(f"ステータス更新を受信: {status}, last_video_id: {last_video_id}")
             
-            logger.info(f"アクションを受信: {action}, プロセッサー: {processor_name}")
-            
-            # video_collectorプロセッサーのみ処理
-            if processor_name != "video_collector":
-                logger.info(f"video_collector以外のプロセッサー: {processor_name}は無視します")
-                return {"status": "success", "message": f"無視されたプロセッサー: {processor_name}"}
-            
-            if action == "start_batch_controller":
-                # バッチコントローラー起動 - 3分後のスケジュールを設定
-                enable_delayed_schedule()
-                return {"status": "success", "action": "delayed_schedule_enabled"}
+            if status == "in_progress":
+                # バッチ処理進行中の処理
+                enable_frequent_schedule(last_video_id)
+                return {"status": "success", "action": "frequent_schedule_enabled"}
                 
-            elif action == "stop_scheduler":
-                # スケジューラー停止 - スケジュールを削除
-                disable_delayed_schedule()
-                return {"status": "success", "action": "schedule_disabled"}
-            else:
-                logger.warning(f"未知のアクション: {action}")
-                return {"status": "error", "message": f"未知のアクション: {action}"}
+            elif status == "completed":
+                # バッチ処理完了の処理
+                disable_frequent_schedule()
+                return {"status": "success", "action": "frequent_schedule_disabled"}
         
         return {"status": "error", "message": "Invalid message format"}
         
@@ -102,36 +93,10 @@ def disable_delayed_schedule():
     except NotFound:
         logger.info("3分後実行のスケジュールは既に削除されています")
 
-# 最後の動画かどうかを確認
-last_video_id = message_data.get('last_video_id')
-if last_video_id and last_video_id == message_data.get('video_id'):
-    logger.info(f"last_video_idとvideo_idが一致しました: {last_video_id}")
-    
-    # バッチ処理が完全に終了したかチェック
-    cursor_query = """
-        SELECT last_cursor_id
-        FROM processing_cursors
-        WHERE processor_name = 'video_collector'
-        ORDER BY updated_at DESC
-        LIMIT 1
-    """
-    cursor_results = execute_query(cursor_query)
-    
-    if cursor_results and cursor_results[0]['last_cursor_id'] == 0:
-        # 全バッチ完了の場合はスケジューラー停止
-        scheduler_message = {
-            "action": "stop_scheduler",
-            "processor_name": "video_collector",
-            "timestamp": datetime.now().isoformat()
-        }
-    else:
-        # まだバッチが残っている場合は次のバッチ開始
-        scheduler_message = {
-            "action": "start_batch_controller",
-            "processor_name": "video_collector",
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    # スケジューラーにメッセージ送信
-    scheduler_topic = "video-collector-status"
-    publish_message(scheduler_topic, scheduler_message) 
+def enable_frequent_schedule(last_video_id):
+    # Implementation of enable_frequent_schedule function
+    pass
+
+def disable_frequent_schedule():
+    # Implementation of disable_frequent_schedule function
+    pass 
