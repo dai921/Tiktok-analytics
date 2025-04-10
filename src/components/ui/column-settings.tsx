@@ -25,13 +25,18 @@ interface HeaderProps {
 
 // デフォルト設定のカラム
 const defaultColumns = [
-  'url',
-  'thumbnail',
-  'account_name',
-  'created_at',
-  'play_count',
-  'likes_count',
-  'comment_count',
+  'thumbnail_url',    // サムネイル
+  'category',         // 動画ジャンル
+  'product',         // 商品名
+  'createdAt',       // 投稿日
+  'views',           // 再生数
+  'viewsIncrease',   // 再生増加数
+  'ten_days_increase', // 10日間再生増加数
+  'likes',           // いいね数
+  'comments',        // コメント数
+  'account_name',    // アカウント名
+  'hashtags',        // ハッシュタグ
+  'audioTitle',      // BGM
 ]
 
 export const ColumnSettings = ({
@@ -71,12 +76,26 @@ export const ColumnSettings = ({
 
   // デフォルト設定を適用する処理
   const handleApplyDefault = () => {
-    columns.forEach(column => {
-      const shouldBeVisible = defaultColumns.includes(column.accessorKey);
-      if (visibleColumns.includes(column.accessorKey) !== shouldBeVisible) {
-        onColumnVisibilityChange(column.accessorKey, shouldBeVisible);
+    // デフォルト設定のカラムを一括で更新
+    defaultColumns.forEach(columnKey => {
+      const isCurrentlyVisible = visibleColumns.includes(columnKey);
+      const shouldBeVisible = defaultColumns.includes(columnKey);
+      
+      // 現在の状態と異なる場合のみ更新
+      if (isCurrentlyVisible !== shouldBeVisible) {
+        onColumnVisibilityChange(columnKey, shouldBeVisible);
       }
     });
+
+    // デフォルトに含まれていないカラムを非表示に
+    columns
+      .map(col => col.accessorKey)
+      .filter(key => !defaultColumns.includes(key))
+      .forEach(key => {
+        if (visibleColumns.includes(key)) {
+          onColumnVisibilityChange(key, false);
+        }
+      });
   };
 
   // 設定保存処理
