@@ -20,6 +20,7 @@ from flask import Flask, request, Response
 import jwt
 import time
 from functools import wraps
+from TikTokApi.stealth.stelth import StealthConfig, stealth_async
 
 # ロギング設定を更新
 logging.basicConfig(
@@ -127,6 +128,9 @@ class VideoProcessor:
         self.app = Flask(__name__)
         self.setup_routes()
 
+        # ステルス設定の初期化（デフォルト設定を使用）
+        self.stealth_config = StealthConfig()
+
     def setup_routes(self):
         """Flaskルートの設定"""
         self.app.route('/pubsub', methods=['POST'])(self.handle_pubsub_message)
@@ -231,25 +235,6 @@ class VideoProcessor:
     def get_random_user_agent(self) -> str:
         return random.choice(self.user_agents)
 
-    async def apply_enhanced_stealth(self, page):
-        """ステルス対策を適用"""
-        await page.add_init_script("""
-        (() => {
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            window.chrome = {
-                runtime: {}
-            };
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
-            });
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en'],
-            });
-        })();
-        """)
-
     async def get_api_instance(self):
         """TikTokApiのインスタンスを取得（並行処理に対応）"""
         async with self.api_lock:
@@ -258,7 +243,6 @@ class VideoProcessor:
                 api = TikTokApi()
                 
                 try:
-                    # セマフォアと同じ数のセッションを作成
                     num_sessions = len(self.session_locks)
                     self.logger.debug(f"{num_sessions}個のセッションを作成します")
                     
@@ -273,13 +257,15 @@ class VideoProcessor:
                         }
                     )
                     
-                    # セッション作成直後に属性を確認
-                    if not hasattr(api, 'num_sessions') or api.num_sessions != num_sessions:
-                        api.num_sessions = num_sessions
-                        self.logger.debug(f"num_sessions属性を{num_sessions}に設定しました")
+                    # 各セッションにステルス設定を適用
+                    for session in api.sessions:
+                        for page in await session.context.pages():
+                            await stealth_async(page, self.stealth_config)
+                            self.logger.debug("ステルス設定を適用しました")
                     
                     self.api_instance = api
                     self.logger.debug(f"TikTokAPIインスタンス作成完了: {api.num_sessions}個のセッション")
+                    
                 except Exception as e:
                     self.logger.error(f"TikTokAPIインスタンス作成エラー: {str(e)}")
                     raise
@@ -399,59 +385,9 @@ class VideoProcessor:
                                     self.logger.debug(f"最終結果: {json.dumps(result)}")
                                 else:
                                     self.logger.debug(f"カルーセル処理開始: content_type={content_type}, url={url}")
-                                    carousel_dir = os.path.join(self.storage_dir, f"carousel_{video_id}")
-                                    os.makedirs(carousel_dir, exist_ok=True)
-                                    self.logger.debug(f"カルーセルディレクトリ作成: {carousel_dir}")
-
-                                    # カルーセル処理のコード
-                                    image_urls = []
-                                    slide_count = 0
-                                    while True:
-                                        slide_count += 1
-                                        self.logger.debug(f"スライド {slide_count} の処理開始")
-                                        
-                                        img_elements = await page.query_selector_all('img.css-brxox6-ImgPhotoSlide')
-                                        self.logger.debug(f"検出された画像要素数: {len(img_elements)}")
-                                        
-                                        for elem in img_elements:
-                                            src = await elem.get_attribute('src')
-                                            if src and src.startswith('http') and src not in image_urls:
-                                                image_urls.append(src)
-                                                self.logger.debug(f"新しい画像URLを追加: {src}")
-                                        
-                                        try:
-                                            next_button = await page.wait_for_selector('button[class*="NextButton"]', timeout=2000)
-                                            if next_button:
-                                                await next_button.click()
-                                                self.logger.debug("次のスライドに移動")
-                                                await asyncio.sleep(1)
-                                            else:
-                                                self.logger.debug("次のスライドボタンが見つからないため終了")
-                                                break
-                                        except Exception as e:
-                                            self.logger.debug(f"スライド処理終了: {str(e)}")
-                                            break
-
-                                    # 画像のダウンロードと保存
-                                    self.logger.debug(f"画像ダウンロード開始: {len(image_urls)}個の画像")
-                                    saved_images = []
-                                    for i, img_url in enumerate(image_urls, 1):
-                                        try:
-                                            response = requests.get(img_url)
-                                            if response.status_code == 200:
-                                                image_path = os.path.join(carousel_dir, f"image_{i:02d}.jpg")
-                                                with open(image_path, 'wb') as f:
-                                                    f.write(response.content)
-                                                saved_images.append(image_path)
-                                                self.logger.debug(f"画像 {i} を保存: {image_path}")
-                                        except Exception as e:
-                                            self.logger.error(f"画像 {i} のダウンロード失敗: {str(e)}")
-
                                     result = {
                                         **base_result,
                                         "status": "success",
-                                        "folder_path": carousel_dir if saved_images else None,
-                                        "image_count": len(saved_images),
                                         "type": "carousel"
                                     }
                                     self.logger.debug(f"カルーセル処理結果: {json.dumps(result)}")
@@ -602,34 +538,15 @@ class VideoProcessor:
             raise
 
     async def _process_video(self, url: str, video_id: str) -> Dict[str, Any]:
-        """動画のダウンロードと保存"""
-        temp_path = os.path.join(self.temp_dir, f"{video_id}")
-        storage_path = os.path.join(self.storage_dir, f"{video_id}")
-        
+        """動画の処理（メタデータのみ）"""
         try:
-            ydl_opts = {
-                'outtmpl': f"{temp_path}.%(ext)s",
-                'format': 'bestvideo+bestaudio/best',
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "type": "video"
             }
-            
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                downloaded_file = ydl.prepare_filename(info)
-                
-                # ストレージに移動
-                final_path = f"{storage_path}.{downloaded_file.split('.')[-1]}"
-                shutil.move(downloaded_file, final_path)
-                
-                self.logger.info(f"動画を保存しました: {final_path}")
-                return {
-                    "status": "success",
-                    "video_id": video_id,
-                    "file_path": final_path,
-                    "type": "video"
-                }
-                
         except Exception as e:
-            self.logger.error(f"動画ダウンロード中にエラー: {str(e)}")
+            self.logger.error(f"動画処理中にエラー: {str(e)}")
             return {
                 "status": "error",
                 "video_id": video_id,
@@ -659,10 +576,7 @@ class VideoProcessor:
         """コンテンツが削除されているかチェック"""
         try:
             async with async_playwright() as p:
-                # 日本語ロケールとタイムゾーンを設定
-                browser = await p.chromium.launch(
-                    headless=True,
-                )
+                browser = await p.chromium.launch(headless=True)
                 context = await browser.new_context(
                     locale='ja-JP',
                     timezone_id='Asia/Tokyo',
@@ -670,32 +584,39 @@ class VideoProcessor:
                 )
                 page = await context.new_page()
                 
+                # 公式のステルス設定のみを適用
+                await stealth_async(page, self.stealth_config)
+                
                 await page.goto(url, wait_until='domcontentloaded')
                 await asyncio.sleep(2)
                 
-                # 削除されているかチェック
-                dead_link_selector = 'p.css-1y4x9xk-PTitle'
-                try:
-                    element = await page.wait_for_selector(dead_link_selector, timeout=2000)
-                    if element:
-                        text = await element.text_content()
-                        self.logger.info(f"削除メッセージを検出: '{text}'")  # 実際のメッセージをログ出力
-                        return any(msg in text for msg in [
-                            "動画は現在ご利用できません",
-                            "Video currently unavailable",
-                            "This video is unavailable",
-                            "このビデオは削除されました",
-                            "このビデオは利用できません"
-                        ])
-                except:
-                    return False
-                finally:
-                    await context.close()
-                    await browser.close()
-                    
+                # 削除チェック
+                selectors = [
+                    'p.css-1y4x9xk-PTitle',
+                    'p[data-e2e].css-1y4x9xk-PTitle'
+                ]
+                
+                for selector in selectors:
+                    try:
+                        element = await page.wait_for_selector(selector, timeout=2000)
+                        if element:
+                            text = await element.text_content()
+                            self.logger.info(f"削除メッセージを検出: '{text}'")
+                            if "動画は現在ご利用できません" in text:
+                                return True
+                    except:
+                        continue
+                
+                return False
+                
         except Exception as e:
             self.logger.error(f"削除チェック中にエラー: {str(e)}")
             return False
+        finally:
+            if 'context' in locals():
+                await context.close()
+            if 'browser' in locals():
+                await browser.close()
 
     def cleanup(self):
         """一時ファイルの削除"""
