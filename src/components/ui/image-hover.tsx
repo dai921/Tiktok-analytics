@@ -151,11 +151,11 @@ export function ImageHover({
                         <p className="text-2xl font-bold leading-none">{formatNumber(videoData.views)}</p>
                       </div>
                       <div>
-                        <h4 className="text-sm text-gray-600 mb-1">2日間の伸び</h4>
+                        <h4 className="text-sm text-gray-600 mb-1">2日間増加数</h4>
                         <p className="text-2xl font-bold leading-none text-blue-600">{formatGrowth(videoData.viewsIncrease)}</p>
                       </div>
                       <div>
-                        <h4 className="text-sm text-gray-600 mb-1">10日間の伸び</h4>
+                        <h4 className="text-sm text-gray-600 mb-1">10日間増加数</h4>
                         <p className="text-2xl font-bold leading-none text-green-600">{formatGrowth(videoData.ten_days_increase)}</p>
                       </div>
                     </div>

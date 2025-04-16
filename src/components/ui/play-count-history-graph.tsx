@@ -131,9 +131,9 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
         <ComposedChart
           data={processedData}  // 加工したデータを使用
           margin={{
-            top: 20,
+            top: 40,
             right: 30,
-            left: 10,
+            left: 20,
             bottom: 30,
           }}
         >
@@ -173,9 +173,9 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
             tickLine={{ stroke: '#fce7f3' }}
             label={{ 
               value: '再生回数',
-              angle: -90,
-              position: 'left',
-              offset: 0,
+              angle: 0,
+              position: 'insideTopLeft',
+              offset: -20,
               style: { fill: '#64748b', fontSize: 12 }
             }}
             dx={-10}
