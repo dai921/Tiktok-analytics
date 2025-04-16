@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir \
     google-cloud-pubsub \
     google-cloud-storage \
     aiohttp \
-    TikTokApi==7.0.0 \
+    TikTokApi \
     yt-dlp
 
 # Playwrightのインストールと設定

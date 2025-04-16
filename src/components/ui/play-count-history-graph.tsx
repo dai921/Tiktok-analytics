@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area } from 'recharts'
 import { format } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
@@ -120,39 +120,108 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
   }
 
   return (
-    <div className="h-[300px] w-full">
+    <div className="h-[300px] w-full bg-white rounded-lg p-6">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
+        <ComposedChart
           data={data}
           margin={{
-            top: 5,
-            right: 5,
-            left: 5,
-            bottom: 5,
+            top: 20,
+            right: 30,
+            left: 10,
+            bottom: 30,
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" />
+          <defs>
+            <linearGradient id="playCountGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#ec4899" stopOpacity={0.5}/>
+              <stop offset="95%" stopColor="#ec4899" stopOpacity={0.05}/>
+            </linearGradient>
+          </defs>
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#fce7f3"
+            horizontal={true}
+            vertical={false}
+          />
           <XAxis
             dataKey="collection_date"
             tickFormatter={formatDate}
             interval="preserveStartEnd"
+            stroke="#94a3b8"
+            tick={{ fontSize: 12, fill: '#64748b' }}
+            axisLine={{ stroke: '#fce7f3' }}
+            tickLine={{ stroke: '#fce7f3' }}
+            label={{ 
+              value: '日付',
+              position: 'bottom',
+              offset: 20,
+              style: { fill: '#64748b', fontSize: 12 }
+            }}
+            dy={10}
           />
           <YAxis
             tickFormatter={formatValue}
+            stroke="#94a3b8"
+            tick={{ fontSize: 12, fill: '#64748b' }}
+            axisLine={{ stroke: '#fce7f3' }}
+            tickLine={{ stroke: '#fce7f3' }}
+            label={{ 
+              value: '再生回数',
+              angle: -90,
+              position: 'left',
+              offset: 0,
+              style: { fill: '#64748b', fontSize: 12 }
+            }}
+            dx={-10}
           />
           <Tooltip
-            labelFormatter={formatDate}
-            formatter={(value: number) => [formatValue(value), '再生増加数']}
+            contentStyle={{
+              backgroundColor: 'rgba(255, 255, 255, 0.98)',
+              border: 'none',
+              borderRadius: '8px',
+              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
+              padding: '12px 16px',
+            }}
+            labelFormatter={(label) => `${formatDate(label)}`}
+            formatter={(value: number) => [
+              `${formatValue(value)}回`,
+              '再生数'
+            ]}
+            labelStyle={{ 
+              color: '#64748b',
+              fontSize: '12px',
+              marginBottom: '4px'
+            }}
+            itemStyle={{
+              color: '#ec4899',
+              fontSize: '14px',
+              fontWeight: 500,
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="play_count_increase"
+            fill="url(#playCountGradient)"
+            stroke="none"
+            fillOpacity={0.8}
           />
           <Line
             type="monotone"
             dataKey="play_count_increase"
-            stroke="#ef4444"
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4 }}
+            stroke="#ec4899"
+            strokeWidth={2.5}
+            dot={{
+              r: 2.5,
+              fill: '#ec4899',
+              strokeWidth: 0,
+            }}
+            activeDot={{
+              r: 5,
+              fill: '#ec4899',
+              strokeWidth: 0,
+            }}
           />
-        </LineChart>
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   )

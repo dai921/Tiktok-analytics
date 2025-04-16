@@ -20,7 +20,6 @@ from flask import Flask, request, Response
 import jwt
 import time
 from functools import wraps
-from TikTokApi.stealth.stelth import StealthConfig, stealth_async
 
 # ロギング設定を更新
 logging.basicConfig(
@@ -39,10 +38,10 @@ class VideoProcessor:
         self.logger.info(f"起動環境: {self.environment}")
         
         # セマフォアを緩和（同時に処理できるリクエスト数を増やす）
-        self.semaphore = asyncio.Semaphore(3)  # 1から3に変更
+        self.semaphore = asyncio.Semaphore(1)  # 1から3に変更
         
         # セッション管理用の変数
-        self.session_locks = [asyncio.Lock() for _ in range(3)]  # 各セッション用のロック
+        self.session_locks = [asyncio.Lock() for _ in range(1)]  # 各セッション用のロック
         self.api_lock = asyncio.Lock()  # APIインスタンス全体のロック
         self.api_instance = None  # 共有APIインスタンス
         
@@ -128,8 +127,6 @@ class VideoProcessor:
         self.app = Flask(__name__)
         self.setup_routes()
 
-        # ステルス設定の初期化（デフォルト設定を使用）
-        self.stealth_config = StealthConfig()
 
     def setup_routes(self):
         """Flaskルートの設定"""
@@ -249,7 +246,7 @@ class VideoProcessor:
                     await api.create_sessions(
                         num_sessions=num_sessions,
                         headless=True,
-                        sleep_after=1,
+                        sleep_after=5,
                         browser="chromium",
                         context_options={
                             "viewport": {"width": 1920, "height": 1080},
@@ -257,11 +254,6 @@ class VideoProcessor:
                         }
                     )
                     
-                    # 各セッションにステルス設定を適用
-                    for session in api.sessions:
-                        for page in await session.context.pages():
-                            await stealth_async(page, self.stealth_config)
-                            self.logger.debug("ステルス設定を適用しました")
                     
                     self.api_instance = api
                     self.logger.debug(f"TikTokAPIインスタンス作成完了: {api.num_sessions}個のセッション")
@@ -584,8 +576,6 @@ class VideoProcessor:
                 )
                 page = await context.new_page()
                 
-                # 公式のステルス設定のみを適用
-                await stealth_async(page, self.stealth_config)
                 
                 await page.goto(url, wait_until='domcontentloaded')
                 await asyncio.sleep(2)
