@@ -59,8 +59,8 @@ export function ImageHover({ src, alt, videoUrl, videoId, videoData }: ImageHove
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex flex-col md:flex-row h-full">
-                {/* 左側: 埋め込み動画 */}
-                <div className="w-full md:w-2/3 h-[700px] md:h-[800px] relative bg-black flex items-center justify-center">
+                {/* 左側: 埋め込み動画 - 横幅をさらに狭く */}
+                <div className="w-full md:w-1/2 h-[600px] md:h-[700px] relative bg-black flex items-center justify-center">
                   <button
                     onClick={handleClose}
                     className="absolute top-2 right-2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
@@ -77,15 +77,18 @@ export function ImageHover({ src, alt, videoUrl, videoId, videoData }: ImageHove
                   )}
                 </div>
                 
-                {/* 右側: 動画情報 */}
-                <div className="w-full md:w-1/3 p-6 bg-gray-50 h-[700px] md:h-[800px] overflow-y-auto">
-                  <VideoDetails videoData={videoData} videoUrl={videoUrl} />
-                  
+                {/* 右側: 動画情報 - 横幅をさらに広く */}
+                <div className="w-full md:w-1/2 p-6 bg-gray-50 h-[600px] md:h-[700px] overflow-y-auto">
                   {/* 再生数推移グラフ */}
-                  <div className="mt-6">
+                  <div className="mb-6">
                     <h3 className="text-lg font-semibold mb-4">再生数推移</h3>
-                    <PlayCountHistoryGraph videoUrl={videoUrl} />
+                    <div className="-mx-6">
+                      <PlayCountHistoryGraph videoUrl={videoUrl} />
+                    </div>
                   </div>
+
+                  {/* 動画情報 */}
+                  <VideoDetails videoData={videoData} videoUrl={videoUrl} />
                 </div>
               </div>
             </div>

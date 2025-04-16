@@ -120,7 +120,7 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
   }
 
   return (
-    <div className="h-[300px] w-full bg-white rounded-lg p-6">
+    <div className="h-[250px] w-full bg-white rounded-lg p-4">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={data}
@@ -183,10 +183,12 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
               padding: '12px 16px',
             }}
             labelFormatter={(label) => `${formatDate(label)}`}
-            formatter={(value: number) => [
-              `${formatValue(value)}回`,
-              '再生数'
-            ]}
+            formatter={(value: number, name: string) => {
+              if (name === '_area') {
+                return ['', ''];
+              }
+              return [`${formatValue(value)}回`, name];
+            }}
             labelStyle={{ 
               color: '#64748b',
               fontSize: '12px',
@@ -204,6 +206,7 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
             fill="url(#playCountGradient)"
             stroke="none"
             fillOpacity={0.8}
+            name="_area"
           />
           <Line
             type="monotone"
@@ -220,6 +223,7 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
               fill: '#ec4899',
               strokeWidth: 0,
             }}
+            name="再生数"
           />
         </ComposedChart>
       </ResponsiveContainer>
