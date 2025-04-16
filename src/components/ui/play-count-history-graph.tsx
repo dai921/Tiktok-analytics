@@ -119,11 +119,17 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
     return new Intl.NumberFormat('ja-JP').format(value)
   }
 
+  // データを加工して新しいキーを追加
+  const processedData = data.map(item => ({
+    ...item,
+    play_count_gradient: item.play_count_increase // グラデーション用の同じ値を別キーで保持
+  }))
+
   return (
-    <div className="h-[250px] w-full bg-white rounded-lg p-4">
+    <div className="h-[300px] w-full bg-white rounded-lg p-6">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
-          data={data}
+          data={processedData}  // 加工したデータを使用
           margin={{
             top: 20,
             right: 30,
@@ -174,6 +180,17 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
             }}
             dx={-10}
           />
+          <Area
+            type="monotone"
+            dataKey="play_count_gradient"
+            fill="url(#playCountGradient)"
+            stroke="none"
+            fillOpacity={0.8}
+            isAnimationActive={false}
+            legendType="none"
+            hide={false}
+            tooltipType="none"
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: 'rgba(255, 255, 255, 0.98)',
@@ -184,10 +201,13 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
             }}
             labelFormatter={(label) => `${formatDate(label)}`}
             formatter={(value: number, name: string) => {
-              if (name === '_area') {
-                return ['', ''];
+              // play_count_gradientの場合は undefined を返す（nullではなく）
+              if (name === "play_count_gradient") {
+                return undefined
               }
-              return [`${formatValue(value)}回`, name];
+              if (name === "play_count_increase") {
+                return [`${formatValue(value)}回`, '再生数']
+              }
             }}
             labelStyle={{ 
               color: '#64748b',
@@ -200,17 +220,9 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
               fontWeight: 500,
             }}
           />
-          <Area
-            type="monotone"
-            dataKey="play_count_increase"
-            fill="url(#playCountGradient)"
-            stroke="none"
-            fillOpacity={0.8}
-            name="_area"
-          />
           <Line
             type="monotone"
-            dataKey="play_count_increase"
+            dataKey="play_count_increase"  // 元のキーはそのまま
             stroke="#ec4899"
             strokeWidth={2.5}
             dot={{
@@ -223,7 +235,6 @@ export function PlayCountHistoryGraph({ videoUrl }: PlayCountHistoryGraphProps) 
               fill: '#ec4899',
               strokeWidth: 0,
             }}
-            name="再生数"
           />
         </ComposedChart>
       </ResponsiveContainer>
