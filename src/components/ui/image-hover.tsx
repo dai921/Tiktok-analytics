@@ -137,7 +137,7 @@ export function ImageHover({
                 <div className="w-full md:w-1/2 p-6 bg-gray-50 h-[700px] md:h-[800px] overflow-y-auto flex flex-col">
                   <div className="space-y-6 flex-1">
                     {/* 再生数推移グラフ */}
-                    <div>
+                    <div className="order-3 mt-12">
                       <h3 className="text-lg font-semibold mb-4">再生数推移</h3>
                       <div className="-mx-6">
                         <PlayCountHistoryGraph videoUrl={videoUrl} />
@@ -145,7 +145,7 @@ export function ImageHover({
                     </div>
 
                     {/* 再生数情報 - 1列に変更 */}
-                    <div className="grid grid-cols-3 gap-0">
+                    <div className="grid grid-cols-3 gap-0 order-1 mt-8">
                       <div>
                         <h4 className="text-sm text-gray-600 mb-1">総再生数</h4>
                         <p className="text-2xl font-bold leading-none">{formatNumber(videoData.views)}</p>
@@ -161,14 +161,14 @@ export function ImageHover({
                     </div>
 
                     {/* 投稿日 */}
-                    <div>
+                    <div className="order-2">
                       <h4 className="text-sm text-gray-600 mb-1">投稿日</h4>
                       <p className="text-xl font-medium leading-none">{formatDate(videoData.createdAt)}</p>
                     </div>
                   </div>
 
                   {/* ウォッチリストに保存 */}
-                  <div className="mt-auto pt-6 mb-auto">
+                  <div className="mb-12">
                     <h3 className="text-base font-semibold">ウォッチリストに追加</h3>
                     <div className="flex gap-4 mt-2">
                       <button
