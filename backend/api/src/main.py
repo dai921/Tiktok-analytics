@@ -1397,6 +1397,94 @@ async def update_session_middleware(request: Request, call_next):
     
     return response
 
+@app.get("/api/video/play-count-history/{video_id}")
+async def get_video_play_count_history(
+    video_id: str,
+    days: Optional[int] = 30
+):
+    logger.info(f"再生数履歴取得リクエスト受信: video_id={video_id}, days={days}")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # テーブル存在確認
+        cursor.execute("SHOW TABLES")
+        tables = cursor.fetchall()
+        tables_list = [t[0] for t in tables]
+        logger.info(f"利用可能なテーブル: {tables_list}")
+        
+        if 'play_count_history' not in tables_list:
+            logger.error("play_count_historyテーブルが存在しません")
+            return {
+                "success": False,
+                "error": "必要なテーブルが存在しません",
+                "video_id": video_id,
+                "history": []
+            }
+
+        # video_idの形式チェック
+        if not video_id.isdigit():
+            logger.warning(f"無効な動画ID形式: {video_id}")
+            return {
+                "success": False,
+                "error": "無効な動画ID形式です",
+                "video_id": video_id,
+                "history": []
+            }
+
+        # 通常のカーソルを使用
+        cursor = conn.cursor()
+
+        query = """
+        SELECT 
+            collection_date,
+            play_count_increase
+        FROM play_count_history
+        WHERE 
+            video_id = %s
+            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+        ORDER BY collection_date ASC
+        """
+        
+        # クエリ実行前のデバッグログ
+        logger.info(f"実行するクエリ: {query}")
+        logger.info(f"パラメータ: video_id={video_id}, days={days}")
+        
+        cursor.execute(query, (video_id, days))
+        results = cursor.fetchall()
+        
+        # 結果のデバッグログ
+        logger.info(f"取得した結果: {results}")
+
+        # 結果を整形
+        history = []
+        for result in results:
+            history.append({
+                "collection_date": result[0].strftime("%Y-%m-%d"),
+                "play_count_increase": result[1] if result[1] is not None else 0
+            })
+
+        return {
+            "success": True,
+            "video_id": video_id,
+            "history": history
+        }
+
+    except Exception as e:
+        logger.error(f"再生数履歴取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "video_id": video_id,
+            "history": []
+        }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":
     print("Starting application via __main__")

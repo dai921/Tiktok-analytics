@@ -1,52 +1,48 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Image from 'next/image'
 import { Portal } from '@radix-ui/react-portal'
-import { X } from 'lucide-react'
+import { X, Bookmark, UserPlus } from 'lucide-react'
+import { PlayCountHistoryGraph } from './play-count-history-graph'
 
 interface ImageHoverProps {
   src: string
   alt: string
   videoUrl: string
-  videoData?: any // VideoDataの型は実際のデータに合わせて調整
+  videoId?: string
+  videoData: {
+    views: number
+    viewsIncrease: number
+    ten_days_increase: number
+    createdAt: string
+  }
+  onSaveVideo?: () => void
+  onSaveAccount?: () => void
 }
 
-export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
+export function ImageHover({ 
+  src, 
+  alt, 
+  videoUrl, 
+  videoId, 
+  videoData,
+  onSaveVideo,
+  onSaveAccount 
+}: ImageHoverProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const extractTikTokId = useCallback((url: string): string => {
-    try {
-      const urlObj = new URL(url)
-      if (!urlObj.hostname.includes('tiktok.com')) {
-        throw new Error('TikTokのURLではありません')
-      }
-
-      // /video/ または /photo/ のパターンに対応
-      const matches = url.match(/(?:video|photo)\/(\d+)/)
-      if (!matches) {
-        throw new Error('コンテンツIDが見つかりません')
-      }
-
-      return matches[1]
-    } catch (e) {
-      console.error('URL解析エラー:', e)
-      setError('コンテンツの読み込みに失敗しました')
-      return ''
-    }
+  const handleClose = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsOpen(false)
   }, [])
 
-  const generateEmbedCode = useCallback((url: string) => {
-    const videoId = extractTikTokId(url)
-    if (!videoId) return ''
+  const handleOpen = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsOpen(true)
+  }, [])
 
-    return `<blockquote class="tiktok-embed" cite="${url}" data-video-id="${videoId}">
-      <section></section>
-    </blockquote>`
-  }, [extractTikTokId])
-
-  // TikTokの埋め込みスクリプトを読み込む
   useEffect(() => {
     if (isOpen) {
       const script = document.createElement('script')
@@ -60,19 +56,25 @@ export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
     }
   }, [isOpen])
 
-  const handleClose = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    setIsOpen(false)
-  }, [])
-
-  const handleOpen = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    setIsOpen(true)
-  }, [])
-
-  // 数値をフォーマットする関数
   const formatNumber = (num: number): string => {
-    return new Intl.NumberFormat('ja-JP').format(num);
+    return new Intl.NumberFormat('ja-JP').format(num)
+  }
+
+  const formatGrowth = (growth: number): string => {
+    return growth > 0 ? `+${growth.toFixed(1)}%` : `${growth.toFixed(1)}%`
+  }
+
+  const formatDate = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
+  const extractVideoId = (url: string): string => {
+    const match = url.match(/video\/(\d+)/)
+    return match ? match[1] : ''
   }
 
   return (
@@ -100,12 +102,12 @@ export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
             onClick={handleClose}
           >
             <div 
-              className="relative max-w-5xl w-full bg-white rounded-lg shadow-xl overflow-hidden max-h-[95vh]"
+              className="relative max-w-6xl w-full bg-white rounded-lg shadow-xl overflow-hidden max-h-[95vh]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex flex-col md:flex-row h-full">
-                {/* 左側: 埋め込み動画 - 高さをさらに増やす */}
-                <div className="w-full md:w-2/3 h-[700px] md:h-[800px] relative bg-black flex items-center justify-center">
+                {/* 左側: 埋め込み動画 - 高さを調整 */}
+                <div className="w-full md:w-1/2 h-[700px] md:h-[800px] relative bg-black flex items-center justify-center">
                   <button
                     onClick={handleClose}
                     className="absolute top-2 right-2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
@@ -118,90 +120,70 @@ export function ImageHover({ src, alt, videoUrl, videoData }: ImageHoverProps) {
                       {error}
                     </div>
                   ) : (
-                    <div 
-                      className="w-full h-full"
-                      dangerouslySetInnerHTML={{ 
-                        __html: generateEmbedCode(videoUrl)
-                      }} 
-                    />
+                    <div className="w-full h-full flex items-center justify-center">
+                      <blockquote
+                        className="tiktok-embed"
+                        cite={videoUrl}
+                        data-video-id={extractVideoId(videoUrl)}
+                        style={{ maxWidth: '100%' }}
+                      >
+                        <section></section>
+                      </blockquote>
+                    </div>
                   )}
                 </div>
                 
-                {/* 右側: 動画情報 - 動画エリアと同じ高さに合わせる */}
-                <div className="w-full md:w-1/3 p-6 bg-gray-50 h-[700px] md:h-[800px] overflow-y-auto">
-                  <h2 className="text-xl font-bold mb-6 text-gray-800">動画詳細</h2>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <div className="text-gray-500 text-xs mb-1">アカウント:</div>
-                      <div className="font-bold text-gray-900">{videoData?.accountName || '不明'}</div>
-                      {videoData?.display_name && (
-                        <div className="text-xs text-gray-500">{videoData.display_name}</div>
-                      )}
+                {/* 右側: 動画情報 */}
+                <div className="w-full md:w-1/2 p-6 bg-gray-50 h-[700px] md:h-[800px] overflow-y-auto flex flex-col">
+                  <div className="space-y-6 flex-1">
+                    {/* 再生数推移グラフ */}
+                    <div className="order-3 mt-12">
+                      <h3 className="text-lg font-semibold mb-4">再生数推移</h3>
+                      <div className="-mx-6">
+                        <PlayCountHistoryGraph videoUrl={videoUrl} />
+                      </div>
                     </div>
-                    
-                    {videoData?.description && (
+
+                    {/* 再生数情報 - 1列に変更 */}
+                    <div className="grid grid-cols-3 gap-0 order-1 mt-8">
                       <div>
-                        <div className="text-gray-500 text-xs mb-1">キャプション:</div>
-                        <div className="text-gray-900 text-sm whitespace-pre-wrap break-words">
-                          {videoData.description}
-                        </div>
+                        <h4 className="text-sm text-gray-600 mb-1">総再生数</h4>
+                        <p className="text-2xl font-bold leading-none">{formatNumber(videoData.views)}</p>
                       </div>
-                    )}
-                    
-                    <div>
-                      <div className="text-gray-500 text-xs mb-1">投稿日:</div>
-                      <div className="text-gray-900">{videoData?.createdAt || '不明'}</div>
-                    </div>
-                    
-                    <div>
-                      <div className="text-gray-500 text-xs mb-1">動画ジャンル:</div>
-                      <div className="bg-red-100 text-red-600 inline-block px-2 py-1 rounded text-sm">
-                        {videoData?.category || 'なし'}
+                      <div>
+                        <h4 className="text-sm text-gray-600 mb-1">2日間増加数</h4>
+                        <p className="text-2xl font-bold leading-none text-blue-600">{formatGrowth(videoData.viewsIncrease)}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm text-gray-600 mb-1">10日間増加数</h4>
+                        <p className="text-2xl font-bold leading-none text-green-600">{formatGrowth(videoData.ten_days_increase)}</p>
                       </div>
                     </div>
-                    
-                    <div>
-                      <div className="text-gray-500 text-xs mb-1">URL:</div>
-                      <a 
-                        href={videoUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline break-all text-sm"
+
+                    {/* 投稿日 */}
+                    <div className="order-2">
+                      <h4 className="text-sm text-gray-600 mb-1">投稿日</h4>
+                      <p className="text-xl font-medium leading-none">{formatDate(videoData.createdAt)}</p>
+                    </div>
+                  </div>
+
+                  {/* ウォッチリストに保存 */}
+                  <div className="mb-12">
+                    <h3 className="text-base font-semibold">ウォッチリストに追加</h3>
+                    <div className="flex gap-4 mt-2">
+                      <button
+                        onClick={() => onSaveVideo?.()}
+                        className="flex-1 flex items-center justify-center gap-2 bg-[#FE2C55] text-white py-2 px-4 rounded-lg hover:bg-[#E62548] transition-colors"
                       >
-                        {videoUrl}
-                      </a>
-                    </div>
-                    
-                    <div className="pt-2 grid grid-cols-3 gap-4">
-                      <div className="text-center">
-                        <div className="text-gray-500 text-xs">現在の再生数</div>
-                        <div className="font-bold text-xl text-gray-900">
-                          {videoData?.views ? formatNumber(videoData.views) : '0'}
-                        </div>
-                      </div>
-                      
-                      <div className="text-center">
-                        <div className="text-gray-500 text-xs">増加率 (2日間)</div>
-                        <div className={`font-bold text-xl ${videoData?.viewsIncrease > 0 ? 'text-green-500' : 'text-gray-400'}`}>
-                          {videoData?.viewsIncrease ? `+${videoData.viewsIncrease}%` : '0%'}
-                        </div>
-                      </div>
-                      
-                      <div className="text-center">
-                        <div className="text-gray-500 text-xs">いいね数</div>
-                        <div className="font-bold text-xl text-red-500">
-                          {videoData?.likes ? formatNumber(videoData.likes) : '0'}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-4 flex space-x-2">
-                      <button className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition text-sm flex-1">
-                        動画をウォッチリストに追加
+                        <Bookmark size={20} />
+                        <span>動画を保存</span>
                       </button>
-                      <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition text-sm flex-1">
-                        アカウントをウォッチ
+                      <button
+                        onClick={() => onSaveAccount?.()}
+                        className="flex-1 flex items-center justify-center gap-2 bg-black text-white py-2 px-4 rounded-lg hover:bg-gray-800 transition-colors"
+                      >
+                        <UserPlus size={20} />
+                        <span>アカウントを保存</span>
                       </button>
                     </div>
                   </div>
