@@ -56,7 +56,7 @@ def main():
         save_to_csv(crawler_accounts, output_dir / "crawler_accounts.csv")
         
         # お気に入りアカウント
-        favorite_users = fetch_table_data(db, "favorite_users")
+        favorite_users = fetch_table_data(db, "account_list")
         save_to_csv(favorite_users, output_dir / "favorite_users.csv")
         
         # 動画の重いデータ

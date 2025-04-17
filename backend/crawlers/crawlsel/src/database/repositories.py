@@ -59,7 +59,7 @@ class FavoriteUserRepository:
         query = """
             SELECT id, favorite_user_username, crawler_account_id,
                    favorite_user_is_alive, crawl_priority, last_crawled_at
-            FROM favorite_users
+            FROM account_list
             WHERE crawler_account_id = %s
             AND favorite_user_is_alive = TRUE
             ORDER BY 
@@ -90,7 +90,7 @@ class FavoriteUserRepository:
     def update_favorite_user_last_crawled(self, username: str, last_crawled_at: datetime):
         """お気に入りアカウントの最終クロール時間を更新"""
         query = """
-            UPDATE favorite_users
+            UPDATE account_list
             SET last_crawled_at = %s
             WHERE favorite_user_username = %s
         """
@@ -104,7 +104,7 @@ class FavoriteUserRepository:
             is_alive: アカウントが存在するかどうか
         """
         query = """
-            UPDATE favorite_users
+            UPDATE account_list
             SET favorite_user_is_alive = %s
             WHERE favorite_user_username = %s
         """
