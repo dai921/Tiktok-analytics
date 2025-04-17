@@ -65,6 +65,9 @@ def parse_tiktok_time(time_text: str, base_time: datetime) -> Optional[datetime]
             days = int(time_text.replace("日前", ""))
             return base_time - timedelta(days=days)
 
+        if time_text.endswith("1週間前"):
+            days = 7
+            return base_time - timedelta(days=days)
         # 「M-D」形式の場合
         if "-" in time_text and len(time_text.split("-")) == 2:
             month, day = map(int, time_text.split("-"))
@@ -372,10 +375,6 @@ class TikTokCrawler:
                 # 動画のURLを取得
                 video_link = video_element.find_element(By.TAG_NAME, "a")
                 video_url = video_link.get_attribute("href")
-                
-                # 写真投稿の場合はスキップ
-                if "/photo/" in video_url:
-                    continue
 
                 # URLからvideo_idとuser_usernameを抽出
                 video_id, user_username = parse_tiktok_video_url(video_url)
@@ -783,10 +782,14 @@ class TikTokCrawler:
 
         
         if light_or_heavy == "heavy" or light_or_heavy == "both":
+            
             logger.info(f"ユーザー @{user.favorite_user_username} の重いデータのクロールを開始")
             if not recrawl:
                 existing_video_ids = self.video_repo.get_existing_heavy_data_video_ids(user.favorite_user_username)
                 light_like_datas = [light_like_data for light_like_data in light_like_datas if light_like_data["video_id"] not in existing_video_ids]
+
+            # ここで最新20件に限定
+            light_like_datas = light_like_datas[:20]  # 追加
 
             logger.info(f"動画 {len(light_like_datas)}件に対し重いデータのクロールを行います")
             for light_like_data in light_like_datas:
@@ -826,7 +829,7 @@ class TikTokCrawler:
     #     max_videos_per_user: 1ユーザーあたりの動画数
     #     max_users: 1クロール対象のユーザー数
     #     recrawl: 既に重いデータを取得済みの動画を再取得するかどうか
-    def crawl_favorite_users(self, light_or_heavy: str = "both", max_videos_per_user: int = 100, max_users: int = 10, recrawl: bool = False):
+    def crawl_favorite_users(self, light_or_heavy: str = "both", max_videos_per_user: int = 100, max_users: int = 10, recrawl: bool = True):
         logger.info(f"クロール対象のお気に入りユーザー{max_users}件に対し{light_or_heavy}データのクロールを行います")
         favorite_users = self.favorite_user_repo.get_favorite_users(
             self.crawler_account.id,
@@ -873,7 +876,7 @@ def main():
     parser.add_argument(
         "--max-users",
         type=int,
-        default=10,
+        default=50,
         help="クロール対象の最大ユーザー数（デフォルト: 10）"
     )
     parser.add_argument(

@@ -49,6 +49,38 @@ class CrawlerAccountRepository:
         """
         self.db.execute_query(query, (last_crawled_at, crawler_account_id))
 
+    def get_crawler_account_by_id(self, crawler_account_id: int) -> Optional[CrawlerAccount]:
+        """指定されたIDのクローラーアカウントを取得する
+        
+        Args:
+            crawler_account_id: 取得するクローラーアカウントのID
+        
+        Returns:
+            CrawlerAccountオブジェクト。見つからない場合はNone。
+        """
+        query = """
+            SELECT id, username, password, proxy, is_alive, last_crawled_at
+            FROM crawler_accounts
+            WHERE id = %s
+            AND is_alive = TRUE
+            LIMIT 1
+        """
+        cursor = self.db.execute_query(query, (crawler_account_id,))
+        row = cursor.fetchone()
+        cursor.close()
+
+        if not row:
+            return None
+
+        return CrawlerAccount(
+            id=row[0],
+            username=row[1],
+            password=row[2],
+            proxy=row[3],
+            is_alive=row[4],
+            last_crawled_at=row[5]
+        )
+
 
 class FavoriteUserRepository:
     def __init__(self, db: Database):
