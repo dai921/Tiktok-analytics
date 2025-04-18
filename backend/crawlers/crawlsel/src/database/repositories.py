@@ -86,11 +86,11 @@ class FavoriteUserRepository:
     def __init__(self, db: Database):
         self.db = db
 
-    def get_favorite_users(self, crawler_account_id: int, limit: int = 10) -> List[FavoriteUser]:
+    def get_favorite_users(self, crawler_account_id: int, limit: int = 200) -> List[FavoriteUser]:
         """クロール対象のお気に入りアカウントを取得"""
         query = """
             SELECT id, favorite_user_username, crawler_account_id,
-                   favorite_user_is_alive, crawl_priority, last_crawled_at
+                   favorite_user_is_alive, crawl_priority, last_crawled_at, is_new_account
             FROM account_list
             WHERE crawler_account_id = %s
             AND favorite_user_is_alive = TRUE
@@ -114,7 +114,8 @@ class FavoriteUserRepository:
                 crawler_account_id=row[2],
                 favorite_user_is_alive=row[3],
                 crawl_priority=row[4],
-                last_crawled_at=row[5]
+                last_crawled_at=row[5],
+                is_new_account=row[6]
             )
             for row in rows
         ]
@@ -141,6 +142,20 @@ class FavoriteUserRepository:
             WHERE favorite_user_username = %s
         """
         self.db.execute_query(query, (is_alive, username))
+
+    def update_favorite_user_is_new_account(self, username: str, is_new_account: bool):
+        """お気に入りアカウントの新規アカウントフラグを更新
+        
+        Args:
+            username: 更新対象のアカウントのユーザー名
+            is_new_account: 新規アカウントかどうか
+        """
+        query = """
+            UPDATE account_list
+            SET is_new_account = %s
+            WHERE favorite_user_username = %s
+        """
+        self.db.execute_query(query, (is_new_account, username))
 
 
 class VideoRepository:
