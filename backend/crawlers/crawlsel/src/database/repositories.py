@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Dict
 from .database import Database
 from .models import CrawlerAccount, FavoriteUser, VideoHeavyRawData, VideoLightRawData
 from ..logger import setup_logger
@@ -248,3 +248,30 @@ class VideoRepository:
         rows = cursor.fetchall()
         cursor.close()
         return {row[0] for row in rows}
+
+    def get_videos_needing_update(self, user_username: str) -> List[Dict[str, str]]:
+        """指定されたユーザーの動画のうち、needs_update=1のものの動画URLとサムネイルURLを取得
+
+        Args:
+            user_username: 対象ユーザーのユーザー名
+
+        Returns:
+            動画URLとサムネイルURLの辞書のリスト
+        """
+        query = """
+            SELECT video_url, video_thumbnail_url
+            FROM video_light_raw_data
+            WHERE user_username = %s
+            AND needs_update = 1
+        """
+        cursor = self.db.execute_query(query, (user_username,))
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        return [
+            {
+                "video_url": row[0],
+                "video_thumbnail_url": row[1]
+            }
+            for row in rows
+        ]

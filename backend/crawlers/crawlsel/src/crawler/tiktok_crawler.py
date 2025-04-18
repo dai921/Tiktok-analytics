@@ -819,7 +819,7 @@ class TikTokCrawler:
 
         if light_or_heavy == "both":
             if user.is_new_account == True:
-                logger.info(f"ユーザー @{user.favorite_user_username} の再生数のクロールを開始")
+                logger.info(f"ユーザー @{user.favorite_user_username} の軽いデータののクロールを開始")
                 max_videos_per_batch = 50  # 1回のバッチで取得する動画数
                 target_date = datetime(2025, 1, 1)  # この日付より前の動画が見つかるまでクロール
                 processed_urls = set()  # 処理済みのURLを記録
@@ -883,13 +883,31 @@ class TikTokCrawler:
 
             else:
                 # 既存の処理（新しいアカウントでない場合）
-                for light_like_data in light_like_datas:
+                # 最新の動画URLを取得してビデオページに移動
+                first_url = self.get_latest_video_url_from_user_page()
+                self.navigate_to_video_page(first_url)
+                self.navigate_to_video_page_creator_videos_tab()
+                    
+                # 軽いデータを取得
+                light_play_datas = self.get_video_light_play_datas_from_video_page_creator_videos_tab(max_videos_per_batch + 10)
+                self.parse_and_save_video_light_datas(light_like_datas, light_play_datas)
+                self.navigate_to_user_page_from_video_page()
+                    
+                logger.info(f"バッチの軽いデータのクロールを完了しました。重いデータのクロールを開始します。")
+                 # needs_update=1の動画を取得
+                logger.info(f"ユーザー @{user.favorite_user_username} の更新が必要な動画を取得します")
+                videos_needing_update = self.video_repo.get_videos_needing_update(user.favorite_user_username)
+                logger.info(f"{len(videos_needing_update)}件の動画の更新が必要です")
+
+                # 重いデータを取得
+                logger.info(f"更新が必要な動画の重いデータのクロールを開始します")
+                for video in videos_needing_update:
                     try:
-                        self.navigate_to_video_page(light_like_data["video_url"])
+                        self.navigate_to_video_page(video["video_url"], link_should_be_in_page=False)
                         try:
                             heavy_data = self.get_video_heavy_data_from_video_page()
-                            self.parse_and_save_video_heavy_data(heavy_data, light_like_data["video_thumbnail_url"])
-                            self._random_sleep(10.0, 20.0) # こんくらいは見たほうがいいんじゃないかな未検証だけど
+                            self.parse_and_save_video_heavy_data(heavy_data, video["video_thumbnail_url"])
+                            self._random_sleep(10.0, 20.0)
                         except Exception:
                             logger.exception(f"動画ページを開いた状態でエラーが発生しました。動画ページを閉じてユーザーページに戻ります。")
                             raise
@@ -898,9 +916,10 @@ class TikTokCrawler:
                     except KeyboardInterrupt:
                         raise
                     except Exception:
-                        logger.exception(f"動画 {light_like_data['video_url']} の重いデータのクロール中に失敗。スキップします")
+                        logger.exception(f"動画 {video['video_url']} の重いデータのクロール中に失敗。スキップします")
                         continue
 
+                logger.info(f"ユーザー @{user.favorite_user_username} の重いデータのクロールを完了しました")
             logger.info(f"ユーザー @{user.favorite_user_username} の重いデータのクロールを完了しました")
 
         logger.debug(f"ユーザー @{user.favorite_user_username} のlast_crawledを更新します")
