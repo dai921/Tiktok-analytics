@@ -2,17 +2,20 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium_stealth import stealth
+from tiktok_captcha_solver import make_undetected_chromedriver_solver  # CAPTCHAソルバー用
 from ..logger import setup_logger
 
 logger = setup_logger(__name__)
 
 class SeleniumManager:
-    def __init__(self, proxy: str = None):
+    def __init__(self, proxy: str = None, sadcaptcha_api_key: str = None):
         self.driver = None
         self.proxy = proxy
+        self.sadcaptcha_api_key = sadcaptcha_api_key
 
     def setup_driver(self):
         try:
+            # 共通のオプション設定
             options = Options()
             if self.proxy:
                 options.add_argument(f'--proxy-server={self.proxy}')
@@ -27,24 +30,33 @@ class SeleniumManager:
             options.add_argument('--ignore-gpu-blocklist')
             options.add_argument('--enable-hardware-overlays')
             options.add_argument('--enable-features=VaapiVideoDecoder')
-            options.add_argument('--mute-audio')  # 音声をミュート
-            options.add_argument('--start-maximized') # ウィンドウ最大じゃないとget_video_light_like_datas_from_user_pageでthumbnail_urlの取得がおかしくなるのでそれを解決できない限り変えないこと
+            options.add_argument('--mute-audio')
+            options.add_argument('--start-maximized')
+
+            if self.sadcaptcha_api_key:
+                # CAPTCHA Solver使用時
+                logger.info("CAPTCHA Solver付きのドライバーを作成します")
+                self.driver = make_undetected_chromedriver_solver(
+                    self.sadcaptcha_api_key,
+                    options=options  # オプションを渡す
+                )
+            else:
+                # 通常のSeleniumドライバーを使用
+                service = Service()
+                self.driver = webdriver.Chrome(service=service, options=options)
             
-            service = Service()
-            self.driver = webdriver.Chrome(service=service, options=options)
-            
-            # selenium-stealthの設定を適用
+            # 共通の設定
             stealth(
                 self.driver,
                 languages=["ja-JP", "ja"],
                 vendor="Google Inc.",
                 platform="Win32",
-                webgl_vendor="WebKit",  # 実際の環境に合わせて更新
-                renderer="WebKit WebGL",  # 実際の環境に合わせて更新
+                webgl_vendor="WebKit",
+                renderer="WebKit WebGL",
                 fix_hairline=True,
             )
             
-            # JavaScriptを実行してWebDriverを検出されにくくする
+            # WebDriver検出防止のJavaScript
             self.driver.execute_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             )
@@ -55,6 +67,38 @@ class SeleniumManager:
         except Exception as e:
             logger.error(f"Chromeドライバーの設定中にエラーが発生しました: {e}")
             raise
+
+    def check_and_solve_captcha(self):
+        """CAPTCHAが存在するかチェックし、存在する場合は解決を試みる"""
+        if not self.solver:
+            return False
+
+        try:
+            if self.solver.captcha_is_present():
+                logger.info("CAPTCHAを検出しました。解決を試みます...")
+                captcha_type = self.solver.identify_captcha()
+                
+                if captcha_type == "PUZZLE_V1":
+                    self.solver.solve_puzzle()
+                elif captcha_type == "ROTATE_V1":
+                    self.solver.solve_rotate()
+                elif captcha_type == "SHAPES_V1":
+                    self.solver.solve_shapes()
+                elif captcha_type == "ICON_V1":
+                    self.solver.solve_icon()
+                elif captcha_type == "PUZZLE_V2":
+                    self.solver.solve_puzzle_v2()
+                elif captcha_type == "ROTATE_V2":
+                    self.solver.solve_rotate_v2()
+                
+                logger.info("CAPTCHAの解決が完了しました")
+                return True
+            
+            return False
+
+        except Exception as e:
+            logger.error(f"CAPTCHA解決中にエラーが発生しました: {e}")
+            return False
 
     def quit_driver(self):
         if self.driver:

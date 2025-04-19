@@ -170,12 +170,14 @@ class TikTokCrawler:
     #     favorite_user_repo: お気に入りユーザーリポジトリ
     #     video_repo: 動画リポジトリ
     #     crawler_account_id: 使用するクローラーアカウントのID（Noneの場合は自動選択）
+    #     sadcaptcha_api_key: SADCAPTCHA APIキー
     # Returns:
     #     TikTokCrawlerインスタンス
     def __init__(self, crawler_account_repo: CrawlerAccountRepository,
                  favorite_user_repo: FavoriteUserRepository,
                  video_repo: VideoRepository,
-                 crawler_account_id: Optional[int] = None):
+                 crawler_account_id: Optional[int] = None,
+                 sadcaptcha_api_key: Optional[str] = None):
         self.crawler_account_repo = crawler_account_repo
         self.favorite_user_repo = favorite_user_repo
         self.video_repo = video_repo
@@ -184,6 +186,7 @@ class TikTokCrawler:
         self.selenium_manager = None
         self.driver = None
         self.wait = None
+        self.sadcaptcha_api_key = "fd31d51515ed18cadec7d4a522894997"
 
     def __enter__(self):
         # クローラーアカウントを取得
@@ -197,7 +200,7 @@ class TikTokCrawler:
                 raise Exception("利用可能なクローラーアカウントがありません")
 
         # Seleniumの設定
-        self.selenium_manager = SeleniumManager(self.crawler_account.proxy)
+        self.selenium_manager = SeleniumManager(self.crawler_account.proxy, self.sadcaptcha_api_key)
         self.driver = self.selenium_manager.setup_driver()
         self.wait = WebDriverWait(self.driver, 15)  # タイムアウトを15秒に変更
 
@@ -219,11 +222,21 @@ class TikTokCrawler:
     def _random_sleep(self, min_seconds: float = 1.0, max_seconds: float = 3.0):
         time.sleep(random.uniform(min_seconds, max_seconds))
 
+    def _check_and_handle_captcha(self):
+        """CAPTCHAをチェックして処理する"""
+        if self.selenium_manager.check_and_solve_captcha():
+            self._random_sleep(2.0, 4.0)  # CAPTCHA解決後の待機
+            return True
+        return False
+
     # クロール用アカウントself.crawler_accountでTikTokにログインする
     def _login(self):
         logger.info(f"クロール用アカウント{self.crawler_account.username}でTikTokにログイン中...")
         self.driver.get(f"{self.BASE_URL}/login/phone-or-email/email")
         self._random_sleep(2.0, 4.0)
+
+        # CAPTCHAチェック
+        self._check_and_handle_captcha()
 
         # ログインフォームの要素を待機
         username_input = self.wait.until(
@@ -246,6 +259,9 @@ class TikTokCrawler:
         )
         self._random_sleep(1.0, 2.0)
         login_button.click()
+
+        # CAPTCHAチェック
+        self._check_and_handle_captcha()
 
         # ログイン完了を待機
         # プロフィールアイコンが表示されるまで待機（60秒待機）
@@ -1009,7 +1025,8 @@ def main():
             crawler_account_repo=crawler_account_repo,
             favorite_user_repo=favorite_user_repo,
             video_repo=video_repo,
-            crawler_account_id=args.crawler_account_id
+            crawler_account_id=args.crawler_account_id,
+            sadcaptcha_api_key="fd31d51515ed18cadec7d4a522894997"  # APIキーを設定
         ) as crawler:
             crawler.crawl_favorite_users(
                 light_or_heavy=args.mode,
