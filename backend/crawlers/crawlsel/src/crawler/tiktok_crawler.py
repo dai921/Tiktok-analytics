@@ -235,9 +235,6 @@ class TikTokCrawler:
         self.driver.get(f"{self.BASE_URL}/login/phone-or-email/email")
         self._random_sleep(2.0, 4.0)
 
-        # CAPTCHAチェック
-        self._check_and_handle_captcha()
-
         # ログインフォームの要素を待機
         username_input = self.wait.until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='username']"))
@@ -480,7 +477,7 @@ class TikTokCrawler:
     
         video_url = self.driver.current_url
         user_username = self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='browse-username']").text
-        user_nickname = self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='browse-nickname']").text
+        user_nickname = self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='browser-nickname']").text
         video_title = self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='browse-video-desc']").text
         post_time_text = self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='browser-nickname'] span:last-child").text
         audio_url = self.driver.find_element(By.CSS_SELECTOR, "[data-e2e='browse-music'] a").get_attribute("href")
@@ -903,7 +900,7 @@ class TikTokCrawler:
                 first_url = self.get_latest_video_url_from_user_page()
                 self.navigate_to_video_page(first_url)
                 self.navigate_to_video_page_creator_videos_tab()
-                    
+                max_videos_per_batch = 50
                 # 軽いデータを取得
                 light_play_datas = self.get_video_light_play_datas_from_video_page_creator_videos_tab(max_videos_per_batch + 10)
                 self.parse_and_save_video_light_datas(light_like_datas, light_play_datas)
@@ -919,7 +916,7 @@ class TikTokCrawler:
                 logger.info(f"更新が必要な動画の重いデータのクロールを開始します")
                 for video in videos_needing_update:
                     try:
-                        self.navigate_to_video_page(video["video_url"], link_should_be_in_page=False)
+                        self.navigate_to_video_page(video["video_url"])
                         try:
                             heavy_data = self.get_video_heavy_data_from_video_page()
                             self.parse_and_save_video_heavy_data(heavy_data, video["video_thumbnail_url"])

@@ -2,7 +2,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium_stealth import stealth
-from tiktok_captcha_solver import make_undetected_chromedriver_solver  # CAPTCHAソルバー用
+import undetected_chromedriver as uc
+from tiktok_captcha_solver import SeleniumSolver  # CAPTCHAソルバー用
 from ..logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -10,13 +11,14 @@ logger = setup_logger(__name__)
 class SeleniumManager:
     def __init__(self, proxy: str = None, sadcaptcha_api_key: str = None):
         self.driver = None
+        self.solver = None  
         self.proxy = proxy
         self.sadcaptcha_api_key = sadcaptcha_api_key
 
     def setup_driver(self):
         try:
             # 共通のオプション設定
-            options = Options()
+            options = uc.ChromeOptions()
             if self.proxy:
                 options.add_argument(f'--proxy-server={self.proxy}')
             
@@ -33,12 +35,14 @@ class SeleniumManager:
             options.add_argument('--mute-audio')
             options.add_argument('--start-maximized')
 
+            self.driver = uc.Chrome(options=options)
+
             if self.sadcaptcha_api_key:
                 # CAPTCHA Solver使用時
                 logger.info("CAPTCHA Solver付きのドライバーを作成します")
-                self.driver = make_undetected_chromedriver_solver(
-                    self.sadcaptcha_api_key,
-                    options=options  # オプションを渡す
+                self.solver = SeleniumSolver(
+                    self.driver,
+                    self.sadcaptcha_api_key  # オプションを渡す
                 )
             else:
                 # 通常のSeleniumドライバーを使用
