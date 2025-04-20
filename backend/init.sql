@@ -7,20 +7,18 @@ USE tiktok_data;
 CREATE TABLE account_list (
   id INT NOT NULL AUTO_INCREMENT,
   account_url VARCHAR(255) DEFAULT NULL,
-  account_name VARCHAR(50) NOT NULL,
+  favorite_user_username VARCHAR(50) DEFAULT NULL,
   is_new_account TINYINT(1) DEFAULT NULL,
-  latest_video_date DATE DEFAULT NULL,
-  needs_update TINYINT(1) DEFAULT NULL,
-  under_100k_flag VARCHAR(1) DEFAULT NULL,
-  last_crawl_date DATETIME DEFAULT NULL,
-  last_video_count INT DEFAULT 0,
-  status VARCHAR(20) DEFAULT NULL,
-  content_type VARCHAR(255) DEFAULT NULL,
+  last_crawled_at DATETIME DEFAULT NULL,
+  favorite_user_is_alive BOOLEAN NOT NULL DEFAULT TRUE,
+  crawl_priority INT NOT NULL DEFAULT 10,
+  account_type VARCHAR(255) DEFAULT NULL,
+  created_at DATETIME DEFAULT NULL,
+  updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY account_url (account_url),
   KEY idx_account_url (account_url),
-  KEY idx_is_new_account (is_new_account),
-  KEY idx_needs_update (needs_update)
+  KEY idx_is_new_account (is_new_account)
 )
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4

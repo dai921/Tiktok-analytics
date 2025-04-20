@@ -494,6 +494,49 @@ steps:
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
     id: 'deploy-batch-category-scheduler'
 
+# アカウントリスト同期関数のデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-account-list'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - sync-account-list
+      - --gen2
+      - --runtime=python39
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=sync_account
+      - --trigger-http
+      - --timeout=540s
+      - --memory=1024MB
+      - --min-instances=0
+      - --max-instances=1
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_ID=1Ijjvk2jNKcKUUUhhzB5TtkjrsN_okhon30N83yXfIiA,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+# クローラーアカウントリスト同期関数のデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-crawler-accounts'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - sync-crawler-accounts
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=sync_crawler_accounts
+      - --trigger-http
+      - --timeout=540s
+      - --memory=1024MB
+      - --min-instances=0
+      - --max-instances=1
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_CRAWLER_ID=1atx7vH_LYu4vd-KleKbjsEwF46x0mh0B5v7oQQx4vgs,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+
 options:
   logging: CLOUD_LOGGING_ONLY
 
