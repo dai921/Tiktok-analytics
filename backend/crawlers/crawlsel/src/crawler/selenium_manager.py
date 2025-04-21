@@ -2,21 +2,24 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium_stealth import stealth
-from tiktok_captcha_solver import make_undetected_chromedriver_solver  # CAPTCHAソルバー用
+import undetected_chromedriver as uc
+from tiktok_captcha_solver import SeleniumSolver  # CAPTCHAソルバー用
 from ..logger import setup_logger
+import time
 
 logger = setup_logger(__name__)
 
 class SeleniumManager:
     def __init__(self, proxy: str = None, sadcaptcha_api_key: str = None):
         self.driver = None
+        self.solver = None  
         self.proxy = proxy
         self.sadcaptcha_api_key = sadcaptcha_api_key
 
     def setup_driver(self):
         try:
             # 共通のオプション設定
-            options = Options()
+            options = uc.ChromeOptions()
             if self.proxy:
                 options.add_argument(f'--proxy-server={self.proxy}')
             
@@ -33,12 +36,14 @@ class SeleniumManager:
             options.add_argument('--mute-audio')
             options.add_argument('--start-maximized')
 
+            self.driver = uc.Chrome(options=options)
+
             if self.sadcaptcha_api_key:
                 # CAPTCHA Solver使用時
                 logger.info("CAPTCHA Solver付きのドライバーを作成します")
-                self.driver = make_undetected_chromedriver_solver(
-                    self.sadcaptcha_api_key,
-                    options=options  # オプションを渡す
+                self.solver = SeleniumSolver(
+                    self.driver,
+                    self.sadcaptcha_api_key  # オプションを渡す
                 )
             else:
                 # 通常のSeleniumドライバーを使用
@@ -74,26 +79,49 @@ class SeleniumManager:
             return False
 
         try:
-            if self.solver.captcha_is_present():
-                logger.info("CAPTCHAを検出しました。解決を試みます...")
+            present = self.solver.captcha_is_present()
+            logger.debug(f"captcha_present={present}")
+            if not present:
+                return False 
+            
+            max_attempts = 3  # 最大試行回数
+            attempt = 0
+
+            while attempt < max_attempts:
+                logger.info(f"CAPTCHAを検出しました。解決を試みます... (試行回数: {attempt + 1})")
                 captcha_type = self.solver.identify_captcha()
                 
-                if captcha_type == "PUZZLE_V1":
-                    self.solver.solve_puzzle()
-                elif captcha_type == "ROTATE_V1":
-                    self.solver.solve_rotate()
+                if captcha_type == "ROTATE_V2":
+                    ok = self.solver.solve_rotate_v2()
+                    logger.debug(f"solve_rotate_v2() => {ok}")
                 elif captcha_type == "SHAPES_V1":
-                    self.solver.solve_shapes()
+                    ok = self.solver.solve_shapes()
+                    logger.debug(f"solve_shapes() => {ok}")
+                elif captcha_type == "ROTATE_V1":
+                    ok = self.solver.solve_rotate()
+                    logger.debug(f"solve_rotate() => {ok}")
                 elif captcha_type == "ICON_V1":
-                    self.solver.solve_icon()
+                    ok = self.solver.solve_icon()
+                    logger.debug(f"solve_icon() => {ok}")
                 elif captcha_type == "PUZZLE_V2":
-                    self.solver.solve_puzzle_v2()
-                elif captcha_type == "ROTATE_V2":
-                    self.solver.solve_rotate_v2()
+                    ok = self.solver.solve_puzzle_v2()
+                    logger.debug(f"solve_puzzle_v2() => {ok}")
+                elif captcha_type == "PUZZLE_V1":
+                    ok = self.solver.solve_puzzle()
+                    logger.debug(f"solve_puzzle() => {ok}")
+        
+                present = self.solver.captcha_is_present(timeout=3)
+                logger.debug(f"still present? {present}")
                 
-                logger.info("CAPTCHAの解決が完了しました")
-                return True
+                if not present:
+                    logger.info("CAPTCHAの解決が完了しました")
+                    return True
+                
+                logger.info(f"CAPTCHAがまだ存在します。3秒待機後に再試行します...")
+                time.sleep(3)
+                attempt += 1
             
+            logger.warning(f"最大試行回数（{max_attempts}回）に達しました。CAPTCHAの解決に失敗しました。")
             return False
 
         except Exception as e:

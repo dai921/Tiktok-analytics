@@ -29,8 +29,8 @@ from services.data_sync.frontend_data_update.batch_scheduler import manage_front
 
 # インポート部分に追加
 from services.data_sync.video_history_sync import sync_video_history
-from services.account_info.sync_account_list import sync_account_list
-from services.account_info.sync_crawler_accounts import sync_crawler_accounts
+from services.account_info.sync_account_list import sync_account_list as sync_account
+from services.account_info.sync_crawler_accounts import sync_crawler_accounts as sync_crawler
 
 # 環境変数の読み込み
 load_dotenv()
@@ -52,11 +52,10 @@ def sync_video_urls(request):
     return sync_video_urls_job(request)
 
 def sync_account_list(request):
-    return sync_account_list(request)
+    return sync_account(request)
 
-def sync_crawler_accounts(request):
-    
-    return sync_crawler_accounts(request)
+def sync_crawler_accounts(request):    
+    return sync_crawler(request)
 
 def update_all_categories(request):
     return update_all_categories_function(request)

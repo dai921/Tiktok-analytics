@@ -182,7 +182,7 @@ def process_crawler_accounts():
                         'username': username,
                         'password': password,
                         'proxy': proxy,
-                        'is_alive': is_alive_bool
+                        'is_alive': is_alive
                     }
                     
                     affected_rows = execute_write_query(insert_query, insert_params)
