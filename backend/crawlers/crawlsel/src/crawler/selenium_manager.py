@@ -5,6 +5,12 @@ from selenium_stealth import stealth
 import undetected_chromedriver as uc
 from tiktok_captcha_solver import SeleniumSolver  # CAPTCHAソルバー用
 from tiktok_captcha_solver.captchatype import CaptchaType
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    ElementClickInterceptedException,
+)
+from concurrent.futures import ThreadPoolExecutor
 from ..logger import setup_logger
 import time
 
@@ -76,6 +82,9 @@ class SeleniumManager:
 
     def check_and_solve_captcha(self):
         """CAPTCHAが存在するかチェックし、存在する場合は解決を試みる"""
+        TIMEOUT_PER_ATTEMPT = 10          # solve_* 1 回あたりの制限秒数
+        SLEEP_BETWEEN_ATTEMPTS = 3
+        MAX_ATTEMPTS = 10
         if not self.solver:
             return False
 
@@ -85,48 +94,55 @@ class SeleniumManager:
             if not present:
                 return False 
             
-            max_attempts = 10  # 最大試行回数
-            attempt = 0
 
-            while attempt < max_attempts:
-                logger.info(f"CAPTCHAを検出しました。解決を試みます... (試行回数: {attempt + 1})")
+            for attempt in range(1,MAX_ATTEMPTS+1):
+                logger.info(f"[{attempt}/{MAX_ATTEMPTS}] CAPTCHA 解決を試行中…")
                 captcha_type = self.solver.identify_captcha()
-                
-                if captcha_type == CaptchaType.ROTATE_V2:
-                    ok = self.solver.solve_rotate_v2()
-                    logger.debug(f"solve_rotate_v2() => {ok}")
-                elif captcha_type == CaptchaType.SHAPES_V1:
-                    ok = self.solver.solve_shapes()
-                    logger.debug(f"solve_shapes() => {ok}")
-                elif captcha_type == CaptchaType.ROTATE_V1:
-                    ok = self.solver.solve_rotate()
-                    logger.debug(f"solve_rotate() => {ok}")
-                elif captcha_type == CaptchaType.ICON_V1:
-                    ok = self.solver.solve_icon()
-                    logger.debug(f"solve_icon() => {ok}")
-                elif captcha_type == CaptchaType.PUZZLE_V2:
-                    ok = self.solver.solve_puzzle_v2()
-                    logger.debug(f"solve_puzzle_v2() => {ok}")
-                elif captcha_type == CaptchaType.PUZZLE_V1:
-                    ok = self.solver.solve_puzzle()
-                    logger.debug(f"solve_puzzle() => {ok}")
-        
-                present = self.solver.captcha_is_present(timeout=3)
-                logger.debug(f"still present? {present}")
-                
-                if not present:
+
+                def _solve():                
+                    if captcha_type == CaptchaType.ROTATE_V2:
+                        return self.solver.solve_rotate_v2()
+                    elif captcha_type == CaptchaType.SHAPES_V1:
+                        return self.solver.solve_shapes()
+                    elif captcha_type == CaptchaType.ROTATE_V1:
+                        return self.solver.solve_rotate()
+                    elif captcha_type == CaptchaType.ICON_V1:
+                        return self.solver.solve_icon()
+                    elif captcha_type == CaptchaType.PUZZLE_V2:
+                        return self.solver.solve_puzzle_v2()
+                    elif captcha_type == CaptchaType.PUZZLE_V1:
+                        return self.solver.solve_puzzle()
+
+
+                with ThreadPoolExecutor(max_workers=1) as ex:
+                    future = ex.submit(_solve)
+                    try:
+                        ok = future.result(timeout=TIMEOUT_PER_ATTEMPT)
+                    except TimeoutError:
+                        logger.error(f"CAPTCHA解決をリフレッシュします。")
+                        ok = False
+                        try:
+                            refresh_btn = self.driver.find_element(By.ID, "captcha_refresh_button")
+                            refresh_btn.click()
+                            logger.debug("リフレッシュボタンをクリックしました")
+                        except (NoSuchElementException, ElementClickInterceptedException) as e:
+                            logger.debug(f"リフレッシュボタンが押せませんでした: {e}")
+                        return False
+                    except Exception as e:
+                        logger.error(f"CAPTCHA解決中にエラーが発生しました: {e}")
+                        return False
+                    logger.debug(f"solve_{captcha_type}() => {ok}")
+
+                if ok or not self.solver.captcha_is_present(timeout=3):
                     logger.info("CAPTCHAの解決が完了しました")
                     return True
-                
-                logger.info(f"CAPTCHAがまだ存在します。3秒待機後に再試行します...")
-                time.sleep(3)
-                attempt += 1
-            
-            logger.warning(f"最大試行回数（{max_attempts}回）に達しました。CAPTCHAの解決に失敗しました。")
-            return False
-
+        
+                logger.info(f"CAPTCHA まだ残存。{SLEEP_BETWEEN_ATTEMPTS}s 待って再試行")
+                time.sleep(SLEEP_BETWEEN_ATTEMPTS)   
+            logger.warning("最大試行回数に達しました。CAPTCHA 解決失敗")
+            return False         
         except Exception as e:
-            logger.error(f"CAPTCHA解決中にエラーが発生しました: {e}")
+            logger.error(f"CAPTCHA 解決中に例外が発生: %s", e)
             return False
 
     def quit_driver(self):
