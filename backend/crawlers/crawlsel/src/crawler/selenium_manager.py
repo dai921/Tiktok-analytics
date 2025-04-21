@@ -4,6 +4,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium_stealth import stealth
 import undetected_chromedriver as uc
 from tiktok_captcha_solver import SeleniumSolver  # CAPTCHAソルバー用
+from tiktok_captcha_solver.captchatype import CaptchaType
 from ..logger import setup_logger
 import time
 
@@ -84,29 +85,29 @@ class SeleniumManager:
             if not present:
                 return False 
             
-            max_attempts = 3  # 最大試行回数
+            max_attempts = 10  # 最大試行回数
             attempt = 0
 
             while attempt < max_attempts:
                 logger.info(f"CAPTCHAを検出しました。解決を試みます... (試行回数: {attempt + 1})")
                 captcha_type = self.solver.identify_captcha()
                 
-                if captcha_type == "ROTATE_V2":
+                if captcha_type == CaptchaType.ROTATE_V2:
                     ok = self.solver.solve_rotate_v2()
                     logger.debug(f"solve_rotate_v2() => {ok}")
-                elif captcha_type == "SHAPES_V1":
+                elif captcha_type == CaptchaType.SHAPES_V1:
                     ok = self.solver.solve_shapes()
                     logger.debug(f"solve_shapes() => {ok}")
-                elif captcha_type == "ROTATE_V1":
+                elif captcha_type == CaptchaType.ROTATE_V1:
                     ok = self.solver.solve_rotate()
                     logger.debug(f"solve_rotate() => {ok}")
-                elif captcha_type == "ICON_V1":
+                elif captcha_type == CaptchaType.ICON_V1:
                     ok = self.solver.solve_icon()
                     logger.debug(f"solve_icon() => {ok}")
-                elif captcha_type == "PUZZLE_V2":
+                elif captcha_type == CaptchaType.PUZZLE_V2:
                     ok = self.solver.solve_puzzle_v2()
                     logger.debug(f"solve_puzzle_v2() => {ok}")
-                elif captcha_type == "PUZZLE_V1":
+                elif captcha_type == CaptchaType.PUZZLE_V1:
                     ok = self.solver.solve_puzzle()
                     logger.debug(f"solve_puzzle() => {ok}")
         
