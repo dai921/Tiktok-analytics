@@ -1,14 +1,20 @@
 from typing import Dict, List, Optional
 import functions_framework
-from google.cloud import bigquery, storage
+from google.cloud import storage
 from datetime import datetime
 import requests
 from urllib.parse import urlparse
 import logging
 import os
+from core.db_utils import execute_query, execute_write_query
+from core.config import initialize_config
+import json
+from dotenv import load_dotenv
 
 from core.db_utils import execute_query, execute_write_query
 from core.config import initialize_config
+
+initialize_config()
 
 def categorize_video_type(video_url: str) -> str:
     """動画URLからコンテンツタイプを判定する"""
@@ -18,7 +24,7 @@ def categorize_video_type(video_url: str) -> str:
         return 'carousel'
     return 'unknown'
 
-def title_analysis(title: str) -> Dict[str, str]:
+def analyze_title(title: str) -> Dict[str, str]:
     """動画タイトルからカテゴリと商品名を抽出する"""
     try:
         # カテゴリキーワードの取得
@@ -234,45 +240,41 @@ def sync_video_data(request) -> Dict[str, str]:
     video_light_raw_dataとvideo_heavy_raw_dataからデータを抽出し、
     video_masterテーブルに同期する
     """
-    client = bigquery.Client()
-
-    # Light Raw Dataからの抽出クエリ
-    light_query = """
-    SELECT 
-        video_url,
-        video_id,
-        user_username,
-        play_count,
-        video_thumbnail_url
-    FROM video_light_raw_data
-    """
-
-    # Heavy Raw Dataからの抽出クエリ
-    heavy_query = """
-    SELECT 
-        video_id,
-        user_nickname,
-        post_time,
-        audio_title,
-        video_title,
-        like_count,
-        comment_count,
-        collect_count
-    FROM video_heavy_raw_data
-    """
-
     try:
-        # データの取得
-        light_data = client.query(light_query).result()
-        heavy_data = client.query(heavy_query).result()
+        # Light Raw Dataからの抽出クエリ
+        light_query = """
+        SELECT 
+            video_url,
+            video_id,
+            user_username,
+            video_thumbnail_url
+        FROM video_light_raw_data
+        """
+        light_data = execute_query(light_query)
+
+        # Heavy Raw Dataからの抽出クエリ
+        heavy_query = """
+        SELECT 
+            video_id,
+            user_nickname,
+            post_time,
+            audio_title,
+            play_count,
+            video_title,
+            like_count,
+            comment_count,
+            collect_count
+        FROM video_heavy_raw_data
+        """
+        heavy_data = execute_query(heavy_query)
 
         # Heavy dataをディクショナリに変換（video_idをキーとして）
-        heavy_data_dict = {row.video_id: row for row in heavy_data}
+        heavy_data_dict = {row['video_id']: row for row in heavy_data}
 
         # 同期用のデータを準備
         sync_rows = []
         for light_row in light_data:
-            heavy_row = heavy_data_dict.get(light_row.video_id)
+            heavy_row = heavy_data_dict.get(light_row['video_id'])
             if not heavy_row:
                 continue
 
@@ -288,15 +290,15 @@ def sync_video_data(request) -> Dict[str, str]:
                 ORDER BY created_at DESC
                 LIMIT 1
             """
-            prev_data_params = (light_row.video_id,)
+            prev_data_params = (light_row['video_id'],)
             prev_data_results = execute_query(prev_data_query, prev_data_params)
             prev_data = prev_data_results[0] if prev_data_results else None
 
             # 増加量の計算
-            current_play_count = heavy_row.play_count if heavy_row.play_count is not None else 0
-            current_likes_count = heavy_row.like_count if heavy_row.like_count is not None else 0
-            current_comment_count = heavy_row.comment_count if heavy_row.comment_count is not None else 0
-            current_save_count = heavy_row.collect_count if heavy_row.collect_count is not None else 0
+            current_play_count = heavy_row['play_count'] if heavy_row['play_count'] is not None else 0
+            current_likes_count = heavy_row['like_count'] if heavy_row['like_count'] is not None else 0
+            current_comment_count = heavy_row['comment_count'] if heavy_row['comment_count'] is not None else 0
+            current_save_count = heavy_row['collect_count'] if heavy_row['collect_count'] is not None else 0
 
             if prev_data:
                 # 前回のデータが存在する場合は差分を計算
@@ -318,57 +320,83 @@ def sync_video_data(request) -> Dict[str, str]:
 
             # サムネイル画像の取得と保存
             thumbnail_result = download_and_save_thumbnail(
-                video_id=light_row.video_id,
-                video_url=light_row.video_url,
-                fallback_url=light_row.video_thumbnail_url
+                video_id=light_row['video_id'],
+                video_url=light_row['video_url'],
+                fallback_url=light_row['video_thumbnail_url']
             )
 
             # 保存されたサムネイルURLまたは元のURLを使用
             thumbnail_url = thumbnail_result['url'] if thumbnail_result['status'] == 'success' else None
 
             # タイトル分析
-            title_analysis = TitleAnalyzer.analyze(heavy_row.video_title)
+            title_analysis = analyze_title(heavy_row['video_title'])
             
             # コンテンツタイプの判定
-            content_type = categorize_video_type(light_row.video_url)
+            content_type = categorize_video_type(light_row['video_url'])
 
             # ニックネームのクリーニング
-            cleaned_nickname = clean_nickname(heavy_row.user_nickname)
+            cleaned_nickname = clean_nickname(heavy_row['user_nickname'])
 
             # ハッシュタグの抽出
-            hashtags = extract_hashtags(heavy_row.video_title)
+            hashtags = extract_hashtags(heavy_row['video_title'])
 
             # 同期データの作成
             sync_row = {
-                'video_id': light_row.video_id,
-                'url': light_row.video_url,
-                'username': light_row.user_username,
+                'video_id': light_row['video_id'],
+                'url': light_row['video_url'],
+                'username': light_row['user_username'],
                 'display_name': cleaned_nickname,
                 'cover_image_url': thumbnail_url,
-                'description': heavy_row.video_title,
+                'description': heavy_row['video_title'],
                 'hashtags': hashtags,
                 'category': title_analysis['category'],
-                'product_name': title_analysis['product_name'],
+                'product': title_analysis['product_name'],
                 'content_type': content_type,
-                'created_at': heavy_row.post_time,
+                'created_at': heavy_row['post_time'],
                 'playCountIncrease': play_count_increase,
                 'likesCountIncrease': likes_count_increase,
                 'commentCountIncrease': comment_count_increase,
                 'saveCountIncrease': save_count_increase,
-                'music_title': heavy_row.audio_title,
-                'play_count': light_row.play_count,
-                'likes_count': heavy_row.like_count,
-                'comment_count': heavy_row.comment_count,
-                'save_count': heavy_row.collect_count
+                'music_title': heavy_row['audio_title'],
+                'play_count': heavy_row['play_count'],
+                'likes_count': heavy_row['like_count'],
+                'comment_count': heavy_row['comment_count'],
+                'save_count': heavy_row['collect_count']
             }
             sync_rows.append(sync_row)
 
         # video_masterテーブルへの同期
         if sync_rows:
-            table_id = 'video_master'
-            errors = client.insert_rows_json(table_id, sync_rows)
-            if errors:
-                return {'status': 'error', 'message': f'Insertion errors: {errors}'}
+            for row in sync_rows:
+                insert_query = """
+                INSERT INTO video_master (
+                    video_id, url, username, display_name, cover_image_url,
+                    description, hashtags, category, product, content_type,
+                    created_at, playCountIncrease, likesCountIncrease,
+                    commentCountIncrease, saveCountIncrease, music_title,
+                    play_count, likes_count, comment_count, save_count
+                ) VALUES (
+                    %(video_id)s, %(url)s, %(username)s, %(display_name)s,
+                    %(cover_image_url)s, %(description)s, %(hashtags)s,
+                    %(category)s, %(product)s, %(content_type)s,
+                    %(created_at)s, %(playCountIncrease)s, %(likesCountIncrease)s,
+                    %(commentCountIncrease)s, %(saveCountIncrease)s,
+                    %(music_title)s, %(play_count)s, %(likes_count)s,
+                    %(comment_count)s, %(save_count)s
+                )
+                ON DUPLICATE KEY UPDATE
+                    category = VALUES(category),
+                    product = VALUES(product),
+                    playCountIncrease = VALUES(playCountIncrease),
+                    likesCountIncrease = VALUES(likesCountIncrease),
+                    commentCountIncrease = VALUES(commentCountIncrease),
+                    saveCountIncrease = VALUES(saveCountIncrease),
+                    play_count = VALUES(play_count),
+                    likes_count = VALUES(likes_count),
+                    comment_count = VALUES(comment_count),
+                    save_count = VALUES(save_count)
+                """
+                execute_write_query(insert_query, row)
 
         return {
             'status': 'success',
@@ -376,6 +404,7 @@ def sync_video_data(request) -> Dict[str, str]:
         }
 
     except Exception as e:
+        logging.error(f"同期処理エラー: {str(e)}")
         return {'status': 'error', 'message': str(e)}
 
 # Cloud Functionのエントリーポイント
@@ -385,4 +414,33 @@ def sync_video_master(request):
     HTTPトリガーでvideo_masterテーブルの同期を実行する
     """
     result = sync_video_data(request)
-    return result 
+    return result
+
+def local_test():
+    """ローカルテスト用の実行関数"""
+    try:
+            
+        print("=== ビデオマスター同期処理 ローカルテスト開始 ===")
+        
+        # テストリクエストの作成（空のdict）
+        test_request = {}
+        
+        # 同期処理の実行
+        result = sync_video_data(test_request)
+        
+        print("\n=== テスト結果 ===")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        
+        if result['status'] == 'success':
+            print("\n✅ テスト成功")
+        else:
+            print("\n❌ テスト失敗")
+            print(f"エラーメッセージ: {result['message']}")
+            
+    except Exception as e:
+        print(f"\n❌ テスト実行エラー: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
+if __name__ == "__main__":
+    local_test() 
