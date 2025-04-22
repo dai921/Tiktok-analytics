@@ -7,20 +7,29 @@ USE tiktok_data;
 CREATE TABLE account_list (
   id INT NOT NULL AUTO_INCREMENT,
   account_url VARCHAR(255) DEFAULT NULL,
-  favorite_user_username VARCHAR(50) DEFAULT NULL,
+  favorite_user_username VARCHAR(255) DEFAULT NULL,
   is_new_account TINYINT(1) DEFAULT NULL,
   last_crawled_at DATETIME DEFAULT NULL,
-  favorite_user_is_alive BOOLEAN NOT NULL DEFAULT TRUE,
-  crawl_priority INT NOT NULL DEFAULT 10,
   account_type VARCHAR(255) DEFAULT NULL,
-  created_at DATETIME DEFAULT NULL,
-  updated_at DATETIME DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  favorite_user_is_alive TINYINT(1) NOT NULL DEFAULT 1,
+  crawler_account_id INT DEFAULT NULL,
+  crawl_priority INT NOT NULL DEFAULT 10,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY account_url (account_url),
   KEY idx_account_url (account_url),
-  KEY idx_is_new_account (is_new_account)
+  KEY idx_is_new_account (is_new_account),
+  KEY idx_username (favorite_user_username),
+  KEY idx_crawler_account (crawler_account_id),
+  KEY idx_is_alive (favorite_user_is_alive),
+  KEY idx_priority_last_crawled (crawl_priority, last_crawled_at),
+  CONSTRAINT fk_crawler_account_id
+    FOREIGN KEY (crawler_account_id)
+    REFERENCES crawler_accounts (id)
 )
 ENGINE = InnoDB
+AUTO_INCREMENT = 31396
 DEFAULT CHARSET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -74,6 +83,9 @@ CREATE TABLE video_master (
   prevCommentCount INT UNSIGNED DEFAULT NULL,
   commentCountIncrease INT DEFAULT NULL,
   ten_days_comment_increase INT DEFAULT NULL,
+  prevSaveCount INT UNSIGNED DEFAULT NULL,
+  saveCountIncrease INT DEFAULT NULL,
+  ten_days_save_increase INT DEFAULT NULL,
   product VARCHAR(255) DEFAULT NULL,
   category VARCHAR(255) DEFAULT NULL,
   music_id VARCHAR(50) DEFAULT NULL,
@@ -186,6 +198,8 @@ CREATE TABLE frontend_data (
   ten_days_likes_increase INT DEFAULT NULL,
   comment_count_increase INT DEFAULT NULL,
   ten_days_comment_increase INT DEFAULT NULL,
+  save_count INT UNSIGNED DEFAULT NULL,
+  save_count_increase INT DEFAULT NULL,
   account_type VARCHAR(50) DEFAULT NULL,
   hashtags TEXT,
   music_info TEXT,
