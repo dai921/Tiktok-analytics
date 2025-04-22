@@ -249,7 +249,131 @@ def sync_category_spreadsheet():
                                     keyword_inserted += 1
 
             logger.info(f"Successfully inserted {category_inserted} categories and {keyword_inserted} keywords")
-            return f'Successfully inserted {category_inserted} categories and {keyword_inserted} keywords', 200
+
+            # 商品名キーワードマッピングの同期
+            logger.info("商品名キーワードマッピングの同期を開始")
+            product_range = '商品名キーワードマッピング!B2:D'
+            product_result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=product_range
+            ).execute()
+            product_values = product_result.get('values', [])
+
+            product_inserted = 0
+            product_keyword_inserted = 0
+
+            # 既存の商品を取得
+            existing_products_query = "SELECT product_id, product_name FROM product_master"
+            existing_products_data = execute_query(existing_products_query)
+            existing_products = {row['product_name']: row['product_id'] for row in existing_products_data}
+
+            for row in product_values:
+                if len(row) >= 2:  # 商品名とジャンルが存在する場合
+                    product_name = row[0].strip()
+                    product_category = row[1].strip()
+
+                    # product_masterへの挿入/更新
+                    if product_name not in existing_products:
+                        product_query = '''
+                            INSERT INTO product_master (product_name, product_category)
+                            VALUES (%(product_name)s, %(product_category)s)
+                            ON DUPLICATE KEY UPDATE product_category = %(product_category)s
+                        '''
+                        product_params = {
+                            'product_name': product_name,
+                            'product_category': product_category
+                        }
+                        with get_connection() as conn:
+                            with conn.cursor() as cursor:
+                                cursor.execute(product_query, product_params)
+                                product_id = cursor.lastrowid
+                                conn.commit()
+                                existing_products[product_name] = product_id
+                                product_inserted += 1
+
+                    # キーワードの処理
+                    if len(row) > 2 and row[2].strip():
+                        keywords = [k.strip() for k in row[2].split(',') if k.strip()]
+                        product_id = existing_products[product_name]
+
+                        for keyword in keywords:
+                            keyword_query = '''
+                                INSERT INTO product_keywords (product_id, keyword)
+                                VALUES (%(product_id)s, %(keyword)s)
+                                ON DUPLICATE KEY UPDATE keyword = %(keyword)s
+                            '''
+                            keyword_params = {
+                                'product_id': product_id,
+                                'keyword': keyword
+                            }
+                            execute_write_query(keyword_query, keyword_params)
+                            product_keyword_inserted += 1
+
+            # 複数商品（別名）の同期
+            logger.info("複数商品の同期を開始")
+            alias_range = '複数商品!B2:E'
+            alias_result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=alias_range
+            ).execute()
+            alias_values = alias_result.get('values', [])
+
+            alias_inserted = 0
+            alias_keyword_inserted = 0
+
+            for row in alias_values:
+                if len(row) >= 3:  # 商品名、別名、キーワードが存在する場合
+                    product_name = row[0].strip()
+                    alias_name = row[1].strip()
+                    keywords = [k.strip() for k in row[2].split(',') if k.strip()]
+                    priority = int(row[3]) if len(row) > 3 and row[3].strip().isdigit() else None
+
+                    # product_aliasへの挿入
+                    alias_query = '''
+                        INSERT INTO product_alias (product_name, alias_name, alias_priority)
+                        VALUES (%(product_name)s, %(alias_name)s, %(priority)s)
+                        ON DUPLICATE KEY UPDATE 
+                            alias_priority = %(priority)s
+                    '''
+                    alias_params = {
+                        'product_name': product_name,
+                        'alias_name': alias_name,
+                        'priority': priority
+                    }
+                    
+                    try:
+                        with get_connection() as conn:
+                            with conn.cursor() as cursor:
+                                cursor.execute(alias_query, alias_params)
+                                alias_id = cursor.lastrowid
+                                conn.commit()
+                                alias_inserted += 1
+
+                        # 別名キーワードの処理
+                        for keyword in keywords:
+                            alias_keyword_query = '''
+                                INSERT INTO product_alias_keywords (alias_id, keyword)
+                                VALUES (%(alias_id)s, %(keyword)s)
+                                ON DUPLICATE KEY UPDATE keyword = %(keyword)s
+                            '''
+                            alias_keyword_params = {
+                                'alias_id': alias_id,
+                                'keyword': keyword
+                            }
+                            execute_write_query(alias_keyword_query, alias_keyword_params)
+                            alias_keyword_inserted += 1
+
+                    except DatabaseError as e:
+                        logger.error(f"別名の登録中にエラーが発生: {str(e)}")
+                        continue
+
+            success_message = (
+                f"Successfully inserted/updated:\n"
+                f"- {product_inserted} products and {product_keyword_inserted} product keywords\n"
+                f"- {alias_inserted} aliases and {alias_keyword_inserted} alias keywords"
+            )
+            logger.info(success_message)
+            return success_message, 200
 
         except DatabaseError as e:
             logger.error(f"Database error: {str(e)}")
