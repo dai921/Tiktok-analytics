@@ -886,12 +886,23 @@ class TikTokCrawler:
                     if last_post_time and last_post_time < target_date:
                         logger.info(f"目標日付（{target_date}）より前の動画を処理したため、クロールを終了します")
                         break
+
+                    if len(light_like_datas) < 50:
+                        logger.info(f"取得できた動画が{len(light_like_datas)}件と目標の{max_videos_per_batch}件未満のため、全ての動画を取得済みと判断してクロールを終了します")
+                        break
                         
                     # まだ2025/1/1より後の動画なら、さらに古い動画を取得するためにスクロール
                     logger.info(f"まだ目標日付（{target_date}）より後の動画（最終投稿日時: {last_post_time}）のため、さらに古い動画を取得します")
+                    max_videos_per_batch += 50
                     light_like_datas = self.get_video_light_like_datas_from_user_page(max_videos_per_batch)
+
+                    # ①投稿が50個未満の場合はストップ
+
+
+                    # ②既に処理済みのURLを除外
+                    light_like_datas = [data for data in light_like_datas if data["video_url"] not in processed_urls]
                     if not light_like_datas:
-                        logger.info("これ以上動画が取得できないため、クロールを終了します")
+                        logger.info("未処理の動画が残っていないため、クロールを終了します")
                         break
 
             else:
