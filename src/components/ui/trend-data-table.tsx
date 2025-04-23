@@ -142,11 +142,14 @@ export function DataTable<TData extends Record<string, any>, TValue>({
         </div>
       )}
       <div className="rounded-md border">
-        <Table>
+        <Table className="w-full table-fixed">
           <TableHeader>
             <TableRow>
               {columns.map((column) => (
-                <TableHead key={column.accessorKey}>
+                <TableHead 
+                  key={column.accessorKey}
+                  style={{ width: column.size, minWidth: column.size, maxWidth: column.size }}
+                >
                   {column.enableSorting ? (
                     <Button
                       variant="ghost"
@@ -172,7 +175,10 @@ export function DataTable<TData extends Record<string, any>, TValue>({
                   onClick={() => onRowClick?.(row)}
                 >
                   {columns.map((column) => (
-                    <TableCell key={column.accessorKey}>
+                    <TableCell 
+                      key={column.accessorKey}
+                      style={{ width: column.size, minWidth: column.size, maxWidth: column.size }}
+                    >
                       {column.cell ? column.cell({ row: { getValue: (key: string) => row[key] } }) : row[column.accessorKey]}
                     </TableCell>
                   ))}

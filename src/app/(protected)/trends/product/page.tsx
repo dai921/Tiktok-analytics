@@ -56,7 +56,7 @@ export default function ProductTrendsPage() {
     {
       accessorKey: 'rank',
       header: '順位',
-      size: 60,
+      size: 80,
     },
     {
       accessorKey: 'name',
@@ -143,9 +143,9 @@ export default function ProductTrendsPage() {
         </TabsList>
 
         <TabsContent value="ranking">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* 左側: 商材ランキング */}
-            <Card>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* 左側: 商材ランキング（2カラム分） */}
+            <Card className="lg:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle>商材ランキング</CardTitle>
                 <div className="flex items-center gap-2">
@@ -189,8 +189,8 @@ export default function ProductTrendsPage() {
               </CardContent>
             </Card>
 
-            {/* 右側: 関連動画ランキング */}
-            <Card>
+            {/* 右側: 関連動画ランキング（3カラム分） */}
+            <Card className="lg:col-span-3">
               <CardHeader>
                 <CardTitle>関連動画ランキング TOP10</CardTitle>
               </CardHeader>
