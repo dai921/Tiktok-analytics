@@ -684,7 +684,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         <div className={cn(
           "whitespace-nowrap h-full",  // 高さを100%に
           "bg-gray-50",  // 背景色を設定（必要に応じて調整）
-          isNumericColumn(title) ? "pl-2 pr-0" : "pl-0 pr-2",
+          isNumericColumn(title) ? "pl-0 pr-0" : "pl-0 pr-0",
           "py-1 text-[12px]",
           alignmentClass,
           (isActive || localSortDirection) ? "text-blue-600 font-medium" : "text-gray-700"
