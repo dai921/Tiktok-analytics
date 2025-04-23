@@ -8,6 +8,8 @@ import { DataTable } from "@/components/ui/trend-data-table";
 import type { DateRange } from "react-day-picker";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Info } from "lucide-react";
+import { MultiSelect, Option } from '@/components/ui/multi-select';
+import { fetchTrendGenres } from '@/lib/api';
 
 interface ProductTrend {
   id: string;
@@ -50,6 +52,44 @@ export default function ProductTrendsPage() {
   const [relatedVideos, setRelatedVideos] = useState<RelatedVideo[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [availableGenres, setAvailableGenres] = useState<Option[]>([]);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // ジャンルデータを取得するuseEffectを追加
+  useEffect(() => {
+    const loadGenres = async () => {
+      try {
+        setIsLoading(true);
+        const genresResponse = await fetchTrendGenres();
+        
+        if (genresResponse.success) {
+          // ジャンルをOption形式に変換
+          const genreOptions = genresResponse.data.map(genre => ({
+            value: genre,
+            label: genre
+          }));
+          
+          setAvailableGenres(genreOptions);
+          
+          // デフォルトですべてのジャンルを選択
+          if (genreOptions.length > 0) {
+            const initialSelected = genreOptions.map(option => option.value);
+            setSelectedGenres(initialSelected);
+          }
+        } else {
+          setError('ジャンルデータの取得に失敗しました');
+        }
+      } catch (error) {
+        console.error("ジャンルデータの読み込みに失敗しました", error);
+        setError('ジャンルデータの読み込みに失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadGenres();
+  }, []);
 
   // 商材ランキングのカラム定義を修正
   const productColumns: ColumnDef<ProductTrend>[] = [
@@ -125,6 +165,12 @@ export default function ProductTrendsPage() {
 
   return (
     <div className="container mx-auto p-6">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md mb-6">
+          <p>{error}</p>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-6 gap-4">
         <h1 className="text-2xl font-bold whitespace-nowrap">商材トレンド分析</h1>
         <div className="w-[280px]">
@@ -146,44 +192,53 @@ export default function ProductTrendsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* 左側: 商材ランキング（2カラム分） */}
             <Card className="lg:col-span-2">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle>商材ランキング</CardTitle>
-                <div className="flex items-center gap-2">
-                  {/* 指標選択タブ */}
-                  <div className="flex rounded-md border bg-muted/50">
-                    <button
-                      className={`px-3 py-1 text-sm transition-colors ${
-                        metric === 'viewsIncrease' ? 'bg-primary text-primary-foreground' : ''
-                      }`}
-                      onClick={() => setMetric('viewsIncrease')}
-                    >
-                      再生増加数
-                    </button>
-                    <button
-                      className={`px-3 py-1 text-sm transition-colors ${
-                        metric === 'over100kViews' ? 'bg-primary text-primary-foreground' : ''
-                      }`}
-                      onClick={() => setMetric('over100kViews')}
-                    >
-                      10万再生以上
-                    </button>
-                    <button
-                      className={`px-3 py-1 text-sm transition-colors ${
-                        metric === 'postCount' ? 'bg-primary text-primary-foreground' : ''
-                      }`}
-                      onClick={() => setMetric('postCount')}
-                    >
-                      投稿数
-                    </button>
+              <CardHeader className="flex flex-col space-y-4 pb-2">
+                <div className="flex flex-row items-center justify-between">
+                  <CardTitle>商材ランキング</CardTitle>
+                  <div className="flex items-center gap-2">
+                    {/* 指標選択タブ */}
+                    <div className="flex rounded-md border bg-muted/50">
+                      <button
+                        className={`px-3 py-1 text-sm transition-colors ${
+                          metric === 'viewsIncrease' ? 'bg-primary text-primary-foreground' : ''
+                        }`}
+                        onClick={() => setMetric('viewsIncrease')}
+                      >
+                        再生増加数
+                      </button>
+                      <button
+                        className={`px-3 py-1 text-sm transition-colors ${
+                          metric === 'over100kViews' ? 'bg-primary text-primary-foreground' : ''
+                        }`}
+                        onClick={() => setMetric('over100kViews')}
+                      >
+                        10万再生以上
+                      </button>
+                      <button
+                        className={`px-3 py-1 text-sm transition-colors ${
+                          metric === 'postCount' ? 'bg-primary text-primary-foreground' : ''
+                        }`}
+                        onClick={() => setMetric('postCount')}
+                      >
+                        投稿数
+                      </button>
+                    </div>
                   </div>
+                </div>
+                <div className="w-full">
+                  <MultiSelect 
+                    options={availableGenres}
+                    selected={selectedGenres}
+                    onChange={(newSelected) => setSelectedGenres(newSelected)}
+                    placeholder={isLoading ? "ジャンルを取得中..." : "ジャンルで絞り込み"}
+                    emptyMessage={error ? "ジャンルが見つかりません" : "ジャンルを取得中..."}
+                  />
                 </div>
               </CardHeader>
               <CardContent>
                 <DataTable
                   columns={productColumns}
                   data={productData}
-                  searchColumn="name"
-                  searchPlaceholder="商材名で検索..."
                   onRowClick={(row) => handleProductClick(row.id)}
                 />
               </CardContent>
