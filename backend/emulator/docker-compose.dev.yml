@@ -20,52 +20,52 @@ services:
     volumes:
       - storage_data:/storage
 
-  account-crawler:
-    build:
-      # Windowsパスの正しい表記
-      context: C:/Users/kyoto/app/tik-analytics/Tiktok-analytics/backend/crawlers
-      dockerfile: Dockerfile
-    container_name: tiktok_account_crawler
-    environment:
-      - PUBSUB_EMULATOR_HOST=pubsub:8681
-      - PROJECT_ID=local-project
-      - MYSQL_HOST=host.docker.internal
-      - MYSQL_PORT=3306
-      - MYSQL_USER=tiktok_user
-      - MYSQL_PASSWORD=tiktok_pass
-      - MYSQL_DATABASE=tiktok_data
-      - CRAWLER_TYPE=account_crawler
-    command: tail -f /dev/null
-    depends_on:
-      - pubsub
-    # Windows Docker Desktopでは自動的にサポートされるが、念のため含める
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # account-crawler:
+  #   build:
+  #     # Windowsパスの正しい表記
+  #     context: C:/Users/kyoto/app/tik-analytics/Tiktok-analytics/backend/crawlers
+  #     dockerfile: Dockerfile
+  #   container_name: tiktok_account_crawler
+  #   environment:
+  #     - PUBSUB_EMULATOR_HOST=pubsub:8681
+  #     - PROJECT_ID=local-project
+  #     - MYSQL_HOST=host.docker.internal
+  #     - MYSQL_PORT=3306
+  #     - MYSQL_USER=tiktok_user
+  #     - MYSQL_PASSWORD=tiktok_pass
+  #     - MYSQL_DATABASE=tiktok_data
+  #     - CRAWLER_TYPE=account_crawler
+  #   command: tail -f /dev/null
+  #   depends_on:
+  #     - pubsub
+  #   # Windows Docker Desktopでは自動的にサポートされるが、念のため含める
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
-  # 動画クローラー（新規追加）
-  video-crawler:
-    build:
-      context: C:/Users/kyoto/app/tik-analytics/Tiktok-analytics/backend/crawlers
-      dockerfile: Dockerfile
-    container_name: tiktok_video_crawler
-    environment:
-      - PUBSUB_EMULATOR_HOST=pubsub:8681
-      - PROJECT_ID=local-project
-      - MYSQL_HOST=host.docker.internal
-      - MYSQL_PORT=3306
-      - MYSQL_USER=tiktok_user
-      - MYSQL_PASSWORD=tiktok_pass
-      - MYSQL_DATABASE=tiktok_data
-      - CRAWLER_TYPE=video_crawler
-      - BUCKET_NAME=tiktok-data-bucket
-      - STORAGE_EMULATOR_HOST=http://storage:4443
-      - GOOGLE_CLOUD_PROJECT=local-project
-    command: tail -f /dev/null
-    depends_on:
-      - pubsub
-      - storage
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # # 動画クローラー（新規追加）
+  # video-crawler:
+  #   build:
+  #     context: C:/Users/kyoto/app/tik-analytics/Tiktok-analytics/backend/crawlers
+  #     dockerfile: Dockerfile
+  #   container_name: tiktok_video_crawler
+  #   environment:
+  #     - PUBSUB_EMULATOR_HOST=pubsub:8681
+  #     - PROJECT_ID=local-project
+  #     - MYSQL_HOST=host.docker.internal
+  #     - MYSQL_PORT=3306
+  #     - MYSQL_USER=tiktok_user
+  #     - MYSQL_PASSWORD=tiktok_pass
+  #     - MYSQL_DATABASE=tiktok_data
+  #     - CRAWLER_TYPE=video_crawler
+  #     - BUCKET_NAME=tiktok-data-bucket
+  #     - STORAGE_EMULATOR_HOST=http://storage:4443
+  #     - GOOGLE_CLOUD_PROJECT=local-project
+  #   command: tail -f /dev/null
+  #   depends_on:
+  #     - pubsub
+  #     - storage
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
 volumes:
   mysql_data:

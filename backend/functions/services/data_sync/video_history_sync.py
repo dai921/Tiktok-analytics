@@ -17,7 +17,7 @@ initialize_config()
 
 def sync_video_history(event, context):
     """
-    video_masterの情報をvideo_view_historyに同期する
+    video_masterの情報をvideo_view_historyに同期し、10日間の集計を更新する
     
     Args:
         event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
@@ -46,29 +46,96 @@ def sync_video_history(event, context):
         print(f"現在jstの時刻は {datetime.now(jst)}")
         collection_date = (datetime.now(jst) + timedelta(hours=9) - timedelta(days=2)).strftime('%Y-%m-%d')
         
-        # video_masterからデータを取得して同期
+        # 履歴データの同期クエリを更新
         sync_query = """
         INSERT INTO play_count_history 
-        (video_id, video_url, collection_date, play_count_increase)
+        (video_id, video_url, collection_date, 
+         play_count_increase, likes_count_increase, 
+         comment_count_increase, save_count_increase)
         SELECT 
             video_id,
             url,
             %s as collection_date,
-            playCountIncrease
+            playCountIncrease,
+            likesCountIncrease,
+            commentCountIncrease,
+            saveCountIncrease
         FROM 
             video_master
         WHERE 
             video_id IS NOT NULL
             AND playCountIncrease IS NOT NULL
         ON DUPLICATE KEY UPDATE
-            play_count_increase = VALUES(play_count_increase)
+            play_count_increase = VALUES(play_count_increase),
+            likes_count_increase = VALUES(likes_count_increase),
+            comment_count_increase = VALUES(comment_count_increase),
+            save_count_increase = VALUES(save_count_increase)
         """
         
         # クエリを実行
         execute_write_query(sync_query, (collection_date,))
         
         logger.info(f"動画履歴の同期が完了しました。収集日: {collection_date}")
+
+        # 10日間の集計を更新
+        update_ten_days_metrics_query = """
+        UPDATE video_master vm
+        SET 
+            ten_days_increase = (
+                SELECT COALESCE(SUM(play_count_increase), 0)
+                FROM play_count_history pch
+                WHERE pch.video_id = vm.video_id
+                AND pch.collection_date IN (
+                    CURDATE(),
+                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
+                )
+            ),
+            ten_days_likes_increase = (
+                SELECT COALESCE(SUM(likes_count_increase), 0)
+                FROM play_count_history pch
+                WHERE pch.video_id = vm.video_id
+                AND pch.collection_date IN (
+                    CURDATE(),
+                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
+                )
+            ),
+            ten_days_comment_increase = (
+                SELECT COALESCE(SUM(comment_count_increase), 0)
+                FROM play_count_history pch
+                WHERE pch.video_id = vm.video_id
+                AND pch.collection_date IN (
+                    CURDATE(),
+                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
+                )
+            ),
+            ten_days_save_increase = (
+                SELECT COALESCE(SUM(save_count_increase), 0)
+                FROM play_count_history pch
+                WHERE pch.video_id = vm.video_id
+                AND pch.collection_date IN (
+                    CURDATE(),
+                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
+                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
+                )
+            )
+        """
         
+        # 10日間の集計クエリを実行
+        execute_write_query(update_ten_days_metrics_query)
+        
+        logger.info("10日間の指標の更新が完了しました")
+
         return {
             "status": "success",
             "message": "動画履歴の同期が完了しました",
