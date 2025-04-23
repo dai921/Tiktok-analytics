@@ -29,6 +29,7 @@ from services.data_sync.frontend_data_update.batch_scheduler import manage_front
 
 # インポート部分に追加
 from services.data_sync.video_history_sync import sync_video_history
+from services.data_sync.video_master_sync import sync_video_master as sync_raw_data_to_video_master
 from services.account_info.sync_account_list import sync_account_list as sync_account
 from services.account_info.sync_crawler_accounts import sync_crawler_accounts as sync_crawler
 
@@ -75,6 +76,9 @@ def collect_videos(event,context):
 
 def video_url_data_updater(event,context):
     return video_url_updater_function(event,context)
+
+def video_master_sync_from_raw_data(event,context):
+    return sync_raw_data_to_video_master(event,context)
 
 # batch_scheduler用のエントリーポイント関数を追加
 def manage_frontend_update_schedule(event,context):

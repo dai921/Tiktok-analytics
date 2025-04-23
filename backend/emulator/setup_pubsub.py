@@ -29,7 +29,8 @@ def setup_pubsub():
         'video-url-data-update': 'trigger-video-url-data-update', #Account-crawler終了通知
         'spreadsheet-completion': 'spreadsheet-completion', #スプレッドシート同期完了通知
         'trigger-video-collector': 'trigger-video-collector', #video-collector関数トリガー
-        'frontend-update-status': 'frontend-update-status' #frontend-update-status関数トリガー
+        'frontend-update-status': 'frontend-update-status', #frontend-update-status関数トリガー
+        'video-master-sync': 'video-master-sync-sub' #video-master-sync関数トリガー
     }
     
     # 各トピックとサブスクリプションを作成
