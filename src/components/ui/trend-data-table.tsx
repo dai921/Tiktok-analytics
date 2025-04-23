@@ -23,18 +23,20 @@ import {
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 
-interface DataTableProps<TData, TValue> {
+interface DataTableProps<TData extends Record<string, any>, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchPlaceholder?: string;
   searchColumn?: string;
+  onRowClick?: (row: TData) => void;
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends Record<string, any>, TValue>({
   columns,
   data,
   searchPlaceholder = '検索...',
   searchColumn,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -164,7 +166,11 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {sortedData.length > 0 ? (
               sortedData.map((row, rowIndex) => (
-                <TableRow key={rowIndex}>
+                <TableRow 
+                  key={rowIndex}
+                  className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : ''}
+                  onClick={() => onRowClick?.(row)}
+                >
                   {columns.map((column) => (
                     <TableCell key={column.accessorKey}>
                       {column.cell ? column.cell({ row: { getValue: (key: string) => row[key] } }) : row[column.accessorKey]}
