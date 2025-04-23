@@ -15,6 +15,7 @@ interface ProductTrend {
   viewsIncrease: number;
   over100kViews: number;
   postCount: number;
+  [key: string]: string | number;
 }
 
 interface RelatedVideo {
@@ -31,6 +32,16 @@ interface TableRow {
   getValue: (key: string) => any;
 }
 
+// 指標の表示名を取得する関数
+const getMetricLabel = (metricKey: string) => {
+  const labels: Record<string, string> = {
+    viewsIncrease: '再生増加数',
+    over100kViews: '10万再生以上個数',
+    postCount: '投稿数',
+  };
+  return labels[metricKey] || metricKey;
+};
+
 export default function ProductTrendsPage() {
   const [activeTab, setActiveTab] = useState("ranking");
   const [dateRange, setDateRange] = useState<DateRange>();
@@ -40,30 +51,24 @@ export default function ProductTrendsPage() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 商材ランキングのカラム定義
+  // 商材ランキングのカラム定義を修正
   const productColumns: ColumnDef<ProductTrend>[] = [
+    {
+      accessorKey: 'rank',
+      header: '順位',
+      size: 60,
+    },
     {
       accessorKey: 'name',
       header: '商材名',
-      enableSorting: true,
+      size: 200,
     },
     {
-      accessorKey: 'viewsIncrease',
-      header: '再生増加数',
-      enableSorting: true,
-      cell: ({ row }: { row: TableRow }) => formatNumber(row.getValue('viewsIncrease')),
-    },
-    {
-      accessorKey: 'over100kViews',
-      header: '10万再生以上個数',
-      enableSorting: true,
-      cell: ({ row }: { row: TableRow }) => formatNumber(row.getValue('over100kViews')),
-    },
-    {
-      accessorKey: 'postCount',
-      header: '投稿数',
-      enableSorting: true,
-      cell: ({ row }: { row: TableRow }) => formatNumber(row.getValue('postCount')),
+      id: 'metricValue',
+      accessorFn: (row) => row[metric],
+      header: getMetricLabel(metric),
+      cell: ({ row }: { row: TableRow }) => formatNumber(row.getValue('metricValue')),
+      size: 120,
     },
   ];
 
@@ -120,13 +125,15 @@ export default function ProductTrendsPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">商材トレンド分析</h1>
-        <DateRangePicker
-          value={dateRange}
-          onChange={handleDateRangeChange}
-          displayMode
-        />
+      <div className="flex justify-between items-center mb-6 gap-4">
+        <h1 className="text-2xl font-bold whitespace-nowrap">商材トレンド分析</h1>
+        <div className="w-[280px]">
+          <DateRangePicker
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            displayMode
+          />
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -139,17 +146,37 @@ export default function ProductTrendsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* 左側: 商材ランキング */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle>商材ランキング</CardTitle>
-                <select
-                  value={metric}
-                  onChange={(e) => setMetric(e.target.value)}
-                  className="border rounded px-2 py-1 text-sm"
-                >
-                  <option value="viewsIncrease">再生増加数</option>
-                  <option value="over100kViews">10万再生以上個数</option>
-                  <option value="postCount">投稿数</option>
-                </select>
+                <div className="flex items-center gap-2">
+                  {/* 指標選択タブ */}
+                  <div className="flex rounded-md border bg-muted/50">
+                    <button
+                      className={`px-3 py-1 text-sm transition-colors ${
+                        metric === 'viewsIncrease' ? 'bg-primary text-primary-foreground' : ''
+                      }`}
+                      onClick={() => setMetric('viewsIncrease')}
+                    >
+                      再生増加数
+                    </button>
+                    <button
+                      className={`px-3 py-1 text-sm transition-colors ${
+                        metric === 'over100kViews' ? 'bg-primary text-primary-foreground' : ''
+                      }`}
+                      onClick={() => setMetric('over100kViews')}
+                    >
+                      10万再生以上
+                    </button>
+                    <button
+                      className={`px-3 py-1 text-sm transition-colors ${
+                        metric === 'postCount' ? 'bg-primary text-primary-foreground' : ''
+                      }`}
+                      onClick={() => setMetric('postCount')}
+                    >
+                      投稿数
+                    </button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <DataTable

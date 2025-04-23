@@ -67,3 +67,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+.compact-table {
+  /* コンパクトなテーブルスタイル */
+  .table {
+    @apply text-sm;
+  }
+  
+  th, td {
+    @apply py-2 px-3;
+  }
+
+  /* 3行表示用のスタイル */
+  .tbody {
+    max-height: 120px;
+    overflow-y: auto;
+  }
+}
