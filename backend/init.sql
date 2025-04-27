@@ -96,6 +96,7 @@ CREATE TABLE video_master (
   file_path VARCHAR(255) DEFAULT NULL,
   folder_path VARCHAR(255) DEFAULT NULL,
   image_count INT DEFAULT 0,
+  front_needs_update TINYINT DEFAULT 0,
   PRIMARY KEY (id),
   UNIQUE KEY url (url),
   UNIQUE KEY video_id (video_id),
@@ -106,7 +107,8 @@ CREATE TABLE video_master (
   KEY idx_ten_days_likes_increase (ten_days_likes_increase),
   KEY idx_commentCountIncrease (commentCountIncrease),
   KEY idx_ten_days_comment_increase (ten_days_comment_increase),
-  KEY idx_currentFetchDate (currentFetchDate)
+  KEY idx_currentFetchDate (currentFetchDate),
+  KEY idx_front_needs_update (front_needs_update)
 )
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
@@ -138,6 +140,7 @@ COLLATE = utf8mb4_0900_ai_ci;
 CREATE TABLE frontend_data (
   id INT NOT NULL AUTO_INCREMENT,
   url VARCHAR(255) NOT NULL,
+  video_id VARCHAR(50) DEFAULT NULL,
   thumbnail_url VARCHAR(255) DEFAULT NULL,
   created_at DATE DEFAULT NULL,
   play_count INT UNSIGNED DEFAULT NULL,

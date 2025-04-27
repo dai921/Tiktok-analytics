@@ -50,29 +50,30 @@ async def get_product_stats(
         query = """
         WITH product_stats AS (
             SELECT 
-                vm.product,
+                fd.product,
                 SUM(pch.play_count_increase) as total_play_count_increase,
                 COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as videos_over_100k,
                 COUNT(DISTINCT pch.video_id) as total_posts
             FROM play_count_history pch
-            JOIN video_master vm ON pch.video_id = vm.video_id
+            JOIN frontend_data fd ON pch.video_id = fd.video_id
             WHERE pch.collection_date BETWEEN %s AND %s
-            AND vm.product IS NOT NULL
-            GROUP BY vm.product
+            AND fd.product IS NOT NULL
+            GROUP BY fd.product
         ),
         top_videos AS (
             SELECT 
-                vm.product,
-                fd.url,
-                fd.thumbnail_url,
-                fd.play_count_increase,
-                fd.account_name,
-                fd.display_name,
-                ROW_NUMBER() OVER (PARTITION BY vm.product ORDER BY fd.play_count_increase DESC) as rank_col
-            FROM frontend_data fd
-            JOIN video_master vm ON fd.url = vm.url
-            WHERE fd.created_at BETWEEN %s AND %s
-            AND vm.product IS NOT NULL
+                product,
+                url,
+                thumbnail_url,
+                play_count_increase,
+                account_name,
+                display_name,
+                ROW_NUMBER() OVER (PARTITION BY product ORDER BY play_count_increase DESC) as rank_col
+            FROM frontend_data
+            WHERE video_id IN (
+                SELECT video_id FROM play_count_history WHERE collection_date BETWEEN %s AND %s
+            )
+            AND product IS NOT NULL
         )
         SELECT 
             ps.product,
@@ -96,6 +97,9 @@ async def get_product_stats(
 
         cursor.execute(query, (start_date, end_date, start_date, end_date))
         results = cursor.fetchall()
+        
+        print(f"Raw DB results: {results}")
+        logger.info(f"Raw DB results: {results}")
         
         print(f"Retrieved {len(results)} product stats records")
         
