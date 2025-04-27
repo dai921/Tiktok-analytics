@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import functions_framework
 from google.cloud import storage
 from datetime import datetime
@@ -16,9 +16,7 @@ load_dotenv()
 # ロギング設定
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-project_id = os.getenv('PROJECT_ID', 'local-project')
-pubsub_emulator_host = os.getenv('PUBSUB_EMULATOR_HOST')
-topic_name = "video-master-sync"  
+project_id = os.getenv('PROJECT_ID', 'local-project') 
 
 # 設定の初期化
 initialize_config()
@@ -276,22 +274,132 @@ def extract_hashtags(title: str) -> str:
     # カンマ区切りの文字列として結合
     return ','.join(hashtags)
 
-def sync_video_data(video_data: Dict) -> Dict[str, str]:
+
+def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, int]]:
     """
-    Pub/Subメッセージから受け取ったデータを処理し、
-    video_masterテーブルに同期する
+    DBから動画データをバッチで取得する
+    
+    Args:
+        batch_size (int): 1回のバッチで取得するレコード数
+        
+    Returns:
+        Tuple[List[Dict], Dict[str, int]]: 動画データのリストと進捗情報
     """
     try:
-        # データの取り出し
-        video_id = video_data['video_id']
+        # 更新対象の総数を取得
+        total_count_query = """
+            SELECT COUNT(*) as total
+            FROM video_light_raw_data vl
+            JOIN video_heavy_raw_data vh ON vh.video_id = vl.video_id
+            WHERE vl.needs_update = 1
+            AND vl.play_count is not null
+            AND vh.audio_url is not null
+        """
+        total_result = execute_query(total_count_query)
+        total_count = total_result[0]['total']
 
-        # play_countとaudio_titleの値チェック
-        if video_data.get('play_count') is None or video_data.get('audio_title') is None:
-            logger.warning(f"必須データが不足しています。video_id: {video_id}")
-            return {
-                'status': 'error',
-                'message': f'Required data missing for video {video_id}'
-            }
+        # カーソル情報の取得
+        cursor_query = """
+            SELECT last_cursor_id
+            FROM processing_cursors
+            WHERE processor_name = 'video_sync_master'
+            AND target_table = 'video_light_raw_data'
+            FOR UPDATE
+        """
+        cursor_result = execute_query(cursor_query)
+                
+        if not cursor_result:
+            # カーソルが存在しない場合は作成
+            init_cursor_query = """
+                INSERT INTO processing_cursors 
+                (processor_name, target_table, last_cursor_id, batch_size)
+                VALUES ('video_sync_master', 'video_light_raw_data', 0, %s)
+            """
+            execute_write_query(init_cursor_query, (batch_size,))
+            last_cursor_id = 0
+        else:
+            last_cursor_id = cursor_result[0]['last_cursor_id']
+
+
+        # 残り件数を計算
+        remaining_count_query = """
+            SELECT COUNT(*) as remaining
+            FROM video_light_raw_data vl
+            JOIN video_heavy_raw_data vh ON vh.video_id = vl.video_id
+            WHERE vl.id > %s
+            AND vl.needs_update = 1
+            AND vl.play_count is not null
+            AND vh.audio_url is not null
+        """
+        remaining_result = execute_query(remaining_count_query, (last_cursor_id,))
+        remaining_count = remaining_result[0]['remaining']
+
+        # バッチデータの取得
+        query = """
+            SELECT
+                vl.id,
+                vl.video_id,
+                vl.video_url,
+                vl.video_thumbnail_url,
+                vl.user_username,
+                vl.play_count,
+                vl.video_alt_info_text,
+                vh.user_nickname,
+                vh.post_time,
+                vh.like_count,
+                vh.comment_count,
+                vh.collect_count,
+                vh.audio_title
+            FROM video_light_raw_data AS vl
+            JOIN video_heavy_raw_data AS vh ON vh.video_id = vl.video_id
+            WHERE vl.id > %s
+            AND vl.needs_update = 1
+            AND vl.play_count is not null
+            AND vh.audio_url is not null
+            ORDER BY vl.id
+            LIMIT %s
+        """
+        
+        results = execute_query(query, (last_cursor_id, batch_size))
+        
+        if results:
+            # 最後のレコードのIDでカーソルを更新
+            last_id = results[-1]['id']
+            update_cursor_query = """
+                UPDATE processing_cursors
+                SET last_cursor_id = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE processor_name = 'video_sync_master'
+                AND target_table = 'video_light_raw_data'
+            """
+            execute_write_query(update_cursor_query, (last_id,))
+            
+        logger.info(f"更新対象の総数: {total_count}")
+        logger.info(f"残り処理件数: {remaining_count}")
+            
+        progress_info = {
+            'total': total_count,
+            'remaining': remaining_count
+        }
+            
+        return results, progress_info
+
+    except Exception as e:
+        logger.error(f"バッチデータ取得エラー: {str(e)}")
+        raise
+
+def sync_video_data(video_data: Dict) -> Dict[str, str]:
+    """
+    動画データを同期する
+    
+    Args:
+        video_data (Dict): 動画データ
+    
+    Returns:
+        Dict[str, str]: 処理結果
+    """
+    try:
+        video_id = video_data['video_id']
 
         # 前回のデータを取得（MySQL用のクエリ）
         prev_data_query = """
@@ -304,16 +412,15 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             WHERE video_id = %s
             ORDER BY created_at DESC
             LIMIT 1
-            """
-        prev_data_params = (video_id,)
-        prev_data_results = execute_query(prev_data_query, prev_data_params)
+        """
+        prev_data_results = execute_query(prev_data_query, (video_id,))
         prev_data = prev_data_results[0] if prev_data_results else None
 
         # 増加量の計算
         current_play_count = video_data['play_count']
         current_likes_count = video_data['like_count']
         current_comment_count = video_data['comment_count']
-        current_save_count = video_data['save_count']
+        current_save_count = video_data['collect_count']
 
         if prev_data:
             # 前回のデータが存在する場合は差分を計算
@@ -354,7 +461,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         account_type_results = execute_query(account_type_query, (username,))
         account_type = account_type_results[0]['account_type'] if account_type_results else None
         # タイトル分析
-        video_title = normalize_video_title(video_data['video_title'])
+        video_title = normalize_video_title(video_data['video_alt_info_text'])
         title_analysis = analyze_title(video_title, account_type)
         
         # コンテンツタイプの判定
@@ -364,7 +471,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         cleaned_nickname = clean_nickname(video_data['user_nickname'])
 
         # ハッシュタグの抽出
-        hashtags = extract_hashtags(video_data['video_title'])
+        hashtags = extract_hashtags(video_data['video_alt_info_text'])
 
         # 同期データの作成
         insert_params = {
@@ -373,7 +480,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'username': username,
             'display_name': cleaned_nickname,
             'cover_image_url': thumbnail_url,
-            'description': video_title,
+            'description':video_title,
             'hashtags': hashtags,
             'category': title_analysis['category'],
             'product': title_analysis['product_name'],
@@ -388,7 +495,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'play_count': video_data['play_count'],
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
-            'save_count': video_data['save_count'],
+            'save_count': video_data['collect_count'],
             'front_needs_update': 1
         }
   
@@ -409,13 +516,20 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             %(comment_count)s, %(save_count)s, %(front_needs_update)s
         )
         ON DUPLICATE KEY UPDATE
+            display_name = VALUES(display_name),
+            cover_image_url = VALUES(cover_image_url),
+            description = VALUES(description),
+            hashtags = VALUES(hashtags),
             category = VALUES(category),
             product = VALUES(product),
+            content_type = VALUES(content_type),
+            created_at = VALUES(created_at),
             account_type = VALUES(account_type),
             playCountIncrease = VALUES(playCountIncrease),
             likesCountIncrease = VALUES(likesCountIncrease),
             commentCountIncrease = VALUES(commentCountIncrease),
             saveCountIncrease = VALUES(saveCountIncrease),
+            music_title = VALUES(music_title),
             play_count = VALUES(play_count),
             likes_count = VALUES(likes_count),
             comment_count = VALUES(comment_count),
@@ -433,46 +547,98 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         logger.error(f"同期処理エラー: {str(e)}")
         return {'status': 'error', 'message': str(e)}
 
-def sync_video_master(event, context):
+def sync_video_data_batch() -> Dict[str, Any]:
     """
-    Pub/Subメッセージで実行される関数
+    動画データをバッチで同期する
+    
+    Returns:
+        Dict[str, Any]: 処理結果
+    """
+    try:
+        batch_size = 700
+        processed_count = 0
+        error_count = 0
+        error_videos = []
+
+        # バッチでデータを取得
+        videos, progress_info = get_video_data_batch(batch_size)
+        
+        # 処理対象のデータがない場合はカーソルをリセット
+        if not videos:
+            reset_query = """
+                UPDATE processing_cursors
+                SET last_cursor_id = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE processor_name = 'video_sync_master'
+                AND target_table = 'video_light_raw_data'
+            """
+            execute_write_query(reset_query)
+            logger.info("全件処理完了のため、カーソルをリセットしました")
+            
+            return {
+                'status': 'success',
+                'message': '全件の処理が完了しました',
+                'processed_count': 0,
+                'error_count': 0,
+                'error_videos': [],
+                'progress_info': {'total': progress_info['total'], 'remaining': 0}
+            }
+        
+        # 以下、既存の処理続行
+        for video in videos:
+            try:
+                result = sync_video_data(video)
+                if result['status'] == 'success':
+                    processed_count += 1
+                else:
+                    error_count += 1
+                    error_videos.append({
+                        'video_id': video['video_id'],
+                        'error': result['message']
+                    })
+            except Exception as e:
+                error_count += 1
+                error_videos.append({
+                    'video_id': video['video_id'],
+                    'error': str(e)
+                })
+
+        return {
+            'status': 'success',
+            'processed_count': processed_count,
+            'error_count': error_count,
+            'error_videos': error_videos,
+            'progress_info': progress_info
+        }
+
+    except Exception as e:
+        logger.error(f"バッチ同期処理エラー: {str(e)}")
+        return {
+            'status': 'error',
+            'message': str(e)
+        }
+
+@functions_framework.http
+def sync_video_master(request):
+    """
+    HTTPリクエストで実行される関数
     Args:
-        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
-        context (google.cloud.functions.Context): メタデータを含むコンテキスト
+        request (flask.Request): HTTPリクエストオブジェクト
     Returns:
         tuple: (結果データ, HTTPステータスコード)
     """
     logger.info("==== sync_video_master関数の実行開始 ====")
     
     try:
-        # Pub/Subメッセージの処理
-        if 'data' in event:
-            message_data = base64.b64decode(event['data']).decode('utf-8')
-            video_data = json.loads(message_data)
-            logger.info(f"Pub/Subメッセージを受信: {video_data}")
-        else:
-            logger.error("データなしのメッセージを受信")
-            return {
-                'status': 'error',
-                'message': 'No data in message'
-            }, 400
-
-        # 同期処理の実行
-        result = sync_video_data(video_data)
+        # バッチ処理の実行
+        result = sync_video_data_batch()
         
         # 結果をログ出力
-        status_code = 200 if result.get('status') == 'success' else 500
+        status_code = 200 if result['status'] == 'success' else 500
         logger.info(f"処理完了 - ステータス: {status_code}")
         logger.info(f"処理結果: {result}")
         
         return result, status_code
-        
-    except ValueError as e:
-        logger.error(f"不正なリクエスト: {str(e)}")
-        return {
-            'status': 'error',
-            'message': f'Invalid request: {str(e)}'
-        }, 400
         
     except Exception as e:
         logger.error(f"エラー発生: {type(e).__name__}: {str(e)}")
@@ -486,43 +652,11 @@ def sync_video_master(event, context):
         logger.info("==== sync_video_master関数の実行終了 ====")
 
 
-def setup_subscription():
-    """Pub/Subサブスクリプションを設定する"""
-    try:
-        from google.cloud import pubsub_v1
-        subscriber = pubsub_v1.SubscriberClient()
-        subscription_name = "video-master-sync-sub"  # 既存のサブスクリプション名を使用   
-        subscription_path = subscriber.subscription_path(project_id, subscription_name)
-        
-        logger.info(f"Pub/Subサブスクリプション: {subscription_path}")
-        
-        def _callback(msg):
-            try:
-              # msg.data は bytes → Base64 文字列へ
-              encoded = base64.b64encode(msg.data).decode('utf-8')
-              event = {'data': encoded}
-
-               # context は不要なので None
-              sync_video_master(event, None)
-
-              msg.ack()
-              logger.info(f"Processed message {msg.message_id}")
-            except Exception as e:
-              logger.error(f"Callback error: {e}", exc_info=True)
-              msg.nack()        
-        streaming_pull_future = subscriber.subscribe(subscription_path, _callback)
-        logger.info(f"サブスクリプションを開始しました: {subscription_path}")
-        return streaming_pull_future
-        
-    except Exception as e:
-        logger.error(f"サブスクリプション設定エラー: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return None
 if __name__ == "__main__":
-    future = setup_subscription()
-    logger.info("Listening for messages...")
     try:
-        future.result()               # メインスレッドをブロック
+        result = sync_video_data_batch()
+        logger.info(f"処理結果: {result}")
     except KeyboardInterrupt:
-        future.cancel()
+        logger.info("処理を中断しました")
+    except Exception as e:
+        logger.error(f"エラー発生: {str(e)}")

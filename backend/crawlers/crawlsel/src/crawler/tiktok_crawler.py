@@ -193,6 +193,7 @@ class TikTokCrawler:
         self.driver = None
         self.wait = None
         self.sadcaptcha_api_key = "fd31d51515ed18cadec7d4a522894997"
+        self.login_restart_attempted = False        # ← 追加
 
     def __enter__(self):
         # クローラーアカウントを取得
@@ -260,7 +261,7 @@ class TikTokCrawler:
         login_button = self.wait.until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button[type='submit']"))
         )
-        self._random_sleep(3.0, 4.0)
+        self._random_sleep(5.0, 7.0)
         login_button.click()
 
         # CAPTCHAチェック
@@ -268,13 +269,36 @@ class TikTokCrawler:
 
         # ログイン完了を待機
         # プロフィールアイコンが表示されるまで待機（60秒待機）
-        login_wait = WebDriverWait(self.driver, 60)  # 絵合わせ認証が出てきたら人力で解いてね
-        login_wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "[data-e2e='profile-icon']")),
-        )
-        logger.info(f"クロール用アカウント{self.crawler_account.username}でTikTokへのログインに成功しました")
+        try:
+            login_wait = WebDriverWait(self.driver, 60)  # 絵合わせ認証が出てきたら人力で解いてね
+            login_wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "[data-e2e='profile-icon']")),
+            )
+            logger.info(f"クロール用アカウント{self.crawler_account.username}でTikTokへのログインに成功しました")
+        except TimeoutException:
+            logger.warning("60 秒以内にプロフィールアイコンが見つかりません。CAPTCHA を再チェックします…")
+            # CAPTCHA を再確認してもう一度だけ待つ
+            self._check_and_handle_captcha()
+            try:
+                WebDriverWait(self.driver, 60).until(   # 2 回目。失敗すれば例外を上げて上位で処理
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "[data-e2e='profile-icon']"))
+                )
 
+                logger.info(f"クロール用アカウント{self.crawler_account.username}でTikTokへのログインに成功しました")
+            except TimeoutException:
+                if not self.login_restart_attempted:
+                    logger.warning("再ログインのためブラウザを再起動します…")
+                    self.login_restart_attempted = True
 
+                    # ドライバを閉じて新規起動
+                    self.selenium_manager.quit_driver()
+                    self.driver = self.selenium_manager.setup_driver()
+                    self.wait   = WebDriverWait(self.driver, 15)
+
+                    return self._login()           # ← ここで再ログイン
+                else:
+                    # それでもダメなら例外を上へ
+                    raise
     # TikTokユーザーが見つからない（アカウントが削除されている等）場合の例外
     # ユーザー単位の関数で最も大きいところで処置完了するように設計しましょう
     class TikTokUserNotFoundException(Exception):
@@ -1110,7 +1134,7 @@ def main():
             favorite_user_repo=favorite_user_repo,
             video_repo=video_repo,
             crawler_account_id=args.crawler_account_id,
-            sadcaptcha_api_key="fd31d51515ed18cadec7d4a522894997"  # APIキーを設定
+            sadcaptcha_api_key=os.getenv("SADCAPTCHA_API_KEY")  # APIキーを設定
         ) as crawler:
             crawler.crawl_favorite_users(
                 light_or_heavy=args.mode,

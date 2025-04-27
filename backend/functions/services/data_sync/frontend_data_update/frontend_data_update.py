@@ -128,6 +128,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         WHERE 
             vm.status != 'deleted'
             AND vm.created_at IS NOT NULL
+            AND vm.front_needs_update = 1
             AND vm.created_at >= %(min_date)s
             AND vm.created_at <= """ + max_date + """
             AND vm.id > %(last_id)s

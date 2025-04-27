@@ -21,7 +21,6 @@ from services.video_info.batch_collector_scheduler import manage_video_collector
 
 # カテゴリー関連
 from services.category.sync_category_spreadsheet import scheduled_job as sync_category_job
-from services.category.update_all_categories import update_all_categories as update_all_categories_function
 from services.category.batch_category_scheduler import manage_category_update_schedule as batch_category_scheduler_function
 
 # スケジューラー関連
@@ -32,7 +31,9 @@ from services.data_sync.video_history_sync import sync_video_history
 from services.data_sync.video_master_sync import sync_video_master as sync_raw_data_to_video_master
 from services.account_info.sync_account_list import sync_account_list as sync_account
 from services.account_info.sync_crawler_accounts import sync_crawler_accounts as sync_crawler
-
+# 手動実行タスク
+from services.manual_tasks.manual_sync_master import sync_video_master as manual_sync_master_from_raw_data
+from services.manual_tasks.update_all_categories import update_all_categories as update_all_categories_function
 # 環境変数の読み込み
 load_dotenv()
 
@@ -101,4 +102,6 @@ def video_history_sync_function(event, context):
 # Pub/Subエントリーポイント関数に追加
 def manage_category_update_schedule(event,context):
     return batch_category_scheduler_function(event,context)
-
+# 手動実行タスク
+def manual_sync_master_raw_data(request):
+    return manual_sync_master_from_raw_data(request)

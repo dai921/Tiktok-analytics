@@ -556,6 +556,23 @@ steps:
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_CRAWLER_ID=1atx7vH_LYu4vd-KleKbjsEwF46x0mh0B5v7oQQx4vgs,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
 
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - manual-sync-master-raw-data
+      - --gen2
+      - --runtime=python39
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=manual_sync_master_raw_data
+      - --trigger-http
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db,BUCKET_NAME=tiktok-data-bucket'
+    id: 'deploy-manual-sync-master-raw-data'
 options:
   logging: CLOUD_LOGGING_ONLY
 

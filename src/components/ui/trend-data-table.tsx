@@ -23,7 +23,7 @@ import {
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 
-interface DataTableProps<TData extends Record<string, any>, TValue> {
+interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchPlaceholder?: string;
@@ -31,7 +31,7 @@ interface DataTableProps<TData extends Record<string, any>, TValue> {
   onRowClick?: (row: TData) => void;
 }
 
-export function DataTable<TData extends Record<string, any>, TValue>({
+export function DataTable<TData, TValue>({
   columns,
   data,
   searchPlaceholder = '検索...',
