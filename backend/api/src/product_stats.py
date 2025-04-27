@@ -71,18 +71,22 @@ async def get_product_stats(
         ),
         top_videos AS (
             SELECT 
-                product,
-                url,
-                thumbnail_url,
-                play_count_increase,
-                account_name,
-                display_name,
-                ROW_NUMBER() OVER (PARTITION BY product ORDER BY play_count_increase DESC) as rank_col
-            FROM frontend_data
-            WHERE video_id IN (
-                SELECT video_id FROM play_count_history WHERE collection_date BETWEEN %s AND %s
-            )
-            AND product IS NOT NULL
+                fd.product,
+                fd.url,
+                fd.thumbnail_url,
+                SUM(pch.play_count_increase) AS play_count_increase,
+                SUM(pch.likes_count_increase) AS likes_count_increase,
+                fd.created_at,
+                fd.play_count,
+                fd.ten_days_increase,
+                fd.account_name,
+                fd.display_name,
+                ROW_NUMBER() OVER (PARTITION BY fd.product ORDER BY SUM(pch.play_count_increase) DESC) as rank_col
+            FROM frontend_data fd
+            JOIN play_count_history pch ON fd.video_id = pch.video_id
+            WHERE pch.collection_date BETWEEN %s AND %s
+            AND fd.product IS NOT NULL
+            GROUP BY fd.product, fd.url, fd.thumbnail_url, fd.created_at, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.video_id
         )
         SELECT 
             ps.product,
@@ -94,6 +98,10 @@ async def get_product_stats(
                     'url', tv.url,
                     'thumbnail_url', tv.thumbnail_url,
                     'play_count_increase', tv.play_count_increase,
+                    'likes_count_increase', tv.likes_count_increase,
+                    'created_at', tv.created_at,
+                    'play_count', tv.play_count,
+                    'ten_days_increase', tv.ten_days_increase,
                     'account_name', tv.account_name,
                     'display_name', tv.display_name
                 )

@@ -62,10 +62,10 @@ const relatedVideoColumns: ColumnDef<VideoStats>[] = [
       const videoUrl = row.getValue('url') as string;
       // VideoStats型からImageHoverのvideoDataを生成
       const videoData = {
-        views: 0, // VideoStatsにviewsが無いため0で仮置き
+        views: Number(row.getValue('play_count')) ?? 0, // VideoStatsにviewsが無いため0で仮置き
         viewsIncrease: Number(row.getValue('play_count_increase')) ?? 0,
-        ten_days_increase: 0, // ten_days_increaseが無いため0で仮置き
-        createdAt: '', // createdAtが無いため空文字で仮置き
+        ten_days_increase: Number(row.getValue('ten_days_increase')) ?? 0, // ten_days_increaseが無いため0で仮置き
+        createdAt: row.getValue('created_at') as string, // createdAtが無いため空文字で仮置き
       };
       return thumbnailUrl ? (
         <div className="relative w-[120px] h-[120px] my-1 mx-auto">
@@ -83,33 +83,39 @@ const relatedVideoColumns: ColumnDef<VideoStats>[] = [
       );
     },
   },
-
-  {
-    accessorKey: 'account_name',
-    header: 'アカウント名',
-  },
-  {
-    accessorKey: 'display_name',
-    header: '表示名',
-  },
   {
     accessorKey: 'play_count_increase',
     header: '再生増加数',
     cell: ({ row }) => formatNumber(row.getValue('play_count_increase')),
   },
   {
-    accessorKey: 'url',
-    header: '動画リンク',
-    cell: ({ row }) => (
-      <a
-        href={row.getValue('url')}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 underline"
-      >
-        TikTok
-      </a>
-    ),
+    accessorKey: 'likes_count_increase',
+    header: 'いいね増加数',
+    cell: ({ row }) => formatNumber(row.getValue('likes_count_increase')),
+  },
+  {
+    accessorKey: 'created_at',
+    header: '投稿日',
+    cell: ({ row }) => {
+      const date = row.getValue('created_at') as string;
+      return <span>{date ? new Date(date).toLocaleDateString('ja-JP') : ''}</span>;
+    },
+  },
+  {
+    accessorKey: 'account_name',
+    header: 'アカウント名',
+    cell: ({ row }) => {
+      const accountName = row.getValue('account_name') as string;
+      const displayName = row.getValue('display_name') as string | undefined;
+      return (
+        <div>
+          <span className="font-bold">{accountName}</span>
+          {displayName && (
+            <span className="block text-xs text-gray-500">{displayName}</span>
+          )}
+        </div>
+      );
+    },
   },
 ];
 
