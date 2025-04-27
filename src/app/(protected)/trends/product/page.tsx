@@ -11,10 +11,12 @@ import { Info } from "lucide-react";
 import { MultiSelect, Option } from '@/components/ui/multi-select';
 import { fetchTrendGenres } from '@/lib/api';
 import { ProductStats } from '@/types/product';
+import { ImageHover } from '@/components/ui/image-hover';
 import { fetchProductStats } from '@/lib/api/product';
 import { formatNumber } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { VideoStats } from '@/types/product';
 
 interface ProductTrend {
   rank: number;
@@ -49,6 +51,67 @@ const getMetricLabel = (metricKey: string) => {
   };
   return labels[metricKey] || metricKey;
 };
+
+// 関連動画のカラム定義をDataTable用に作成
+const relatedVideoColumns: ColumnDef<VideoStats>[] = [
+  {
+    accessorKey: 'thumbnail_url',
+    header: 'サムネイル',
+    cell: ({ row }) => {
+      const thumbnailUrl = row.getValue('thumbnail_url') as string | null;
+      const videoUrl = row.getValue('url') as string;
+      // VideoStats型からImageHoverのvideoDataを生成
+      const videoData = {
+        views: 0, // VideoStatsにviewsが無いため0で仮置き
+        viewsIncrease: Number(row.getValue('play_count_increase')) ?? 0,
+        ten_days_increase: 0, // ten_days_increaseが無いため0で仮置き
+        createdAt: '', // createdAtが無いため空文字で仮置き
+      };
+      return thumbnailUrl ? (
+        <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+          <div className="relative w-full h-full overflow-hidden rounded">
+            <ImageHover
+              src={thumbnailUrl}
+              alt="サムネイル"
+              videoUrl={videoUrl}
+              videoData={videoData}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
+      );
+    },
+  },
+
+  {
+    accessorKey: 'account_name',
+    header: 'アカウント名',
+  },
+  {
+    accessorKey: 'display_name',
+    header: '表示名',
+  },
+  {
+    accessorKey: 'play_count_increase',
+    header: '再生増加数',
+    cell: ({ row }) => formatNumber(row.getValue('play_count_increase')),
+  },
+  {
+    accessorKey: 'url',
+    header: '動画リンク',
+    cell: ({ row }) => (
+      <a
+        href={row.getValue('url')}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline"
+      >
+        TikTok
+      </a>
+    ),
+  },
+];
 
 export default function ProductPage() {
   const [activeTab, setActiveTab] = useState("ranking");
@@ -139,43 +202,6 @@ export default function ProductPage() {
       header: getMetricLabel(metric),
       cell: ({ row }) => formatNumber(row.getValue(metric)),
       size: 120,
-    },
-  ];
-
-  // 関連動画のカラム定義
-  const videoColumns: ColumnDef<RelatedVideo>[] = [
-    {
-      accessorKey: 'thumbnail',
-      header: 'サムネイル',
-      cell: ({ row }: { row: TableRow }) => (
-        <img 
-          src={row.getValue('thumbnail')} 
-          alt={row.getValue('title')} 
-          className="w-16 h-16 object-cover rounded"
-        />
-      ),
-    },
-    {
-      accessorKey: 'title',
-      header: 'タイトル',
-      enableSorting: true,
-    },
-    {
-      accessorKey: 'accountName',
-      header: 'アカウント名',
-      enableSorting: true,
-    },
-    {
-      accessorKey: 'views',
-      header: '再生数',
-      enableSorting: true,
-      cell: ({ row }: { row: TableRow }) => formatNumber(row.getValue('views')),
-    },
-    {
-      accessorKey: 'likes',
-      header: 'いいね数',
-      enableSorting: true,
-      cell: ({ row }: { row: TableRow }) => formatNumber(row.getValue('likes')),
     },
   ];
 
@@ -283,7 +309,7 @@ export default function ProductPage() {
                 </Card>
               </div>
 
-              {/* 右側: 関連動画 */}
+              {/* 右側: 関連動画（DataTableで表示） */}
               <div className="w-1/2">
                 <Card>
                   <CardHeader>
@@ -293,26 +319,13 @@ export default function ProductPage() {
                   </CardHeader>
                   <CardContent>
                     {selectedProduct ? (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>アカウント</TableHead>
-                            <TableHead>再生増加数</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {productStats
-                            .find(stat => stat.product === selectedProduct)
-                            ?.top_videos.map((video) => (
-                              <TableRow key={video.url}>
-                                <TableCell>{video.account_name}</TableCell>
-                                <TableCell>
-                                  {formatNumber(video.play_count_increase)}
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                        </TableBody>
-                      </Table>
+                      <DataTable
+                        columns={relatedVideoColumns}
+                        data={
+                          productStats.find(stat => stat.product === selectedProduct)?.top_videos ?? []
+                        }
+                        // 必要に応じてonRowClick等を追加
+                      />
                     ) : (
                       <div className="text-center text-gray-500 py-8">
                         商材を選択すると、関連動画が表示されます

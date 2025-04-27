@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from src.db.database import get_db_connection
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+import json
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -25,6 +26,14 @@ class ProductStats(BaseModel):
     videos_over_100k: int
     total_posts: int
     top_videos: List[VideoStats]
+
+def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
+    if url and url.startswith('gs://'):
+        parts = url.split('/')
+        bucket = parts[2]
+        object_path = '/'.join(parts[3:])
+        return f"https://storage.googleapis.com/{bucket}/{object_path}"
+    return url
 
 @router.get("/api/product-stats")
 async def get_product_stats(
@@ -106,15 +115,16 @@ async def get_product_stats(
         # 結果を整形
         formatted_results = []
         for row in results:
-            if row["top_videos"] is None:
-                print(f"No top videos found for product: {row['product']}")
-                
+            # top_videosはJSON文字列なのでパース
+            top_videos = json.loads(row["top_videos"]) if row["top_videos"] else []
+            for video in top_videos:
+                video["thumbnail_url"] = convert_gs_to_https(video.get("thumbnail_url"))
             formatted_results.append({
                 "product": row["product"],
                 "total_play_count_increase": row["total_play_count_increase"],
                 "videos_over_100k": row["videos_over_100k"],
                 "total_posts": row["total_posts"],
-                "top_videos": row["top_videos"] if row["top_videos"] else []
+                "top_videos": top_videos
             })
 
         return JSONResponse(content=jsonable_encoder(formatted_results))
