@@ -117,12 +117,18 @@ async def get_product_stats(
             AND fd.product IS NOT NULL
         """
         
-        # ジャンルフィルタの条件を追加
-        params = [start_date, end_date]
+        # これはポジティブリストを作成（完全に新しいパラメータリスト）
+        date_params = [start_date, end_date]
+        all_params = []
+
+        # video_stats CTEの日付パラメータ
+        all_params.extend(date_params)
+
+        # video_stats CTEのジャンルフィルター（もしあれば）
         if genre_list:
             placeholders = ', '.join(['%s'] * len(genre_list))
             query += f" AND pm.product_category IN ({placeholders})"
-            params.extend(genre_list)
+            all_params.extend(genre_list)
             
         query += """    
             GROUP BY fd.video_id, fd.product
@@ -156,11 +162,14 @@ async def get_product_stats(
             AND fd.product IS NOT NULL
         """
         
-        # top_videosクエリにジャンルフィルタを適用
+        # top_videos CTEの日付パラメータ
+        all_params.extend(date_params)
+
+        # top_videos CTEのジャンルフィルター（もしあれば）
         if genre_list:
             placeholders = ', '.join(['%s'] * len(genre_list))
             query += f" AND EXISTS (SELECT 1 FROM product_master pm WHERE fd.product = pm.product_name AND pm.product_category IN ({placeholders}))"
-            params.extend(genre_list)
+            all_params.extend(genre_list)
             
         query += """
             GROUP BY fd.product, fd.url, fd.thumbnail_url, fd.created_at, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.video_id
@@ -190,10 +199,7 @@ async def get_product_stats(
         ORDER BY ps.total_play_count_increase DESC;
         """
 
-        # パラメータに日付を追加（top_videosクエリ用）
-        params.extend([start_date, end_date])
-        
-        cursor.execute(query, tuple(params))
+        cursor.execute(query, tuple(all_params))
         results = cursor.fetchall()
         
         # 結果を整形

@@ -125,7 +125,7 @@ export default function GenrePage() {
           setGenreStats(result.data);
           
           // ユーザーが選択していない場合のみ、バックエンドから返された日付範囲を設定
-          if (!userSelectedDate) {
+          if (!userSelectedDate && !dataLoaded) {
             console.log("ユーザー選択なし、dateRange確認:", result.dateRange);
             if (result.dateRange) {
               console.log("バックエンドから受け取った日付範囲:", result.dateRange);
