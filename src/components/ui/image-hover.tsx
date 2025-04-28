@@ -24,7 +24,7 @@ interface ImageHoverProps {
   videoData: {
     views: number
     viewsIncrease: number
-    ten_days_increase: number
+    ten_days_increase?: number
     createdAt: string
     accountName?: string
   }
@@ -204,7 +204,8 @@ export function ImageHover({
     return new Intl.NumberFormat('ja-JP').format(num)
   }
 
-  const formatGrowth = (growth: number): string => {
+  const formatGrowth = (growth?: number): string => {
+    if (growth === undefined) return "0.0%";
     return growth > 0 ? `+${growth.toFixed(1)}%` : `${growth.toFixed(1)}%`
   }
 

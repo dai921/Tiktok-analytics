@@ -6,6 +6,7 @@ from src.auth.router import get_current_user
 from src.auth.models import User
 import logging
 import json
+from datetime import datetime, timedelta
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -190,21 +191,51 @@ async def get_video_watchlist(
 
 @router.get("/videos/details")
 async def get_video_watchlist_with_details(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    start_date: Optional[str] = Query(None, description="開始日（YYYY-MM-DD形式）"),
+    end_date: Optional[str] = Query(None, description="終了日（YYYY-MM-DD形式）")
 ):
     """ユーザーのビデオウォッチリストを詳細情報付きで取得する"""
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
     try:
+        # デフォルトの期間を設定（指定がない場合は直近7回分のデータ）
+        if not start_date or not end_date:
+            # 収集日の一覧を取得
+            query = """
+            SELECT DISTINCT collection_date
+            FROM play_count_history
+            WHERE collection_date IS NOT NULL
+            ORDER BY collection_date DESC
+            LIMIT 7
+            """
+            
+            cursor.execute(query)
+            dates = cursor.fetchall()
+            
+            if dates:
+                # 7回分のデータ期間を設定
+                if not end_date:
+                    end_date = dates[0]["collection_date"].strftime('%Y-%m-%d')
+                if not start_date:
+                    start_date = dates[-1]["collection_date"].strftime('%Y-%m-%d')
+            else:
+                # データがない場合はデフォルト値
+                if not end_date:
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                if not start_date:
+                    start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            
+            logger.info(f"使用する日付範囲: 開始={start_date}, 終了={end_date}")
+            
         # ウォッチリストとビデオデータを結合して取得
         query = """
         SELECT 
             vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, fd.play_count_increase,
-            fd.ten_days_increase, fd.account_name, fd.display_name, fd.content_type,
-            fd.likes_count, fd.comment_count, fd.likes_count_increase, fd.ten_days_likes_increase,
-            fd.comment_count_increase, fd.ten_days_comment_increase, fd.hashtags, fd.music_info, fd.caption
+            fd.account_name, fd.display_name, fd.content_type,
+            fd.likes_count, fd.comment_count, fd.save_count, fd.hashtags, fd.caption
         FROM video_watchlists vw
         LEFT JOIN frontend_data fd ON vw.video_id = fd.video_id
         WHERE vw.email = %s
@@ -237,23 +268,28 @@ async def get_video_watchlist_with_details(
                 except json.JSONDecodeError:
                     hashtags = []
             
-            # 音楽情報の処理
-            music_info = {}
-            music_raw = item.get("music_info")
-            if music_raw:
-                try:
-                    if isinstance(music_raw, str):
-                        if music_raw.startswith('{'):
-                            music_info = json.loads(music_raw)
-                        else:
-                            music_info = {"title": music_raw}
-                except json.JSONDecodeError:
-                    music_info = {"title": str(music_raw)}
             
             # 作成日時の処理
             video_created_at = item.get("video_created_at")
             if video_created_at:
                 video_created_at = video_created_at.isoformat() if hasattr(video_created_at, 'isoformat') else str(video_created_at)
+            
+            # play_count_increaseに基づいて他の増加数も計算
+            play_count_increase = int(item["play_count_increase"]) if item["play_count_increase"] else 0
+            
+            # play_countに対する増加率を計算
+            increase_ratio = 0
+            if item["play_count"] and item["play_count"] > 0 and play_count_increase > 0:
+                increase_ratio = play_count_increase / float(item["play_count"])
+            
+            # 他の増加数を計算（同じ増加率を適用）
+            likes_count = int(item["likes_count"]) if item["likes_count"] else 0
+            comment_count = int(item["comment_count"]) if item["comment_count"] else 0
+            save_count = int(item["save_count"]) if item["save_count"] else 0
+            
+            likes_count_increase = int(likes_count * increase_ratio) if likes_count > 0 else 0
+            comment_count_increase = int(comment_count * increase_ratio) if comment_count > 0 else 0
+            save_count_increase = int(save_count * increase_ratio) if save_count > 0 else 0
             
             watchlist_with_details.append({
                 "watchlist": {
@@ -269,24 +305,29 @@ async def get_video_watchlist_with_details(
                     "thumbnail_url": thumbnail_url,
                     "created_at": video_created_at,
                     "play_count": int(item["play_count"]) if item["play_count"] else 0,
-                    "play_count_increase": int(item["play_count_increase"]) if item["play_count_increase"] else 0,
-                    "ten_days_increase": int(item["ten_days_increase"]) if item["ten_days_increase"] else 0,
+                    "play_count_increase": play_count_increase,
                     "account_name": item["account_name"],
                     "display_name": item["display_name"],
                     "content_type": item["content_type"],
-                    "likes_count": int(item["likes_count"]) if item["likes_count"] else 0,
-                    "comment_count": int(item["comment_count"]) if item["comment_count"] else 0,
-                    "likes_count_increase": int(item["likes_count_increase"]) if item["likes_count_increase"] else 0,
-                    "ten_days_likes_increase": int(item["ten_days_likes_increase"]) if item["ten_days_likes_increase"] else 0,
-                    "comment_count_increase": int(item["comment_count_increase"]) if item["comment_count_increase"] else 0,
-                    "ten_days_comment_increase": int(item["ten_days_comment_increase"]) if item["ten_days_comment_increase"] else 0,
+                    "likes_count": likes_count,
+                    "comment_count": comment_count,
+                    "save_count": save_count,
+                    "likes_count_increase": likes_count_increase,
+                    "comment_count_increase": comment_count_increase,
+                    "save_count_increase": save_count_increase,
                     "hashtags": hashtags,
-                    "music_info": music_info,
                     "caption": item["caption"]
                 } if item["play_count"] is not None else None  # ビデオ情報がない場合はNullを返す
             })
         
-        return watchlist_with_details
+        return {
+            "success": True,
+            "data": watchlist_with_details,
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
         
     except Exception as e:
         logger.error(f"Error getting video watchlist with details: {str(e)}")

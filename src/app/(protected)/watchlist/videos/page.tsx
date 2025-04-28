@@ -8,11 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { MultiSelect, Option } from '@/components/ui/multi-select';
 import { ImageHover } from '@/components/ui/image-hover';
-import { ArrowUp, Trash2 } from 'lucide-react';
+import { ArrowUp, Trash2, BookmarkIcon } from 'lucide-react';
 import { fetchTrendGenres } from '@/lib/api';
-import { getVideoWatchlist } from '@/lib/api/watchlist';
+import { getVideoWatchlist, removeVideoFromWatchlist } from '@/lib/api/watchlist';
 import { formatNumber } from '@/lib/utils';
 import { GenreBadge } from '@/components/ui/badge';
+import { useToast } from "@/hooks/use-toast";
 
 // 動画ウォッチリストの型定義
 interface WatchlistVideoItem {
@@ -30,33 +31,34 @@ interface WatchlistVideoItem {
     created_at: string;
     play_count: number;
     play_count_increase: number;
-    ten_days_increase: number;
     account_name: string;
     display_name: string;
     content_type: string;
     likes_count: number;
     comment_count: number;
+    save_count: number;
     likes_count_increase: number;
-    ten_days_likes_increase: number;
     comment_count_increase: number;
-    ten_days_comment_increase: number;
+    save_count_increase: number;
     hashtags: string[];
-    music_info: any;
     caption: string;
   } | null;
 }
 
+interface PeriodInfo {
+  start_date: string;
+  end_date: string;
+}
+
 export default function VideoWatchlistPage() {
   const [activeTab, setActiveTab] = useState("list");
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(),
-    end: new Date(),
-  });
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [userSelectedDate, setUserSelectedDate] = useState(false);
   const [tempDateRange, setTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [periodInfo, setPeriodInfo] = useState<PeriodInfo | null>(null);
   
   // ジャンル選択関連
   const [availableGenres, setAvailableGenres] = useState<Option[]>([]);
@@ -65,6 +67,8 @@ export default function VideoWatchlistPage() {
   // 動画データ
   const [watchlistVideos, setWatchlistVideos] = useState<WatchlistVideoItem[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<WatchlistVideoItem[]>([]);
+  
+  const { toast } = useToast();
   
   // ジャンルデータを取得するuseEffectを追加
   useEffect(() => {
@@ -109,14 +113,48 @@ export default function VideoWatchlistPage() {
           setIsLoading(true);
           setError(null);
           
-          // APIから詳細付きウォッチリストを取得
-          const result = await getVideoWatchlist();
+          // 日付形式をYYYY-MM-DDに変換
+          let startDateStr = '';
+          let endDateStr = '';
+          
+          if (dateRange) {
+            startDateStr = dateRange.start.toISOString().split('T')[0];
+            endDateStr = dateRange.end.toISOString().split('T')[0];
+          }
+          
+          // APIから詳細付きウォッチリストを取得（日付パラメータはユーザーが選択した場合のみ送信）
+          const result = await getVideoWatchlist(
+            dateRange ? startDateStr : undefined, 
+            dateRange ? endDateStr : undefined
+          );
+          
+          console.log('API応答結果:', result);
           
           if (result.success) {
-            setWatchlistVideos(result.data);
-            setFilteredVideos(result.data);
-            setDataLoaded(true);
+            console.log('取得したデータ数:', result.data?.length || 0);
+            console.log('最初のデータ:', result.data?.[0] || 'データなし');
+            
+            // データがあるか確認
+            if (result.data && Array.isArray(result.data) && result.data.length > 0) {
+              setWatchlistVideos(result.data);
+              setFilteredVideos(result.data);
+              setPeriodInfo(result.period || {
+                start_date: startDateStr,
+                end_date: endDateStr
+              });
+              setDataLoaded(true);
+              setUserSelectedDate(false);
+            } else {
+              console.warn('APIからデータが返されましたが、データが空です');
+              setWatchlistVideos([]);
+              setFilteredVideos([]);
+              setPeriodInfo({
+                start_date: startDateStr,
+                end_date: endDateStr
+              });
+            }
           } else {
+            console.error('APIエラー:', result.error);
             setError('動画ウォッチリストの取得に失敗しました');
           }
         } catch (err) {
@@ -129,30 +167,14 @@ export default function VideoWatchlistPage() {
 
       loadWatchlistVideos();
     }
-  }, [dataLoaded, userSelectedDate]);
+  }, [dataLoaded, userSelectedDate, dateRange]);
   
-  // ジャンルフィルタリングを適用するuseEffect
+  // ジャンルフィルタリングを適用するuseEffectを単純化
   useEffect(() => {
-    if (watchlistVideos.length > 0 && selectedGenres.length > 0) {
-      const filtered = watchlistVideos.filter(item => {
-        // ビデオにハッシュタグがない場合は全て表示
-        if (!item.video?.hashtags || item.video.hashtags.length === 0) {
-          return true;
-        }
-        
-        // 選択されたジャンルのいずれかがハッシュタグに含まれているかチェック
-        return item.video.hashtags.some(tag => 
-          selectedGenres.includes(tag) || 
-          selectedGenres.some(genre => tag.includes(genre))
-        );
-      });
-      
-      setFilteredVideos(filtered);
-    } else {
-      // ジャンルが選択されていない場合は全て表示
-      setFilteredVideos(watchlistVideos);
-    }
-  }, [watchlistVideos, selectedGenres]);
+    // ハッシュタグでフィルタリングしない - すべてのデータを表示
+    console.log('全データ表示:', watchlistVideos.length);
+    setFilteredVideos(watchlistVideos);
+  }, [watchlistVideos]);
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
@@ -162,26 +184,47 @@ export default function VideoWatchlistPage() {
     if (tempDateRange) {
       setDateRange(tempDateRange);
       setUserSelectedDate(true);
-      // このプロジェクトでは日付フィルタリングはフロントエンドで行う
-      filterVideosByDate(tempDateRange);
     }
-  };
-
-  // 日付によるフィルタリング
-  const filterVideosByDate = (range: { start: Date; end: Date }) => {
-    const filtered = watchlistVideos.filter(item => {
-      if (!item.video?.created_at) return true;
-      
-      const videoDate = new Date(item.video.created_at);
-      return videoDate >= range.start && videoDate <= range.end;
-    });
-    
-    setFilteredVideos(filtered);
   };
 
   // ジャンル選択用のハンドラ
   const handleGenreChange = (selected: string[]) => {
     setSelectedGenres(selected);
+  };
+
+  // 動画を削除する関数
+  const handleDeleteVideo = async (videoId: string) => {
+    // 確認ダイアログを表示
+    if (window.confirm('この動画をウォッチリストから削除しますか？')) {
+      try {
+        const result = await removeVideoFromWatchlist(videoId);
+        
+        if (result.success) {
+          // 削除成功時、リストから該当動画を削除
+          setWatchlistVideos(prevVideos => 
+            prevVideos.filter(item => item.watchlist.video_id !== videoId)
+          );
+          toast({
+            title: "削除完了",
+            description: "動画をウォッチリストから削除しました",
+            variant: "default",
+          });
+        } else {
+          toast({
+            title: "エラー",
+            description: "削除中にエラーが発生しました",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error('動画削除エラー:', error);
+        toast({
+          title: "エラー",
+          description: "削除処理中にエラーが発生しました",
+          variant: "destructive",
+        });
+      }
+    }
   };
 
   if (isLoading && !dataLoaded) {
@@ -224,7 +267,10 @@ export default function VideoWatchlistPage() {
           </div>
           <div className="w-[280px]">
             <DateRangePicker
-              dateRange={dateRange}
+              dateRange={dateRange || {
+                start: new Date(new Date().getTime() - 7 * 24 * 60 * 60 * 1000), // 表示用のデフォルト値
+                end: new Date()
+              }}
               onDateRangeChange={handleDateRangeChange}
               onApply={handleDateRangeApply}
             />
@@ -259,106 +305,130 @@ export default function VideoWatchlistPage() {
                     <p>ウォッチリストに動画はまだありません</p>
                   </div>
                 ) : (
-                  <Table className="w-full">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>サムネイル</TableHead>
-                        <TableHead>アカウント名</TableHead>
-                        <TableHead className="text-right">再生数</TableHead>
-                        <TableHead className="text-right">いいね数</TableHead>
-                        <TableHead className="text-right">投稿日</TableHead>
-                        <TableHead>ハッシュタグ</TableHead>
-                        <TableHead>アクション</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredVideos.map((item, index) => {
-                        const video = item.video;
-                        // ビデオ情報がない場合はスキップ
-                        if (!video) return null;
-                        
-                        return (
-                          <TableRow key={item.watchlist.watchlist_id} className="hover:bg-[#25F4EE]/5 transition-colors">
-                            <TableCell>
-                              {video.thumbnail_url ? (
-                                <div className="relative w-[120px] h-[120px] my-1 mx-auto">
-                                  <div className="relative w-full h-full overflow-hidden rounded border-2 border-transparent hover:border-[#FE2C55] transition-colors">
-                                    <ImageHover
-                                      src={video.thumbnail_url}
-                                      alt="サムネイル"
-                                      videoUrl={`https://www.tiktok.com/@${video.account_name}/video/${video.video_id}`}
-                                      videoData={{
-                                        views: video.play_count,
-                                        viewsIncrease: video.play_count_increase,
-                                        ten_days_increase: video.ten_days_increase,
-                                        createdAt: video.created_at,
-                                      }}
-                                    />
+                  <>
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>サムネイル</TableHead>
+                          <TableHead className="text-right">再生数</TableHead>
+                          <TableHead className="text-right">再生増加数</TableHead>
+                          <TableHead className="text-right">いいね数</TableHead>
+                          <TableHead className="text-right">いいね増加数</TableHead>
+                          <TableHead className="text-right">コメント数</TableHead>
+                          <TableHead className="text-right">コメント増加数</TableHead>
+                          <TableHead className="text-right">保存数</TableHead>
+                          <TableHead className="text-right">保存増加数</TableHead>
+                          <TableHead>アカウント名</TableHead>
+                          <TableHead>アクション</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredVideos.map((item, index) => {
+                          const video = item.video;
+                          // ビデオ情報がない場合はスキップ
+                          if (!video) {
+                            console.log(`${index}番目のデータにvideo情報がありません:`, item);
+                            return null;
+                          }
+                          
+                          return (
+                            <TableRow key={item.watchlist.watchlist_id} className="hover:bg-[#25F4EE]/5 transition-colors">
+                              <TableCell>
+                                {video.thumbnail_url ? (
+                                  <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+                                    <div className="relative w-full h-full overflow-hidden rounded border-2 border-transparent hover:border-[#FE2C55] transition-colors">
+                                      <ImageHover
+                                        src={video.thumbnail_url}
+                                        alt="サムネイル"
+                                        videoUrl={`https://www.tiktok.com/@${video.account_name}/video/${video.video_id}`}
+                                        videoData={{
+                                          views: video.play_count,
+                                          viewsIncrease: video.play_count_increase,
+                                          createdAt: video.created_at,
+                                          accountName: video.account_name,
+                                        }}
+                                      />
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <span className="font-bold">{video.account_name}</span>
-                                {video.display_name && (
-                                  <span className="block text-xs text-gray-500">{video.display_name}</span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatNumber(video.play_count)}
-                              {video.play_count_increase > 0 && (
-                                <div className="flex items-center justify-end gap-1 text-green-600 text-sm">
-                                  <ArrowUp className="h-3 w-3" />
-                                  {formatNumber(video.play_count_increase)}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatNumber(video.likes_count)}
-                              {video.likes_count_increase > 0 && (
-                                <div className="flex items-center justify-end gap-1 text-green-600 text-sm">
-                                  <ArrowUp className="h-3 w-3" />
-                                  {formatNumber(video.likes_count_increase)}
-                                </div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {video.created_at
-                                ? (() => {
-                                    const d = new Date(video.created_at);
-                                    const yy = String(d.getFullYear()).slice(-2);
-                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                                    const dd = String(d.getDate()).padStart(2, '0');
-                                    return `${yy}/${mm}/${dd}`;
-                                  })()
-                                : ''}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {video.hashtags && video.hashtags.length > 0 ? (
-                                  video.hashtags.slice(0, 3).map(tag => (
-                                    <GenreBadge key={tag} genre={tag} />
-                                  ))
                                 ) : (
-                                  <span className="text-gray-400 text-xs">-</span>
+                                  <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
                                 )}
-                                {video.hashtags && video.hashtags.length > 3 && (
-                                  <span className="text-xs text-gray-400">+{video.hashtags.length - 3}</span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatNumber(video.play_count)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {video.play_count_increase > 0 ? (
+                                  <div className="flex items-center justify-end gap-1 text-green-600 text-sm">
+                                    <ArrowUp className="h-3 w-3" />
+                                    {formatNumber(video.play_count_increase)}
+                                  </div>
+                                ) : (
+                                  formatNumber(video.play_count_increase)
                                 )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatNumber(video.likes_count)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {video.likes_count_increase > 0 ? (
+                                  <div className="flex items-center justify-end gap-1 text-green-600 text-sm">
+                                    <ArrowUp className="h-3 w-3" />
+                                    {formatNumber(video.likes_count_increase)}
+                                  </div>
+                                ) : (
+                                  formatNumber(video.likes_count_increase)
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatNumber(video.comment_count)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {video.comment_count_increase > 0 ? (
+                                  <div className="flex items-center justify-end gap-1 text-green-600 text-sm">
+                                    <ArrowUp className="h-3 w-3" />
+                                    {formatNumber(video.comment_count_increase)}
+                                  </div>
+                                ) : (
+                                  formatNumber(video.comment_count_increase)
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatNumber(video.save_count)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {video.save_count_increase > 0 ? (
+                                  <div className="flex items-center justify-end gap-1 text-green-600 text-sm">
+                                    <ArrowUp className="h-3 w-3" />
+                                    {formatNumber(video.save_count_increase)}
+                                  </div>
+                                ) : (
+                                  formatNumber(video.save_count_increase)
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div>
+                                  <span className="font-bold">{video.account_name}</span>
+                                  {video.display_name && video.display_name !== video.account_name && (
+                                    <span className="block text-xs text-gray-500">{video.display_name}</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <button
+                                  className="p-2 text-gray-400 hover:text-[#FE2C55] transition-colors"
+                                  onClick={() => handleDeleteVideo(video.video_id)}
+                                  aria-label="ウォッチリストから削除"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -383,6 +453,8 @@ export default function VideoWatchlistPage() {
                         <TableHead>アカウント名</TableHead>
                         <TableHead className="text-right">再生数</TableHead>
                         <TableHead className="text-right">再生増加数</TableHead>
+                        <TableHead className="text-right">保存数</TableHead>
+                        <TableHead className="text-right">保存増加数</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -410,7 +482,6 @@ export default function VideoWatchlistPage() {
                                         videoData={{
                                           views: video.play_count,
                                           viewsIncrease: video.play_count_increase,
-                                          ten_days_increase: video.ten_days_increase,
                                           createdAt: video.created_at,
                                         }}
                                       />
@@ -439,6 +510,19 @@ export default function VideoWatchlistPage() {
                                   </div>
                                 ) : (
                                   formatNumber(video.play_count_increase)
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatNumber(video.save_count)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {video.save_count_increase > 0 ? (
+                                  <div className="flex items-center justify-end gap-1 text-green-600">
+                                    <ArrowUp className="h-3 w-3" />
+                                    {formatNumber(video.save_count_increase)}
+                                  </div>
+                                ) : (
+                                  formatNumber(video.save_count_increase)
                                 )}
                               </TableCell>
                             </TableRow>

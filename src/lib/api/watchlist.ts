@@ -108,30 +108,49 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
   }
   
   /**
-   * 動画ウォッチリスト一覧を取得する
+   * 動画ウォッチリスト一覧を詳細情報付きで取得する
    */
-  export async function getVideoWatchlist() {
+  export async function getVideoWatchlist(startDate?: string, endDate?: string) {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         throw new Error('認証情報がありません');
       }
-  
-      const response = await fetch(`${apiUrl}/api/watchlist/videos`, {
+
+      // クエリパラメータを構築
+      const queryParams = new URLSearchParams();
+      if (startDate) queryParams.append('start_date', startDate);
+      if (endDate) queryParams.append('end_date', endDate);
+      
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      
+      console.log(`API呼び出し: ${apiUrl}/api/watchlist/videos/details${queryString}`);
+      console.log(`日付パラメータ: start_date=${startDate || 'なし'}, end_date=${endDate || 'なし'}`);
+      
+      const response = await fetch(`${apiUrl}/api/watchlist/videos/details${queryString}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'ウォッチリスト取得に失敗しました');
       }
-  
+
       const data = await response.json();
+      console.log('APIからの生データ:', data);
+      
+      // APIレスポンスの構造を検証
+      if (!data || typeof data !== 'object') {
+        console.error('予期しないAPI応答フォーマット:', data);
+        return { success: false, error: '無効なデータ形式です' };
+      }
+      
       return {
         success: true,
-        data
+        data: data.data || [],
+        period: data.period || { start_date: startDate, end_date: endDate }
       };
     } catch (error) {
       console.error('ウォッチリスト取得エラー:', error);
