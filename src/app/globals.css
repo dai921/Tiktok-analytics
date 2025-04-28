@@ -84,3 +84,33 @@
     overflow-y: auto;
   }
 }
+
+/* 特定のカラムのヘッダーを右寄せにする */
+th[data-column-id="play_count_increase"],
+th[data-column-id="likes_count_increase"],
+th[data-column-id="created_at"] {
+  text-align: right !important;
+}
+
+/* globals.css などに追加 */
+.right-header th:nth-child(2),
+.right-header th:nth-child(3),
+.right-header th:nth-child(4) {
+  text-align: right !important;
+}
+
+/* 関連動画テーブルのヘッダーセルを右寄せにする */
+[data-product-videos-table] th:nth-child(2),
+[data-product-videos-table] th:nth-child(3),
+[data-product-videos-table] th:nth-child(4) {
+  text-align: right !important;
+}
+
+/* セル内の要素も確実に右寄せ */
+[data-product-videos-table] th:nth-child(2) span,
+[data-product-videos-table] th:nth-child(3) span,
+[data-product-videos-table] th:nth-child(4) span {
+  text-align: right !important;
+  display: block !important;
+  width: 100% !important;
+}

@@ -17,6 +17,7 @@ import { formatNumber } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { VideoStats } from '@/types/product';
+import { TableHeaderCell } from '@/components/dashboard/table-header-cell';
 
 interface ProductTrend {
   rank: number;
@@ -51,73 +52,6 @@ const getMetricLabel = (metricKey: string) => {
   };
   return labels[metricKey] || metricKey;
 };
-
-// 関連動画のカラム定義をDataTable用に作成
-const relatedVideoColumns: ColumnDef<VideoStats>[] = [
-  {
-    accessorKey: 'thumbnail_url',
-    header: 'サムネイル',
-    cell: ({ row }) => {
-      const thumbnailUrl = row.getValue('thumbnail_url') as string | null;
-      const videoUrl = row.getValue('url') as string;
-      // VideoStats型からImageHoverのvideoDataを生成
-      const videoData = {
-        views: Number(row.getValue('play_count')) ?? 0, // VideoStatsにviewsが無いため0で仮置き
-        viewsIncrease: Number(row.getValue('play_count_increase')) ?? 0,
-        ten_days_increase: Number(row.getValue('ten_days_increase')) ?? 0, // ten_days_increaseが無いため0で仮置き
-        createdAt: row.getValue('created_at') as string, // createdAtが無いため空文字で仮置き
-      };
-      return thumbnailUrl ? (
-        <div className="relative w-[120px] h-[120px] my-1 mx-auto">
-          <div className="relative w-full h-full overflow-hidden rounded">
-            <ImageHover
-              src={thumbnailUrl}
-              alt="サムネイル"
-              videoUrl={videoUrl}
-              videoData={videoData}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
-      );
-    },
-  },
-  {
-    accessorKey: 'play_count_increase',
-    header: '再生増加数',
-    cell: ({ row }) => formatNumber(row.getValue('play_count_increase')),
-  },
-  {
-    accessorKey: 'likes_count_increase',
-    header: 'いいね増加数',
-    cell: ({ row }) => formatNumber(row.getValue('likes_count_increase')),
-  },
-  {
-    accessorKey: 'created_at',
-    header: '投稿日',
-    cell: ({ row }) => {
-      const date = row.getValue('created_at') as string;
-      return <span>{date ? new Date(date).toLocaleDateString('ja-JP') : ''}</span>;
-    },
-  },
-  {
-    accessorKey: 'account_name',
-    header: 'アカウント名',
-    cell: ({ row }) => {
-      const accountName = row.getValue('account_name') as string;
-      const displayName = row.getValue('display_name') as string | undefined;
-      return (
-        <div>
-          <span className="font-bold">{accountName}</span>
-          {displayName && (
-            <span className="block text-xs text-gray-500">{displayName}</span>
-          )}
-        </div>
-      );
-    },
-  },
-];
 
 export default function ProductPage() {
   const [activeTab, setActiveTab] = useState("ranking");
@@ -191,25 +125,6 @@ export default function ProductPage() {
 
     loadProductStats();
   }, [dateRange]);
-
-  const getProductColumns = (metric: MetricKey): ColumnDef<ProductTrend>[] => [
-    {
-      accessorKey: 'rank',
-      header: '順位',
-      size: 80,
-    },
-    {
-      accessorKey: 'name',
-      header: '商材名',
-      size: 200,
-    },
-    {
-      accessorKey: metric,
-      header: getMetricLabel(metric),
-      cell: ({ row }) => formatNumber(row.getValue(metric)),
-      size: 120,
-    },
-  ];
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setDateRange(newRange);
@@ -286,7 +201,6 @@ export default function ProductPage() {
           <TabsList>
             <TabsTrigger value="ranking">ランキング</TabsTrigger>
             <TabsTrigger value="graph">トレンドグラフ</TabsTrigger>
-            <TabsTrigger value="data">数値データ</TabsTrigger>
           </TabsList>
 
           <TabsContent value="ranking">
@@ -298,19 +212,38 @@ export default function ProductPage() {
                     <CardTitle>商材トレンド</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <DataTable
-                      columns={getProductColumns(metric)}
-                      data={productStats
-                        .filter(stat => stat.product && stat.product.trim() !== '')
-                        .map((stat, index) => ({
-                          rank: index + 1,
-                          name: stat.product,
-                          viewsIncrease: Number(stat.total_play_count_increase) || 0,
-                          over100kViews: Number(stat.videos_over_100k) || 0,
-                          postCount: Number(stat.total_posts) || 0
-                        }))}
-                      onRowClick={(row) => setSelectedProduct(row.name)}
-                    />
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>順位</TableHead>
+                          <TableHead>商材名</TableHead>
+                          <TableHead className="text-right">{getMetricLabel(metric)}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {productStats
+                          .filter(stat => stat.product && stat.product.trim() !== '')
+                          .map((stat, index) => {
+                            const metricValue = {
+                              viewsIncrease: Number(stat.total_play_count_increase) || 0,
+                              over100kViews: Number(stat.videos_over_100k) || 0,
+                              postCount: Number(stat.total_posts) || 0
+                            }[metric];
+                            
+                            return (
+                              <TableRow 
+                                key={index} 
+                                className="cursor-pointer hover:bg-muted/50"
+                                onClick={() => setSelectedProduct(stat.product)}
+                              >
+                                <TableCell>{index + 1}</TableCell>
+                                <TableCell>{stat.product}</TableCell>
+                                <TableCell className="text-right">{formatNumber(metricValue)}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                      </TableBody>
+                    </Table>
                   </CardContent>
                 </Card>
               </div>
@@ -325,13 +258,79 @@ export default function ProductPage() {
                   </CardHeader>
                   <CardContent>
                     {selectedProduct ? (
-                      <DataTable
-                        columns={relatedVideoColumns}
-                        data={
-                          productStats.find(stat => stat.product === selectedProduct)?.top_videos ?? []
-                        }
-                        // 必要に応じてonRowClick等を追加
-                      />
+                      <div data-product-videos-table>
+                        <Table className="w-full">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>サムネイル</TableHead>
+                              <TableHead className="text-right">再生増加数</TableHead>
+                              <TableHead className="text-right">いいね増加数</TableHead>
+                              <TableHead className="text-right">投稿日</TableHead>
+                              <TableHead>アカウント名</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {productStats.find(stat => stat.product === selectedProduct)?.top_videos?.map((video, index) => (
+                              <TableRow key={index}>
+                                <TableCell>
+                                  {video.thumbnail_url ? (
+                                    <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+                                      <div className="relative w-full h-full overflow-hidden rounded">
+                                        <ImageHover
+                                          src={video.thumbnail_url}
+                                          alt="サムネイル"
+                                          videoUrl={video.url}
+                                          videoData={{
+                                            views: Number(video.play_count) ?? 0,
+                                            viewsIncrease: Number(video.play_count_increase) ?? 0,
+                                            ten_days_increase: 0,
+                                            createdAt: video.created_at,
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatNumber(video.play_count_increase)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatNumber(video.likes_count_increase)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {video.created_at
+                                    ? (() => {
+                                        const d = new Date(video.created_at);
+                                        const yy = String(d.getFullYear()).slice(-2);
+                                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                        const dd = String(d.getDate()).padStart(2, '0');
+                                        return `${yy}/${mm}/${dd}`;
+                                      })()
+                                    : ''}
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <span className="font-bold">{video.account_name}</span>
+                                    {video.display_name && (
+                                      <span className="block text-xs text-gray-500">{video.display_name}</span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                            {(!productStats.find(stat => stat.product === selectedProduct)?.top_videos || 
+                              productStats.find(stat => stat.product === selectedProduct)?.top_videos?.length === 0) && (
+                              <TableRow>
+                                <TableCell colSpan={5} className="text-center py-4">
+                                  関連動画がありません
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
                     ) : (
                       <div className="text-center text-gray-500 py-8">
                         商材を選択すると、関連動画が表示されます
@@ -350,17 +349,6 @@ export default function ProductPage() {
               </CardHeader>
               <CardContent>
                 {/* ここにトレンドグラフを実装 */}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="data">
-            <Card>
-              <CardHeader>
-                <CardTitle>数値データ</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* ここに数値データを実装 */}
               </CardContent>
             </Card>
           </TabsContent>
