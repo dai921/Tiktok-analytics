@@ -206,7 +206,7 @@ export default function ProductPage() {
           <TabsContent value="ranking">
             <div className="flex gap-6">
               {/* 左側: ランキングテーブル */}
-              <div className="w-1/2">
+              <div className="w-1/3">
                 <Card>
                   <CardHeader>
                     <CardTitle>商材トレンド</CardTitle>
@@ -223,6 +223,7 @@ export default function ProductPage() {
                       <TableBody>
                         {productStats
                           .filter(stat => stat.product && stat.product.trim() !== '')
+                          .slice(0, 15)
                           .map((stat, index) => {
                             const metricValue = {
                               viewsIncrease: Number(stat.total_play_count_increase) || 0,
@@ -236,9 +237,9 @@ export default function ProductPage() {
                                 className="cursor-pointer hover:bg-muted/50"
                                 onClick={() => setSelectedProduct(stat.product)}
                               >
-                                <TableCell>{index + 1}</TableCell>
-                                <TableCell>{stat.product}</TableCell>
-                                <TableCell className="text-right">{formatNumber(metricValue)}</TableCell>
+                                <TableCell className="py-3">{index + 1}</TableCell>
+                                <TableCell className="py-3">{stat.product}</TableCell>
+                                <TableCell className="py-3 text-right">{formatNumber(metricValue)}</TableCell>
                               </TableRow>
                             );
                           })}
@@ -249,7 +250,7 @@ export default function ProductPage() {
               </div>
 
               {/* 右側: 関連動画（DataTableで表示） */}
-              <div className="w-1/2">
+              <div className="w-2/3">
                 <Card>
                   <CardHeader>
                     <CardTitle>
