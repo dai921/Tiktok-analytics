@@ -12,14 +12,25 @@ import { MultiSelect, Option } from '@/components/ui/multi-select';
 import { fetchTrendGenres } from '@/lib/api';
 import { ProductStats } from '@/types/product';
 import { ImageHover } from '@/components/ui/image-hover';
-import { fetchProductStats } from '@/lib/api/product';
+import { fetchProductStats, fetchProductTrends } from '@/lib/api/product';
 import { formatNumber } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { VideoStats } from '@/types/product';
+import type { VideoStats, ProductTrendData, ProductTrendResponse } from '@/types/product';
 import { TableHeaderCell } from '@/components/dashboard/table-header-cell';
 import { GenreBadge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from 'recharts';
+import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants';
 
 interface ProductTrend {
   rank: number;
@@ -63,6 +74,12 @@ const getMetricLabel = (metricKey: string) => {
   return labels[metricKey] || metricKey;
 };
 
+// 前処理用のデータ型を定義
+interface PreprocessedData {
+  date: string;
+  [key: string]: string | number; // 商品名をキーとして値を持つ
+}
+
 export default function ProductPage() {
   const [activeTab, setActiveTab] = useState("ranking");
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
@@ -80,6 +97,11 @@ export default function ProductPage() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [productStats, setProductStats] = useState<ProductStats[]>([]);
+  const [trendData, setTrendData] = useState<ProductTrendData[]>([]);
+  const [isLoadingTrends, setIsLoadingTrends] = useState(false);
+  const [trendError, setTrendError] = useState<string | null>(null);
+  const [topProducts, setTopProducts] = useState<string[]>([]);
+  const [graphDataLoaded, setGraphDataLoaded] = useState(false);
 
   // ジャンルデータを取得するuseEffectを追加
   useEffect(() => {
@@ -164,6 +186,51 @@ export default function ProductPage() {
     }
   }, [userSelectedDate, dataLoaded, dateRange]);
 
+  // トレンドグラフ用のデータを取得するuseEffect
+  useEffect(() => {
+    if (activeTab === 'graph' && (!graphDataLoaded || userSelectedDate)) {
+      const loadTrendData = async () => {
+        try {
+          setIsLoadingTrends(true);
+          setTrendError(null);
+          
+          const result = await fetchProductTrends(
+            userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
+            userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
+            metric,
+            selectedGenres
+          ) as ProductTrendResponse;
+          
+          setTrendData(result.data);
+          
+          // カテゴリが空白の商品を除外して上位10件を取得
+          const filteredProducts = result.products.filter((product: string) => {
+            // 商品情報をproductStatsから取得してカテゴリがあるか確認
+            const productInfo = productStats.find(stat => stat.product === product);
+            return productInfo && productInfo.product_category && productInfo.product_category.trim() !== '';
+          }).slice(0, 10);
+          
+          setTopProducts(filteredProducts);
+          
+          if (!userSelectedDate && result.dateRange) {
+            setDateRange({
+              start: new Date(result.dateRange.startDate),
+              end: new Date(result.dateRange.endDate)
+            });
+          }
+          setGraphDataLoaded(true);
+        } catch (err) {
+          console.error("トレンドデータの取得に失敗しました:", err);
+          setTrendError('トレンドデータの取得に失敗しました');
+        } finally {
+          setIsLoadingTrends(false);
+        }
+      };
+
+      loadTrendData();
+    }
+  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, metric, selectedGenres, productStats]);
+
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setDateRange(newRange);
     setUserSelectedDate(true); // ユーザーが日付を選択したことを記録
@@ -172,6 +239,44 @@ export default function ProductPage() {
   const handleProductClick = (productId: string) => {
     setSelectedProduct(productId);
     // ここで関連動画を取得するAPIを呼び出す
+  };
+
+  // 日付フォーマット用の関数
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
+
+  // ジャンル選択用のハンドラを追加
+  const handleGenreChange = (selected: string[]) => {
+    setSelectedGenres(selected);
+  };
+
+  // 指標変更ハンドラ
+  const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setMetric(e.target.value as MetricKey);
+  };
+
+  // グラフ表示用データの前処理関数を追加
+  const preprocessTrendData = (trendData: ProductTrendData[], topProducts: string[]): PreprocessedData[] => {
+    // 日付の一覧を取得（重複を排除）
+    const uniqueDates = Array.from(new Set(trendData.map(item => item.date))).sort();
+    
+    // 日付ごとにデータを整形
+    return uniqueDates.map(date => {
+      // 初期オブジェクトに日付を設定
+      const dataPoint: PreprocessedData = { date };
+      
+      // 各商品のデータを追加
+      topProducts.forEach(product => {
+        // その日付のその商品のデータを検索
+        const productData = trendData.find(item => item.date === date && item.product === product);
+        // データがあれば値を設定、なければ0を設定
+        dataPoint[product] = productData ? productData.value : 0;
+      });
+      
+      return dataPoint;
+    });
   };
 
   if (isLoading) {
@@ -206,7 +311,7 @@ export default function ProductPage() {
             <label className="text-sm whitespace-nowrap">表示指標:</label>
             <select 
               value={metric}
-              onChange={(e) => setMetric(e.target.value as MetricKey)}
+              onChange={handleMetricChange}
               className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
             >
               <option value="viewsIncrease">総再生増加数</option>
@@ -216,16 +321,13 @@ export default function ProductPage() {
           </div>
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">ジャンルフィルタ:</label>
-            <select 
+            <MultiSelect
+              options={availableGenres}
+              selected={selectedGenres}
+              onChange={handleGenreChange}
               className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
-            >
-              <option value="all">すべてのジャンル</option>
-              {availableGenres.map(genre => (
-                <option key={genre.value} value={genre.value}>
-                  {genre.label}
-                </option>
-              ))}
-            </select>
+              placeholder="すべてのジャンル"
+            />
           </div>
           <div className="w-[280px]">
             <DateRangePicker
@@ -236,7 +338,7 @@ export default function ProductPage() {
         </div>
 
         {/* タブエリア */}
-        <Tabs defaultValue="ranking" className="w-full">
+        <Tabs defaultValue="ranking" className="w-full" onValueChange={setActiveTab} value={activeTab}>
           <TabsList className="border-b border-[#25F4EE]/20">
             <TabsTrigger 
               value="ranking" 
@@ -438,7 +540,95 @@ export default function ProductPage() {
                 <CardTitle className="text-[#FE2C55]">トレンドグラフ</CardTitle>
               </CardHeader>
               <CardContent>
-                {/* ここにトレンドグラフを実装 */}
+                {isLoadingTrends ? (
+                  <div className="h-[400px] flex items-center justify-center">
+                    <Skeleton className="h-[350px] w-full" />
+                  </div>
+                ) : trendError ? (
+                  <div className="text-red-500 p-4">{trendError}</div>
+                ) : trendData.length === 0 ? (
+                  <div className="text-center py-8 border-2 border-dashed border-border rounded-lg">
+                    <p className="text-gray-500">データがありません</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {topProducts.map((product, index) => {
+                        // 商品カテゴリ情報を取得
+                        const productInfo = productStats.find(stat => stat.product === product);
+                        const colorKey = productInfo?.product_category || product;
+                        const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+                        
+                        return (
+                          <div key={product} className="flex items-center gap-1">
+                            <div 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: colors.text }}
+                            />
+                            <GenreBadge 
+                              genre={product} 
+                              categoryForColor={productInfo?.product_category}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <LineChart
+                        data={preprocessTrendData(trendData, topProducts)}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="date" 
+                          tickFormatter={formatDate}
+                          type="category"
+                          label={{ value: '日付', position: 'insideBottomRight', offset: -10 }}
+                        />
+                        <YAxis 
+                          label={{ 
+                            value: getMetricLabel(metric), 
+                            angle: -90, 
+                            position: 'left',
+                            offset: -10,
+                            style: { textAnchor: 'middle' }
+                          }}
+                        />
+                        <Tooltip 
+                          formatter={(value, name) => [formatNumber(Number(value)), name]}
+                          labelFormatter={(label) => formatDate(label.toString())}
+                          itemSorter={(item) => {
+                            // valueがundefinedでないことを確認してから数値に変換
+                            if (item.value === undefined) return 0;
+                            const numValue = Number(item.value);
+                            // 降順（大きい値を上に）にするために負の値を返す
+                            return -numValue;
+                          }}
+                        />
+                        <Legend />
+                        {topProducts.map((product, index) => {
+                          // 商品カテゴリ情報を取得して色を決定
+                          const productInfo = productStats.find(stat => stat.product === product);
+                          const colorKey = productInfo?.product_category || product;
+                          // GenreBadgeと同じロジックでconstants.tsから色を取得
+                          const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+                          
+                          return (
+                            <Line
+                              key={product}
+                              type="monotone"
+                              dataKey={product} // product名をdataKeyに設定
+                              name={product}
+                              stroke={colors.text}
+                              activeDot={{ r: 8 }}
+                              strokeWidth={2}
+                            />
+                          );
+                        })}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

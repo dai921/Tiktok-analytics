@@ -7,6 +7,7 @@ from src.db.database import get_db_connection
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 import json
+import random
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
@@ -27,6 +28,17 @@ class ProductStats(BaseModel):
     videos_over_100k: int
     total_posts: int
     top_videos: List[VideoStats]
+
+class ProductTrendData(BaseModel):
+    date: str
+    value: int
+    product: str
+    product_category: Optional[str]
+
+class ProductTrendResponse(BaseModel):
+    data: List[ProductTrendData]
+    products: List[str]
+    date_range: Optional[dict]
 
 def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
     if url and url.startswith('gs://'):
@@ -184,3 +196,138 @@ async def get_product_stats(
         if 'conn' in locals():
             conn.close()
         print("Database connection closed") 
+
+@router.get("/api/product-trends")
+async def get_product_trends(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    metric: str = "viewsIncrease"
+):
+    try:
+        # 日付パラメータが指定されていない場合、自動的に計算
+        if start_date is None or end_date is None:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # 収集日の一覧を取得
+            query = """
+            SELECT DISTINCT collection_date
+            FROM play_count_history
+            WHERE collection_date IS NOT NULL
+            ORDER BY collection_date DESC
+            LIMIT 7
+            """
+            
+            cursor.execute(query)
+            dates = cursor.fetchall()
+            
+            if dates:
+                # 最新7日間のデータ期間を設定
+                end_date = dates[0]["collection_date"].strftime('%Y-%m-%d')
+                start_date = dates[-1]["collection_date"].strftime('%Y-%m-%d')
+            else:
+                # データがない場合はデフォルト値
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Calculated date range: start={start_date}, end={end_date}")
+        
+        # 日付の検証
+        try:
+            start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+            end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+        except ValueError:
+            logger.error(f"Invalid date format: {start_date} or {end_date}")
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+        # 日付の範囲確認
+        if start_datetime > end_datetime:
+            logger.error(f"Start date {start_date} is after end date {end_date}")
+            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 再生増加数トップ10の商品を取得（カテゴリがブランクのものを除く）
+        top_products_query = """
+        SELECT 
+            fd.product,
+            MAX(pm.product_category) AS product_category,
+            SUM(pch.play_count_increase) as total_play_count_increase
+        FROM play_count_history pch
+        JOIN frontend_data fd ON pch.video_id = fd.video_id
+        LEFT JOIN product_master pm ON fd.product = pm.product_name
+        WHERE pch.collection_date BETWEEN %s AND %s
+        AND fd.product IS NOT NULL
+        AND pm.product_category IS NOT NULL
+        AND pm.product_category != ''
+        GROUP BY fd.product
+        ORDER BY total_play_count_increase DESC
+        LIMIT 10
+        """
+        
+        cursor.execute(top_products_query, (start_date, end_date))
+        top_products_data = cursor.fetchall()
+        
+        # 商品リストとカテゴリマッピングを作成
+        top_products = [row['product'] for row in top_products_data]
+        product_categories = {row['product']: row['product_category'] for row in top_products_data}
+        
+        # 時系列データを取得
+        trend_data = []
+        
+        # 日付ごとの各商品の再生増加数を取得
+        if top_products:
+            trends_query = """
+            SELECT 
+                pch.collection_date as date,
+                fd.product,
+                MAX(pm.product_category) AS product_category,
+                SUM(pch.play_count_increase) as value
+            FROM play_count_history pch
+            JOIN frontend_data fd ON pch.video_id = fd.video_id
+            LEFT JOIN product_master pm ON fd.product = pm.product_name
+            WHERE pch.collection_date BETWEEN %s AND %s
+            AND fd.product IN ({})
+            GROUP BY pch.collection_date, fd.product
+            ORDER BY pch.collection_date, SUM(pch.play_count_increase) DESC
+            """.format(','.join(['%s'] * len(top_products)))
+            
+            # パラメータリストの作成
+            params = [start_date, end_date] + top_products
+            
+            cursor.execute(trends_query, params)
+            trends_results = cursor.fetchall()
+            
+            # 結果を整形
+            for row in trends_results:
+                trend_data.append({
+                    "date": row["date"].strftime('%Y-%m-%d'),
+                    "value": row["value"],
+                    "product": row["product"],
+                    "product_category": row["product_category"]
+                })
+        
+        response = {
+            "data": trend_data,
+            "products": top_products,
+            "date_range": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
+        
+        return JSONResponse(content=jsonable_encoder(response))
+    
+    except Exception as e:
+        logger.error(f"Error in product trends API: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+

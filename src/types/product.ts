@@ -18,4 +18,21 @@ export interface ProductStats {
   videos_over_100k: number;
   total_posts: number;
   top_videos: VideoStats[];
+}
+
+// 商材トレンド用の型定義
+export interface ProductTrendData {
+  date: string;
+  value: number;
+  product: string;
+  product_category?: string;
+}
+
+export interface ProductTrendResponse {
+  data: ProductTrendData[];
+  products: string[];
+  dateRange?: {
+    startDate: string;
+    endDate: string;
+  };
 } 
