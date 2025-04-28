@@ -21,23 +21,23 @@ class VideoStats(BaseModel):
     account_name: str
     display_name: str
 
-class ProductStats(BaseModel):
-    product: str
-    product_category: Optional[str]
+class GenreStats(BaseModel):
+    genre: str
+    genre_category: Optional[str]
     total_play_count_increase: int
     videos_over_100k: int
     total_posts: int
     top_videos: List[VideoStats]
 
-class ProductTrendData(BaseModel):
+class GenreTrendData(BaseModel):
     date: str
     value: int
-    product: str
-    product_category: Optional[str]
+    genre: str
+    genre_category: Optional[str]
 
-class ProductTrendResponse(BaseModel):
-    data: List[ProductTrendData]
-    products: List[str]
+class GenreTrendResponse(BaseModel):
+    data: List[GenreTrendData]
+    genres: List[str]
     date_range: Optional[dict]
 
 def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
@@ -48,14 +48,11 @@ def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
         return f"https://storage.googleapis.com/{bucket}/{object_path}"
     return url
 
-@router.get("/api/product-stats")
-async def get_product_stats(
+@router.get("/api/genre-stats")
+async def get_genre_stats(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    genres: Optional[str] = None  # ジャンルフィルタのパラメータを追加
 ):
-    # genresパラメータがある場合、カンマ区切りの文字列をリストに変換
-    genre_list = genres.split(',') if genres else []
     
     try:
         # 日付パラメータが指定されていない場合、自動的に計算
@@ -101,45 +98,34 @@ async def get_product_stats(
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        print("Executing product stats query")
+        print("Executing genre stats query")
         
         query = """
         WITH video_stats AS (
-            SELECT 
+            SELECT
                 fd.video_id,
-                fd.product,
-                MAX(pm.product_category) AS product_category,
+                fd.category,
                 SUM(pch.play_count_increase) as total_video_increase
+                
             FROM play_count_history pch
             JOIN frontend_data fd ON pch.video_id = fd.video_id
-            LEFT JOIN product_master pm ON fd.product = pm.product_name
             WHERE pch.collection_date BETWEEN %s AND %s
-            AND fd.product IS NOT NULL
-        """
-        
-        # ジャンルフィルタの条件を追加
-        params = [start_date, end_date]
-        if genre_list:
-            placeholders = ', '.join(['%s'] * len(genre_list))
-            query += f" AND pm.product_category IN ({placeholders})"
-            params.extend(genre_list)
-            
-        query += """    
-            GROUP BY fd.video_id, fd.product
+            AND fd.category IS NOT NULL
+            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
+            GROUP BY fd.video_id, fd.category
         ),
-        product_stats AS (
+        category_stats AS (
             SELECT 
-                vs.product,
-                MAX(vs.product_category) AS product_category,
+                vs.category,
                 SUM(vs.total_video_increase) as total_play_count_increase,
                 COUNT(CASE WHEN vs.total_video_increase >= 100000 THEN 1 END) as videos_over_100k,
                 COUNT(DISTINCT vs.video_id) as total_posts
             FROM video_stats vs
-            GROUP BY vs.product
+            GROUP BY vs.category
         ),
         top_videos AS (
             SELECT 
-                fd.product,
+                fd.category,
                 fd.url,
                 fd.thumbnail_url,
                 SUM(pch.play_count_increase) AS play_count_increase,
@@ -149,28 +135,23 @@ async def get_product_stats(
                 fd.ten_days_increase,
                 fd.account_name,
                 fd.display_name,
-                ROW_NUMBER() OVER (PARTITION BY fd.product ORDER BY SUM(pch.play_count_increase) DESC) as rank_col
+                ROW_NUMBER() OVER (PARTITION BY fd.category ORDER BY SUM(pch.play_count_increase) DESC) as rank_col
             FROM frontend_data fd
             JOIN play_count_history pch ON fd.video_id = pch.video_id
             WHERE pch.collection_date BETWEEN %s AND %s
-            AND fd.product IS NOT NULL
+            AND fd.category IS NOT NULL
+            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
         """
-        
-        # top_videosクエリにジャンルフィルタを適用
-        if genre_list:
-            placeholders = ', '.join(['%s'] * len(genre_list))
-            query += f" AND EXISTS (SELECT 1 FROM product_master pm WHERE fd.product = pm.product_name AND pm.product_category IN ({placeholders}))"
-            params.extend(genre_list)
+            
             
         query += """
-            GROUP BY fd.product, fd.url, fd.thumbnail_url, fd.created_at, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.video_id
+            GROUP BY fd.category, fd.url, fd.thumbnail_url, fd.created_at, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.video_id
         )
         SELECT 
-            ps.product,
-            ps.product_category,
-            ps.total_play_count_increase,
-            ps.videos_over_100k,
-            ps.total_posts,
+            cs.category,
+            cs.total_play_count_increase,
+            cs.videos_over_100k,
+            cs.total_posts,
             JSON_ARRAYAGG(
                 JSON_OBJECT(
                     'url', tv.url,
@@ -184,14 +165,14 @@ async def get_product_stats(
                     'display_name', tv.display_name
                 )
             ) as top_videos
-        FROM product_stats ps
-        LEFT JOIN top_videos tv ON ps.product = tv.product AND tv.rank_col <= 10
-        GROUP BY ps.product, ps.product_category, ps.total_play_count_increase, ps.videos_over_100k, ps.total_posts
-        ORDER BY ps.total_play_count_increase DESC;
+            FROM category_stats cs
+        LEFT JOIN top_videos tv ON cs.category = tv.category AND tv.rank_col <= 10
+        GROUP BY cs.category, cs.total_play_count_increase, cs.videos_over_100k, cs.total_posts
+        ORDER BY cs.total_play_count_increase DESC;
         """
 
         # パラメータに日付を追加（top_videosクエリ用）
-        params.extend([start_date, end_date])
+        params = [start_date, end_date, start_date, end_date]
         
         cursor.execute(query, tuple(params))
         results = cursor.fetchall()
@@ -204,8 +185,7 @@ async def get_product_stats(
             for video in top_videos:
                 video["thumbnail_url"] = convert_gs_to_https(video.get("thumbnail_url"))
             formatted_results.append({
-                "product": row["product"],
-                "product_category": row["product_category"],
+                "genre": row["category"],
                 "total_play_count_increase": row["total_play_count_increase"],
                 "videos_over_100k": row["videos_over_100k"],
                 "total_posts": row["total_posts"],
@@ -223,7 +203,7 @@ async def get_product_stats(
         return JSONResponse(content=jsonable_encoder(formatted_response))
 
     except Exception as e:
-        logger.error(f"Error fetching product stats: {str(e)}", exc_info=True)
+        logger.error(f"Error fetching category stats: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if 'cursor' in locals():
@@ -232,15 +212,12 @@ async def get_product_stats(
             conn.close()
         print("Database connection closed") 
 
-@router.get("/api/product-trends")
-async def get_product_trends(
+@router.get("/api/genre-trends")
+async def get_genre_trends(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     metric: str = "viewsIncrease",
-    genres: Optional[str] = None  # ジャンルフィルタ用のパラメータを追加
 ):
-    # genres パラメータがある場合、カンマ区切りの文字列をリストに変換
-    genre_list = genres.split(',') if genres else []
     
     try:
         # 日付パラメータが指定されていない場合、自動的に計算
@@ -291,62 +268,49 @@ async def get_product_trends(
         cursor = conn.cursor(dictionary=True)
         
         # 再生増加数トップ10の商品を取得（カテゴリがブランクのものを除く）
-        top_products_query = """
-        SELECT 
-            fd.product,
-            MAX(pm.product_category) AS product_category,
+        top_categories_query = """
+        SELECT  
+            fd.category,
             SUM(pch.play_count_increase) as total_play_count_increase
         FROM play_count_history pch
         JOIN frontend_data fd ON pch.video_id = fd.video_id
-        LEFT JOIN product_master pm ON fd.product = pm.product_name
         WHERE pch.collection_date BETWEEN %s AND %s
-        AND fd.product IS NOT NULL
-        AND pm.product_category IS NOT NULL
-        AND pm.product_category != ''
+        AND fd.category IS NOT NULL
+        AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
         """
         
-        # ジャンルフィルタの条件を追加
-        params = [start_date, end_date]
-        if genre_list:
-            placeholders = ', '.join(['%s'] * len(genre_list))
-            top_products_query += f" AND pm.product_category IN ({placeholders})"
-            params.extend(genre_list)
         
-        top_products_query += """
-        GROUP BY fd.product
+        top_categories_query += """
+        GROUP BY fd.category
         ORDER BY total_play_count_increase DESC
         LIMIT 10
         """
         
-        cursor.execute(top_products_query, tuple(params))
-        top_products_data = cursor.fetchall()
-        
-        # 商品リストとカテゴリマッピングを作成
-        top_products = [row['product'] for row in top_products_data]
-        product_categories = {row['product']: row['product_category'] for row in top_products_data}
+        cursor.execute(top_categories_query, (start_date, end_date))
+        top_categories_data = cursor.fetchall()
+        top_categories = [row['category'] for row in top_categories_data]
         
         # 時系列データを取得
         trend_data = []
         
         # 日付ごとの各商品の再生増加数を取得
-        if top_products:
+        if top_categories_data:
             trends_query = """
             SELECT 
                 pch.collection_date as date,
-                fd.product,
-                MAX(pm.product_category) AS product_category,
+                fd.category,
                 SUM(pch.play_count_increase) as value
             FROM play_count_history pch
             JOIN frontend_data fd ON pch.video_id = fd.video_id
-            LEFT JOIN product_master pm ON fd.product = pm.product_name
             WHERE pch.collection_date BETWEEN %s AND %s
-            AND fd.product IN ({})
-            GROUP BY pch.collection_date, fd.product
+            AND fd.category IN ({})
+            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
+            GROUP BY pch.collection_date, fd.category
             ORDER BY pch.collection_date, SUM(pch.play_count_increase) DESC
-            """.format(','.join(['%s'] * len(top_products)))
+            """.format(','.join(['%s'] * len(top_categories_data)))
             
             # パラメータリストの作成
-            params = [start_date, end_date] + top_products
+            params = [start_date, end_date] + top_categories
             
             cursor.execute(trends_query, params)
             trends_results = cursor.fetchall()
@@ -356,13 +320,12 @@ async def get_product_trends(
                 trend_data.append({
                     "date": row["date"].strftime('%Y-%m-%d'),
                     "value": row["value"],
-                    "product": row["product"],
-                    "product_category": row["product_category"]
+                    "genre": row["category"]
                 })
         
         response = {
             "data": trend_data,
-            "products": top_products,
+            "genres": top_categories,
             "date_range": {
                 "start_date": start_date,
                 "end_date": end_date
@@ -372,7 +335,7 @@ async def get_product_trends(
         return JSONResponse(content=jsonable_encoder(response))
     
     except Exception as e:
-        logger.error(f"Error in product trends API: {str(e)}", exc_info=True)
+        logger.error(f"Error in genre trends API: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if 'cursor' in locals():
