@@ -7,7 +7,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DataTable } from "@/components/ui/trend-data-table";
 import type { DateRange } from "react-day-picker";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Info } from "lucide-react";
+import { Info, ArrowUp } from "lucide-react";
 import { MultiSelect, Option } from '@/components/ui/multi-select';
 import { fetchTrendGenres } from '@/lib/api';
 import { ProductStats } from '@/types/product';
@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { VideoStats } from '@/types/product';
 import { TableHeaderCell } from '@/components/dashboard/table-header-cell';
 import { GenreBadge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface ProductTrend {
   rank: number;
@@ -43,6 +44,14 @@ interface TableRow {
 }
 
 type MetricKey = 'viewsIncrease' | 'over100kViews' | 'postCount';
+
+// TikTokカラーの定義
+const TIKTOK_COLORS = {
+  pink: '#FE2C55',
+  aqua: '#25F4EE',
+  black: '#000000',
+  white: '#FFFFFF',
+};
 
 // 指標の表示名を取得する関数
 const getMetricLabel = (metricKey: string) => {
@@ -169,7 +178,7 @@ export default function ProductPage() {
             <select 
               value={metric}
               onChange={(e) => setMetric(e.target.value as MetricKey)}
-              className="border rounded p-1"
+              className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
             >
               <option value="viewsIncrease">総再生増加数</option>
               <option value="over100kViews">10万再生以上個数</option>
@@ -179,7 +188,7 @@ export default function ProductPage() {
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">ジャンルフィルタ:</label>
             <select 
-              className="border rounded p-1"
+              className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
             >
               <option value="all">すべてのジャンル</option>
               {availableGenres.map(genre => (
@@ -199,18 +208,28 @@ export default function ProductPage() {
 
         {/* タブエリア */}
         <Tabs defaultValue="ranking" className="w-full">
-          <TabsList>
-            <TabsTrigger value="ranking">ランキング</TabsTrigger>
-            <TabsTrigger value="graph">トレンドグラフ</TabsTrigger>
+          <TabsList className="border-b border-[#25F4EE]/20">
+            <TabsTrigger 
+              value="ranking" 
+              className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
+            >
+              ランキング
+            </TabsTrigger>
+            <TabsTrigger 
+              value="graph" 
+              className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
+            >
+              トレンドグラフ
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="ranking">
             <div className="flex gap-6">
               {/* 左側: ランキングテーブル */}
               <div className="w-1/3">
-                <Card>
+                <Card >
                   <CardHeader>
-                    <CardTitle>商材トレンド</CardTitle>
+                    <CardTitle className="text-[#FE2C55]">商材トレンド</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <Table className="w-full">
@@ -232,15 +251,24 @@ export default function ProductPage() {
                               postCount: Number(stat.total_posts) || 0
                             }[metric];
                             
+                            const isSelected = selectedProduct === stat.product;
+                            
                             return (
                               <TableRow 
                                 key={index} 
-                                className="cursor-pointer hover:bg-muted/50"
+                                className={cn(
+                                  "cursor-pointer transition-colors",
+                                  isSelected ? "bg-[#25F4EE]/5 hover:bg-[#25F4EE]/10" : "hover:bg-[#25F4EE]/5"
+                                )}
                                 onClick={() => setSelectedProduct(stat.product)}
                               >
-                                <TableCell className="py-3">{index + 1}</TableCell>
+                                <TableCell className={cn(
+                                  "py-3",
+                                  index < 3 && "font-bold text-[#FE2C55]"
+                                )}>
+                                  {index + 1}
+                                </TableCell>
                                 <TableCell className="py-3">
-                                  {/* カテゴリに応じた色付きカードで表示 */}
                                   <GenreBadge 
                                     genre={stat.product} 
                                     categoryForColor={stat.product_category}
@@ -264,7 +292,6 @@ export default function ProductPage() {
                       {selectedProduct ? (
                         <div className="flex items-center gap-2">
                           <span>関連動画:</span>
-                          {/* 選択された商品名も色付きカードで表示 */}
                           {productStats.find(stat => stat.product === selectedProduct) && (
                             <GenreBadge 
                               genre={selectedProduct} 
@@ -290,11 +317,11 @@ export default function ProductPage() {
                           </TableHeader>
                           <TableBody>
                             {productStats.find(stat => stat.product === selectedProduct)?.top_videos?.map((video, index) => (
-                              <TableRow key={index}>
+                              <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
                                 <TableCell>
                                   {video.thumbnail_url ? (
                                     <div className="relative w-[120px] h-[120px] my-1 mx-auto">
-                                      <div className="relative w-full h-full overflow-hidden rounded">
+                                      <div className="relative w-full h-full overflow-hidden rounded border-2 border-transparent hover:border-[#FE2C55] transition-colors">
                                         <ImageHover
                                           src={video.thumbnail_url}
                                           alt="サムネイル"
@@ -313,10 +340,24 @@ export default function ProductPage() {
                                   )}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  {formatNumber(video.play_count_increase)}
+                                  {Number(video.play_count_increase) > 0 ? (
+                                    <div className="flex items-center justify-end gap-1 text-green-600">
+                                      <ArrowUp className="h-3 w-3" />
+                                      {formatNumber(video.play_count_increase)}
+                                    </div>
+                                  ) : (
+                                    formatNumber(video.play_count_increase)
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  {formatNumber(video.likes_count_increase)}
+                                  {Number(video.likes_count_increase) > 0 ? (
+                                    <div className="flex items-center justify-end gap-1 text-green-600">
+                                      <ArrowUp className="h-3 w-3" />
+                                      {formatNumber(video.likes_count_increase)}
+                                    </div>
+                                  ) : (
+                                    formatNumber(video.likes_count_increase)
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-right">
                                   {video.created_at
@@ -351,8 +392,9 @@ export default function ProductPage() {
                         </Table>
                       </div>
                     ) : (
-                      <div className="text-center text-gray-500 py-8">
-                        商材を選択すると、関連動画が表示されます
+                      <div className="text-center py-8 border-2 border-dashed border-border rounded-lg">
+                        <p className="text-gray-500">商材を選択すると、関連動画が表示されます</p>
+                        <p className="text-xs text-[#FE2C55] mt-2">← 左のリストから選択してください</p>
                       </div>
                     )}
                   </CardContent>
@@ -364,7 +406,7 @@ export default function ProductPage() {
           <TabsContent value="graph">
             <Card>
               <CardHeader>
-                <CardTitle>トレンドグラフ</CardTitle>
+                <CardTitle className="text-[#FE2C55]">トレンドグラフ</CardTitle>
               </CardHeader>
               <CardContent>
                 {/* ここにトレンドグラフを実装 */}
