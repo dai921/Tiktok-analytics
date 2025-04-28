@@ -319,7 +319,7 @@ export default function VideoWatchlistPage() {
                           <TableHead className="text-right">保存数</TableHead>
                           <TableHead className="text-right">保存増加数</TableHead>
                           <TableHead>アカウント名</TableHead>
-                          <TableHead>アクション</TableHead>
+                          <TableHead></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -416,11 +416,11 @@ export default function VideoWatchlistPage() {
                               </TableCell>
                               <TableCell>
                                 <button
-                                  className="p-2 text-gray-400 hover:text-[#FE2C55] transition-colors"
+                                  className="py-2 px-4 bg-[#FE2C55] hover:bg-[#D91847] text-white rounded-md text-sm font-medium flex items-center justify-center transition-colors"
                                   onClick={() => handleDeleteVideo(video.video_id)}
                                   aria-label="ウォッチリストから削除"
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  ウォッチリストから削除
                                 </button>
                               </TableCell>
                             </TableRow>
