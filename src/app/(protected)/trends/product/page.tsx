@@ -149,7 +149,8 @@ export default function ProductPage() {
           
           const result = await fetchProductStats(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
-            userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null
+            userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
+            selectedGenres
           );
           
           console.log("APIレスポンス:", result);
@@ -185,7 +186,7 @@ export default function ProductPage() {
     } else {
       console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded });
     }
-  }, [userSelectedDate, dataLoaded, dateRange]);
+  }, [userSelectedDate, dataLoaded, dateRange, selectedGenres]);
 
   // トレンドグラフ用のデータを取得するuseEffect
   useEffect(() => {
@@ -254,9 +255,12 @@ export default function ProductPage() {
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
-  // ジャンル選択用のハンドラを追加
+  // ジャンル選択用のハンドラを修正
   const handleGenreChange = (selected: string[]) => {
     setSelectedGenres(selected);
+    // ジャンル変更時にデータを再ロードするためのフラグをリセット
+    setDataLoaded(false);
+    setGraphDataLoaded(false);
   };
 
   // 指標変更ハンドラ

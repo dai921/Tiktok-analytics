@@ -201,8 +201,12 @@ async def get_product_stats(
 async def get_product_trends(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    metric: str = "viewsIncrease"
+    metric: str = "viewsIncrease",
+    genres: Optional[str] = None  # ジャンルフィルタ用のパラメータを追加
 ):
+    # genres パラメータがある場合、カンマ区切りの文字列をリストに変換
+    genre_list = genres.split(',') if genres else []
+    
     try:
         # 日付パラメータが指定されていない場合、自動的に計算
         if start_date is None or end_date is None:
@@ -264,12 +268,22 @@ async def get_product_trends(
         AND fd.product IS NOT NULL
         AND pm.product_category IS NOT NULL
         AND pm.product_category != ''
+        """
+        
+        # ジャンルフィルタの条件を追加
+        params = [start_date, end_date]
+        if genre_list:
+            placeholders = ', '.join(['%s'] * len(genre_list))
+            top_products_query += f" AND pm.product_category IN ({placeholders})"
+            params.extend(genre_list)
+        
+        top_products_query += """
         GROUP BY fd.product
         ORDER BY total_play_count_increase DESC
         LIMIT 10
         """
         
-        cursor.execute(top_products_query, (start_date, end_date))
+        cursor.execute(top_products_query, tuple(params))
         top_products_data = cursor.fetchall()
         
         # 商品リストとカテゴリマッピングを作成

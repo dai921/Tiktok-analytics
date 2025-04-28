@@ -2,13 +2,22 @@ import { ProductStats, VideoStats } from '../../types/product';
 
 export const fetchProductStats = async (
   startDate?: string | null,
-  endDate?: string | null
+  endDate?: string | null,
+  genres?: string[] = []
 ): Promise<{ data: ProductStats[], dateRange?: { startDate: string, endDate: string } }> => {
   try {
-    // URLを構築（パラメータがある場合のみクエリパラメータを追加）
+    // URLを構築
     let url = `${process.env.NEXT_PUBLIC_API_URL}/api/product-stats`;
-    if (startDate && endDate) {
-      url += `?start_date=${startDate}&end_date=${endDate}`;
+    const params = new URLSearchParams();
+    
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (genres.length > 0) params.append('genres', genres.join(','));
+    
+    // パラメータがあれば追加
+    const queryString = params.toString();
+    if (queryString) {
+      url += `?${queryString}`;
     }
     
     const response = await fetch(url);
