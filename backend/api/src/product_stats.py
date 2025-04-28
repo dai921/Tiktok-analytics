@@ -236,7 +236,6 @@ async def get_product_stats(
 async def get_product_trends(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    metric: str = "viewsIncrease",
     genres: Optional[str] = None  # ジャンルフィルタ用のパラメータを追加
 ):
     # genres パラメータがある場合、カンマ区切りの文字列をリストに変換
@@ -290,8 +289,8 @@ async def get_product_trends(
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # 再生増加数トップ10の商品を取得（カテゴリがブランクのものを除く）
-        top_products_query = """
+        # 1. 再生増加数トップ10の商品を取得
+        views_increase_query = """
         SELECT 
             fd.product,
             MAX(pm.product_category) AS product_category,
@@ -309,44 +308,119 @@ async def get_product_trends(
         params = [start_date, end_date]
         if genre_list:
             placeholders = ', '.join(['%s'] * len(genre_list))
-            top_products_query += f" AND pm.product_category IN ({placeholders})"
+            views_increase_query += f" AND pm.product_category IN ({placeholders})"
             params.extend(genre_list)
         
-        top_products_query += """
+        views_increase_query += """
         GROUP BY fd.product
         ORDER BY total_play_count_increase DESC
         LIMIT 10
         """
         
-        cursor.execute(top_products_query, tuple(params))
-        top_products_data = cursor.fetchall()
+        cursor.execute(views_increase_query, tuple(params))
+        views_increase_data = cursor.fetchall()
+        views_increase_products = [row['product'] for row in views_increase_data]
         
-        # 商品リストとカテゴリマッピングを作成
-        top_products = [row['product'] for row in top_products_data]
-        product_categories = {row['product']: row['product_category'] for row in top_products_data}
+        # 2. 10万再生以上個数トップ10の商品を取得
+        over_100k_query = """
+        SELECT 
+            fd.product,
+            MAX(pm.product_category) AS product_category,
+            COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as videos_over_100k
+        FROM play_count_history pch
+        JOIN frontend_data fd ON pch.video_id = fd.video_id
+        LEFT JOIN product_master pm ON fd.product = pm.product_name
+        WHERE pch.collection_date BETWEEN %s AND %s
+        AND fd.product IS NOT NULL
+        AND pm.product_category IS NOT NULL
+        AND pm.product_category != ''
+        """
+        
+        # ジャンルフィルタの条件を追加
+        params = [start_date, end_date]
+        if genre_list:
+            placeholders = ', '.join(['%s'] * len(genre_list))
+            over_100k_query += f" AND pm.product_category IN ({placeholders})"
+            params.extend(genre_list)
+        
+        over_100k_query += """
+        GROUP BY fd.product
+        HAVING videos_over_100k > 0
+        ORDER BY videos_over_100k DESC
+        LIMIT 10
+        """
+        
+        cursor.execute(over_100k_query, tuple(params))
+        over_100k_data = cursor.fetchall()
+        over_100k_products = [row['product'] for row in over_100k_data]
+        
+        # 3. 投稿数トップ10の商品を取得
+        post_count_query = """
+        SELECT 
+            fd.product,
+            MAX(pm.product_category) AS product_category,
+            COUNT(DISTINCT pch.video_id) as post_count
+        FROM play_count_history pch
+        JOIN frontend_data fd ON pch.video_id = fd.video_id
+        LEFT JOIN product_master pm ON fd.product = pm.product_name
+        WHERE pch.collection_date BETWEEN %s AND %s
+        AND fd.product IS NOT NULL
+        AND pm.product_category IS NOT NULL
+        AND pm.product_category != ''
+        """
+        
+        # ジャンルフィルタの条件を追加
+        params = [start_date, end_date]
+        if genre_list:
+            placeholders = ', '.join(['%s'] * len(genre_list))
+            post_count_query += f" AND pm.product_category IN ({placeholders})"
+            params.extend(genre_list)
+        
+        post_count_query += """
+        GROUP BY fd.product
+        ORDER BY post_count DESC
+        LIMIT 10
+        """
+        
+        cursor.execute(post_count_query, tuple(params))
+        post_count_data = cursor.fetchall()
+        post_count_products = [row['product'] for row in post_count_data]
+        
+        # すべてのユニークな商品のリストを作成
+        all_products = list(set(views_increase_products + over_100k_products + post_count_products))
+        
+        # カテゴリマッピングを作成
+        product_categories = {}
+        for data in views_increase_data + over_100k_data + post_count_data:
+            product = data['product']
+            category = data['product_category']
+            if product not in product_categories and category:
+                product_categories[product] = category
         
         # 時系列データを取得
         trend_data = []
         
-        # 日付ごとの各商品の再生増加数を取得
-        if top_products:
+        # 日付ごとの各商品のデータを取得
+        if all_products:
             trends_query = """
             SELECT 
                 pch.collection_date as date,
                 fd.product,
                 MAX(pm.product_category) AS product_category,
-                SUM(pch.play_count_increase) as value
+                SUM(pch.play_count_increase) as views_increase,
+                COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k_views,
+                COUNT(DISTINCT pch.video_id) as post_count
             FROM play_count_history pch
             JOIN frontend_data fd ON pch.video_id = fd.video_id
             LEFT JOIN product_master pm ON fd.product = pm.product_name
             WHERE pch.collection_date BETWEEN %s AND %s
             AND fd.product IN ({})
             GROUP BY pch.collection_date, fd.product
-            ORDER BY pch.collection_date, SUM(pch.play_count_increase) DESC
-            """.format(','.join(['%s'] * len(top_products)))
+            ORDER BY pch.collection_date
+            """.format(','.join(['%s'] * len(all_products)))
             
             # パラメータリストの作成
-            params = [start_date, end_date] + top_products
+            params = [start_date, end_date] + all_products
             
             cursor.execute(trends_query, params)
             trends_results = cursor.fetchall()
@@ -355,14 +429,26 @@ async def get_product_trends(
             for row in trends_results:
                 trend_data.append({
                     "date": row["date"].strftime('%Y-%m-%d'),
-                    "value": row["value"],
                     "product": row["product"],
-                    "product_category": row["product_category"]
+                    "product_category": row["product_category"],
+                    "metrics": {
+                        "viewsIncrease": row["views_increase"],
+                        "over100kViews": row["over_100k_views"],
+                        "postCount": row["post_count"]
+                    }
                 })
+        
+        # 各指標のトップ商品リストを辞書に格納
+        top_products_by_metric = {
+            "viewsIncrease": views_increase_products,
+            "over100kViews": over_100k_products,
+            "postCount": post_count_products
+        }
         
         response = {
             "data": trend_data,
-            "products": top_products,
+            "products": all_products,
+            "topProductsByMetric": top_products_by_metric,
             "date_range": {
                 "start_date": start_date,
                 "end_date": end_date

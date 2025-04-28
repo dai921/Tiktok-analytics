@@ -102,8 +102,11 @@ export default function GenrePage() {
   const [trendError, setTrendError] = useState<string | null>(null);
   const [topGenres, setTopGenres] = useState<string[]>([]);
   const [graphDataLoaded, setGraphDataLoaded] = useState(false);
-
-
+  const [topGenresByMetric, setTopGenresByMetric] = useState<Record<MetricKey, string[]>>({
+    viewsIncrease: [],
+    over100kViews: [],
+    postCount: []
+  });
 
   useEffect(() => {
     if (!dataLoaded || userSelectedDate) {
@@ -164,17 +167,25 @@ export default function GenrePage() {
           const result = await fetchGenreTrends(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
-            metric,
           ) as GenreTrendResponse;
           
           setTrendData(result.data);
           
-          // カテゴリが空白のジャンルを除外して上位10件を取得
+          // APIから返された指標別トップジャンルの設定
+          if (result.topGenresByMetric) {
+            setTopGenresByMetric({
+              viewsIncrease: result.topGenresByMetric.viewsIncrease || [],
+              over100kViews: result.topGenresByMetric.over100kViews || [],
+              postCount: result.topGenresByMetric.postCount || []
+            });
+          }
+          
+          // APIから返されたすべてのジャンル一覧を保存
           const filteredGenres = result.genres.filter((genre: string) => {
             // ジャンル情報をgenreStatsから取得してカテゴリがあるか確認
             const genreInfo = genreStats.find(stat => stat.genre === genre);
-            return genreInfo
-          }).slice(0, 10);
+            return genreInfo && genre && genre.trim() !== '';
+          });
           
           setTopGenres(filteredGenres);
           
@@ -187,7 +198,11 @@ export default function GenrePage() {
           setGraphDataLoaded(true);
         } catch (err) {
           console.error("トレンドデータの取得に失敗しました:", err);
-          setTrendError('トレンドデータの取得に失敗しました');
+          // エラーオブジェクトからメッセージを抽出
+          const errorMessage = err instanceof Error 
+            ? `トレンドデータの取得に失敗しました: ${err.message}` 
+            : 'トレンドデータの取得に失敗しました';
+          setTrendError(errorMessage);
         } finally {
           setIsLoadingTrends(false);
         }
@@ -195,7 +210,48 @@ export default function GenrePage() {
 
       loadTrendData();
     }
-  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, metric, selectedGenres, genreStats]);
+  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, selectedGenres, genreStats]);
+
+  // 現在の指標に基づいて表示すべきジャンルリストを取得する関数
+  const getCurrentTopGenres = () => {
+    if (!trendData.length) return [];
+    
+    // APIから返された指標別のトップジャンルリストから現在の指標に対応するものを返す
+    if (trendData[0]?.genre && topGenresByMetric && topGenresByMetric[metric]?.length > 0) {
+      return topGenresByMetric[metric].filter(genre => genre && genre.trim() !== '');
+    }
+    
+    // フォールバック：トレンドデータから直接計算（APIが対応していない場合）
+    // 全ジャンルの一覧を取得
+    const allGenres = trendData
+      .reduce((acc, item) => {
+        if (!acc.includes(item.genre)) {
+          acc.push(item.genre);
+        }
+        return acc;
+      }, [] as string[]);
+    
+    // すべてのジャンルの中で、現在の指標に基づいて最も値が高い順に並べる
+    const sortedGenres = [...allGenres].sort((a, b) => {
+      // 各ジャンルの最新日付のデータを見つける
+      const aData = [...trendData]
+        .filter(item => item.genre === a)
+        .sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime())[0];
+      
+      const bData = [...trendData]
+        .filter(item => item.genre === b)
+        .sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime())[0];
+      
+      if (!aData || !bData) return 0;
+      
+      return bData.metrics[metric] - aData.metrics[metric];
+    });
+    
+    // 空ジャンルを除外
+    return sortedGenres
+      .filter(genre => genre && genre.trim() !== '')
+      .slice(0, 10);
+  };
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
@@ -230,9 +286,10 @@ export default function GenrePage() {
   // 指標変更ハンドラ
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setMetric(e.target.value as MetricKey);
+    // 指標が変わっても、グラフデータは再取得不要（同じデータの表示を切り替えるだけ）
   };
 
-  // グラフ表示用データの前処理関数を追加
+  // グラフ表示用データの前処理関数を更新
   const preprocessTrendData = (trendData: GenreTrendData[], topGenres: string[]): PreprocessedData[] => {
     // 日付の一覧を取得（重複を排除）
     const uniqueDates = Array.from(new Set(trendData.map(item => item.date))).sort();
@@ -246,8 +303,10 @@ export default function GenrePage() {
       topGenres.forEach(genre => {
         // その日付のそのジャンルのデータを検索
         const genreData = trendData.find(item => item.date === date && item.genre === genre);
-        // データがあれば値を設定、なければ0を設定
-        dataPoint[genre] = genreData ? genreData.value : 0;
+        // データがあれば現在選択中の指標の値を設定、なければ0を設定
+        dataPoint[genre] = genreData 
+          ? genreData.metrics[metric] 
+          : 0;
       });
       
       return dataPoint;
@@ -340,7 +399,7 @@ export default function GenrePage() {
                       <TableBody>
                         {genreStats
                           .filter(stat => stat.genre && stat.genre.trim() !== '')
-                          .slice(0, 15)
+                          .slice(0, 10)
                           .map((stat, index) => {
                             const metricValue = {
                               viewsIncrease: Number(stat.total_play_count_increase) || 0,
@@ -413,7 +472,9 @@ export default function GenrePage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {genreStats.find(stat => stat.genre === selectedGenre)?.top_videos?.map((video, index) => (
+                            {genreStats.find(stat => stat.genre === selectedGenre)?.top_videos
+                              ?.sort((a, b) => Number(b.play_count_increase) - Number(a.play_count_increase))
+                              .map((video, index) => (
                               <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
                                 <TableCell>
                                   {video.thumbnail_url ? (
@@ -503,7 +564,7 @@ export default function GenrePage() {
           <TabsContent value="graph">
             <Card>
               <CardHeader>
-                <CardTitle className="text-[#FE2C55]">トレンドグラフ(再生増加数)</CardTitle>
+                <CardTitle className="text-[#FE2C55]">トレンドグラフ({getMetricLabel(metric)})</CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoadingTrends ? (
@@ -511,7 +572,19 @@ export default function GenrePage() {
                     <Skeleton className="h-[350px] w-full" />
                   </div>
                 ) : trendError ? (
-                  <div className="text-red-500 p-4">{trendError}</div>
+                  <div className="text-red-500 p-4 border border-red-300 rounded-md bg-red-50">
+                    <h3 className="font-bold mb-2">エラーが発生しました</h3>
+                    <p>{trendError}</p>
+                    <button 
+                      onClick={() => {
+                        setGraphDataLoaded(false);
+                        setTrendError(null);
+                      }}
+                      className="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                    >
+                      再試行
+                    </button>
+                  </div>
                 ) : trendData.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-border rounded-lg">
                     <p className="text-gray-500">データがありません</p>
@@ -519,7 +592,7 @@ export default function GenrePage() {
                 ) : (
                   <div>
                     <div className="flex flex-wrap gap-2 mb-4">
-                      {topGenres.map((genre, index) => {  
+                      {getCurrentTopGenres().map((genre, index) => {  
                         // ジャンルカテゴリ情報を取得
                         const genreInfo = genreStats.find(stat => stat.genre === genre);
                         const colorKey = genreInfo?.genre || genre;
@@ -541,7 +614,7 @@ export default function GenrePage() {
                     </div>
                     <ResponsiveContainer width="100%" height={400}>
                       <LineChart
-                        data={preprocessTrendData(trendData, topGenres)}
+                        data={preprocessTrendData(trendData, getCurrentTopGenres())}
                         margin={{ top: 5, right: 30, left: 40, bottom: 25 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
@@ -569,7 +642,7 @@ export default function GenrePage() {
                           }}
                         />
                         <Legend />
-                        {topGenres.map((genre, index) => {
+                        {getCurrentTopGenres().map((genre, index) => {
                           // ジャンルカテゴリ情報を取得して色を決定
                           const genreInfo = genreStats.find(stat => stat.genre === genre);
                           const colorKey = genreInfo?.genre || genre;

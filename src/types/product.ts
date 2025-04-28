@@ -23,14 +23,23 @@ export interface ProductStats {
 // 商材トレンド用の型定義
 export interface ProductTrendData {
   date: string;
-  value: number;
   product: string;
   product_category?: string;
+  metrics: {
+    viewsIncrease: number;
+    over100kViews: number;
+    postCount: number;
+  };
 }
 
 export interface ProductTrendResponse {
   data: ProductTrendData[];
   products: string[];
+  topProductsByMetric: {
+    viewsIncrease: string[];
+    over100kViews: string[];
+    postCount: string[];
+  };
   dateRange?: {
     startDate: string;
     endDate: string;

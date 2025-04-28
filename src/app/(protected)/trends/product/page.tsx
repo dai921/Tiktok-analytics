@@ -103,6 +103,11 @@ export default function ProductPage() {
   const [trendError, setTrendError] = useState<string | null>(null);
   const [topProducts, setTopProducts] = useState<string[]>([]);
   const [graphDataLoaded, setGraphDataLoaded] = useState(false);
+  const [topProductsByMetric, setTopProductsByMetric] = useState<Record<MetricKey, string[]>>({
+    viewsIncrease: [],
+    over100kViews: [],
+    postCount: []
+  });
 
   // ジャンルデータを取得するuseEffectを追加
   useEffect(() => {
@@ -199,19 +204,28 @@ export default function ProductPage() {
           const result = await fetchProductTrends(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
-            metric,
             selectedGenres
           ) as ProductTrendResponse;
           
           setTrendData(result.data);
           
-          // カテゴリが空白の商品を除外して上位10件を取得
+          // APIから返された指標別トップ商品の設定
+          if (result.topProductsByMetric) {
+            setTopProductsByMetric({
+              viewsIncrease: result.topProductsByMetric.viewsIncrease || [],
+              over100kViews: result.topProductsByMetric.over100kViews || [],
+              postCount: result.topProductsByMetric.postCount || []
+            });
+          }
+          
+          // APIから返されたすべての商品の中からカテゴリが空白でない商品をフィルタ
           const filteredProducts = result.products.filter((product: string) => {
             // 商品情報をproductStatsから取得してカテゴリがあるか確認
             const productInfo = productStats.find(stat => stat.product === product);
             return productInfo && productInfo.product_category && productInfo.product_category.trim() !== '';
-          }).slice(0, 10);
+          });
           
+          // すべての商品リストを保存
           setTopProducts(filteredProducts);
           
           if (!userSelectedDate && result.dateRange) {
@@ -231,7 +245,56 @@ export default function ProductPage() {
 
       loadTrendData();
     }
-  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, metric, selectedGenres, productStats]);
+  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, selectedGenres, productStats]);
+
+  // 現在の指標に基づいて表示すべき商品リストを取得する関数
+  const getCurrentTopProducts = () => {
+    if (!trendData.length) return [];
+    
+    // APIから返された指標別のトップ商品リストから現在の指標に対応するものを返す
+    if (trendData[0]?.product && topProductsByMetric && topProductsByMetric[metric]?.length > 0) {
+      return topProductsByMetric[metric]
+        .filter(product => {
+          // 商品情報をproductStatsから取得してカテゴリがあるか確認
+          const productInfo = productStats.find(stat => stat.product === product);
+          return productInfo && productInfo.product_category && productInfo.product_category.trim() !== '';
+        });
+    }
+    
+    // フォールバック：トレンドデータから直接計算（APIが対応していない場合）
+    // 全商品の一覧を取得
+    const allProducts = trendData
+      .reduce((acc, item) => {
+        if (!acc.includes(item.product)) {
+          acc.push(item.product);
+        }
+        return acc;
+      }, [] as string[]);
+    
+    // すべての商品の中で、現在の指標に基づいて最も値が高い順に並べる
+    const sortedProducts = [...allProducts].sort((a, b) => {
+      // 各商品の最新日付のデータを見つける
+      const aData = [...trendData]
+        .filter(item => item.product === a)
+        .sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime())[0];
+      
+      const bData = [...trendData]
+        .filter(item => item.product === b)
+        .sort((x, y) => new Date(y.date).getTime() - new Date(x.date).getTime())[0];
+      
+      if (!aData || !bData) return 0;
+      
+      return bData.metrics[metric] - aData.metrics[metric];
+    });
+    
+    // カテゴリ情報がある商品のみをフィルタリングして返す
+    return sortedProducts
+      .filter(product => {
+        const productInfo = productStats.find(stat => stat.product === product);
+        return productInfo && productInfo.product_category && productInfo.product_category.trim() !== '';
+      })
+      .slice(0, 10);
+  };
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
@@ -266,9 +329,10 @@ export default function ProductPage() {
   // 指標変更ハンドラ
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setMetric(e.target.value as MetricKey);
+    // 指標変更時にデータの再取得は不要（表示を切り替えるだけ）
   };
 
-  // グラフ表示用データの前処理関数を追加
+  // グラフ表示用データの前処理関数を更新
   const preprocessTrendData = (trendData: ProductTrendData[], topProducts: string[]): PreprocessedData[] => {
     // 日付の一覧を取得（重複を排除）
     const uniqueDates = Array.from(new Set(trendData.map(item => item.date))).sort();
@@ -282,8 +346,10 @@ export default function ProductPage() {
       topProducts.forEach(product => {
         // その日付のその商品のデータを検索
         const productData = trendData.find(item => item.date === date && item.product === product);
-        // データがあれば値を設定、なければ0を設定
-        dataPoint[product] = productData ? productData.value : 0;
+        // データがあれば現在選択されている指標の値を設定、なければ0を設定
+        dataPoint[product] = productData 
+          ? productData.metrics[metric] 
+          : 0;
       });
       
       return dataPoint;
@@ -313,7 +379,7 @@ export default function ProductPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">PR動画トレンド</h1>
+      <h1 className="text-2xl font-bold mb-6">PR動画商材トレンド</h1>
 
       <div className="space-y-4">
         {/* フィルターエリア */}
@@ -459,7 +525,9 @@ export default function ProductPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {productStats.find(stat => stat.product === selectedProduct)?.top_videos?.map((video, index) => (
+                            {productStats.find(stat => stat.product === selectedProduct)?.top_videos
+                              ?.sort((a, b) => Number(b.play_count_increase) - Number(a.play_count_increase))
+                              .map((video, index) => (
                               <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
                                 <TableCell>
                                   {video.thumbnail_url ? (
@@ -549,7 +617,7 @@ export default function ProductPage() {
           <TabsContent value="graph">
             <Card>
               <CardHeader>
-                <CardTitle className="text-[#FE2C55]">トレンドグラフ(再生増加数)</CardTitle>
+                <CardTitle className="text-[#FE2C55]">トレンドグラフ({getMetricLabel(metric)})</CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoadingTrends ? (
@@ -565,7 +633,7 @@ export default function ProductPage() {
                 ) : (
                   <div>
                     <div className="flex flex-wrap gap-2 mb-4">
-                      {topProducts.map((product, index) => {
+                      {getCurrentTopProducts().map((product, index) => {
                         // 商品カテゴリ情報を取得
                         const productInfo = productStats.find(stat => stat.product === product);
                         const colorKey = productInfo?.product_category || product;
@@ -587,7 +655,7 @@ export default function ProductPage() {
                     </div>
                     <ResponsiveContainer width="100%" height={400}>
                       <LineChart
-                        data={preprocessTrendData(trendData, topProducts)}
+                        data={preprocessTrendData(trendData, getCurrentTopProducts())}
                         margin={{ top: 5, right: 30, left: 40, bottom: 25 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
@@ -615,7 +683,7 @@ export default function ProductPage() {
                           }}
                         />
                         <Legend />
-                        {topProducts.map((product, index) => {
+                        {getCurrentTopProducts().map((product, index) => {
                           // 商品カテゴリ情報を取得して色を決定
                           const productInfo = productStats.find(stat => stat.product === product);
                           const colorKey = productInfo?.product_category || product;

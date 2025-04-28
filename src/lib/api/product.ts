@@ -69,14 +69,12 @@ export const fetchProductStats = async (
 export const fetchProductTrends = async (
   startDate: string | null = null, 
   endDate: string | null = null,
-  metric: string = 'viewsIncrease',
   genres: string[] = []
 ) => {
   try {
     const queryParams = new URLSearchParams();
     if (startDate) queryParams.append('start_date', startDate);
     if (endDate) queryParams.append('end_date', endDate);
-    if (metric) queryParams.append('metric', metric);
     if (genres.length > 0) queryParams.append('genres', genres.join(','));
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/api/product-trends?${queryParams.toString()}`;
@@ -85,7 +83,15 @@ export const fetchProductTrends = async (
     const response = await fetch(url);
     
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      // エラーレスポンスの内容を取得
+      let errorDetail = '';
+      try {
+        const errorData = await response.json();
+        errorDetail = errorData.detail || JSON.stringify(errorData);
+      } catch (e) {
+        errorDetail = await response.text() || `ステータスコード: ${response.status}`;
+      }
+      throw new Error(`APIエラー: ${errorDetail}`);
     }
     
     const jsonData = await response.json();
@@ -94,13 +100,18 @@ export const fetchProductTrends = async (
     return {
       data: jsonData.data || [],
       products: jsonData.products || [],
+      topProductsByMetric: jsonData.topProductsByMetric || {
+        viewsIncrease: [],
+        over100kViews: [],
+        postCount: []
+      },
       dateRange: jsonData.date_range ? {
         startDate: jsonData.date_range.start_date,
         endDate: jsonData.date_range.end_date
       } : undefined
     };
   } catch (error) {
-    console.error('Error fetching product trends:', error);
+    console.error('商材トレンドの取得エラー:', error);
     throw error;
   }
 }; 

@@ -22,13 +22,22 @@ export interface VideoStats {
   // 商材トレンド用の型定義
   export interface GenreTrendData {
     date: string;
-    value: number;
     genre: string;
+    metrics: {
+      viewsIncrease: number;
+      over100kViews: number;
+      postCount: number;
+    };
   }
   
   export interface GenreTrendResponse {
     data: GenreTrendData[];
     genres: string[];
+    topGenresByMetric: {
+      viewsIncrease: string[];
+      over100kViews: string[];
+      postCount: string[];
+    };
     dateRange?: {
       startDate: string;
       endDate: string;
