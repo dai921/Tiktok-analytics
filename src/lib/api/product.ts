@@ -30,6 +30,7 @@ export const fetchProductStats = async (
 
       return {
         product: item.product,
+        product_category: item.product_category,
         total_play_count_increase: Number(item.total_play_count_increase),
         videos_over_100k: Number(item.videos_over_100k),
         total_posts: Number(item.total_posts),

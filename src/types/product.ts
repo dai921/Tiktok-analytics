@@ -13,6 +13,7 @@ export interface VideoStats {
 
 export interface ProductStats {
   product: string;
+  product_category?: string;
   total_play_count_increase: number;
   videos_over_100k: number;
   total_posts: number;

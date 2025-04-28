@@ -22,6 +22,7 @@ class VideoStats(BaseModel):
 
 class ProductStats(BaseModel):
     product: str
+    product_category: Optional[str]
     total_play_count_increase: int
     videos_over_100k: int
     total_posts: int
@@ -60,11 +61,13 @@ async def get_product_stats(
         WITH product_stats AS (
             SELECT 
                 fd.product,
+                MAX(pm.product_category) AS product_category,
                 SUM(pch.play_count_increase) as total_play_count_increase,
                 COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as videos_over_100k,
                 COUNT(DISTINCT pch.video_id) as total_posts
             FROM play_count_history pch
             JOIN frontend_data fd ON pch.video_id = fd.video_id
+            LEFT JOIN product_master pm ON fd.product = pm.product_name
             WHERE pch.collection_date BETWEEN %s AND %s
             AND fd.product IS NOT NULL
             GROUP BY fd.product
@@ -90,6 +93,7 @@ async def get_product_stats(
         )
         SELECT 
             ps.product,
+            ps.product_category,
             ps.total_play_count_increase,
             ps.videos_over_100k,
             ps.total_posts,
@@ -108,7 +112,7 @@ async def get_product_stats(
             ) as top_videos
         FROM product_stats ps
         LEFT JOIN top_videos tv ON ps.product = tv.product AND tv.rank_col <= 10
-        GROUP BY ps.product, ps.total_play_count_increase, ps.videos_over_100k, ps.total_posts
+        GROUP BY ps.product, ps.product_category, ps.total_play_count_increase, ps.videos_over_100k, ps.total_posts
         ORDER BY ps.total_play_count_increase DESC;
         """
 
@@ -129,6 +133,7 @@ async def get_product_stats(
                 video["thumbnail_url"] = convert_gs_to_https(video.get("thumbnail_url"))
             formatted_results.append({
                 "product": row["product"],
+                "product_category": row["product_category"],
                 "total_play_count_increase": row["total_play_count_increase"],
                 "videos_over_100k": row["videos_over_100k"],
                 "total_posts": row["total_posts"],

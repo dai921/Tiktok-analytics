@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import type { VideoStats } from '@/types/product';
 import { TableHeaderCell } from '@/components/dashboard/table-header-cell';
+import { GenreBadge } from '@/components/ui/badge';
 
 interface ProductTrend {
   rank: number;
@@ -238,7 +239,13 @@ export default function ProductPage() {
                                 onClick={() => setSelectedProduct(stat.product)}
                               >
                                 <TableCell className="py-3">{index + 1}</TableCell>
-                                <TableCell className="py-3">{stat.product}</TableCell>
+                                <TableCell className="py-3">
+                                  {/* カテゴリに応じた色付きカードで表示 */}
+                                  <GenreBadge 
+                                    genre={stat.product} 
+                                    categoryForColor={stat.product_category}
+                                  />
+                                </TableCell>
                                 <TableCell className="py-3 text-right">{formatNumber(metricValue)}</TableCell>
                               </TableRow>
                             );
@@ -249,12 +256,23 @@ export default function ProductPage() {
                 </Card>
               </div>
 
-              {/* 右側: 関連動画（DataTableで表示） */}
+              {/* 右側: 関連動画 */}
               <div className="w-2/3">
                 <Card>
                   <CardHeader>
                     <CardTitle>
-                      {selectedProduct ? `${selectedProduct}の関連動画` : '関連動画'}
+                      {selectedProduct ? (
+                        <div className="flex items-center gap-2">
+                          <span>関連動画:</span>
+                          {/* 選択された商品名も色付きカードで表示 */}
+                          {productStats.find(stat => stat.product === selectedProduct) && (
+                            <GenreBadge 
+                              genre={selectedProduct} 
+                              categoryForColor={productStats.find(stat => stat.product === selectedProduct)?.product_category}
+                            />
+                          )}
+                        </div>
+                      ) : '商材を選択してください'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
