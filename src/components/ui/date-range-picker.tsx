@@ -1,18 +1,28 @@
 "use client"
 
 import * as React from "react"
-import { format } from "date-fns"
+import { format, parse } from "date-fns"
 import { ja } from "date-fns/locale"
-import { DateRange } from "react-day-picker"
 import { cn } from "@/lib/utils"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Calendar } from '@/components/ui/calendar'
-import { Button } from '@/components/ui/button'
-import { CalendarIcon } from 'lucide-react'
+
+// CalendarIconコンポーネント
+const CalendarIcon = ({ size = 18 }: { size?: number }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+    <line x1="16" y1="2" x2="16" y2="6"></line>
+    <line x1="8" y1="2" x2="8" y2="6"></line>
+    <line x1="3" y1="10" x2="21" y2="10"></line>
+  </svg>
+);
 
 interface DateRangePickerProps {
   dateRange: {
@@ -23,49 +33,57 @@ interface DateRangePickerProps {
 }
 
 export function DateRangePicker({ dateRange, onDateRangeChange }: DateRangePickerProps) {
+  // 日付を文字列形式に変換
+  const startDateStr = dateRange?.start ? format(dateRange.start, 'yyyy-MM-dd') : '';
+  const endDateStr = dateRange?.end ? format(dateRange.end, 'yyyy-MM-dd') : '';
+  
+  // 開始日の変更ハンドラ
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newStartStr = e.target.value;
+    if (!newStartStr) return;
+    
+    const newStart = parse(newStartStr, 'yyyy-MM-dd', new Date());
+    onDateRangeChange({
+      start: newStart,
+      end: dateRange.end
+    });
+  };
+  
+  // 終了日の変更ハンドラ
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEndStr = e.target.value;
+    if (!newEndStr) return;
+    
+    const newEnd = parse(newEndStr, 'yyyy-MM-dd', new Date());
+    onDateRangeChange({
+      start: dateRange.start,
+      end: newEnd
+    });
+  };
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn(
-            'w-[280px] justify-start text-left font-normal',
-            !dateRange && 'text-muted-foreground'
-          )}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {dateRange?.start ? (
-            dateRange.end ? (
-              <>
-                {format(dateRange.start, 'yyyy年MM月dd日', { locale: ja })} -{' '}
-                {format(dateRange.end, 'yyyy年MM月dd日', { locale: ja })}
-              </>
-            ) : (
-              format(dateRange.start, 'yyyy年MM月dd日', { locale: ja })
-            )
-          ) : (
-            <span>日付を選択</span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          initialFocus
-          mode="range"
-          defaultMonth={dateRange?.start}
-          selected={{
-            from: dateRange.start,
-            to: dateRange.end
-          }}
-          onSelect={(range) => {
-            if (range?.from && range?.to) {
-              onDateRangeChange({ start: range.from, end: range.to });
-            }
-          }}
-          numberOfMonths={2}
-          locale={ja}
+    <div className="flex items-center space-x-3">
+      <div className="flex flex-col">
+        <label className="text-xs text-gray-500 mb-1">開始日</label>
+        <input
+          type="date"
+          className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-[140px] py-1.5 text-sm border-gray-300 border rounded-md shadow-sm"
+          value={startDateStr}
+          onChange={handleStartDateChange}
         />
-      </PopoverContent>
-    </Popover>
+      </div>
+      
+      <span className="text-gray-500 mt-5">〜</span>
+      
+      <div className="flex flex-col">
+        <label className="text-xs text-gray-500 mb-1">終了日</label>
+        <input
+          type="date"
+          className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-[140px] py-1.5 text-sm border-gray-300 border rounded-md shadow-sm"
+          value={endDateStr}
+          onChange={handleEndDateChange}
+        />
+      </div>
+    </div>
   );
 } 
