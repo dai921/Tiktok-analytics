@@ -14,13 +14,13 @@ router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
 
 # ビデオウォッチリストのモデル
 class VideoWatchlistItem(BaseModel):
-    url: str  # ビデオのURLを保存
+    video_id: str  # ビデオのURLを保存
     watchlist_name: Optional[str] = None
 
 class VideoWatchlistResponse(BaseModel):
     watchlist_id: int
     email: str
-    url: str  # ビデオのURL
+    video_id: str  # ビデオのURL
     watchlist_name: Optional[str] = None
     created_at: str
     updated_at: str
@@ -51,8 +51,8 @@ async def add_video_to_watchlist(
     try:
         # 同じビデオが既に登録されているか確認
         cursor.execute(
-            "SELECT * FROM video_watchlists WHERE email = %s AND url = %s",
-            (current_user.email, video_item.url)
+            "SELECT * FROM video_watchlists WHERE email = %s AND video_id = %s",
+            (current_user.email, video_item.video_id)
         )
         existing = cursor.fetchone()
         
@@ -71,10 +71,10 @@ async def add_video_to_watchlist(
             # 新規登録
             cursor.execute(
                 """
-                INSERT INTO video_watchlists (email, url, watchlist_name)
+                INSERT INTO video_watchlists (email, video_id, watchlist_name)
                 VALUES (%s, %s, %s)
                 """,
-                (current_user.email, video_item.url, video_item.watchlist_name)
+                (current_user.email, video_item.video_id, video_item.watchlist_name)
             )
             watchlist_id = cursor.lastrowid
         
@@ -90,7 +90,7 @@ async def add_video_to_watchlist(
         return {
             "watchlist_id": result["watchlist_id"],
             "email": result["email"],
-            "url": result["url"],
+            "video_id": result["video_id"],
             "watchlist_name": result["watchlist_name"],
             "created_at": result["created_at"].isoformat(),
             "updated_at": result["updated_at"].isoformat()
@@ -107,9 +107,9 @@ async def add_video_to_watchlist(
         cursor.close()
         conn.close()
 
-@router.delete("/videos/{url}")
+@router.delete("/videos/{video_id}")
 async def remove_video_from_watchlist(
-    url: str,
+    video_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """ビデオをウォッチリストから削除する"""
@@ -119,8 +119,8 @@ async def remove_video_from_watchlist(
     try:
         # ビデオが存在するか確認
         cursor.execute(
-            "SELECT * FROM video_watchlists WHERE email = %s AND url = %s",
-            (current_user.email, url)
+            "SELECT * FROM video_watchlists WHERE email = %s AND video_id = %s",
+            (current_user.email, video_id)
         )
         if not cursor.fetchone():
             raise HTTPException(
@@ -130,8 +130,8 @@ async def remove_video_from_watchlist(
         
         # ウォッチリストから削除
         cursor.execute(
-            "DELETE FROM video_watchlists WHERE email = %s AND url = %s",
-            (current_user.email, url)
+            "DELETE FROM video_watchlists WHERE email = %s AND video_id = %s",
+            (current_user.email, video_id)
         )
         
         conn.commit()
@@ -170,7 +170,7 @@ async def get_video_watchlist(
             watchlist.append({
                 "watchlist_id": item["watchlist_id"],
                 "email": item["email"],
-                "url": item["url"],
+                "video_id": item["video_id"],
                 "watchlist_name": item["watchlist_name"],
                 "created_at": item["created_at"].isoformat(),
                 "updated_at": item["updated_at"].isoformat()
@@ -200,13 +200,13 @@ async def get_video_watchlist_with_details(
         # ウォッチリストとビデオデータを結合して取得
         query = """
         SELECT 
-            vw.watchlist_id, vw.email, vw.url, vw.watchlist_name, vw.created_at, vw.updated_at,
+            vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, fd.play_count_increase,
             fd.ten_days_increase, fd.account_name, fd.display_name, fd.content_type,
             fd.likes_count, fd.comment_count, fd.likes_count_increase, fd.ten_days_likes_increase,
             fd.comment_count_increase, fd.ten_days_comment_increase, fd.hashtags, fd.music_info, fd.caption
         FROM video_watchlists vw
-        LEFT JOIN frontend_data fd ON vw.url = fd.url
+        LEFT JOIN frontend_data fd ON vw.video_id = fd.video_id
         WHERE vw.email = %s
         ORDER BY vw.updated_at DESC
         """
@@ -259,13 +259,13 @@ async def get_video_watchlist_with_details(
                 "watchlist": {
                     "watchlist_id": item["watchlist_id"],
                     "email": item["email"],
-                    "url": item["url"],
+                    "video_id": item["video_id"],
                     "watchlist_name": item["watchlist_name"],
                     "created_at": item["created_at"].isoformat(),
                     "updated_at": item["updated_at"].isoformat()
                 },
                 "video": {
-                    "url": item["url"],
+                    "video_id": item["video_id"],
                     "thumbnail_url": thumbnail_url,
                     "created_at": video_created_at,
                     "play_count": int(item["play_count"]) if item["play_count"] else 0,
@@ -461,7 +461,7 @@ async def get_account_bookmarks_with_details(
         query = """
         SELECT 
             ab.bookmark_id, ab.email, ab.account_name, ab.bookmark_name, ab.created_at, ab.updated_at,
-            COUNT(DISTINCT fd.url) AS total_videos,
+            COUNT(DISTINCT fd.video_id) AS total_videos,
             SUM(fd.play_count) AS total_plays,
             SUM(fd.play_count_increase) AS total_play_increase,
             MAX(fd.display_name) AS display_name,
