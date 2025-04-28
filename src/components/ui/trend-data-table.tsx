@@ -28,6 +28,7 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
   searchPlaceholder?: string;
   searchColumn?: string;
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData, TValue>({
@@ -35,6 +36,7 @@ export function DataTable<TData, TValue>({
   data,
   searchPlaceholder = '検索...',
   searchColumn,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -140,11 +142,14 @@ export function DataTable<TData, TValue>({
         </div>
       )}
       <div className="rounded-md border">
-        <Table>
+        <Table className="w-full table-fixed">
           <TableHeader>
             <TableRow>
               {columns.map((column) => (
-                <TableHead key={column.accessorKey}>
+                <TableHead 
+                  key={column.accessorKey}
+                  style={{ width: column.size, minWidth: column.size, maxWidth: column.size }}
+                >
                   {column.enableSorting ? (
                     <Button
                       variant="ghost"
@@ -164,9 +169,16 @@ export function DataTable<TData, TValue>({
           <TableBody>
             {sortedData.length > 0 ? (
               sortedData.map((row, rowIndex) => (
-                <TableRow key={rowIndex}>
+                <TableRow 
+                  key={rowIndex}
+                  className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : ''}
+                  onClick={() => onRowClick?.(row)}
+                >
                   {columns.map((column) => (
-                    <TableCell key={column.accessorKey}>
+                    <TableCell 
+                      key={column.accessorKey}
+                      style={{ width: column.size, minWidth: column.size, maxWidth: column.size }}
+                    >
                       {column.cell ? column.cell({ row: { getValue: (key: string) => row[key] } }) : row[column.accessorKey]}
                     </TableCell>
                   ))}

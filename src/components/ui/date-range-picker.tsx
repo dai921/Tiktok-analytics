@@ -3,169 +3,144 @@
 import * as React from "react"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
-import { DateRange } from "react-day-picker"
-import { cn } from "@/lib/utils"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Button } from "@/components/ui/button"
+import { useState } from "react"
+
+const CalendarIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+    <line x1="16" x2="16" y1="2" y2="6" />
+    <line x1="8" x2="8" y1="2" y2="6" />
+    <line x1="3" x2="21" y1="10" y2="10" />
+  </svg>
+)
 
 interface DateRangePickerProps {
-  className?: string
-  value?: DateRange | undefined
-  onChange?: (date: DateRange | undefined) => void
-  startLabel?: string
-  endLabel?: string
-  displayMode?: boolean // 表示モードフラグ
-  displayLabel?: string // 表示ラベル
+  dateRange: { start: Date; end: Date };
+  onDateRangeChange: (range: { start: Date; end: Date }) => void;
+  onApply?: (range: { start: Date; end: Date }) => void;
+  singleCalendar?: boolean;
 }
 
-export function DateRangePicker({
-  className,
-  value,
-  onChange,
-  startLabel = "開始日",
-  endLabel = "終了日",
-  displayMode = false, // デフォルトは直接表示モード
-  displayLabel = "表示期間"
+export function DateRangePicker({ 
+  dateRange, 
+  onDateRangeChange,
+  onApply,
+  singleCalendar = false
 }: DateRangePickerProps) {
-  // 日付範囲用の内部状態
-  const [startDate, setStartDate] = React.useState<string>(
-    value?.from ? format(value.from, "yyyy-MM-dd") : ""
-  )
-  const [endDate, setEndDate] = React.useState<string>(
-    value?.to ? format(value.to, "yyyy-MM-dd") : ""
-  )
+  const [isOpen, setIsOpen] = useState(false);
+  const [localRange, setLocalRange] = useState<{ start: Date; end: Date }>(dateRange);
 
-  // 入力変更ハンドラー
-  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setStartDate(newValue)
-    
-    if (newValue) {
-      const newStart = new Date(newValue)
-      const newRange = {
-        from: newStart,
-        to: endDate ? new Date(endDate) : undefined
-      }
-      onChange?.(newRange)
-    } else {
-      // 開始日が空の場合、終了日だけを設定
-      onChange?.(endDate ? { from: undefined, to: new Date(endDate) } : undefined)
-    }
-  }
-
-  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setEndDate(newValue)
-    
-    if (newValue) {
-      const newEnd = new Date(newValue)
-      const newRange = {
-        from: startDate ? new Date(startDate) : undefined,
-        to: newEnd
-      }
-      onChange?.(newRange)
-    } else {
-      // 終了日が空の場合、開始日だけを設定
-      onChange?.(startDate ? { from: new Date(startDate), to: undefined } : undefined)
-    }
-  }
-
-  // 値が外部から更新された場合、内部状態を同期
+  // ポップアップが開くたびにdateRangeから値を更新
   React.useEffect(() => {
-    if (value?.from) {
-      setStartDate(format(value.from, "yyyy-MM-dd"))
+    if (isOpen) {
+      setLocalRange(dateRange);
     }
-    if (value?.to) {
-      setEndDate(format(value.to, "yyyy-MM-dd"))
+  }, [isOpen, dateRange]);
+
+  // 日付をYYYY-MM-DD形式に変換する関数
+  const formatDateForInput = (date: Date) => {
+    return date.toISOString().split('T')[0];
+  };
+
+  // 開始日付の変更ハンドラー
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value) {
+      const newStart = new Date(e.target.value);
+      const newRange = {
+        start: newStart,
+        end: localRange.end < newStart ? newStart : localRange.end,
+      };
+      setLocalRange(newRange);
+      onDateRangeChange(newRange);
     }
-  }, [value])
+  };
 
-  // 表示用のフォーマットされた日付文字列
-  const formattedDateRange = React.useMemo(() => {
-    if (!value?.from) return "期間が設定されていません";
-    
-    const fromStr = format(value.from, "yyyy年MM月dd日", { locale: ja });
-    if (!value.to) return `${fromStr} から`;
-    
-    const toStr = format(value.to, "yyyy年MM月dd日", { locale: ja });
-    return `${fromStr} 〜 ${toStr}`;
-  }, [value]);
+  // 終了日付の変更ハンドラー
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value) {
+      const newEnd = new Date(e.target.value);
+      const newRange = {
+        start: localRange.start > newEnd ? newEnd : localRange.start,
+        end: newEnd,
+      };
+      setLocalRange(newRange);
+      onDateRangeChange(newRange);
+    }
+  };
 
-  // カレンダー選択UI部分
-  const CalendarSelectionUI = (
-    <div className={cn("grid gap-2", className)}>
-      <div className="flex items-center gap-2">
-        <div className="relative w-full">
-          <label className="text-xs text-gray-500 mb-1 block">{startLabel}</label>
-          <input
-            type="date"
-            value={startDate}
-            onChange={handleStartDateChange}
-            onClick={(e) => {
-              // カレンダーを強制的に表示
-              const input = e.target as HTMLInputElement;
-              input.showPicker();
-            }}
-            className="w-full px-2 py-1 border rounded text-xs cursor-pointer"
-            style={{ colorScheme: 'auto' }}
-          />
-        </div>
-        <div className="relative w-full">
-          <label className="text-xs text-gray-500 mb-1 block">{endLabel}</label>
-          <input
-            type="date"
-            value={endDate}
-            onChange={handleEndDateChange}
-            onClick={(e) => {
-              // カレンダーを強制的に表示
-              const input = e.target as HTMLInputElement;
-              input.showPicker();
-            }}
-            className="w-full px-2 py-1 border rounded text-xs cursor-pointer"
-            style={{ colorScheme: 'auto' }}
-          />
-        </div>
-      </div>
-    </div>
-  );
+  const handleApply = () => {
+    if (onApply) {
+      onApply(localRange);
+    }
+    setIsOpen(false);
+  };
 
-  // 表示モードの場合はポップオーバーでラップ
-  if (displayMode) {
-    return (
-      <Popover>
-        <PopoverTrigger asChild>
-          <button 
-            className="w-full p-2 border rounded-md bg-white flex items-center justify-between hover:bg-gray-50 transition-colors"
-          >
-            <span>{formattedDateRange}</span>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="ml-2"
-            >
-              <path
-                d="M4.5 5.5L8 9L11.5 5.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="w-full justify-between text-left font-normal">
+          <span>
+            {format(dateRange.start, "yyyy年MM月dd日")} 〜 {format(dateRange.end, "yyyy年MM月dd日")}
+          </span>
+          <CalendarIcon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-4" align="start">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">開始日</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <CalendarIcon />
+              </div>
+              <input
+                type="date"
+                className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full pl-10 sm:text-sm border-gray-300 border rounded-md shadow-sm"
+                value={formatDateForInput(localRange.start)}
+                onChange={handleStartDateChange}
+                max={formatDateForInput(localRange.end)}
               />
-            </svg>
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-4" align="start">
-          {CalendarSelectionUI}
-        </PopoverContent>
-      </Popover>
-    );
-  }
-
-  // 通常モードではカレンダー選択UIを直接表示
-  return CalendarSelectionUI;
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">終了日</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <CalendarIcon />
+              </div>
+              <input
+                type="date"
+                className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full pl-10 sm:text-sm border-gray-300 border rounded-md shadow-sm"
+                value={formatDateForInput(localRange.end)}
+                onChange={handleEndDateChange}
+                min={formatDateForInput(localRange.start)}
+              />
+            </div>
+          </div>
+        </div>
+        
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => setIsOpen(false)}>
+            キャンセル
+          </Button>
+          <Button variant="default" size="sm" onClick={handleApply}>
+            適用
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 } 

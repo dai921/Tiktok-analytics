@@ -16,25 +16,30 @@ import {
   Eye,
   LogOut,
   FileText,
-  Users
+  Users,
+  ChevronDown
 } from 'lucide-react';
 
 type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users';
 
 type SidebarItemProps = {
-  href: string;
+  href?: string;
   icon: IconName;
   label: string;
   active: boolean;
   disabled?: boolean;
   comingSoon?: boolean;
   onClick?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  showSubmenu?: boolean;
 }
 
 export function Sidebar() {
   const pathname = usePathname();
   const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isTrendsOpen, setIsTrendsOpen] = useState(false);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -74,12 +79,31 @@ export function Sidebar() {
           label="ダッシュボード"
           active={pathname === '/dashboard'}
         />
-        <SidebarItem
-          href="/trends"
-          icon="LineChart"
-          label="PR動画トレンド"
-          active={pathname === '/trends' || pathname.startsWith('/trends/')}
-        />
+        <div 
+          className="relative group"
+          onMouseEnter={() => setIsTrendsOpen(true)}
+          onMouseLeave={() => setIsTrendsOpen(false)}
+        >
+          <SidebarItem
+            icon="LineChart"
+            label="PR動画トレンド"
+            active={pathname.startsWith('/trends')}
+          />
+          <div 
+            className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[160px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <Link href="/trends/product">
+              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
+                商材トレンド
+              </div>
+            </Link>
+            <Link href="/trends/genre">
+              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
+                ジャンルトレンド
+              </div>
+            </Link>
+          </div>
+        </div>
         <SidebarItem
           href="/watchlist"
           icon="Eye"
@@ -106,12 +130,6 @@ export function Sidebar() {
 
       <div className="border-t border-gray-800 pt-4 pb-4">
         <SidebarItem
-          href="/settings"
-          icon="Settings"
-          label="設定"
-          active={pathname === '/settings'}
-        />
-        <SidebarItem
           href="#"
           icon="LogOut"
           label={isLoggingOut ? "ログアウト中..." : "ログアウト"}
@@ -124,7 +142,18 @@ export function Sidebar() {
   );
 }
 
-function SidebarItem({ href, icon, label, active, disabled, comingSoon, onClick }: SidebarItemProps) {
+function SidebarItem({ 
+  href, 
+  icon, 
+  label, 
+  active, 
+  disabled, 
+  comingSoon, 
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
+  showSubmenu 
+}: SidebarItemProps) {
   const content = (
     <div
       className={cn(
@@ -134,9 +163,12 @@ function SidebarItem({ href, icon, label, active, disabled, comingSoon, onClick 
           : disabled
             ? "text-gray-500 cursor-not-allowed"
             : "text-gray-200 hover:bg-gray-800",
-        onClick && !disabled && "cursor-pointer"
+        onClick && !disabled && "cursor-pointer",
+        !href && !onClick && "cursor-default"
       )}
-      onClick={!disabled && onClick}
+      onClick={!disabled ? onClick : undefined}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <span className="mr-3">{renderIcon(icon)}</span>
       <span>{label}</span>
@@ -153,7 +185,7 @@ function SidebarItem({ href, icon, label, active, disabled, comingSoon, onClick 
     </div>
   );
 
-  if (disabled) {
+  if (disabled || !href) {
     return content;
   }
 
@@ -169,8 +201,6 @@ function renderIcon(iconName: IconName) {
       return <LineChart size={20} />;
     case 'Eye':
       return <Eye size={20} />;
-    case 'Settings':
-      return <Settings size={20} />;
     case 'LogOut':
       return <LogOut size={20} />;
     case 'FileText':

@@ -21,3 +21,7 @@ export const formatDate = (dateStr: string) => {
     day: '2-digit'
   });
 };
+
+export const formatNumber = (num: number): string => {
+  return new Intl.NumberFormat('ja-JP').format(num);
+};

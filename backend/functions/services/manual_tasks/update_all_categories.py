@@ -53,13 +53,22 @@ BATCH_SIZE = 10000
 @functions_framework.http
 def update_all_categories(request):
     """
-    video_masterテーブルのすべての動画のカテゴリを再判定して更新する
+    Cloud Functions用のHTTPエンドポイント
     
     Args:
         request (flask.Request): HTTP リクエスト
         
     Returns:
         dict: 処理結果の JSON レスポンス
+    """
+    return process_update_all_categories()
+
+def process_update_all_categories():
+    """
+    実際の処理を行う関数（ローカル実行用と Cloud Functions 用の共通処理）
+    
+    Returns:
+        dict: 処理結果
     """
     start_time = time.time()
     print(f"====== update_all_categories 開始：{datetime.now().isoformat()} ======")
@@ -105,7 +114,7 @@ def update_all_categories(request):
         
         # 処理すべき動画データの取得（バッチサイズ分）
         video_query = f"""
-            SELECT id, video_id, description, hashtags
+            SELECT id, video_id, username, description, hashtags
             FROM video_master
             WHERE id > {last_cursor_id}
             ORDER BY id
@@ -132,54 +141,37 @@ def update_all_categories(request):
         # 各動画のカテゴリを更新
         for video in videos:
             try:
-                video_id = video['id']
-                max_id = max(max_id, video_id)
+                now_id = video['id']
+                max_id = max(max_id, now_id)
                 
-                # カテゴリの判定
-                categories = set()
-                description = video.get('description', '').lower() if video.get('description') else ''
-                hashtags = video.get('hashtags', '')
-                
-                # ハッシュタグの処理
-                if isinstance(hashtags, str):
-                    # カンマ区切りの文字列として処理
-                    hashtags = [tag.strip() for tag in hashtags.split(',') if tag.strip()]
-                elif isinstance(hashtags, list):
-                    # リストの場合はそのまま使用
-                    hashtags = [str(tag).strip() for tag in hashtags if str(tag).strip()]
-                else:
-                    # その他の場合は空リストとして扱う
-                    hashtags = []
-                
-                # ハッシュタグのテキストを結合（カテゴリ判定用）
-                hashtags_text = ' '.join(hashtags).lower()
+                # アカウントタイプの取得
+                username = video['username']  # video_idカラムにはusernameが入っていると仮定
+                account_type_query = """
+                    SELECT account_type
+                    FROM account_list
+                    WHERE favorite_user_username = %s
+                    LIMIT 1
+                """
+                account_type_results = execute_query(account_type_query, (username,))
+                account_type = account_type_results[0]['account_type'] if account_type_results else None
 
-                for keyword_data in keywords_data:
-                    keyword = keyword_data['keyword'].lower()
-                    if keyword in description or keyword in hashtags_text:
-                        categories.add((
-                            keyword_data['category_name'],
-                            keyword_data['is_product']
-                        ))
-
-                # カテゴリ名をカンマ区切りで結合（空の場合は「その他」）
-                category_names = ','.join(sorted(set(cat[0] for cat in categories))) if categories else 'その他'
-                
-                # プロダクトフラグがTrueのカテゴリがあれば、そのカテゴリ名をproductとして設定
-                product_categories = [cat[0] for cat in categories if cat[1]]
-                product_names = ','.join(sorted(product_categories)) if product_categories else None
+                # タイトル分析（descriptionを使用）
+                description = video.get('description', '')
+                title_analysis = analyze_title(description, account_type)
                 
                 # video_masterテーブルの更新
                 update_query = """
                     UPDATE video_master 
                     SET category = %(category)s,
-                        product = %(product)s
+                        product = %(product)s,
+                        account_type = %(account_type)s
                     WHERE video_id = %(video_id)s
                 """
                 
                 update_params = {
-                    'category': category_names,
-                    'product': product_names,
+                    'category': title_analysis['category'],
+                    'product': title_analysis['product_name'],
+                    'account_type': account_type,
                     'video_id': video['video_id']
                 }
                 
@@ -374,5 +366,167 @@ def reset_cursor():
     except Exception as e:
         print(f"カーソルリセットに失敗しました: {str(e)}")
 
+def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, str]:
+    """
+    動画タイトルからカテゴリと商品名を抽出する
+    
+    Args:
+        title (str): 動画タイトル
+        account_type (str, optional): アカウントタイプ
+    
+    Returns:
+        Dict[str, str]: カテゴリと商品名の辞書
+    """
+    try:
+        # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
+        if not account_type or account_type.lower() != 'affi':
+            return {
+                'category': account_type or '',
+                'product_name': ''
+            }
+
+        # カテゴリキーワードの取得
+        category_query = """
+            SELECT 
+                ck.keyword,
+                cm.category_name,
+                cm.category_id
+            FROM category_keywords ck
+            JOIN category_master cm ON ck.category_id = cm.category_id
+        """
+        keywords_data = execute_query(category_query)
+
+        # 商品キーワードの取得
+        product_query = """
+            SELECT 
+                pk.keyword,
+                pm.product_name,
+                pm.product_category
+            FROM product_keywords pk
+            JOIN product_master pm ON pk.product_id = pm.product_id
+        """
+        product_data = execute_query(product_query)
+
+        title_lower = title.lower() if title else ''
+        
+        # カテゴリの判定
+        categories = set()
+        for keyword_data in keywords_data:
+            keyword = keyword_data['keyword'].lower()
+            if keyword in title_lower:
+                categories.add((
+                    keyword_data['category_name'],
+                    keyword_data['category_id']
+                ))
+
+        # 商品名の判定
+        product_name = ''
+        for product_info in product_data:
+            keyword = product_info['keyword'].lower()
+            if keyword in title_lower:
+                if product_info['product_category'] == '複数':
+                    # product_categoryが「複数」の場合、別名テーブルを検索
+                    alias_query = """
+                        SELECT 
+                            pa.alias_name,
+                            pa.alias_priority,
+                            pak.keyword
+                        FROM product_alias pa
+                        JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
+                        WHERE pa.product_name = %s
+                    """
+                    alias_data = execute_query(alias_query, (product_info['product_name'],))
+                    
+                    alias_match = False
+                    priority_alias = None
+                    
+                    for alias_info in alias_data:
+                        if alias_info['keyword'].lower() in title_lower:
+                            product_name = alias_info['alias_name']
+                            alias_match = True
+                            break
+                        elif alias_info['alias_priority'] == 1:
+                            priority_alias = alias_info['alias_name']
+                    
+                    if not alias_match:
+                        product_name = priority_alias if priority_alias else product_info['product_name']
+                else:
+                    product_name = product_info['product_name']
+                break
+
+        category_names = ','.join(sorted(set(cat[0] for cat in categories))) if categories else 'その他'
+
+        return {
+            'category': category_names,
+            'product_name': product_name
+        }
+
+    except Exception as e:
+        logging.error(f"タイトル解析エラー: {str(e)}, title: {title}")
+        return {
+            'category': account_type or '',
+            'product_name': ''
+        }
+
+def local_execute():
+    """
+    ローカル実行用の関数
+    """
+    try:
+        print("ローカル環境でupdate_all_categoriesを実行します")
+        print("処理を停止するにはCtrl+Cを押してください")
+        result = process_update_all_categories()
+        print("\n=== 実行結果 ===")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        
+        if result['success']:
+            print(f"\n処理成功:")
+            print(f"- 更新件数: {result['total_updated']}件")
+            print(f"- 実行時間: {result['execution_time']:.2f}秒")
+            print(f"- 残り件数: {result['remaining_count']}件")
+            if result['more_data']:
+                print("※ まだ処理すべきデータが残っています")
+        else:
+            print(f"\n処理失敗: {result['error']}")
+            
+    except KeyboardInterrupt:
+        print("\n処理を中断しました")
+        # 中断時にカーソルをリセット
+        try:
+            reset_cursor()
+            print("カーソルをリセットしました")
+        except Exception as e:
+            print(f"カーソルのリセットに失敗しました: {str(e)}")
+    except Exception as e:
+        print(f"ローカル実行中にエラーが発生しました: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+
 if __name__ == "__main__":
-    print("このスクリプトはCloud Functionsとして実行されます。ローカルでの直接実行はサポートされていません。") 
+    import signal
+    import sys
+
+    def signal_handler(sig, frame):
+        print('\n処理を中断します...')
+        try:
+            reset_cursor()
+            print("カーソルをリセットしました")
+        except Exception as e:
+            print(f"カーソルのリセットに失敗しました: {str(e)}")
+        sys.exit(0)
+
+    # Ctrl+C（SIGINT）のハンドラを設定
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    # コマンドライン引数でモードを切り替えられるようにする
+    import argparse
+    parser = argparse.ArgumentParser(description='カテゴリ更新処理を実行します')
+    parser.add_argument('--mode', choices=['local', 'cloud'], default='local',
+                      help='実行モード（local: ローカル実行, cloud: Cloud Functions用）')
+    
+    args = parser.parse_args()
+    
+    if args.mode == 'local':
+        local_execute()
+    else:
+        print("このスクリプトはCloud Functionsとして実行されます。") 
