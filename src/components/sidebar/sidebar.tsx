@@ -40,6 +40,7 @@ export function Sidebar() {
   const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isTrendsOpen, setIsTrendsOpen] = useState(false);
+  const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -104,12 +105,31 @@ export function Sidebar() {
             </Link>
           </div>
         </div>
-        <SidebarItem
-          href="/watchlist"
-          icon="Eye"
-          label="ウォッチリスト"
-          active={pathname === '/watchlist'}
-        />
+        <div 
+          className="relative group"
+          onMouseEnter={() => setIsWatchlistOpen(true)}
+          onMouseLeave={() => setIsWatchlistOpen(false)}
+        >
+          <SidebarItem
+            icon="Eye"
+            label="ウォッチリスト"
+            active={pathname.startsWith('/watchlist')}
+          />
+          <div 
+            className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[200px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <Link href="/watchlist/videos">
+              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
+                動画ウォッチリスト
+              </div>
+            </Link>
+            <Link href="/watchlist/accounts">
+              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
+                アカウントウォッチリスト
+              </div>
+            </Link>
+          </div>
+        </div>
         <SidebarItem
           href="#"
           icon="Users"
