@@ -66,9 +66,11 @@ const getMetricLabel = (metricKey: string) => {
 export default function ProductPage() {
   const [activeTab, setActiveTab] = useState("ranking");
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(new Date().setDate(new Date().getDate() - 30)),
+    start: new Date(),
     end: new Date(),
   });
+  const [userSelectedDate, setUserSelectedDate] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [metric, setMetric] = useState<MetricKey>('viewsIncrease');
   const [productData, setProductData] = useState<ProductTrend[]>([]);
   const [relatedVideos, setRelatedVideos] = useState<RelatedVideo[]>([]);
@@ -115,29 +117,56 @@ export default function ProductPage() {
   }, []);
 
   useEffect(() => {
-    const loadProductStats = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const stats = await fetchProductStats(
-          dateRange.start.toISOString().split('T')[0],
-          dateRange.end.toISOString().split('T')[0]
-        );
-        console.log('productStats:', stats);
-        setProductStats(stats);
-      } catch (err) {
-        setError('商品統計情報の取得に失敗しました');
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (!dataLoaded || userSelectedDate) {
+      const loadProductStats = async () => {
+        try {
+          console.log("API呼び出し開始:", { userSelectedDate, dataLoaded });
+          setIsLoading(true);
+          setError(null);
+          
+          const result = await fetchProductStats(
+            userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
+            userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null
+          );
+          
+          console.log("APIレスポンス:", result);
+          setProductStats(result.data);
+          
+          // ユーザーが選択していない場合のみ、バックエンドから返された日付範囲を設定
+          if (!userSelectedDate) {
+            console.log("ユーザー選択なし、dateRange確認:", result.dateRange);
+            if (result.dateRange) {
+              console.log("バックエンドから受け取った日付範囲:", result.dateRange);
+              const start = new Date(result.dateRange.startDate);
+              const end = new Date(result.dateRange.endDate);
+              console.log("変換された日付範囲:", { start, end });
+              setDateRange({
+                start,
+                end
+              });
+            } else {
+              console.log("dateRangeなし");
+            }
+          }
+          
+          setDataLoaded(true);
+        } catch (err) {
+          console.error("API呼び出しエラー:", err);
+          setError('商品統計情報の取得に失敗しました');
+        } finally {
+          setIsLoading(false);
+        }
+      };
 
-    loadProductStats();
-  }, [dateRange]);
+      loadProductStats();
+    } else {
+      console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded });
+    }
+  }, [userSelectedDate, dataLoaded, dateRange]);
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setDateRange(newRange);
+    setUserSelectedDate(true); // ユーザーが日付を選択したことを記録
   };
 
   const handleProductClick = (productId: string) => {
@@ -201,7 +230,7 @@ export default function ProductPage() {
           <div className="w-[280px]">
             <DateRangePicker
               dateRange={dateRange}
-              onDateRangeChange={setDateRange}
+              onDateRangeChange={handleDateRangeChange}
             />
           </div>
         </div>

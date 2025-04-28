@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
 from src.db.database import get_db_connection
@@ -38,15 +38,45 @@ def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
 
 @router.get("/api/product-stats")
 async def get_product_stats(
-    start_date: str,
-    end_date: str
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
 ):
-    print(f"Received request for product stats from {start_date} to {end_date}")
-    
     try:
-        # 日付のバリデーション
-        datetime.strptime(start_date, '%Y-%m-%d')
-        datetime.strptime(end_date, '%Y-%m-%d')
+        # 日付パラメータが指定されていない場合、自動的に計算
+        if start_date is None or end_date is None:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # 収集日の一覧を取得
+            query = """
+            SELECT DISTINCT collection_date
+            FROM play_count_history
+            WHERE collection_date IS NOT NULL
+            ORDER BY collection_date DESC
+            LIMIT 7
+            """
+            
+            cursor.execute(query)
+            dates = cursor.fetchall()
+            
+            if dates:
+                # 7回分のデータ期間を設定
+                end_date = dates[0]["collection_date"].strftime('%Y-%m-%d')
+                start_date = dates[-1]["collection_date"].strftime('%Y-%m-%d')
+            else:
+                # データがない場合はデフォルト値
+                end_date = datetime.now().strftime('%Y-%m-%d')
+                start_date = (datetime.now() - timedelta(days=18)).strftime('%Y-%m-%d')
+            
+            cursor.close()
+            conn.close()
+            
+            # start_dateとend_dateの値をログに出力
+            print(f"Calculated date range: start={start_date}, end={end_date}")
+            logger.info(f"Calculated date range: start={start_date}, end={end_date}")
+            
+            # datesの内容をログに出力
+            print(f"Found collection dates: {[d['collection_date'] for d in dates]}")
     except ValueError as e:
         logger.error(f"Invalid date format: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
@@ -119,11 +149,6 @@ async def get_product_stats(
         cursor.execute(query, (start_date, end_date, start_date, end_date))
         results = cursor.fetchall()
         
-        print(f"Raw DB results: {results}")
-        logger.info(f"Raw DB results: {results}")
-        
-        print(f"Retrieved {len(results)} product stats records")
-        
         # 結果を整形
         formatted_results = []
         for row in results:
@@ -140,7 +165,15 @@ async def get_product_stats(
                 "top_videos": top_videos
             })
 
-        return JSONResponse(content=jsonable_encoder(formatted_results))
+        formatted_response = {
+            "data": formatted_results,
+            "date_range": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
+
+        return JSONResponse(content=jsonable_encoder(formatted_response))
 
     except Exception as e:
         logger.error(f"Error fetching product stats: {str(e)}", exc_info=True)

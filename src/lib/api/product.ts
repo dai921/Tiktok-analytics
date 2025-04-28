@@ -1,44 +1,53 @@
 import { ProductStats, VideoStats } from '../../types/product';
 
 export const fetchProductStats = async (
-  startDate: string,
-  endDate: string
-): Promise<ProductStats[]> => {
+  startDate?: string | null,
+  endDate?: string | null
+): Promise<{ data: ProductStats[], dateRange?: { startDate: string, endDate: string } }> => {
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/product-stats?start_date=${startDate}&end_date=${endDate}`
-    );
+    // URLを構築（パラメータがある場合のみクエリパラメータを追加）
+    let url = `${process.env.NEXT_PUBLIC_API_URL}/api/product-stats`;
+    if (startDate && endDate) {
+      url += `?start_date=${startDate}&end_date=${endDate}`;
+    }
+    
+    const response = await fetch(url);
 
     if (!response.ok) {
       throw new Error('商品統計情報の取得に失敗しました');
     }
 
-    const data = await response.json();
-
-    // レスポンスデータの検証と変換
-    const validatedData: ProductStats[] = data.map((item: any) => {
-      // top_videosが文字列の場合はJSONとしてパース
-      let topVideos = item.top_videos;
-      if (typeof topVideos === 'string') {
-        try {
-          topVideos = JSON.parse(topVideos);
-        } catch (e) {
-          console.warn(`Failed to parse top_videos for product ${item.product}`, e);
-          topVideos = [];
-        }
-      }
-
+    const jsonData = await response.json();
+    
+    // レスポンス形式を検証
+    console.log('API Response:', jsonData);
+    
+    // 互換性のために両方のレスポース形式に対応
+    if (Array.isArray(jsonData)) {
+      // 古い形式: 配列として返される
       return {
-        product: item.product,
-        product_category: item.product_category,
-        total_play_count_increase: Number(item.total_play_count_increase),
-        videos_over_100k: Number(item.videos_over_100k),
-        total_posts: Number(item.total_posts),
-        top_videos: Array.isArray(topVideos) ? topVideos : []
+        data: jsonData
       };
-    });
-
-    return validatedData;
+    } else if (jsonData.data && jsonData.date_range) {
+      // 新しい形式: { data, date_range } オブジェクト
+      return {
+        data: jsonData.data,
+        dateRange: {
+          startDate: jsonData.date_range.start_date,
+          endDate: jsonData.date_range.end_date
+        }
+      };
+    } else if (jsonData.data) {
+      // date_rangeなしの形式
+      return {
+        data: jsonData.data
+      };
+    } else {
+      // フォールバック: 直接データとして扱う
+      return {
+        data: jsonData
+      };
+    }
   } catch (error) {
     console.error('商品統計情報の取得エラー:', error);
     throw error;
