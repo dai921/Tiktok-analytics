@@ -87,6 +87,7 @@ export default function ProductPage() {
     end: new Date(),
   });
   const [userSelectedDate, setUserSelectedDate] = useState(false);
+  const [tempDateRange, setTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [metric, setMetric] = useState<MetricKey>('viewsIncrease');
   const [productData, setProductData] = useState<ProductTrend[]>([]);
@@ -232,8 +233,14 @@ export default function ProductPage() {
   }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, metric, selectedGenres, productStats]);
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
-    setDateRange(newRange);
-    setUserSelectedDate(true); // ユーザーが日付を選択したことを記録
+    setTempDateRange(newRange);
+  };
+
+  const handleDateRangeApply = () => {
+    if (tempDateRange) {
+      setDateRange(tempDateRange);
+      setUserSelectedDate(true);
+    }
   };
 
   const handleProductClick = (productId: string) => {
@@ -333,6 +340,7 @@ export default function ProductPage() {
             <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={handleDateRangeChange}
+              onApply={handleDateRangeApply}
             />
           </div>
         </div>
@@ -537,7 +545,7 @@ export default function ProductPage() {
           <TabsContent value="graph">
             <Card>
               <CardHeader>
-                <CardTitle className="text-[#FE2C55]">トレンドグラフ</CardTitle>
+                <CardTitle className="text-[#FE2C55]">トレンドグラフ(再生増加数)</CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoadingTrends ? (
@@ -576,7 +584,7 @@ export default function ProductPage() {
                     <ResponsiveContainer width="100%" height={400}>
                       <LineChart
                         data={preprocessTrendData(trendData, topProducts)}
-                        margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+                        margin={{ top: 5, right: 30, left: 40, bottom: 25 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis 
@@ -586,13 +594,10 @@ export default function ProductPage() {
                           label={{ value: '日付', position: 'insideBottomRight', offset: -10 }}
                         />
                         <YAxis 
-                          label={{ 
-                            value: getMetricLabel(metric), 
-                            angle: -90, 
-                            position: 'left',
-                            offset: -10,
-                            style: { textAnchor: 'middle' }
-                          }}
+                          width={60}
+                          tickFormatter={(value) => formatNumber(value)}
+                          tick={{ fontSize: 12 }}
+                          tickMargin={10}
                         />
                         <Tooltip 
                           formatter={(value, name) => [formatNumber(Number(value)), name]}
