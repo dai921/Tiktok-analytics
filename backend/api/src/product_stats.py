@@ -51,8 +51,12 @@ def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
 @router.get("/api/product-stats")
 async def get_product_stats(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    genres: Optional[str] = None  # ジャンルフィルタのパラメータを追加
 ):
+    # genresパラメータがある場合、カンマ区切りの文字列をリストに変換
+    genre_list = genres.split(',') if genres else []
+    
     try:
         # 日付パラメータが指定されていない場合、自動的に計算
         if start_date is None or end_date is None:
@@ -112,6 +116,16 @@ async def get_product_stats(
             LEFT JOIN product_master pm ON fd.product = pm.product_name
             WHERE pch.collection_date BETWEEN %s AND %s
             AND fd.product IS NOT NULL
+        """
+        
+        # ジャンルフィルタの条件を追加
+        params = [start_date, end_date]
+        if genre_list:
+            placeholders = ', '.join(['%s'] * len(genre_list))
+            query += f" AND pm.product_category IN ({placeholders})"
+            params.extend(genre_list)
+            
+        query += """    
             GROUP BY fd.product
         ),
         top_videos AS (
@@ -131,6 +145,15 @@ async def get_product_stats(
             JOIN play_count_history pch ON fd.video_id = pch.video_id
             WHERE pch.collection_date BETWEEN %s AND %s
             AND fd.product IS NOT NULL
+        """
+        
+        # top_videosクエリにジャンルフィルタを適用
+        if genre_list:
+            placeholders = ', '.join(['%s'] * len(genre_list))
+            query += f" AND EXISTS (SELECT 1 FROM product_master pm WHERE fd.product = pm.product_name AND pm.product_category IN ({placeholders}))"
+            params.extend(genre_list)
+            
+        query += """
             GROUP BY fd.product, fd.url, fd.thumbnail_url, fd.created_at, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.video_id
         )
         SELECT 
@@ -158,7 +181,10 @@ async def get_product_stats(
         ORDER BY ps.total_play_count_increase DESC;
         """
 
-        cursor.execute(query, (start_date, end_date, start_date, end_date))
+        # パラメータに日付を追加（top_videosクエリ用）
+        params.extend([start_date, end_date])
+        
+        cursor.execute(query, tuple(params))
         results = cursor.fetchall()
         
         # 結果を整形

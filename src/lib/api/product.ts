@@ -3,8 +3,10 @@ import { ProductStats, VideoStats } from '../../types/product';
 export const fetchProductStats = async (
   startDate?: string | null,
   endDate?: string | null,
-  genres?: string[] = []
+  genres?: string[]
 ): Promise<{ data: ProductStats[], dateRange?: { startDate: string, endDate: string } }> => {
+  const genresToUse = genres || [];
+  
   try {
     // URLを構築
     let url = `${process.env.NEXT_PUBLIC_API_URL}/api/product-stats`;
@@ -12,7 +14,7 @@ export const fetchProductStats = async (
     
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    if (genres.length > 0) params.append('genres', genres.join(','));
+    if (genresToUse.length > 0) params.append('genres', genresToUse.join(','));
     
     // パラメータがあれば追加
     const queryString = params.toString();
