@@ -335,12 +335,17 @@ export const FilterPopup = ({
       type: value.type
     });
     
-    // 値が空の場合はフィルターをクリア
+    // 値が空の場合でも比較演算子のみ選択する場合は処理を続行
+    // 数値や日付でない場合のみ空値チェックを行う
     if (
-      (typeof value.value === 'string' && value.value.trim() === '') || 
-      value.value === null || 
-      value.value === undefined ||
-      (typeof value.value === 'number' && isNaN(value.value))
+      value.type !== 'date' && 
+      value.type !== 'number' && 
+      (
+        (typeof value.value === 'string' && value.value.trim() === '') || 
+        value.value === null || 
+        value.value === undefined ||
+        (typeof value.value === 'number' && isNaN(value.value))
+      )
     ) {
       // 数値が0の場合は有効な値として扱う（0より小さいなどのフィルターのため）
       if (!(typeof value.value === 'number' && value.value === 0)) {
@@ -349,12 +354,24 @@ export const FilterPopup = ({
       }
     }
     
+    // 数値型で空文字列の場合、比較演算子だけを設定
+    if (value.type === 'number' && (value.value === '' || value.value === undefined)) {
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: {
+          ...value,
+          value: ''  // 空のままにして比較演算子だけを保持
+        }
+      }));
+      return;
+    }
+    
     // 日付フィルターの場合、type='date'になるよう確保
     if (fieldId === 'createdAt' && value.type === 'date') {
       // 比較演算子を変換せず、そのまま使用
       const apiCompatibleValue = {
         ...value,
-        comparison: value.comparison || 'date' as ComparisonOperator
+        comparison: value.comparison || 'equal' as ComparisonOperator
       };
       
       console.log('FilterPopup - 日付フィルター:', {
@@ -565,52 +582,67 @@ export const FilterPopup = ({
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="before"
-                checked={isActive && filterValue.comparison === 'before'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date' as FilterType, 
-                  comparison: 'before' as ComparisonOperator, 
-                  value: filterValue?.value || '' 
-                })}
+                checked={tempFilters[field.id]?.comparison === 'before'}
+                onChange={() => {
+                  console.log('日付フィルター - "以前"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value || '';
+                  handleFilterChange(field.id, { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: 'before' as ComparisonOperator, 
+                    value: currentValue 
+                  });
+                }}
               />
-              <span className="ml-2 text-sm text-gray-700">以前</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'before' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>以前</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
-                value="date"
-                checked={isActive && filterValue.comparison === 'date' as ComparisonOperator}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date' as FilterType, 
-                  comparison: 'date' as ComparisonOperator, 
-                  value: filterValue?.value || '' 
-                })}
+                value="equal"
+                checked={tempFilters[field.id]?.comparison === 'equal'}
+                onChange={() => {
+                  console.log('日付フィルター - "等しい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value || '';
+                  handleFilterChange(field.id, { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: 'equal' as ComparisonOperator, 
+                    value: currentValue 
+                  });
+                }}
               />
-              <span className="ml-2 text-sm text-gray-700">等しい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'equal' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>等しい</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="after"
-                checked={isActive && filterValue.comparison === 'after'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date' as FilterType, 
-                  comparison: 'after' as ComparisonOperator, 
-                  value: filterValue?.value || '' 
-                })}
+                checked={tempFilters[field.id]?.comparison === 'after'}
+                onChange={() => {
+                  console.log('日付フィルター - "以降"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value || '';
+                  handleFilterChange(field.id, { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: 'after' as ComparisonOperator, 
+                    value: currentValue 
+                  });
+                }}
               />
-              <span className="ml-2 text-sm text-gray-700">以降</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'after' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>以降</span>
             </label>
           </div>
           
@@ -636,8 +668,7 @@ export const FilterPopup = ({
                     return;
                   }
                   
-                  // 比較演算子が設定されていない場合はラジオボタンの選択状態に基づいて設定
-                  // デフォルトは「等しい」(equal)
+                  // 比較演算子が設定されていない場合はデフォルトで"等しい"に設定
                   const comparison = filterValue?.comparison || 'equal';
                   
                   const newFilterValue = { 
@@ -723,49 +754,73 @@ export const FilterPopup = ({
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="greater"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'greater'}
+                checked={tempFilters[field.id]?.comparison === 'greater'}
                 onChange={() => {
-                  if (numericValue !== '') {
-                    handleNumberFilterChange(numericValue.toString(), 'greater');
-                  }
+                  console.log('数値フィルター - "より大きい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value !== undefined ? 
+                    tempFilters[field.id].value : 
+                    '';
+                  handleFilterChange(field.id, {
+                    field: field.id,
+                    type: 'number',
+                    value: currentValue === '' ? '' : parseFloat(currentValue.toString()),
+                    comparison: 'greater'
+                  });
                 }}
               />
-              <span className="ml-2 text-sm text-gray-700">より大きい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'greater' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>より大きい</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="equal"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'equal'}
+                checked={tempFilters[field.id]?.comparison === 'equal'}
                 onChange={() => {
-                  if (numericValue !== '') {
-                    handleNumberFilterChange(numericValue.toString(), 'equal');
-                  }
+                  console.log('数値フィルター - "等しい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value !== undefined ? 
+                    tempFilters[field.id].value : 
+                    '';
+                  handleFilterChange(field.id, {
+                    field: field.id,
+                    type: 'number',
+                    value: currentValue === '' ? '' : parseFloat(currentValue.toString()),
+                    comparison: 'equal'
+                  });
                 }}
               />
-              <span className="ml-2 text-sm text-gray-700">等しい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'equal' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>等しい</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="less"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'less'}
+                checked={tempFilters[field.id]?.comparison === 'less'}
                 onChange={() => {
-                  if (numericValue !== '') {
-                    handleNumberFilterChange(numericValue.toString(), 'less');
-                  }
+                  console.log('数値フィルター - "より小さい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value !== undefined ? 
+                    tempFilters[field.id].value : 
+                    '';
+                  handleFilterChange(field.id, {
+                    field: field.id,
+                    type: 'number',
+                    value: currentValue === '' ? '' : parseFloat(currentValue.toString()),
+                    comparison: 'less'
+                  });
                 }}
               />
-              <span className="ml-2 text-sm text-gray-700">より小さい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'less' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>より小さい</span>
             </label>
           </div>
           
@@ -777,7 +832,7 @@ export const FilterPopup = ({
               onChange={(e) => {
                 const newValue = e.target.value;
                 // 現在選択されている比較演算子を取得（デフォルトは'equal'）
-                const currentComparison = filterValue?.comparison || 'equal';
+                const currentComparison = tempFilters[field.id]?.comparison || 'equal';
                 handleNumberFilterChange(newValue, currentComparison as ComparisonOperator);
               }}
               placeholder="数値を入力"
@@ -889,7 +944,7 @@ export const FilterPopup = ({
       }
     };
 
-    // カテゴリーの並び替え（「その他」を最後に配置）
+    // カテゴリーの並び替え（"その他"を最後に配置）
     const sortedOptions = field.options ? [...field.options].sort((a, b) => {
       if (a === 'その他') return 1;
       if (b === 'その他') return -1;
