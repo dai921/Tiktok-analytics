@@ -425,7 +425,7 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
   /**
    * アカウントの動画一覧を取得する
    */
-  export async function getAccountVideos(accountName: string, startDate?: string, endDate?: string): Promise<ApiResponse<AccountVideo[]>> {
+  export async function getAccountVideos(accountName: string, startDate?: string, endDate?: string, sortBy: string = 'play_count_increase'): Promise<ApiResponse<AccountVideo[]>> {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
@@ -437,6 +437,7 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
       queryParams.append('account_name', accountName);
       if (startDate) queryParams.append('start_date', startDate);
       if (endDate) queryParams.append('end_date', endDate);
+      queryParams.append('sort_by', sortBy);
       
       const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
       

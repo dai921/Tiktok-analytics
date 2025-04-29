@@ -171,11 +171,11 @@ export default function AccountWatchlistPage() {
   // アカウント選択時のハンドラ
   const handleAccountSelect = (accountName: string) => {
     setSelectedAccount(accountName);
-    loadAccountVideos(accountName);
+    loadAccountVideos(accountName, videoSortBy);
   };
 
   // アカウントの動画を読み込む
-  const loadAccountVideos = async (accountName: string) => {
+  const loadAccountVideos = async (accountName: string, sortBy: string = 'play_count_increase') => {
     try {
       setIsLoadingVideos(true);
       
@@ -185,7 +185,7 @@ export default function AccountWatchlistPage() {
       const endDate = userSelectedDate ? dateRange.end.toISOString().split('T')[0] : 
                       period ? period.end_date : undefined;
       
-      const response = await getAccountVideos(accountName, startDate, endDate);
+      const response = await getAccountVideos(accountName, startDate, endDate, sortBy);
       
       if (response.success) {
         setAccountVideos(response.data);
@@ -330,16 +330,19 @@ export default function AccountWatchlistPage() {
 
   // ソート順変更ハンドラ
   const handleSortByChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setVideoSortBy(e.target.value as 'play_count_increase' | 'likes_count_increase' | 'save_count_increase' | 'comment_count_increase');
+    const newSortBy = e.target.value as 'play_count_increase' | 'likes_count_increase' | 'save_count_increase' | 'comment_count_increase';
+    setVideoSortBy(newSortBy);
+    
+    // 選択中のアカウントがある場合は、新しいソート順でデータを再取得
+    if (selectedAccount) {
+      loadAccountVideos(selectedAccount, newSortBy);
+    }
   };
 
-  // ソートされた動画一覧を取得
+  // ソートされた動画一覧を取得 - APIから既にソート済みデータが来るため、そのまま返す
   const getSortedVideos = () => {
     if (!accountVideos.length) return [];
-    
-    return [...accountVideos]
-      .sort((a, b) => b[videoSortBy] - a[videoSortBy])
-      .slice(0, 10);
+    return accountVideos;
   };
 
   if (isLoading) {

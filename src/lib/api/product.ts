@@ -3,7 +3,8 @@ import { ProductStats, VideoStats } from '../../types/product';
 export const fetchProductStats = async (
   startDate?: string | null,
   endDate?: string | null,
-  genres?: string[]
+  genres?: string[],
+  metric?: string
 ): Promise<{ data: ProductStats[], dateRange?: { startDate: string, endDate: string } }> => {
   const genresToUse = genres || [];
   
@@ -15,6 +16,7 @@ export const fetchProductStats = async (
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (genresToUse.length > 0) params.append('genres', genresToUse.join(','));
+    if (metric) params.append('metric', metric);
     
     // パラメータがあれば追加
     const queryString = params.toString();
@@ -69,13 +71,15 @@ export const fetchProductStats = async (
 export const fetchProductTrends = async (
   startDate: string | null = null, 
   endDate: string | null = null,
-  genres: string[] = []
+  genres: string[] = [],
+  metric: string = 'viewsIncrease'
 ) => {
   try {
     const queryParams = new URLSearchParams();
     if (startDate) queryParams.append('start_date', startDate);
     if (endDate) queryParams.append('end_date', endDate);
     if (genres.length > 0) queryParams.append('genres', genres.join(','));
+    if (metric) queryParams.append('metric', metric);
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/api/product-trends?${queryParams.toString()}`;
     console.log('API URL:', url);

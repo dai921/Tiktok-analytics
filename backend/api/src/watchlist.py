@@ -891,7 +891,8 @@ async def get_account_videos(
     current_user: User = Depends(get_current_user),
     account_name: str = Query(..., description="アカウント名"),
     start_date: Optional[str] = Query(None, description="開始日（YYYY-MM-DD形式）"),
-    end_date: Optional[str] = Query(None, description="終了日（YYYY-MM-DD形式）")
+    end_date: Optional[str] = Query(None, description="終了日（YYYY-MM-DD形式）"),
+    sort_by: str = Query("play_count_increase", description="ソート基準")
 ):
     """指定されたアカウントの動画一覧を取得する"""
     conn = get_db_connection()
@@ -907,6 +908,11 @@ async def get_account_videos(
                 end_date = today.strftime('%Y-%m-%d')
             if not start_date:
                 start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        # ソート基準の検証
+        valid_sort_fields = ["play_count_increase", "likes_count_increase", "comment_count_increase", "save_count_increase"]
+        if sort_by not in valid_sort_fields:
+            sort_by = "play_count_increase"  # デフォルト値
         
         # アカウントの動画一覧を取得
         query = """
@@ -933,12 +939,12 @@ async def get_account_videos(
             query += " AND pch.collection_date BETWEEN %s AND %s"
             params.extend([start_date, end_date])
         
-        query += """
+        query += f"""
         GROUP BY 
             fd.video_id, fd.thumbnail_url, fd.url, fd.play_count, fd.likes_count, fd.comment_count, fd.save_count,
             fd.created_at, fd.account_name, fd.display_name
         ORDER BY 
-            play_count_increase DESC
+            {sort_by} DESC
         LIMIT 10
         """
         
@@ -977,6 +983,7 @@ async def get_account_videos(
                 "display_name": item["display_name"]
             })
         
+        # クライアントにデータを返す
         return {
             "success": True,
             "data": videos

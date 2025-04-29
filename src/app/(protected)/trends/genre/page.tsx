@@ -107,22 +107,50 @@ export default function GenrePage() {
     over100kViews: [],
     postCount: []
   });
+  
+  // 指標ごとにデータをキャッシュするための状態を追加
+  const [cachedGenreStats, setCachedGenreStats] = useState<Record<MetricKey, GenreStats[]>>({
+    viewsIncrease: [],
+    over100kViews: [],
+    postCount: []
+  });
+  
+  const [cachedTrendData, setCachedTrendData] = useState<Record<MetricKey, GenreTrendData[]>>({
+    viewsIncrease: [],
+    over100kViews: [],
+    postCount: []
+  });
 
   useEffect(() => {
     if (!dataLoaded || userSelectedDate) {
       const loadGenreStats = async () => {
         try {
-          console.log("API呼び出し開始:", { userSelectedDate, dataLoaded });
+          console.log("API呼び出し開始:", { userSelectedDate, dataLoaded, metric });
           setIsLoading(true);
           setError(null);
+          
+          // キャッシュ内にすでにデータがあるか確認
+          if (cachedGenreStats[metric]?.length > 0 && userSelectedDate) {
+            console.log("キャッシュからデータを使用:", metric);
+            setGenreStats(cachedGenreStats[metric]);
+            setIsLoading(false);
+            return;
+          }
           
           const result = await fetchGenreStats(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
+            metric // 現在選択中の指標を送信
           );
 
           console.log("APIレスポンス:", result);
           setGenreStats(result.data);
+          
+          // 結果をキャッシュに保存
+          setCachedGenreStats(prev => ({
+            ...prev,
+            [metric]: result.data
+          }));
           
           // ユーザーが選択していない場合のみ、バックエンドから返された日付範囲を設定
           if (!userSelectedDate && !dataLoaded) {
@@ -152,9 +180,9 @@ export default function GenrePage() {
 
       loadGenreStats();
     } else {
-      console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded });
+      console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded, metric });
     }
-  }, [userSelectedDate, dataLoaded, dateRange, selectedGenres]);
+  }, [userSelectedDate, dataLoaded, dateRange, metric, cachedGenreStats]);
 
   // トレンドグラフ用のデータを取得するuseEffect
   useEffect(() => {
@@ -164,12 +192,27 @@ export default function GenrePage() {
           setIsLoadingTrends(true);
           setTrendError(null);
           
+          // キャッシュ内にすでにデータがあるか確認
+          if (cachedTrendData[metric]?.length > 0 && userSelectedDate) {
+            console.log("キャッシュからトレンドデータを使用:", metric);
+            setTrendData(cachedTrendData[metric]);
+            setIsLoadingTrends(false);
+            return;
+          }
+          
           const result = await fetchGenreTrends(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
+            metric // 現在選択中の指標を送信
           ) as GenreTrendResponse;
           
           setTrendData(result.data);
+          
+          // 結果をキャッシュに保存
+          setCachedTrendData(prev => ({
+            ...prev,
+            [metric]: result.data
+          }));
           
           // APIから返された指標別トップジャンルの設定
           if (result.topGenresByMetric) {
@@ -210,7 +253,7 @@ export default function GenrePage() {
 
       loadTrendData();
     }
-  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, selectedGenres, genreStats]);
+  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, genreStats, metric, cachedTrendData]);
 
   // 現在の指標に基づいて表示すべきジャンルリストを取得する関数
   const getCurrentTopGenres = () => {
@@ -261,6 +304,19 @@ export default function GenrePage() {
     if (tempDateRange) {
       setDateRange(tempDateRange);
       setUserSelectedDate(true);
+      // 日付変更時にキャッシュをクリア
+      setCachedGenreStats({
+        viewsIncrease: [],
+        over100kViews: [],
+        postCount: []
+      });
+      setCachedTrendData({
+        viewsIncrease: [],
+        over100kViews: [],
+        postCount: []
+      });
+      setDataLoaded(false);
+      setGraphDataLoaded(false);
     }
   };
 
@@ -283,10 +339,21 @@ export default function GenrePage() {
     setGraphDataLoaded(false);
   };
 
-  // 指標変更ハンドラ
+  // 指標変更ハンドラを修正
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setMetric(e.target.value as MetricKey);
-    // 指標が変わっても、グラフデータは再取得不要（同じデータの表示を切り替えるだけ）
+    const newMetric = e.target.value as MetricKey;
+    setMetric(newMetric);
+    
+    // 指標変更時にデータを再取得
+    if (cachedGenreStats[newMetric]?.length === 0) {
+      // ランキングデータがキャッシュにない場合は再読み込み
+      setDataLoaded(false);
+    }
+    
+    if (activeTab === 'graph' && cachedTrendData[newMetric]?.length === 0) {
+      // トレンドデータがキャッシュにない場合はグラフデータの再読み込み
+      setGraphDataLoaded(false);
+    }
   };
 
   // グラフ表示用データの前処理関数を更新
