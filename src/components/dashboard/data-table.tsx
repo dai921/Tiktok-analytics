@@ -1681,11 +1681,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             >
               <FilterIcon size={16} />
               <span className="ml-1">フィルター</span>
-              {hasActiveFilters && Object.keys(columnFilters).length > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 bg-[#FE2C55] text-white text-xs rounded-full">
-                  {Object.keys(columnFilters).length}
-                </span>
-              )}
             </button>
             
             <label className="flex items-center cursor-pointer">
