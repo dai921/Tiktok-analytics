@@ -89,7 +89,8 @@ async def get_videos(
     limit: int = 50,
     account_name: Optional[str] = None,
     category: Optional[str] = None,
-    hashtag: Optional[str] = None,
+    hashtags: Optional[str] = None,
+    hashtag: Optional[str] = None,  # 後方互換性のために残す
     music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -119,10 +120,12 @@ async def get_videos(
     comment_count_increase_type: Optional[str] = None,
     ten_days_comment_increase: Optional[int] = None,
     ten_days_comment_increase_type: Optional[str] = None,
+    exact_hashtags: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
     cursor = None
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -175,11 +178,27 @@ async def get_videos(
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
         
-        if hashtag:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{escaped_hashtag}%")
+        if hashtags:
+            # exact_hashtags タイプが指定されている場合は完全一致検索
+            exact_hashtags = request.query_params.get('exact_hashtags')
+            if exact_hashtags == 'true':
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
+                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                hashtags_exact = hashtags
+                params.extend([
+                    hashtags_exact,                 # 完全一致
+                    f"{hashtags_exact},%",         # 先頭に位置する場合
+                    f"%,{hashtags_exact},%",       # 中間に位置する場合
+                    f"%,{hashtags_exact}"          # 末尾に位置する場合
+                ])
+                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+            else:
+                # 従来の部分一致検索
+                # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+                escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
+                where_clauses.append("hashtags LIKE %s")
+                params.append(f"%{escaped_hashtags}%")
+                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
@@ -423,7 +442,7 @@ async def get_videos_alt(
     limit: int = 50,
     account_name: Optional[str] = None,
     category: Optional[str] = None,
-    hashtag: Optional[str] = None,
+    hashtags: Optional[str] = None,
     music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -454,7 +473,9 @@ async def get_videos_alt(
     comment_count_increase: Optional[int] = None,
     comment_count_increase_type: Optional[str] = None,
     ten_days_comment_increase: Optional[int] = None,
-    ten_days_comment_increase_type: Optional[str] = None
+    ten_days_comment_increase_type: Optional[str] = None,
+    exact_hashtags: Optional[str] = None,
+
 ):
     print(f"Received request with params: {request.query_params}")
     conn = None
@@ -544,6 +565,28 @@ async def get_videos_alt(
             else:
                 where_clauses.append("content_type = %s")
                 params.append(content_type)
+
+        # ハッシュタグのフィルタリング
+        if hashtags:
+            # exact_hashtags タイプが指定されている場合は完全一致検索
+            if exact_hashtags == 'true':
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
+                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                hashtags_exact = hashtags
+                params.extend([
+                    hashtags_exact,                # 完全一致
+                    f"{hashtags_exact},%",         # 先頭に位置する場合
+                    f"%,{hashtags_exact},%",       # 中間に位置する場合
+                    f"%,{hashtags_exact}"          # 末尾に位置する場合
+                ])
+                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+            else:
+                # 従来の部分一致検索
+                # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+                escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
+                where_clauses.append("hashtags LIKE %s")
+                params.append(f"%{escaped_hashtags}%")
+                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
 
         # WHERE句の追加
         if where_clauses:
@@ -842,7 +885,7 @@ async def get_hashtags(limit: int = None):
         # 重複を除去
         unique_hashtags = list(set(all_hashtags))
         # ハッシュタグをオブジェクト形式に変換
-        hashtags = [{"hashtag": tag} for tag in unique_hashtags if tag]
+        hashtags = [{"hashtags": tag} for tag in unique_hashtags if tag]
         
         connection.close()
         
@@ -937,7 +980,7 @@ async def get_filter_options(
     filter_type: str = "all",
     account_name: Optional[str] = None,
     category: Optional[str] = None,
-    hashtag: Optional[str] = None,
+    hashtags: Optional[str] = None,
     music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -994,11 +1037,27 @@ async def get_filter_options(
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
         
-        if hashtag:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{escaped_hashtag}%")
+        if hashtags:
+            # exact_hashtags タイプが指定されている場合は完全一致検索
+            exact_hashtags = request.query_params.get('exact_hashtags')
+            if exact_hashtags == 'true':
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
+                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                hashtags_exact = hashtags
+                params.extend([
+                    hashtags_exact,                 # 完全一致
+                    f"{hashtags_exact},%",         # 先頭に位置する場合
+                    f"%,{hashtags_exact},%",       # 中間に位置する場合
+                    f"%,{hashtags_exact}"          # 末尾に位置する場合
+                ])
+                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+            else:
+                # 従来の部分一致検索
+                # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+                escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
+                where_clauses.append("hashtags LIKE %s")
+                params.append(f"%{escaped_hashtags}%")
+                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ

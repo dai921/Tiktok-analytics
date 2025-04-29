@@ -283,10 +283,10 @@ const Dashboard = () => {
     setIsPrOnly(checked);
     
     if (checked) {
-      // PRフィルターを追加
+      // PRフィルターを追加（完全一致検索に変更）
       const prFilter: FilterQuery = {
         field: 'hashtags',
-        type: 'contains',
+        type: 'exact_hashtags', // containsから変更
         value: 'pr',
         isHashtag: true
       };

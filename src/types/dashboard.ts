@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect' | 'multiple' | 'indicator';
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect' | 'multiple' | 'indicator' | 'exact_hashtags';
 
 // 比較演算子の型
 export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greater' | 'less' | 'contains';
@@ -167,7 +167,7 @@ export interface CategoryData {
 }
 
 export interface HashtagData {
-  hashtag: string;
+  hashtags: string;
   count: number;
 }
 

@@ -13,7 +13,7 @@ export const fetchVideosFromBackend = async (options: {
   limit?: number;
   accountName?: string;
   category?: string;
-  hashtag?: string;
+  hashtags?: string;
   startDate?: string;
   endDate?: string;
   minPlayCount?: number;
@@ -29,7 +29,7 @@ export const fetchVideosFromBackend = async (options: {
     limit = 50,
     accountName,
     category,
-    hashtag,
+    hashtags,
     startDate,
     endDate,
     minPlayCount,
@@ -54,24 +54,20 @@ export const fetchVideosFromBackend = async (options: {
   // オプションパラメータの追加
   if (accountName) params.append('account_name', accountName);
   if (category) params.append('category', category);
-  if (hashtag) params.append('hashtag', hashtag);
+  if (hashtags) params.append('hashtags', hashtags );
   
   // 複数のcontent_typeを処理する改良されたロジック
   if (content_type) {
     if (Array.isArray(content_type)) {
-      console.log('content_typeは配列形式:', content_type);
       if (content_type.length === 1) {
         params.append('content_type', content_type[0]);
-        console.log(`単一コンテンツタイプを設定 (配列から): ${content_type[0]}`);
       } else if (content_type.length > 1) {
         // 複数のcontent_typeをカンマ区切りの文字列として送信
         params.append('content_type', content_type.join(','));
-        console.log(`複数コンテンツタイプをカンマ区切りで設定: ${content_type.join(',')}`);
       }
     } else {
       // content_typeが文字列の場合（既存の処理）
       params.append('content_type', content_type);
-      console.log(`単一コンテンツタイプを設定 (文字列): ${content_type}`);
     }
   }
   
@@ -307,13 +303,6 @@ Object.entries(COLUMN_MAP).forEach(([key, value]) => {
   REVERSE_COLUMN_MAP[value] = key;
 });
 
-// デバッグ用：REVERSE_COLUMN_MAPの内容を出力
-console.log('REVERSE_COLUMN_MAP初期化:', {
-  '投稿日': REVERSE_COLUMN_MAP['投稿日'],
-  '再生数': REVERSE_COLUMN_MAP['再生数'],
-  'いいね数': REVERSE_COLUMN_MAP['いいね数']
-});
-
 // フィルタータイプの変換関数
 const convertFilterType = (type: FilterType, field: string): string => {
   switch (type) {
@@ -334,7 +323,6 @@ const convertFilterType = (type: FilterType, field: string): string => {
 
 // フィールド名のマッピング（表示名/内部名 → バックエンドDB名）
 const mapFieldToApiField = (field: string): string => {
-  console.log('mapFieldToApiField - 入力フィールド:', field);
   
   // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
   if (field === '動画ジャンル') {
@@ -347,11 +335,6 @@ const mapFieldToApiField = (field: string): string => {
   
   // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
   const internalField = REVERSE_COLUMN_MAP[field] || field;
-  console.log('mapFieldToApiField - 内部フィールド変換結果:', {
-    input: field,
-    internalField: internalField,
-    isInReverseMap: field in REVERSE_COLUMN_MAP
-  });
   
   // 内部名をバックエンドのカラム名に変換
   const fieldMapping: Record<string, string> = {
@@ -361,7 +344,7 @@ const mapFieldToApiField = (field: string): string => {
     'createdAt': 'created_at',
     'account_name': 'account_name',
     'description': 'caption',
-    'hashtags': 'hashtag', // hashtag（単数形）に変換
+    'hashtags': 'hashtags', // hashtag（単数形）に変換
     'audioTitle': 'music_info', // audioTitleをmusic_infoに変換
     'category': 'category',    // categoryをそのまま保持
     'viewsIncrease': 'play_count_increase', // 再生増加数の対応を追加
@@ -375,10 +358,6 @@ const mapFieldToApiField = (field: string): string => {
   };
   
   const result = fieldMapping[internalField] || internalField;
-  console.log('mapFieldToApiField - 最終変換結果:', {
-    internalField,
-    apiField: result
-  });
   
   return result;
 }
@@ -583,7 +562,14 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
 
         // ハッシュタグフィルター
         if (filter.isHashtag || key === 'hashtags') {
-          params.append('hashtag', filter.value.toString().trim());
+          params.append('hashtags', filter.value.toString().trim());
+          
+          // 完全一致検索の場合はパラメータを追加
+          if (filter.type === 'exact_hashtags') {
+            params.append('exact_hashtags', 'true');
+            console.log('ハッシュタグ完全一致検索パラメータを設定:', filter.value);
+          }
+          
           return;
         }
 
@@ -818,7 +804,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           console.log('API - ハッシュタグのフィルタリング処理');
           
           // ハッシュタグは完全一致ではなく、部分一致で検索するようにする
-          params.append('hashtag', filter.value.toString());
+          params.append('hashtags', filter.value.toString());
           
           console.log('ハッシュタグフィルター設定:', {
             value: filter.value.toString(),
@@ -1001,7 +987,15 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
 
         // ハッシュタグフィルターの場合の特別な処理
         if (filter.isHashtag || key === 'hashtags') {
-          params.append('hashtag', filter.value.toString());
+          params.append('hashtags', filter.value.toString());
+          
+          // 完全一致検索の場合はパラメータを追加
+          if (filter.type === 'exact_hashtags') {
+            params.append('exact_hashtags', 'true');
+            console.log('ハッシュタグ完全一致検索パラメータを設定:', filter.value);
+          }
+          
+          return;
         }
         // カテゴリフィルターの処理
         else if (key === 'category' || apiField === 'category') {
