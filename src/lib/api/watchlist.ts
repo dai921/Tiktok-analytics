@@ -4,12 +4,85 @@ import type { PaginatedResponse, FilterQuery, FilterType, ComparisonOperator } f
 // 環境変数からAPI設定を取得
 const useBackendApi = process.env.NEXT_PUBLIC_USE_BACKEND_API === 'true';
 const apiUrl = process.env.NEXT_PUBLIC_API_URL 
+
+// 期間情報の型定義
+export interface PeriodInfo {
+  start_date: string;
+  end_date: string;
+}
+
+// アカウント詳細情報の型定義
+export interface BookmarkAccountItem {
+  bookmark: {
+    bookmark_id: number;
+    email: string;
+    account_name: string;
+    bookmark_name: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  account: {
+    account_name: string;
+    display_name: string | null;
+    account_type: string | null;
+    total_videos: number;
+    total_plays: number;
+    total_likes: number;
+    total_comments: number;
+    total_saves: number;
+    total_play_increase: number;
+    total_likes_increase: number;
+    total_comments_increase: number;
+    total_saves_increase: number;
+    profile_image?: string;
+    followers_count?: number;
+  } | null;
+}
+
+// アカウントトレンドデータの型定義
+export interface AccountTrendData {
+  account_name: string;
+  display_name?: string;
+  trends: TrendDataPoint[];
+}
+
+export interface TrendDataPoint {
+  date: string;
+  play_count_increase: number;
+  likes_count_increase: number;
+  comment_count_increase: number;
+  save_count_increase: number;
+}
+
+// アカウント動画の型定義
+export interface AccountVideo {
+  video_id: string;
+  thumbnail_url?: string;
+  url?: string;
+  play_count: number;
+  likes_count: number;
+  comment_count: number;
+  save_count: number;
+  play_count_increase: number;
+  likes_count_increase: number;
+  comment_count_increase: number;
+  save_count_increase: number;
+  created_at: string;
+  account_name: string;
+  display_name?: string;
+}
+
 // レスポンス型定義
 type ApiResponse<T> = {
     success: boolean;
     data: T;
     error?: string;
   };
+
+// 期間付きレスポンス型定義
+type ApiResponseWithPeriod<T> = ApiResponse<T> & {
+  period: PeriodInfo;
+};
 
 const handleApiError = (error: unknown): ApiResponse<never> => {
     console.error('API呼び出しエラー:', error);
@@ -299,6 +372,142 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
     } catch (error) {
       console.error('ブックマーク取得エラー:', error);
       return handleApiError(error);
+    }
+  }
+
+  /**
+   * アカウントブックマーク一覧を詳細情報付きで取得する
+   */
+  export async function getAccountBookmarksWithDetails(startDate?: string, endDate?: string): Promise<ApiResponseWithPeriod<BookmarkAccountItem[]>> {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('認証情報がありません');
+      }
+
+      // クエリパラメータを構築
+      const queryParams = new URLSearchParams();
+      if (startDate) queryParams.append('start_date', startDate);
+      if (endDate) queryParams.append('end_date', endDate);
+      
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      
+      console.log(`API呼び出し: ${apiUrl}/api/watchlist/accounts/details${queryString}`);
+      
+      const response = await fetch(`${apiUrl}/api/watchlist/accounts/details${queryString}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'アカウント詳細情報の取得に失敗しました');
+      }
+
+      const data = await response.json();
+      console.log('APIからの生データ:', data);
+      
+      return {
+        success: true,
+        data: data.data || [],
+        period: data.period || { start_date: startDate || '', end_date: endDate || '' }
+      };
+    } catch (error) {
+      console.error('アカウント詳細情報取得エラー:', error);
+      return {
+        ...handleApiError(error),
+        period: { start_date: startDate || '', end_date: endDate || '' }
+      };
+    }
+  }
+
+  /**
+   * アカウントの動画一覧を取得する
+   */
+  export async function getAccountVideos(accountName: string, startDate?: string, endDate?: string): Promise<ApiResponse<AccountVideo[]>> {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('認証情報がありません');
+      }
+
+      // クエリパラメータを構築
+      const queryParams = new URLSearchParams();
+      queryParams.append('account_name', accountName);
+      if (startDate) queryParams.append('start_date', startDate);
+      if (endDate) queryParams.append('end_date', endDate);
+      
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      
+      console.log(`API呼び出し: ${apiUrl}/api/watchlist/accounts/videos${queryString}`);
+      
+      const response = await fetch(`${apiUrl}/api/watchlist/accounts/videos${queryString}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'アカウント動画の取得に失敗しました');
+      }
+
+      const data = await response.json();
+      
+      return {
+        success: true,
+        data: data.data || [],
+      };
+    } catch (error) {
+      console.error('アカウント動画取得エラー:', error);
+      return handleApiError(error);
+    }
+  }
+
+  /**
+   * アカウントのトレンドデータを取得する
+   */
+  export async function getAccountTrends(startDate?: string, endDate?: string): Promise<ApiResponseWithPeriod<AccountTrendData[]>> {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('認証情報がありません');
+      }
+
+      // クエリパラメータを構築
+      const queryParams = new URLSearchParams();
+      if (startDate) queryParams.append('start_date', startDate);
+      if (endDate) queryParams.append('end_date', endDate);
+      
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      
+      console.log(`API呼び出し: ${apiUrl}/api/watchlist/accounts/trends${queryString}`);
+      
+      const response = await fetch(`${apiUrl}/api/watchlist/accounts/trends${queryString}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'アカウントトレンドの取得に失敗しました');
+      }
+
+      const data = await response.json();
+      
+      return {
+        success: true,
+        data: data.data || [],
+        period: data.period || { start_date: startDate || '', end_date: endDate || '' }
+      };
+    } catch (error) {
+      console.error('アカウントトレンド取得エラー:', error);
+      return {
+        ...handleApiError(error),
+        period: { start_date: startDate || '', end_date: endDate || '' }
+      };
     }
   }
   

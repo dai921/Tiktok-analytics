@@ -1,0 +1,7 @@
+   {
+     "host": "127.0.0.1",
+     "user": "tiktok-user",
+     "password": "tiktok_pass",
+     "database": "tiktok_data",
+     "port": 3306
+   }

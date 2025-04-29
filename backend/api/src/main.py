@@ -1502,7 +1502,7 @@ async def get_video_play_count_history(
 if __name__ == "__main__":
     print("Starting application via __main__")
     uvicorn.run(
-        "main:app",  # 文字列として渡す
+        app,  # 文字列として渡す
         host="0.0.0.0",
         port=8080,
         log_level="debug",
