@@ -408,7 +408,7 @@ export default function AccountWatchlistPage() {
                           <TableHead className="text-xs text-right py-2 px-1">いいね増加数</TableHead>
                           <TableHead className="text-xs text-right py-2 px-1">コメント増加数</TableHead>
                           <TableHead className="text-xs text-right py-2 px-1">保存増加数</TableHead>  
-                          <TableHead className="text-xs py-2 px-2">タイプ</TableHead>
+                          <TableHead className="text-xs py-2 px-2">アカウントタイプ</TableHead>
                           <TableHead className="w-6 p-0"></TableHead>
                         </TableRow>
                       </TableHeader>

@@ -935,7 +935,7 @@ async def get_account_videos(
         
         query += """
         GROUP BY 
-            fd.video_id, fd.thumbnail_url, fd.play_count, fd.likes_count, fd.comment_count, fd.save_count,
+            fd.video_id, fd.thumbnail_url, fd.url, fd.play_count, fd.likes_count, fd.comment_count, fd.save_count,
             fd.created_at, fd.account_name, fd.display_name
         ORDER BY 
             play_count_increase DESC
