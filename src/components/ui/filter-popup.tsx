@@ -835,7 +835,18 @@ export const FilterPopup = ({
                 const currentComparison = tempFilters[field.id]?.comparison || 'equal';
                 handleNumberFilterChange(newValue, currentComparison as ComparisonOperator);
               }}
+              onWheel={(e) => {
+                e.preventDefault();       // ① 値の変化を止める
+                e.currentTarget.blur();   // ② フォーカスを外して次のホイールも無効化
+              }}
+              /* ↑↓キーも無効にしたい場合は追加 */
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                }
+              }}
               placeholder="数値を入力"
+              step="1"
               min="0"
             />
           </div>
