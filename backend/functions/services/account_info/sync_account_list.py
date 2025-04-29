@@ -144,6 +144,7 @@ def process_account_list():
                 favorite_user_username = row[1].strip() if len(row) > 1 and row[1] else None
                 account_type = row[5].strip() if len(row) > 5 and row[5] else None
                 crawler_account_id = row[6].strip() if len(row) > 6 and row[6] else None
+                favorite_user_is_alive = row[7].strip() if len(row) > 7 and row[7] else None
 
                 # 必須項目のチェック
                 if not account_url or not favorite_user_username:
@@ -169,6 +170,7 @@ def process_account_list():
                         SET favorite_user_username = %(favorite_user_username)s,
                             account_type = %(account_type)s,
                             crawler_account_id = %(crawler_account_id)s,
+                            favorite_user_is_alive = %(favorite_user_is_alive)s,
                             updated_at = NOW()
                         WHERE account_url = %(account_url)s
                     '''
@@ -176,7 +178,8 @@ def process_account_list():
                         'account_url': account_url,
                         'favorite_user_username': favorite_user_username,
                         'account_type': account_type,
-                        'crawler_account_id': crawler_account_id
+                        'crawler_account_id': crawler_account_id,
+                        'favorite_user_is_alive': is_alive
                     }
                     
                     affected_rows = execute_write_query(update_query, update_params)

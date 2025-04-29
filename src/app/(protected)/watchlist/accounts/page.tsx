@@ -69,6 +69,7 @@ export default function AccountWatchlistPage() {
   const [error, setError] = useState<string | null>(null);
   const [accountTypes, setAccountTypes] = useState<string[]>([]);
   const [selectedAccountType, setSelectedAccountType] = useState<string | null>(null);
+  const [videoSortBy, setVideoSortBy] = useState<'play_count_increase' | 'likes_count_increase' | 'save_count_increase' | 'comment_count_increase'>('play_count_increase');
 
   // ランキング関連のステート
   const [metric, setMetric] = useState<MetricType>('play_count_increase');
@@ -316,6 +317,31 @@ export default function AccountWatchlistPage() {
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
+  // ソートオーダーの表示名を取得する関数
+  const getSortByDisplayName = (sortBy: string): string => {
+    const displayNames: Record<string, string> = {
+      play_count_increase: '再生増加数',
+      likes_count_increase: 'いいね増加数',
+      comment_count_increase: 'コメント増加数',
+      save_count_increase: '保存増加数'
+    };
+    return displayNames[sortBy] || sortBy;
+  };
+
+  // ソート順変更ハンドラ
+  const handleSortByChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setVideoSortBy(e.target.value as 'play_count_increase' | 'likes_count_increase' | 'save_count_increase' | 'comment_count_increase');
+  };
+
+  // ソートされた動画一覧を取得
+  const getSortedVideos = () => {
+    if (!accountVideos.length) return [];
+    
+    return [...accountVideos]
+      .sort((a, b) => b[videoSortBy] - a[videoSortBy])
+      .slice(0, 10);
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -517,7 +543,7 @@ export default function AccountWatchlistPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    {selectedAccount ? `${selectedAccount}の動画` : 'アカウントを選択してください'}
+                    {selectedAccount ? `${selectedAccount}の動画(10件)` : 'アカウントを選択してください'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -530,21 +556,35 @@ export default function AccountWatchlistPage() {
                   ) : selectedAccount ? (
                     accountVideos.length > 0 ? (
                       <div>
+                        <div className="flex items-center gap-1 mb-3">
+                          <label className="text-xs whitespace-nowrap">表示順:</label>
+                          <select 
+                            value={videoSortBy}
+                            onChange={handleSortByChange}
+                            className="text-xs border rounded p-0.5 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE] h-6"
+                          >
+                            <option value="play_count_increase">再生増加数</option>
+                            <option value="likes_count_increase">いいね増加数</option>
+                            <option value="save_count_increase">保存増加数</option>
+                            <option value="comment_count_increase">コメント増加数</option>
+                          </select>
+                        </div>
                         <Table className="w-full">
                           <TableHeader>
                             <TableRow>
-                              <TableHead>サムネイル</TableHead>
-                              <TableHead className="text-right">再生増加数</TableHead>
-                              <TableHead className="text-right">いいね増加数</TableHead>
-                              <TableHead className="text-right">投稿日</TableHead>
+                              <TableHead className="text-xs">サムネイル</TableHead>
+                              <TableHead className="text-xs text-right">再生増加数</TableHead>
+                              <TableHead className="text-xs text-right">いいね増加数</TableHead>
+                              <TableHead className="text-xs text-right">コメント増加数</TableHead>
+                              <TableHead className="text-xs text-right">保存増加数</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {accountVideos.map((video, index) => (
+                            {getSortedVideos().map((video, index) => (
                               <TableRow key={index}>
-                                <TableCell>
+                                <TableCell className="text-left">
                                   {video.thumbnail_url ? (
-                                    <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+                                    <div className="relative w-[120px] h-[120px] my-1">
                                       <div className="relative w-full h-full overflow-hidden rounded border-2 border-transparent hover:border-[#FE2C55] transition-colors">
                                         <ImageHover
                                           src={video.thumbnail_url ?? ''}
@@ -585,15 +625,24 @@ export default function AccountWatchlistPage() {
                                   )}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  {video.created_at
-                                    ? (() => {
-                                        const d = new Date(video.created_at);
-                                        const yy = String(d.getFullYear()).slice(-2);
-                                        const mm = String(d.getMonth() + 1).padStart(2, '0');
-                                        const dd = String(d.getDate()).padStart(2, '0');
-                                        return `${yy}/${mm}/${dd}`;
-                                      })()
-                                    : ''}
+                                  {video.comment_count_increase > 0 ? (
+                                    <div className="flex items-center justify-end gap-1 text-green-600">
+                                      <ArrowUp className="h-3 w-3" />
+                                      {formatNumber(video.comment_count_increase)}
+                                    </div>
+                                  ) : (
+                                    formatNumber(video.comment_count_increase)
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {video.save_count_increase > 0 ? (
+                                    <div className="flex items-center justify-end gap-1 text-green-600">
+                                      <ArrowUp className="h-3 w-3" />
+                                      {formatNumber(video.save_count_increase)}
+                                    </div>
+                                  ) : (
+                                    formatNumber(video.save_count_increase)
+                                  )}
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -649,9 +698,9 @@ export default function AccountWatchlistPage() {
                     <Table className="w-full">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>順位</TableHead>
-                          <TableHead>アカウント名</TableHead>
-                          <TableHead className="text-right">{getMetricDisplayName(metric)}</TableHead>
+                          <TableHead className="text-xs py-2 px-2">順位</TableHead>
+                          <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
+                          <TableHead className="text-xs text-right py-2 px-2">{getMetricDisplayName(metric)}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>

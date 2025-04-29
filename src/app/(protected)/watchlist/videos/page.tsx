@@ -469,16 +469,16 @@ export default function VideoWatchlistPage() {
                     <Table className="w-full">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>サムネイル</TableHead>
-                          <TableHead className="text-right">再生数</TableHead>
-                          <TableHead className="text-right">再生増加数</TableHead>
-                          <TableHead className="text-right">いいね数</TableHead>
-                          <TableHead className="text-right">いいね増加数</TableHead>
-                          <TableHead className="text-right">コメント数</TableHead>
-                          <TableHead className="text-right">コメント増加数</TableHead>
-                          <TableHead className="text-right">保存数</TableHead>
-                          <TableHead className="text-right">保存増加数</TableHead>
-                          <TableHead>アカウント名</TableHead>
+                          <TableHead className="text-xs py-2 px-2">サムネイル</TableHead>
+                          <TableHead className="text-xs text-right">再生数</TableHead>
+                          <TableHead className="text-xs text-right">再生増加数</TableHead>
+                          <TableHead className="text-xs text-right">いいね数</TableHead>
+                          <TableHead className="text-xs text-right">いいね増加数</TableHead>
+                          <TableHead className="text-xs text-right">コメント数</TableHead>
+                          <TableHead className="text-xs text-right">コメント増加数</TableHead>
+                          <TableHead className="text-xs text-right">保存数</TableHead>
+                          <TableHead className="text-xs text-right">保存増加数</TableHead>
+                          <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
                           <TableHead></TableHead>
                         </TableRow>
                       </TableHeader>
@@ -598,7 +598,7 @@ export default function VideoWatchlistPage() {
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
-                  <CardTitle className="text-[#FE2C55]">ウォッチリスト動画ランキング</CardTitle>
+                  <CardTitle className="text-[#FE2C55]">ウォッチリスト動画ランキング(10件)</CardTitle>
                   <div className="flex items-center gap-2">
                     <span className="text-sm whitespace-nowrap">指標:</span>
                     <Select onValueChange={handleMetricChange} defaultValue={selectedMetric}>
@@ -627,12 +627,12 @@ export default function VideoWatchlistPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>順位</TableHead>
-                            <TableHead>サムネイル</TableHead>
-                            <TableHead className="text-right">再生増加数</TableHead>
-                            <TableHead className="text-right">いいね増加数</TableHead>
-                            <TableHead className="text-right">コメント増加数</TableHead>
-                            <TableHead className="text-right">保存増加数</TableHead>
+                            <TableHead className="text-xs py-2 px-2">順位</TableHead>
+                            <TableHead className="text-xs py-2 px-2">サムネイル</TableHead>
+                            <TableHead className="text-xs text-right py-2 px-2">再生増加数</TableHead>
+                            <TableHead className="text-xs text-right py-2 px-2">いいね増加数</TableHead>
+                            <TableHead className="text-xs text-right py-2 px-2">コメント増加数</TableHead>
+                            <TableHead className="text-xs text-right py-2 px-2">保存増加数</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
