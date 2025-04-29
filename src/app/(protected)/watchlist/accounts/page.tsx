@@ -355,7 +355,7 @@ export default function AccountWatchlistPage() {
           >
             <option value="all">すべて</option>
             {accountTypes.map(type => (
-              <option key={type} value={type}>{type}</option>
+              <option key={type} value={type}>{getAccountTypeDisplayName(type)}</option>
             ))}
           </select>
         </div>
@@ -403,13 +403,13 @@ export default function AccountWatchlistPage() {
                     <Table className="w-full">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>アカウント名</TableHead>
-                          <TableHead className="text-right">再生増加数</TableHead>
-                          <TableHead className="text-right">いいね増加数</TableHead>
-                          <TableHead className="text-right">コメント増加数</TableHead>
-                          <TableHead className="text-right">保存増加数</TableHead>  
-                          <TableHead>アカウントタイプ</TableHead>
-                          <TableHead></TableHead>
+                          <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
+                          <TableHead className="text-xs text-right py-2 px-1">再生増加数</TableHead>
+                          <TableHead className="text-xs text-right py-2 px-1">いいね増加数</TableHead>
+                          <TableHead className="text-xs text-right py-2 px-1">コメント増加数</TableHead>
+                          <TableHead className="text-xs text-right py-2 px-1">保存増加数</TableHead>  
+                          <TableHead className="text-xs py-2 px-2">タイプ</TableHead>
+                          <TableHead className="w-6 p-0"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -491,16 +491,15 @@ export default function AccountWatchlistPage() {
                                 )}
                               </TableCell>
                               <TableCell>{getAccountTypeDisplayName(accountData?.account_type)}</TableCell>
-                              <TableCell>
+                              <TableCell　className="w-10 px-1">
                                 <Button
-                                  variant="ghost"
-                                  size="icon"
+                                  className="py-1 px-1 bg-[#FE2C55] hover:bg-[#D91847] text-white rounded-md text-xs font-medium flex items-center justify-center transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteAccount(accountData?.account_name || '');
                                   }}
                                 >
-                                  <Trash2 className="h-4 w-4 text-red-500" />
+                                  リストから削除
                                 </Button>
                               </TableCell>
                             </TableRow>

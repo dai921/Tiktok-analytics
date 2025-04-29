@@ -578,9 +578,9 @@ export default function VideoWatchlistPage() {
                                 <button
                                   className="py-1 px-1 bg-[#FE2C55] hover:bg-[#D91847] text-white rounded-md text-xs font-medium flex items-center justify-center transition-colors"
                                   onClick={() => handleDeleteVideo(video.video_id)}
-                                  aria-label="ウォッチリストから削除"
+                                  aria-label="リストから削除"
                                 >
-                                  ウォッチリストから削除
+                                  リストから削除
                                 </button>
                               </TableCell>
                             </TableRow>
