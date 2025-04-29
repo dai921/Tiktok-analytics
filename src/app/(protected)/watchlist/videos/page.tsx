@@ -457,7 +457,7 @@ export default function VideoWatchlistPage() {
           <TabsContent value="list">
             <Card>
               <CardHeader>
-                <CardTitle className="text-[#FE2C55]">ウォッチリスト動画一覧</CardTitle>
+                <CardTitle>ウォッチリスト動画一覧</CardTitle>
               </CardHeader>
               <CardContent>
                 {filteredVideos.length === 0 ? (
@@ -598,7 +598,7 @@ export default function VideoWatchlistPage() {
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
-                  <CardTitle className="text-[#FE2C55]">ウォッチリスト動画ランキング(10件)</CardTitle>
+                  <CardTitle>ウォッチリスト動画ランキング(最大10件)</CardTitle>
                   <div className="flex items-center gap-2">
                     <span className="text-sm whitespace-nowrap">指標:</span>
                     <Select onValueChange={handleMetricChange} defaultValue={selectedMetric}>
@@ -646,7 +646,7 @@ export default function VideoWatchlistPage() {
                                 className={`hover:bg-[#25F4EE]/5 transition-colors cursor-pointer ${selectedVideoId === video.video_id ? 'bg-[#25F4EE]/10' : ''}`}
                                 onClick={() => handleVideoSelect(video.video_id)}
                               >
-                                <TableCell className={`py-2 ${index < 3 ? 'font-bold text-[#FE2C55]' : ''}`}>
+                                <TableCell className="py-2">
                                   {index + 1}
                                 </TableCell>
                                 <TableCell>

@@ -32,6 +32,7 @@ import {
   Legend, 
   ResponsiveContainer 
 } from 'recharts';
+import { useToast } from "@/hooks/use-toast";
 
 type MetricType = 'play_count_increase' | 'likes_count_increase' | 'comment_count_increase' | 'save_count_increase';
 
@@ -87,6 +88,9 @@ export default function AccountWatchlistPage() {
   const [period, setPeriod] = useState<PeriodInfo | null>(null);
 
   const initialDateSet = useRef<boolean>(false);
+
+  // 2. useToastフックを追加
+  const { toast } = useToast();
 
   // アカウント一覧を読み込む
   useEffect(() => {
@@ -203,25 +207,47 @@ export default function AccountWatchlistPage() {
 
   // アカウント削除ハンドラ
   const handleDeleteAccount = async (accountName: string) => {
-    try {
-      const response = await removeAccountFromBookmarks(accountName);
-      if (response.success) {
-        // 成功したら一覧から削除
-        setAccounts(prevAccounts => prevAccounts.filter(
-          item => item.bookmark.account_name !== accountName
-        ));
-        
-        // 選択中のアカウントを削除した場合はリセット
-        if (selectedAccount === accountName) {
-          setSelectedAccount(null);
-          setAccountVideos([]);
+    // 確認ダイアログを表示
+    if (window.confirm('このアカウントをウォッチリストから削除しますか？')) {
+      try {
+        const response = await removeAccountFromBookmarks(accountName);
+        if (response.success) {
+          // 成功したら一覧から削除
+          setAccounts(prevAccounts => prevAccounts.filter(
+            item => item.bookmark.account_name !== accountName
+          ));
+          
+          // 選択中のアカウントを削除した場合はリセット
+          if (selectedAccount === accountName) {
+            setSelectedAccount(null);
+            setAccountVideos([]);
+          }
+          
+          // 成功トースト通知を表示
+          toast({
+            title: "削除完了",
+            description: "アカウントをウォッチリストから削除しました",
+            variant: "default",
+          });
+        } else {
+          // エラートースト通知を表示
+          toast({
+            title: "エラー",
+            description: "削除中にエラーが発生しました",
+            variant: "destructive",
+          });
+          setError('アカウントの削除に失敗しました');
         }
-      } else {
-        setError('アカウントの削除に失敗しました');
+      } catch (err) {
+        console.error("アカウント削除エラー:", err);
+        // エラートースト通知を表示
+        toast({
+          title: "エラー",
+          description: "削除処理中にエラーが発生しました",
+          variant: "destructive",
+        });
+        setError('アカウント削除中にエラーが発生しました');
       }
-    } catch (err) {
-      console.error("アカウント削除エラー:", err);
-      setError('アカウント削除中にエラーが発生しました');
     }
   };
 
@@ -418,10 +444,10 @@ export default function AccountWatchlistPage() {
         <TabsContent value="list">
           <div className="flex gap-6">
             {/* 左側: アカウント一覧 */}
-            <div className="w-1/2">
+            <div className="w-3/5">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-[#FE2C55]">お気に入りアカウント一覧</CardTitle>
+                  <CardTitle>お気に入りアカウント一覧</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {getFilteredAccounts().length === 0 ? (
@@ -542,7 +568,7 @@ export default function AccountWatchlistPage() {
             </div>
             
             {/* 右側: アカウント動画 */}
-            <div className="w-1/2">
+            <div className="w-2/5">
               <Card>
                 <CardHeader>
                   <CardTitle>
@@ -660,7 +686,7 @@ export default function AccountWatchlistPage() {
                   ) : (
                     <div className="text-center py-8 border-2 border-dashed border-border rounded-lg">
                       <p className="text-gray-500">アカウントを選択すると、関連動画が表示されます</p>
-                      <p className="text-xs text-[#FE2C55] mt-2">← 左のリストから選択してください</p>
+                      <p className="text-[#FE2C55] mt-2">← 左のリストから選択してください</p>
                     </div>
                   )}
                 </CardContent>
@@ -693,7 +719,7 @@ export default function AccountWatchlistPage() {
               <div className="w-1/3">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-[#FE2C55]">
+                    <CardTitle>
                       {getMetricDisplayName(metric)}ランキング
                     </CardTitle>
                   </CardHeader>
@@ -714,7 +740,6 @@ export default function AccountWatchlistPage() {
                           >
                             <TableCell className={cn(
                               "py-3",
-                              index < 3 && "font-bold text-[#FE2C55]"
                             )}>
                               {index + 1}
                             </TableCell>
@@ -748,7 +773,7 @@ export default function AccountWatchlistPage() {
               <div className="w-2/3">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-[#FE2C55]">
+                    <CardTitle>
                       トレンドグラフ ({getMetricDisplayName(metric)})
                     </CardTitle>
                   </CardHeader>

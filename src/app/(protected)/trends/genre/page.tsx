@@ -452,15 +452,15 @@ export default function GenrePage() {
               <div className="w-1/3">
                 <Card >
                   <CardHeader>
-                    <CardTitle className="text-[#FE2C55]">ジャンルトレンド</CardTitle>
+                    <CardTitle>ジャンルトレンド</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <Table className="w-full">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>順位</TableHead>
-                          <TableHead>ジャンル名</TableHead>
-                          <TableHead className="text-right">{getMetricLabel(metric)}</TableHead>
+                          <TableHead className="text-xs py-2 px-2">順位</TableHead>
+                          <TableHead className="text-xs py-2 px-2">ジャンル名</TableHead>
+                          <TableHead className="text-xs py-2 px-2 text-right">{getMetricLabel(metric)}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -487,7 +487,6 @@ export default function GenrePage() {
                               >
                                 <TableCell className={cn(
                                   "py-3",
-                                  index < 3 && "font-bold text-[#FE2C55]"
                                 )}>
                                   {index + 1}
                                 </TableCell>
@@ -522,7 +521,7 @@ export default function GenrePage() {
                             />
                           )}
                         </div>
-                      ) : '商材を選択してください'}
+                      ) : 'ジャンルを選択してください'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -531,11 +530,11 @@ export default function GenrePage() {
                         <Table className="w-full">
                           <TableHeader>
                             <TableRow>
-                              <TableHead>サムネイル</TableHead>
-                              <TableHead className="text-right">再生増加数</TableHead>
-                              <TableHead className="text-right">いいね増加数</TableHead>
-                              <TableHead className="text-right">投稿日</TableHead>
-                              <TableHead>アカウント名</TableHead>
+                              <TableHead className="text-xs py-2 px-2">サムネイル</TableHead>
+                              <TableHead className="text-xs py-2 px-2 text-right">再生増加数</TableHead>
+                              <TableHead className="text-xs py-2 px-2 text-right">いいね増加数</TableHead>
+                              <TableHead className="text-xs py-2 px-2 text-right">投稿日</TableHead>
+                              <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -619,7 +618,7 @@ export default function GenrePage() {
                     ) : (
                       <div className="text-center py-8 border-2 border-dashed border-border rounded-lg">
                         <p className="text-gray-500">ジャンルを選択すると、関連動画が表示されます</p>
-                        <p className="text-xs text-[#FE2C55] mt-2">← 左のリストから選択してください</p>
+                        <p className="text-[#FE2C55] mt-2">← 左のリストから選択してください</p>
                       </div>
                     )}
                   </CardContent>
@@ -631,7 +630,7 @@ export default function GenrePage() {
           <TabsContent value="graph">
             <Card>
               <CardHeader>
-                <CardTitle className="text-[#FE2C55]">トレンドグラフ({getMetricLabel(metric)})</CardTitle>
+                <CardTitle>トレンドグラフ({getMetricLabel(metric)})</CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoadingTrends ? (
