@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from src.db.database import get_db_connection
 from src.auth.router import get_current_user
@@ -233,16 +233,35 @@ async def get_video_watchlist_with_details(
         query = """
         SELECT 
             vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
-            fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, fd.play_count_increase,
+            fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, 
+            SUM(pch.play_count_increase) as play_count_increase,
+            SUM(pch.likes_count_increase) as likes_count_increase,
+            SUM(pch.comment_count_increase) as comment_count_increase,
+            SUM(pch.save_count_increase) as save_count_increase,
             fd.account_name, fd.display_name, fd.content_type,
             fd.likes_count, fd.comment_count, fd.save_count, fd.hashtags, fd.caption
         FROM video_watchlists vw
         LEFT JOIN frontend_data fd ON vw.video_id = fd.video_id
+        LEFT JOIN play_count_history pch ON vw.video_id = pch.video_id
         WHERE vw.email = %s
+        """
+        
+        params = [current_user.email]
+        
+        # 日付範囲が指定されている場合、条件に追加
+        if start_date and end_date:
+            query += " AND pch.collection_date BETWEEN %s AND %s"
+            params.extend([start_date, end_date])
+            
+        query += """
+        GROUP BY 
+            vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
+            fd.thumbnail_url, fd.created_at, fd.play_count, fd.account_name, fd.display_name, 
+            fd.content_type, fd.likes_count, fd.comment_count, fd.save_count, fd.hashtags, fd.caption
         ORDER BY vw.updated_at DESC
         """
         
-        cursor.execute(query, (current_user.email,))
+        cursor.execute(query, params)
         results = cursor.fetchall()
         
         watchlist_with_details = []
@@ -274,22 +293,11 @@ async def get_video_watchlist_with_details(
             if video_created_at:
                 video_created_at = video_created_at.isoformat() if hasattr(video_created_at, 'isoformat') else str(video_created_at)
             
-            # play_count_increaseに基づいて他の増加数も計算
+            # 増加数のデフォルト値を設定
             play_count_increase = int(item["play_count_increase"]) if item["play_count_increase"] else 0
-            
-            # play_countに対する増加率を計算
-            increase_ratio = 0
-            if item["play_count"] and item["play_count"] > 0 and play_count_increase > 0:
-                increase_ratio = play_count_increase / float(item["play_count"])
-            
-            # 他の増加数を計算（同じ増加率を適用）
-            likes_count = int(item["likes_count"]) if item["likes_count"] else 0
-            comment_count = int(item["comment_count"]) if item["comment_count"] else 0
-            save_count = int(item["save_count"]) if item["save_count"] else 0
-            
-            likes_count_increase = int(likes_count * increase_ratio) if likes_count > 0 else 0
-            comment_count_increase = int(comment_count * increase_ratio) if comment_count > 0 else 0
-            save_count_increase = int(save_count * increase_ratio) if save_count > 0 else 0
+            likes_count_increase = int(item["likes_count_increase"]) if item["likes_count_increase"] else 0
+            comment_count_increase = int(item["comment_count_increase"]) if item["comment_count_increase"] else 0
+            save_count_increase = int(item["save_count_increase"]) if item["save_count_increase"] else 0
             
             watchlist_with_details.append({
                 "watchlist": {
@@ -309,9 +317,9 @@ async def get_video_watchlist_with_details(
                     "account_name": item["account_name"],
                     "display_name": item["display_name"],
                     "content_type": item["content_type"],
-                    "likes_count": likes_count,
-                    "comment_count": comment_count,
-                    "save_count": save_count,
+                    "likes_count": int(item["likes_count"]) if item["likes_count"] else 0,
+                    "comment_count": int(item["comment_count"]) if item["comment_count"] else 0,
+                    "save_count": int(item["save_count"]) if item["save_count"] else 0,
                     "likes_count_increase": likes_count_increase,
                     "comment_count_increase": comment_count_increase,
                     "save_count_increase": save_count_increase,
@@ -331,6 +339,142 @@ async def get_video_watchlist_with_details(
         
     except Exception as e:
         logger.error(f"Error getting video watchlist with details: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.get("/videos/trends")
+async def get_video_watchlist_trends(
+    current_user: User = Depends(get_current_user),
+    start_date: Optional[str] = Query(None, description="開始日（YYYY-MM-DD形式）"),
+    end_date: Optional[str] = Query(None, description="終了日（YYYY-MM-DD形式）")
+):
+    """ユーザーのウォッチリスト動画のトレンドデータを取得する"""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # デフォルトの期間を設定（指定がない場合は直近7回分のデータ）
+        if not start_date or not end_date:
+            # 収集日の一覧を取得
+            query = """
+            SELECT DISTINCT collection_date
+            FROM play_count_history
+            WHERE collection_date IS NOT NULL
+            ORDER BY collection_date DESC
+            LIMIT 7
+            """
+            
+            cursor.execute(query)
+            dates = cursor.fetchall()
+            
+            if dates:
+                # 利用可能なデータ期間を設定
+                if not end_date:
+                    end_date = dates[0]["collection_date"].strftime('%Y-%m-%d')
+                if not start_date:
+                    start_date = dates[-1]["collection_date"].strftime('%Y-%m-%d')
+            else:
+                # データがない場合はデフォルト値
+                if not end_date:
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                if not start_date:
+                    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        # ウォッチリストの動画IDを取得
+        watchlist_query = """
+        SELECT video_id 
+        FROM video_watchlists 
+        WHERE email = %s
+        """
+        
+        cursor.execute(watchlist_query, (current_user.email,))
+        watchlist_videos = cursor.fetchall()
+        
+        if not watchlist_videos:
+            return {
+                "success": True,
+                "data": [],
+                "period": {
+                    "start_date": start_date,
+                    "end_date": end_date
+                }
+            }
+        
+        # ウォッチリスト動画のIDリスト
+        video_ids = [v["video_id"] for v in watchlist_videos]
+        
+        # プレースホルダーを生成
+        placeholders = ', '.join(['%s'] * len(video_ids))
+        
+        # 各動画のトレンドデータを取得
+        trend_query = f"""
+        SELECT 
+            h.video_id,
+            h.collection_date,
+            SUM(h.play_count_increase) as play_count_increase,
+            v.account_name,
+            SUM(h.likes_count_increase) as likes_count_increase,
+            SUM(h.comment_count_increase) as comment_count_increase, 
+            SUM(h.save_count_increase) as save_count_increase
+        FROM 
+            play_count_history h
+        LEFT JOIN 
+            frontend_data v ON h.video_id = v.video_id
+        WHERE 
+            h.video_id IN ({placeholders})
+            AND h.collection_date BETWEEN %s AND %s
+        GROUP BY 
+            h.video_id, h.collection_date, v.account_name
+        ORDER BY 
+            h.video_id, h.collection_date
+        """
+        
+        params = video_ids + [start_date, end_date]
+        cursor.execute(trend_query, params)
+        trend_results = cursor.fetchall()
+        
+        # 結果を整形
+        trend_data = {}
+        for row in trend_results:
+            video_id = row["video_id"]
+            if video_id not in trend_data:
+                trend_data[video_id] = {
+                    "video_id": video_id,
+                    "account_name": row["account_name"],
+                    "trends": []
+                }
+            
+            # 日付フォーマットを変換
+            collection_date = row["collection_date"]
+            if isinstance(collection_date, datetime):
+                date_str = collection_date.strftime('%Y-%m-%d')
+            else:
+                date_str = str(collection_date)
+            
+            trend_data[video_id]["trends"].append({
+                "date": date_str,
+                "play_count_increase": int(row["play_count_increase"]) if row["play_count_increase"] else 0,
+                "likes_count_increase": int(row["likes_count_increase"]) if row["likes_count_increase"] else 0,
+                "comment_count_increase": int(row["comment_count_increase"]) if row["comment_count_increase"] else 0,
+                "save_count_increase": int(row["save_count_increase"]) if row["save_count_increase"] else 0
+            })
+        
+        return {
+            "success": True,
+            "data": list(trend_data.values()),
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting video watchlist trends: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

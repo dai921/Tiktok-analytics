@@ -159,6 +159,47 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
   }
   
   /**
+   * 動画ウォッチリストのトレンドデータを取得する
+   */
+  export async function getVideoWatchlistTrends(startDate?: string, endDate?: string) {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('認証情報がありません');
+      }
+
+      // クエリパラメータを構築
+      const queryParams = new URLSearchParams();
+      if (startDate) queryParams.append('start_date', startDate);
+      if (endDate) queryParams.append('end_date', endDate);
+      
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      
+      const response = await fetch(`${apiUrl}/api/watchlist/videos/trends${queryString}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'トレンドデータの取得に失敗しました');
+      }
+
+      const data = await response.json();
+      
+      return {
+        success: true,
+        data: data.data || [],
+        period: data.period || { start_date: startDate, end_date: endDate }
+      };
+    } catch (error) {
+      console.error('トレンドデータ取得エラー:', error);
+      return handleApiError(error);
+    }
+  }
+  
+  /**
    * アカウントをブックマークに追加する
    */
   export async function addAccountToBookmarks(accountName: string, bookmarkName?: string) {
