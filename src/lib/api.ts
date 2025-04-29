@@ -86,8 +86,8 @@ export const fetchVideosFromBackend = async (options: {
   if (minLikesCount) params.append('min_likes_count', minLikesCount.toString());
 
   try {
-    console.log(`Fetching from backend API: ${apiUrl}/videos?${params}`);
-    const response = await fetch(`${apiUrl}/videos?${params}`);
+    console.log(`Fetching from backend API: ${apiUrl}/api/videos?${params}`);
+    const response = await fetch(`${apiUrl}/api/videos?${params}`);
     
     if (!response.ok) {
       const errorData = await response.json();
@@ -611,7 +611,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
       });
     }
 
-    const url = `${apiUrl}/videos?${params.toString()}`;
+    const url = `${apiUrl}/api/videos?${params.toString()}`;
     console.log('APIリクエストURL:', url);
     console.log('APIパラメータ:', Object.fromEntries(params.entries()));
 
