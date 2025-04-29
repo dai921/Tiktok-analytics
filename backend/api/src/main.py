@@ -6,6 +6,9 @@ from src.auth.router import router as auth_router
 from src.display_settings.router import router as display_settings_router
 from src.product_stats import router as product_stats_router
 from src.genre_stats import router as genre_stats_router
+from src.watchlist import router as watchlist_router
+from fastapi import FastAPI
+from src.timing_middleware import timing_middleware
 import traceback
 import uvicorn
 import sys
@@ -18,6 +21,8 @@ import json
 import re
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
+
+
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -32,7 +37,7 @@ app = FastAPI(
     title="TikTok Analytics API",
     description="TikTok Analytics API Service",
 )
-
+app.middleware("http")(timing_middleware)
 # 環境変数からオリジンを取得してログ出力
 origins_env = os.getenv("ALLOWED_ORIGINS", "")
 logger.info(f"ALLOWED_ORIGINS環境変数の値: '{origins_env}'")
@@ -60,6 +65,8 @@ app.include_router(display_settings_router)
 app.include_router(product_stats_router)
 # ジャンル統計ルーターの追加
 app.include_router(genre_stats_router)
+# ウォッチリストルーターの追加
+app.include_router(watchlist_router)
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)
@@ -1495,7 +1502,7 @@ async def get_video_play_count_history(
 if __name__ == "__main__":
     print("Starting application via __main__")
     uvicorn.run(
-        "main:app",  # 文字列として渡す
+        app,  # 文字列として渡す
         host="0.0.0.0",
         port=8080,
         log_level="debug",

@@ -100,7 +100,7 @@ CREATE TABLE sort_settings (
   INDEX idx_setting_id (setting_id)
 );
 
--- 動画ブックマークテーブル
+-- 動画ウォッチリストテーブル
 CREATE TABLE video_watchlists (
   watchlist_id INT AUTO_INCREMENT PRIMARY KEY,
   email VARCHAR(255) NOT NULL,
@@ -109,7 +109,7 @@ CREATE TABLE video_watchlists (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
-  FOREIGN KEY (url) REFERENCES video_master(url) ON DELETE CASCADE,
+  FOREIGN KEY (url) REFERENCES frontend_data(url) ON DELETE CASCADE,
   UNIQUE KEY unique_user_video (email, url),
   INDEX idx_email (email)
 );

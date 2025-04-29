@@ -50,12 +50,17 @@ def sync_video_history(event, context):
         sync_query = """
         INSERT INTO play_count_history 
         (video_id, video_url, collection_date, 
+         play_count, likes_count, comment_count, save_count,
          play_count_increase, likes_count_increase, 
          comment_count_increase, save_count_increase)
         SELECT 
             video_id,
             url,
             %s as collection_date,
+            playCount,
+            likesCount,
+            commentCount,
+            saveCount,
             playCountIncrease,
             likesCountIncrease,
             commentCountIncrease,
@@ -66,6 +71,10 @@ def sync_video_history(event, context):
             video_id IS NOT NULL
             AND playCountIncrease IS NOT NULL
         ON DUPLICATE KEY UPDATE
+            play_count = VALUES(play_count),
+            likes_count = VALUES(likes_count),
+            comment_count = VALUES(comment_count),
+            save_count = VALUES(save_count),
             play_count_increase = VALUES(play_count_increase),
             likes_count_increase = VALUES(likes_count_increase),
             comment_count_increase = VALUES(comment_count_increase),

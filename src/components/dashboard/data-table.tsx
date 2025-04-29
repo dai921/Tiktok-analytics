@@ -973,19 +973,49 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             thumbnailUrl = row.thumbnail_url.url;
           }
 
-          if (!thumbnailUrl) {
-            return <NoThumbnail />;
-          }
+          // アカウント情報をマッピング - account_name を accountName に変換
+          const videoData = {
+            views: row.views || 0,
+            viewsIncrease: row.viewsIncrease || 0,
+            ten_days_increase: row.ten_days_increase || 0,
+            createdAt: row.createdAt || '',
+            accountName: row.account_name || '' // account_name を accountName に変換
+          };
 
+          // サムネイルがなくても ImageHover を表示する
           return (
             <div className="relative w-[120px] h-[120px] my-1 mx-auto">
               <div className="relative w-full h-full overflow-hidden rounded">
-                <ImageHover 
-                  src={thumbnailUrl} 
-                  alt="サムネイル" 
-                  videoUrl={row.url}
-                  videoData={row}
-                />
+                {thumbnailUrl ? (
+                  <ImageHover 
+                    src={thumbnailUrl} 
+                    alt="サムネイル" 
+                    videoUrl={row.url}
+                    videoData={videoData}
+                  />
+                ) : (
+                  // サムネイルがない場合でも ImageHover を表示
+                  <div className="cursor-pointer">
+                    <ImageHover 
+                      src="/images/no-thumbnail.png" 
+                      alt="サムネイルなし" 
+                      videoUrl={row.url}
+                      videoData={videoData}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded pointer-events-none">
+                      <svg 
+                        className="w-8 h-8 text-gray-400" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M10 8l6 4-6 4V8z" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
                 <div className="absolute bottom-[0px] right-[0px] bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-0.2">
                   {row.content_type === 'video' ? (
                     <VideoTypeIcon size={32} />

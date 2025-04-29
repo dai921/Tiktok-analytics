@@ -52,8 +52,8 @@ def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
 async def get_genre_stats(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    metric: Optional[str] = "viewsIncrease"  # 指標パラメータを追加（デフォルトは再生増加数）
 ):
-    
     try:
         # 日付パラメータが指定されていない場合、自動的に計算
         if start_date is None or end_date is None:
@@ -99,6 +99,13 @@ async def get_genre_stats(
         cursor = conn.cursor(dictionary=True)
         
         print("Executing genre stats query")
+        
+        # 指標に基づいて並び替えるためのカラム名を決定
+        sort_column = {
+            "viewsIncrease": "total_play_count_increase",
+            "over100kViews": "videos_over_100k",
+            "postCount": "total_posts"
+        }.get(metric, "total_play_count_increase")  # デフォルトは再生増加数
         
         query = """
         WITH video_genres AS (
@@ -179,8 +186,10 @@ async def get_genre_stats(
             FROM category_stats cs
         LEFT JOIN top_videos tv ON cs.category = tv.category AND tv.rank_col <= 10
         GROUP BY cs.category, cs.total_play_count_increase, cs.videos_over_100k, cs.total_posts
-        ORDER BY cs.total_play_count_increase DESC;
         """
+
+        # 指定された指標に基づいて並び替え
+        query += f" ORDER BY cs.{sort_column} DESC;"
 
         # パラメータに日付を追加（top_videosクエリ用）
         params = [start_date, end_date, start_date, end_date]
@@ -227,6 +236,7 @@ async def get_genre_stats(
 async def get_genre_trends(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    metric: Optional[str] = "viewsIncrease"  # 指標パラメータを追加（デフォルトは再生増加数）
 ):
     
     try:
@@ -277,131 +287,106 @@ async def get_genre_trends(
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # 1. 再生増加数トップ10のジャンルを取得
-        views_increase_query = """
-        WITH video_genres AS (
-            SELECT
-                fd.video_id,
-                TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre
-            FROM frontend_data fd
-            CROSS JOIN (
-                SELECT 1 AS n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5
-            ) n
-            WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
-            AND fd.category IS NOT NULL
-            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-        )
-        SELECT  
-            vg.genre as category,
-            SUM(pch.play_count_increase) as total_play_count_increase
+        # 指標に基づいてクエリを調整
+        metric_column = {
+            "viewsIncrease": "play_count_increase",
+            "over100kViews": "CASE WHEN pch.play_count_increase >= 100000 THEN 1 ELSE 0 END",
+            "postCount": "1"  # 投稿数は後でCOUNT DISTINCTする
+        }.get(metric, "play_count_increase")
+        
+        metric_aggregate = {
+            "viewsIncrease": "SUM",
+            "over100kViews": "SUM",
+            "postCount": "COUNT(DISTINCT pch.video_id)"
+        }.get(metric, "SUM")
+        
+        # 指定された指標に基づいてトップ10のジャンルを取得
+        base_query = f"""
+        SELECT 
+            COALESCE(fd.genre, 'その他') as genre,
+            {metric_aggregate}({metric_column}) as metric_value
         FROM play_count_history pch
-        JOIN video_genres vg ON pch.video_id = vg.video_id
+        JOIN frontend_data fd ON pch.video_id = fd.video_id
         WHERE pch.collection_date BETWEEN %s AND %s
-        AND vg.genre IS NOT NULL AND vg.genre != ''
-        GROUP BY vg.genre
-        ORDER BY total_play_count_increase DESC
+        AND fd.genre IS NOT NULL
+        AND fd.genre != ''
+        """
+        
+        # トップ10のジャンルを取得
+        top_genres_query = base_query + """
+        GROUP BY fd.genre
+        """
+        
+        # 指標が10万再生以上の場合は、1件以上あるもののみに絞る
+        if metric == "over100kViews":
+            top_genres_query += " HAVING metric_value > 0"
+            
+        top_genres_query += """
+        ORDER BY metric_value DESC
         LIMIT 10
         """
         
-        cursor.execute(views_increase_query, (start_date, end_date))
-        views_increase_data = cursor.fetchall()
-        views_increase_genres = [row['category'] for row in views_increase_data]
+        cursor.execute(top_genres_query, (start_date, end_date))
+        top_genres_data = cursor.fetchall()
         
-        # 2. 10万再生以上個数トップ10のジャンルを取得
-        over_100k_query = """
-        WITH video_genres AS (
-            SELECT
-                fd.video_id,
-                TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre
-            FROM frontend_data fd
-            CROSS JOIN (
-                SELECT 1 AS n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5
-            ) n
-            WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
-            AND fd.category IS NOT NULL
-            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-        )
-        SELECT  
-            vg.genre as category,
-            COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as videos_over_100k
-        FROM play_count_history pch
-        JOIN video_genres vg ON pch.video_id = vg.video_id
-        WHERE pch.collection_date BETWEEN %s AND %s
-        AND vg.genre IS NOT NULL AND vg.genre != ''
-        GROUP BY vg.genre
-        HAVING videos_over_100k > 0
-        ORDER BY videos_over_100k DESC
-        LIMIT 10
-        """
+        # 各指標のトップジャンルリストを作成
+        top_genres = [row['genre'] for row in top_genres_data]
+        top_genres_by_metric = {metric: top_genres}
         
-        cursor.execute(over_100k_query, (start_date, end_date))
-        over_100k_data = cursor.fetchall()
-        over_100k_genres = [row['category'] for row in over_100k_data]
+        # 他の指標についても取得（後方互換性のため）
+        if metric != "viewsIncrease":
+            cursor.execute(base_query + """
+            GROUP BY fd.genre
+            ORDER BY SUM(pch.play_count_increase) DESC
+            LIMIT 10
+            """, (start_date, end_date))
+            top_genres_by_metric["viewsIncrease"] = [row['genre'] for row in cursor.fetchall()]
         
-        # 3. 投稿数トップ10のジャンルを取得
-        post_count_query = """
-        WITH video_genres AS (
-            SELECT
-                fd.video_id,
-                TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre
-            FROM frontend_data fd
-            CROSS JOIN (
-                SELECT 1 AS n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5
-            ) n
-            WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
-            AND fd.category IS NOT NULL
-            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-        )
-        SELECT  
-            vg.genre as category,
-            COUNT(DISTINCT pch.video_id) as post_count
-        FROM play_count_history pch
-        JOIN video_genres vg ON pch.video_id = vg.video_id
-        WHERE pch.collection_date BETWEEN %s AND %s
-        AND vg.genre IS NOT NULL AND vg.genre != ''
-        GROUP BY vg.genre
-        ORDER BY post_count DESC
-        LIMIT 10
-        """
+        if metric != "over100kViews":
+            cursor.execute(base_query + """
+            GROUP BY fd.genre
+            HAVING SUM(CASE WHEN pch.play_count_increase >= 100000 THEN 1 ELSE 0 END) > 0
+            ORDER BY SUM(CASE WHEN pch.play_count_increase >= 100000 THEN 1 ELSE 0 END) DESC
+            LIMIT 10
+            """, (start_date, end_date))
+            top_genres_by_metric["over100kViews"] = [row['genre'] for row in cursor.fetchall()]
         
-        cursor.execute(post_count_query, (start_date, end_date))
-        post_count_data = cursor.fetchall()
-        post_count_genres = [row['category'] for row in post_count_data]
+        if metric != "postCount":
+            cursor.execute(base_query + """
+            GROUP BY fd.genre
+            ORDER BY COUNT(DISTINCT pch.video_id) DESC
+            LIMIT 10
+            """, (start_date, end_date))
+            top_genres_by_metric["postCount"] = [row['genre'] for row in cursor.fetchall()]
         
         # すべてのユニークなジャンルのリストを作成
-        all_genres = list(set(views_increase_genres + over_100k_genres + post_count_genres))
+        all_genres = list(set(
+            top_genres_by_metric.get("viewsIncrease", []) + 
+            top_genres_by_metric.get("over100kViews", []) + 
+            top_genres_by_metric.get("postCount", [])
+        ))
         
         # 時系列データを取得
         trend_data = []
         
         # 日付ごとの各ジャンルのデータを取得
         if all_genres:
+            genres_placeholder = ', '.join(['%s'] * len(all_genres))
+            
             trends_query = """
-            WITH video_genres AS (
-                SELECT
-                    fd.video_id,
-                    TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre
-                FROM frontend_data fd
-                CROSS JOIN (
-                    SELECT 1 AS n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5
-                ) n
-                WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
-                AND fd.category IS NOT NULL
-                AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-            )
             SELECT 
                 pch.collection_date as date,
-                vg.genre as category,
+                COALESCE(fd.genre, 'その他') as genre,
                 SUM(pch.play_count_increase) as views_increase,
                 COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k_views,
                 COUNT(DISTINCT pch.video_id) as post_count
             FROM play_count_history pch
-            JOIN video_genres vg ON pch.video_id = vg.video_id
+            JOIN frontend_data fd ON pch.video_id = fd.video_id
             WHERE pch.collection_date BETWEEN %s AND %s
-            AND vg.genre IN ({})
-            GROUP BY pch.collection_date, vg.genre
+            AND fd.genre IN ({})
+            GROUP BY pch.collection_date, fd.genre
             ORDER BY pch.collection_date
-            """.format(','.join(['%s'] * len(all_genres)))
+            """.format(genres_placeholder)
             
             # パラメータリストの作成
             params = [start_date, end_date] + all_genres
@@ -413,20 +398,13 @@ async def get_genre_trends(
             for row in trends_results:
                 trend_data.append({
                     "date": row["date"].strftime('%Y-%m-%d'),
-                    "genre": row["category"],
+                    "genre": row["genre"],
                     "metrics": {
                         "viewsIncrease": row["views_increase"],
                         "over100kViews": row["over_100k_views"],
                         "postCount": row["post_count"]
                     }
                 })
-        
-        # 各指標のトップジャンルリストを辞書に格納
-        top_genres_by_metric = {
-            "viewsIncrease": views_increase_genres,
-            "over100kViews": over_100k_genres,
-            "postCount": post_count_genres
-        }
         
         response = {
             "data": trend_data,

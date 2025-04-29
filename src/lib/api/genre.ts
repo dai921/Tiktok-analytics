@@ -3,6 +3,7 @@ import { GenreStats, VideoStats } from '../../types/genre';
 export const fetchGenreStats = async (
   startDate?: string | null,
   endDate?: string | null,
+  metric?: string
 ): Promise<{ data: GenreStats[], dateRange?: { startDate: string, endDate: string } }> => {
   
   try {
@@ -12,6 +13,7 @@ export const fetchGenreStats = async (
     
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
+    if (metric) params.append('metric', metric);
 
     
     // パラメータがあれば追加
@@ -67,11 +69,13 @@ export const fetchGenreStats = async (
 export const fetchGenreTrends = async (
   startDate: string | null = null, 
   endDate: string | null = null,
+  metric: string = 'viewsIncrease'
 ) => {
   try {
     const queryParams = new URLSearchParams();
     if (startDate) queryParams.append('start_date', startDate);
     if (endDate) queryParams.append('end_date', endDate);
+    if (metric) queryParams.append('metric', metric);
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/api/genre-trends?${queryParams.toString()}`;
     console.log('API URL:', url);
@@ -108,6 +112,6 @@ export const fetchGenreTrends = async (
     };
   } catch (error) {
     console.error('ジャンルトレンドの取得エラー:', error);
-    throw error; // エラーを再スローして上位で処理できるようにする
+    throw error;
   }
 }; 
