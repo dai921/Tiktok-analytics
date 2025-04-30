@@ -1,7 +1,7 @@
 // src/components/dashboard/data-table/formatters.tsx
 import { ReactElement } from 'react';
 import { NumberFormatType } from '@/types/dashboard';
-import { HeartIcon, CommentIcon, UpArrowIcon } from './icons';
+import { HeartIcon, CommentIcon, UpArrowIcon, SaveIcon } from './icons';
 import { TIKTOK_COLORS } from '@/lib/constants';
 
 // 数値フォーマット関数を修正 - num と type を受け取るように変更
@@ -62,6 +62,33 @@ export const formatNumber = (num: number, type?: NumberFormatType): ReactElement
       );
     }
     
+    // 保存関連の増加数の場合
+    if (type && (
+      type === 'save_count_increase' ||
+      type === 'ten_days_save_increase'
+    )) {
+      // 値が0の場合は通常表示
+      if (num === 0) {
+        return (
+          <div className="font-medium text-gray-700 flex items-center justify-end">
+            <SaveIcon size={14} />
+            <span className="tabular-nums ml-1">
+              {formattedNum}
+            </span>
+          </div>
+        );
+      }
+      return (
+        <div className="font-medium text-green-600 flex items-center justify-end">
+          <SaveIcon size={14} />
+          <UpArrowIcon size={14} className="ml-1" />
+          <span className="tabular-nums ml-1">
+            {formattedNum}
+          </span>
+        </div>
+      );
+    }
+    
     // 再生数増加の場合
     if (type && (
       type === 'viewsIncrease' ||
@@ -104,6 +131,18 @@ export const formatNumber = (num: number, type?: NumberFormatType): ReactElement
       return (
         <div className="font-medium text-gray-700 flex items-center justify-end">
           <CommentIcon size={14} />
+          <span className="tabular-nums ml-1">
+            {formattedNum}
+          </span>
+        </div>
+      );
+    }
+
+    // 保存数の場合
+    if (type === 'saves') {
+      return (
+        <div className="font-medium text-gray-700 flex items-center justify-end">
+          <SaveIcon size={14} />
           <span className="tabular-nums ml-1">
             {formattedNum}
           </span>

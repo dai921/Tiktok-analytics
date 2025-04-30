@@ -159,6 +159,8 @@ def process_update_all_categories():
                 description = video.get('description', '')
                 title_analysis = analyze_title(description, account_type)
                 
+                if account_type == 'affi':
+                    account_type = 'アフィリエイト'
                 # video_masterテーブルの更新
                 update_query = """
                     UPDATE video_master 
@@ -381,7 +383,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
         if not account_type or account_type.lower() != 'affi':
             return {
-                'category': account_type or '',
+                'category': '',
                 'product_name': ''
             }
 

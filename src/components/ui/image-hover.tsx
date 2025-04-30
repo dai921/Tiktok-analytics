@@ -310,6 +310,19 @@ export function ImageHover({
                       <h4 className="text-sm text-gray-600 mb-1">投稿日</h4>
                       <p className="text-xl font-medium leading-none">{formatDate(videoData.createdAt)}</p>
                     </div>
+
+                    {/* 動画URL */}
+                    <div className="order-2.5">
+                      <h4 className="text-sm text-gray-600 mb-1">動画URL</h4>
+                      <a 
+                        href={videoUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-600 hover:text-blue-800 underline text-sm break-all"
+                      >
+                        {videoUrl}
+                      </a>
+                    </div>
                   </div>
 
                   {/* ウォッチリストに保存 */}

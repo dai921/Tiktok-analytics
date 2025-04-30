@@ -114,3 +114,43 @@ th[data-column-id="created_at"] {
   display: block !important;
   width: 100% !important;
 }
+
+/* 数値カラムのヘッダーテキストを右寄せにする */
+[data-header-cell][data-title="投稿日"] span,
+[data-header-cell][data-title="再生数"] span,
+[data-header-cell][data-title="いいね数"] span,
+[data-header-cell][data-title="コメント数"] span,
+[data-header-cell][data-title="2日再生増加数"] span,
+[data-header-cell][data-title="10日再生増加数"] span,
+[data-header-cell][data-title="2日いいね増加数"] span,
+[data-header-cell][data-title="10日いいね増加数"] span,
+[data-header-cell][data-title="2日コメント増加数"] span,
+[data-header-cell][data-title="10日コメント増加数"] span,
+[data-header-cell][data-title="保存数"] span,
+[data-header-cell][data-title="2日保存増加数"] span,
+[data-header-cell][data-title="10日保存増加数"] span {
+  text-align: right !important;
+  width: 100% !important;
+  display: block !important;
+}
+
+/* ヘッダーセルの配置を改善するスタイル */
+[data-header-cell] {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* ヘッダーセルの内部要素の配置を改善 */
+[data-header-cell] > div {
+  width: 100% !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* ヘッダーセル内のボタン要素の配置 */
+[data-header-cell] button {
+  width: 100% !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+}

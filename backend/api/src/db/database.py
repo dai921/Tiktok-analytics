@@ -11,7 +11,7 @@ from mysql.connector.pooling import MySQLConnectionPool   # ★追加
 
 print("database.py is being loaded")
 logger = setup_logger()
-# ★これを get_db_connection() の “上” に追加
+# ★これを get_db_connection() の "上" に追加
 # --------------------------------------------------
 # 💡 起動時にプールを 1 個だけ作る
 _db_pool = MySQLConnectionPool(
@@ -68,6 +68,11 @@ def format_video(row):
             except json.JSONDecodeError:
                 music_info = {"title": str(music_raw)}
 
+        # 保存数データを取得（インデックスが追加された順序に基づいて）
+        save_count = int(row[21]) if len(row) > 21 and row[21] is not None else 0
+        save_count_increase = int(row[22]) if len(row) > 22 and row[22] is not None else 0
+        ten_days_save_increase = int(row[23]) if len(row) > 23 and row[23] is not None else 0
+
         return {
             "url": row[0],
             "thumbnail_url": thumbnail,
@@ -90,7 +95,10 @@ def format_video(row):
             "audioInfo": music_info,  # 互換性のために残す
             "caption": row[18] if row[18] else None,
             "category": row[19] if row[19] else None,
-            "product": row[20] if row[20] else None
+            "product": row[20] if row[20] else None,
+            "save_count": save_count,
+            "save_count_increase": save_count_increase,
+            "ten_days_save_increase": ten_days_save_increase
         }
     except Exception as e:
         logger.error(f"Error formatting video: {e}")

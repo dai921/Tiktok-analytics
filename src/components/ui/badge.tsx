@@ -87,6 +87,37 @@ function GenreBadge({ genre, categoryForColor, className, ...props }: GenreBadge
   )
 }
 
+// 製品バッジのプロパティ
+export interface ProductBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  product: string;
+  productCategory?: string;
+}
+
+// 製品バッジコンポーネント
+function ProductBadge({ product, productCategory, className, ...props }: ProductBadgeProps) {
+  // 製品カテゴリに基づいて色を決定
+  // カテゴリが指定されていない場合はデフォルト色を使用
+  const colorKey = productCategory || 'その他';
+  const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+  
+  return (
+    <div 
+      className={cn(
+        "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold",
+        className
+      )}
+      style={{ 
+        backgroundColor: colors.bg,
+        color: colors.text,
+        border: `1px solid ${colors.border}`
+      }}
+      {...props}
+    >
+      {product}
+    </div>
+  )
+}
+
 // アカウントタイプバッジのプロパティ
 export interface AccountTypeBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   accountType: string;
@@ -115,4 +146,4 @@ function AccountTypeBadge({ accountType, className, ...props }: AccountTypeBadge
   )
 }
 
-export { Badge, HashtagBadge, GenreBadge, AccountTypeBadge, badgeVariants }
+export { Badge, HashtagBadge, GenreBadge, ProductBadge, AccountTypeBadge, badgeVariants }

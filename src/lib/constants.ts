@@ -28,6 +28,7 @@ export const GENRE_COLORS = {
   '除毛/脱毛': { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0' },
   
   // 医療・健康系（青系）
+  '健康食品': { bg: '#EFFCFC', text: '#0D9488', border: '#A5F3FC' },
   '花粉症': { bg: '#F0F9FF', text: '#0284C7', border: '#BAE6FD' },
   'ホワイトニング/口臭': { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE' },
   'ワキガ/汗': { bg: '#EEF2FF', text: '#4F46E5', border: '#C7D2FE' },
@@ -46,7 +47,7 @@ export const GENRE_COLORS = {
 // アカウントタイプごとのカラー定義
 export const ACCOUNT_TYPE_COLORS = {
   // グループ1: アフィリエイト（赤系）
-  'affi': { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
+  'アフィリエイト': { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
   
   // グループ2: エンターテイメント・コンテンツ（オレンジ系）
   'エンタメ・おもしろ': { bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' },

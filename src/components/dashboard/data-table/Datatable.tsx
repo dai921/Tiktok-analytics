@@ -1,6 +1,6 @@
 // src/components/dashboard/data-table/DataTable.tsx
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo, useCallback } from 'react';
-import type { VideoData, FilterQuery } from '@/types/dashboard';
+import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard';
 import { Pagination } from '../pagination';
 import { TextPopup } from '@/components/ui/text-popup';
 import { FilterPopup } from '@/components/ui/filter-popup';
@@ -15,6 +15,8 @@ import { useFilterLogic } from './filter-logic';
 import { useSortLogic } from './sort-logic';
 import { useColumnDnd } from './column-dnd';
 import { useColumnVisibility } from './column-visibility';
+import { useProductCategories } from '@/hooks/useProductCategories';
+import { TableContext } from './cell-renderers';
 
 // EXCLUDED_COLUMNS をここで定義
 const EXCLUDED_COLUMNS = ['description'];
@@ -170,13 +172,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // カラム定義を取得
     const columns = useMemo(() => {
-      console.log('[DEBUG-LOOP] DataTable - columns useMemo が再計算されました:', {
-        primarySortField: primarySort?.field,
-        secondarySortField: secondarySort?.field,
-        filtersCount: Object.keys(columnFilters).length,
-        timestamp: new Date().toISOString(),
-      });
-      return createColumns(
+      const createdColumns = createColumns(
         columnFilters,
         primarySort,
         secondarySort,
@@ -186,6 +182,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         sortField,
         sortDirection
       );
+      
+      // ソート情報を表示
+      console.log('[SORT-DEBUG] DataTable - 生成されたカラム:', {
+        columns: createdColumns.map(col => ({
+          accessorKey: col.accessorKey,
+          hasSortInfo: col.header?.toString().includes('sortDirection')
+        }))
+      });
+      
+      return createdColumns;
     }, [
       columnFilters, 
       primarySort, 
@@ -301,6 +307,55 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       });
     }, [primarySort, secondarySort, sortField, sortDirection]);
     
+    // フィルターのバルク変更ハンドラーにデバッグログを追加
+    const handleDebugBulkFilterChange = (filters: Record<string, FilterValue>) => {
+      console.log('[SORT-DEBUG] DataTable - バルクフィルター変更受信:', filters);
+      
+      // ソート関連のフィルターを特に詳しくログ
+      const sortFilters = Object.entries(filters).filter(([key, value]) => 
+        value.type === 'sort' || key.startsWith('sort_')
+      );
+      
+      if (sortFilters.length > 0) {
+        console.log('[SORT-DEBUG] DataTable - ソートフィルター検出数:', sortFilters.length);
+        
+        sortFilters.forEach(([key, value]) => {
+          console.log('[SORT-DEBUG] DataTable - ソートフィルター詳細:', {
+            key,
+            field: value.field,
+            sortField: value.sortField,
+            direction: value.value,
+            isPrimarySort: value.isPrimarySort,
+            active: value.active,
+            type: value.type,
+            keyStartsWithSort: key.startsWith('sort_')
+          });
+        });
+      } else {
+        console.log('[SORT-DEBUG] DataTable - ソートフィルターなし');
+      }
+      
+      // 元のハンドラーを呼び出し
+      handleBulkFilterChange(filters);
+      
+      // ソート状態が正しく更新されたか確認
+      console.log('[SORT-DEBUG] DataTable - フィルター適用後のソート状態:', {
+        primarySort,
+        secondarySort,
+        sortField,
+        sortDirection
+      });
+    };
+
+    // 製品カテゴリを取得
+    const { productCategories, loading: loadingProductCategories } = useProductCategories();
+    
+    useEffect(() => {
+      if (!loadingProductCategories) {
+        console.log('[DEBUG-PRODUCTS] 製品カテゴリマッピング取得完了', productCategories);
+      }
+    }, [loadingProductCategories, productCategories]);
+
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -358,11 +413,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           isOpen={isFilterPopupOpen}
           onClose={() => setFilterPopupOpenState(false)}
           anchorRef={filterButtonRef}
-          onFilterChange={handleBulkFilterChange}
+          onFilterChange={handleDebugBulkFilterChange}
           currentFilters={columnFilters}
           categories={categoryList}
           accounts={accountList}
           hashtags={hashtagList}
+          products={[]}
           isLoading={isLoadingFilterOptions}
           onClearAll={handleClearFilterInputs}
         />
@@ -377,19 +433,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           onColumnVisibilityChange={handleColumnVisibilityChange}
         />
         
-        {/* デバッグ情報表示 */}
-        <div className="bg-gray-100 px-2 py-1 text-xs">
-          <details>
-            <summary className="cursor-pointer">デバッグ情報: フィルター状態</summary>
-            <pre className="text-[10px] overflow-auto max-h-[100px]">
-              {JSON.stringify({
-                フィルター: columnFilters,
-                views_active: columnFilters['views']?.active,
-                views_isActive: Boolean(columnFilters['views']?.active)
-              }, null, 2)}
-            </pre>
-          </details>
-        </div>
         
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
@@ -399,101 +442,128 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <DndContextProvider>
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <SortableContextProvider>
-                        {filteredColumns.map((column, index) => (
-                          <SortableHeaderCell
-                            key={column.accessorKey}
-                            column={column}
-                            index={index}
-                          />
+              <TableContext.Provider value={{ 
+                setSelectedText, 
+                productCategories 
+              }}>
+                <table className="min-w-full divide-y divide-gray-200">
+                  <DndContextProvider>
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <SortableContextProvider>
+                          {filteredColumns.map((column, index) => {
+                            // 再生数カラムの場合、特別に詳細なログを出力
+                            if (column.accessorKey === 'views') {
+                              console.log('[SORT-DEBUG] DataTable - 再生数カラムの詳細:', {
+                                column,
+                                primarySort,
+                                secondarySort,
+                                sortDirection,
+                                timestamp: new Date().toISOString()
+                              });
+                            }
+                            
+                            return (
+                              <SortableHeaderCell
+                                key={column.accessorKey}
+                                column={column}
+                                index={index}
+                              />
+                            );
+                          })}
+                        </SortableContextProvider>
+                      </tr>
+                    </thead>
+                  </DndContextProvider>
+                  <tbody>
+                    {data.map((row: VideoData, rowIndex: number) => (
+                      <tr 
+                        key={`row-${row.id || rowIndex}`}
+                        className="border-b hover:bg-gray-50 transition-colors duration-150 h-[100px]"
+                      >
+                        {filteredColumns.map((column, colIndex) => (
+                          <td 
+                            key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
+                            className={`px-2 py-1 bg-white ${
+                              ['views', 'viewsIncrease', 'likes', 'comments'].includes(String(column.accessorKey)) 
+                                ? 'font-medium' 
+                                : ''
+                            }`}
+                            style={{ 
+                              width: column.accessorKey === 'thumbnail_url' ? '160px' :
+                                    column.accessorKey === 'category' ? '160px' :
+                                    column.accessorKey === 'createdAt' ? '80px' : 
+                                    column.accessorKey === 'account_name' ? '120px' :
+                                    column.accessorKey === 'audioTitle' ? '120px' :
+                                    column.accessorKey === 'description' ? '150px' :
+                                    column.accessorKey === 'url' ? '70px' :
+                                    column.accessorKey === 'views' ? '100px' :
+                                    column.accessorKey === 'viewsIncrease' ? '100px' :
+                                    column.accessorKey === 'likes' ? '100px' :
+                                    column.accessorKey === 'comments' ? '100px' :
+                                    column.accessorKey === 'product' ? '120px' :
+                                    column.accessorKey === 'account_type' ? '120px' :
+                                    column.accessorKey === 'hashtags' ? '120px' :
+                                    column.accessorKey === 'ten_days_increase' ? '120px' :
+                                    column.accessorKey === 'likes_count_increase' ? '120px' :
+                                    column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                    column.accessorKey === 'comment_count_increase' ? '120px' :
+                                    column.accessorKey === 'ten_days_comment_increase' ? '140px' :
+                                    column.accessorKey === 'save_count' ? '100px' :
+                                    column.accessorKey === 'save_count_increase' ? '120px' :
+                                    column.accessorKey === 'ten_days_save_increase' ? '140px' : undefined,
+                              minWidth: column.accessorKey === 'thumbnail_url' ? '160px' :
+                                       column.accessorKey === 'category' ? '160px' :
+                                       column.accessorKey === 'createdAt' ? '80px' : 
+                                       column.accessorKey === 'views' ? '100px' :
+                                       column.accessorKey === 'viewsIncrease' ? '100px' :
+                                       column.accessorKey === 'likes' ? '100px' :
+                                       column.accessorKey === 'comments' ? '100px' :
+                                       column.accessorKey === 'product' ? '120px' :
+                                       column.accessorKey === 'account_type' ? '120px' :
+                                       column.accessorKey === 'hashtags' ? '120px' :
+                                       column.accessorKey === 'ten_days_increase' ? '120px' :
+                                       column.accessorKey === 'likes_count_increase' ? '120px' :
+                                       column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                       column.accessorKey === 'comment_count_increase' ? '120px' :
+                                       column.accessorKey === 'ten_days_comment_increase' ? '140px' :
+                                       column.accessorKey === 'save_count' ? '100px' :
+                                       column.accessorKey === 'save_count_increase' ? '120px' :
+                                       column.accessorKey === 'ten_days_save_increase' ? '140px' : undefined,
+                              maxWidth: column.accessorKey === 'thumbnail_url' ? '160px' :
+                                       column.accessorKey === 'category' ? '160px' :
+                                       column.accessorKey === 'createdAt' ? '80px' : 
+                                       column.accessorKey === 'views' ? '100px' :
+                                       column.accessorKey === 'viewsIncrease' ? '100px' :
+                                       column.accessorKey === 'likes' ? '100px' :
+                                       column.accessorKey === 'comments' ? '100px' :
+                                       column.accessorKey === 'product' ? '120px' :
+                                       column.accessorKey === 'account_type' ? '120px' :
+                                       column.accessorKey === 'hashtags' ? '120px' :
+                                       column.accessorKey === 'ten_days_increase' ? '120px' :
+                                       column.accessorKey === 'likes_count_increase' ? '120px' :
+                                       column.accessorKey === 'ten_days_likes_increase' ? '140px' :
+                                       column.accessorKey === 'comment_count_increase' ? '120px' :
+                                       column.accessorKey === 'ten_days_comment_increase' ? '140px' :
+                                       column.accessorKey === 'save_count' ? '100px' :
+                                       column.accessorKey === 'save_count_increase' ? '120px' :
+                                       column.accessorKey === 'ten_days_save_increase' ? '140px' : undefined,
+                              overflow: 'hidden'
+                            }}
+                          >
+                            {column.cell 
+                              ? column.cell({ row }) 
+                              : typeof row[column.accessorKey] === 'object'
+                                ? JSON.stringify(row[column.accessorKey])
+                                : String(row[column.accessorKey])
+                            }
+                          </td>
                         ))}
-                      </SortableContextProvider>
-                    </tr>
-                  </thead>
-                </DndContextProvider>
-                <tbody>
-                  {data.map((row: VideoData, rowIndex: number) => (
-                    <tr 
-                      key={`row-${row.id || rowIndex}`}
-                      className="border-b hover:bg-gray-50 transition-colors duration-150 h-[100px]"
-                    >
-                      {filteredColumns.map((column, colIndex) => (
-                        <td 
-                          key={`cell-${rowIndex + 1}-${column.accessorKey || colIndex}`}
-                          className={`px-2 py-1 bg-white ${
-                            ['views', 'viewsIncrease', 'likes', 'comments'].includes(String(column.accessorKey)) 
-                              ? 'font-medium' 
-                              : ''
-                          }`}
-                          style={{ 
-                            width: column.accessorKey === 'thumbnail_url' ? '160px' :
-                                  column.accessorKey === 'category' ? '160px' :
-                                  column.accessorKey === 'createdAt' ? '80px' : 
-                                  column.accessorKey === 'account_name' ? '120px' :
-                                  column.accessorKey === 'audioTitle' ? '120px' :
-                                  column.accessorKey === 'description' ? '150px' :
-                                  column.accessorKey === 'url' ? '70px' :
-                                  column.accessorKey === 'views' ? '100px' :
-                                  column.accessorKey === 'viewsIncrease' ? '100px' :
-                                  column.accessorKey === 'likes' ? '100px' :
-                                  column.accessorKey === 'comments' ? '100px' :
-                                  column.accessorKey === 'product' ? '120px' :
-                                  column.accessorKey === 'account_type' ? '120px' :
-                                  column.accessorKey === 'hashtags' ? '120px' :
-                                  column.accessorKey === 'ten_days_increase' ? '120px' :
-                                  column.accessorKey === 'likes_count_increase' ? '120px' :
-                                  column.accessorKey === 'ten_days_likes_increase' ? '140px' :
-                                  column.accessorKey === 'comment_count_increase' ? '120px' :
-                                  column.accessorKey === 'ten_days_comment_increase' ? '140px' : undefined,
-                            minWidth: column.accessorKey === 'thumbnail_url' ? '160px' :
-                                     column.accessorKey === 'category' ? '160px' :
-                                     column.accessorKey === 'createdAt' ? '80px' : 
-                                     column.accessorKey === 'views' ? '100px' :
-                                     column.accessorKey === 'viewsIncrease' ? '100px' :
-                                     column.accessorKey === 'likes' ? '100px' :
-                                     column.accessorKey === 'comments' ? '100px' :
-                                     column.accessorKey === 'product' ? '120px' :
-                                     column.accessorKey === 'account_type' ? '120px' :
-                                     column.accessorKey === 'hashtags' ? '120px' :
-                                     column.accessorKey === 'ten_days_increase' ? '120px' :
-                                     column.accessorKey === 'likes_count_increase' ? '120px' :
-                                     column.accessorKey === 'ten_days_likes_increase' ? '140px' :
-                                     column.accessorKey === 'comment_count_increase' ? '120px' :
-                                     column.accessorKey === 'ten_days_comment_increase' ? '140px' : undefined,
-                            maxWidth: column.accessorKey === 'thumbnail_url' ? '160px' :
-                                     column.accessorKey === 'category' ? '160px' :
-                                     column.accessorKey === 'createdAt' ? '80px' : 
-                                     column.accessorKey === 'views' ? '100px' :
-                                     column.accessorKey === 'viewsIncrease' ? '100px' :
-                                     column.accessorKey === 'likes' ? '100px' :
-                                     column.accessorKey === 'comments' ? '100px' :
-                                     column.accessorKey === 'product' ? '120px' :
-                                     column.accessorKey === 'account_type' ? '120px' :
-                                     column.accessorKey === 'hashtags' ? '120px' :
-                                     column.accessorKey === 'ten_days_increase' ? '120px' :
-                                     column.accessorKey === 'likes_count_increase' ? '120px' :
-                                     column.accessorKey === 'ten_days_likes_increase' ? '140px' :
-                                     column.accessorKey === 'comment_count_increase' ? '120px' :
-                                     column.accessorKey === 'ten_days_comment_increase' ? '140px' : undefined,
-                            overflow: 'hidden'
-                          }}
-                        >
-                          {column.cell 
-                            ? column.cell({ row }) 
-                            : typeof row[column.accessorKey] === 'object'
-                              ? JSON.stringify(row[column.accessorKey])
-                              : String(row[column.accessorKey])
-                          }
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableContext.Provider>
             </div>
           </div>
           

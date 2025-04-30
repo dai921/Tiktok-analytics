@@ -36,6 +36,29 @@ export const createColumns = (
       cell: ({ row }) => cellRenderers.renderThumbnailCell(row)
     },
 
+      // アカウントタイプカラム
+      {
+        accessorKey: 'account_type',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウントジャンル"
+            type="text"
+            onFilter={(value) => handleFilter('account_type')(value)}
+            isActive={Boolean(columnFilters['account_type']?.active)}
+            categoryData={getFilteredOptions('アカウントジャンル')}
+            sortDirection={
+              primarySort?.field === 'account_type' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'account_type' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderAccountTypeCell(row)  
+      },
+
     // 動画ジャンルカラム
     {
       accessorKey: 'category',
@@ -121,51 +144,72 @@ export const createColumns = (
         cell: ({ row }) => cellRenderers.renderDateCell(row)
       },
 
-    // アカウントタイプカラム
-    {
-        accessorKey: 'account_type',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="アカウントジャンル"
-            type="text"
-            onFilter={(value) => handleFilter('account_type')(value)}
-            isActive={Boolean(columnFilters['account_type']?.active)}
-            categoryData={getFilteredOptions('アカウントジャンル')}
-            sortDirection={
-              primarySort?.field === 'account_type' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'account_type' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => cellRenderers.renderAccountTypeCell(row)  
-      },
     // 再生数カラム
     {
         accessorKey: 'views',
         header: ({ column }) => {        
-        // columnFiltersを直接確認（デバッグ用）
+        // ソート状態のデバッグログを追加
         if (DEBUG) {
-          console.log('[Views] 現在のcolumnFilters:', columnFilters);
-          console.log('[Views] views filterのactive値:', columnFilters['views']?.active);
-          
-          // すべてのフィルターのactiveプロパティをログ出力
-          console.log('[Views] 全フィルターのactive状態:', 
-              Object.entries(columnFilters).map(([key, filter]) => ({
-              key,
-              active: filter.active,
-              hasActiveProperty: 'active' in filter
-              }))
-          );
+          console.log('[SORT-RENDER-DEBUG] 再生数カラムのソート情報:', {
+            primarySort,
+            secondarySort,
+            isViewsActivePrimary: primarySort?.field === 'views',
+            isPlayCountActivePrimary: primarySort?.field === 'play_count',
+            isPrimarySortActive: primarySort?.field === 'views' || primarySort?.field === 'play_count',
+            isSecondarySortActive: secondarySort?.field === 'views' || secondarySort?.field === 'play_count',
+            sortDirection: primarySort?.field === 'views' || primarySort?.field === 'play_count' 
+              ? primarySort.direction 
+              : secondarySort?.field === 'views' || secondarySort?.field === 'play_count'
+                ? secondarySort.direction
+                : null,
+            sortField,
+            allCurrentFilters: columnFilters,
+            viewsFilterValue: columnFilters['views'],
+            viewsSortActive: columnFilters['views_sort']?.active || false
+          });
         }
         
-        const isActive = Boolean(columnFilters['views']?.active);
-        if (DEBUG) {
-          console.log('[Views] 最終的なisActive値:', isActive);
+        // ソート状態の判定を明示的に行う
+        const isActiveSort = 
+          primarySort?.field === 'views' || 
+          primarySort?.field === 'play_count' ||
+          secondarySort?.field === 'views' || 
+          secondarySort?.field === 'play_count' ||
+          columnFilters['sort_views']?.active ||
+          sortField === 'views';
+          
+        // 使用するソート方向の決定
+        let effectiveSortDirection: 'asc' | 'desc' | null = null;
+        
+        if (primarySort?.field === 'views' || primarySort?.field === 'play_count') {
+          effectiveSortDirection = primarySort.direction;
+          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - プライマリソートからの方向:', primarySort.direction);
+        } else if (secondarySort?.field === 'views' || secondarySort?.field === 'play_count') {
+          effectiveSortDirection = secondarySort.direction;
+          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - セカンダリソートからの方向:', secondarySort.direction);
+        } else if (columnFilters['sort_views']?.value) {
+          effectiveSortDirection = columnFilters['sort_views'].value as 'asc' | 'desc';
+          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - columnFiltersからの方向:', effectiveSortDirection);
+        } else if (sortField === 'views' && sortDirection) {
+          effectiveSortDirection = sortDirection;
+          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - 従来のsortField/Directionからの方向:', sortDirection);
         }
+        
+        // 最終的に使用するソート情報
+        console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - 最終的なソート状態:', {
+          isActiveSort,
+          effectiveSortDirection,
+          primarySortField: primarySort?.field,
+          secondarySortField: secondarySort?.field,
+          timestamp: new Date().toISOString()
+        });
+        
+        // ソート優先度の決定
+        const sortPriorityValue = primarySort?.field === 'views' || primarySort?.field === 'play_count' 
+          ? 1 
+          : secondarySort?.field === 'views' || secondarySort?.field === 'play_count' 
+            ? 2 
+            : null;
         
         return (
             <TableHeaderCell
@@ -173,15 +217,9 @@ export const createColumns = (
             type="number"
             align="right"
             onFilter={(value) => handleFilter('views')(value)}
-            isActive={isActive}
-            sortDirection={
-                primarySort?.field === 'views' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'views' 
-                    ? secondarySort.direction 
-                    : null
-            }
-            sortPriority={primarySort?.field === 'views' ? 1 : secondarySort?.field === 'views' ? 2 : null}
+            isActive={Boolean(columnFilters['views']?.active) || isActiveSort}
+            sortDirection={effectiveSortDirection}
+            sortPriority={sortPriorityValue}
             />
         );
         },
@@ -191,23 +229,46 @@ export const createColumns = (
     // 再生増加数カラム
     {
         accessorKey: 'viewsIncrease',
-        header: ({ column }) => (
+        header: ({ column }) => {
+          // ソート状態のデバッグログを追加
+          console.log('[SORT-RENDER-DEBUG] 再生増加数カラムのソート情報:', {
+            primarySort,
+            secondarySort,
+            isViewsIncreaseActivePrimary: primarySort?.field === 'viewsIncrease',
+            isPlayCountIncreaseActivePrimary: primarySort?.field === 'play_count_increase',
+            isPrimarySortActive: primarySort?.field === 'viewsIncrease' || primarySort?.field === 'play_count_increase',
+            isSecondarySortActive: secondarySort?.field === 'viewsIncrease' || secondarySort?.field === 'play_count_increase',
+            allCurrentFilters: columnFilters,
+            viewsIncreaseFilterValue: columnFilters['viewsIncrease']
+          });
+          
+          const effectiveSortDirection = 
+            primarySort?.field === 'viewsIncrease' || primarySort?.field === 'play_count_increase'
+              ? primarySort.direction 
+              : secondarySort?.field === 'viewsIncrease' || secondarySort?.field === 'play_count_increase'
+                ? secondarySort.direction 
+                : null;
+          
+          console.log('[SORT-RENDER-DEBUG] 再生増加数カラム - 計算されたソート方向:', effectiveSortDirection);
+          
+          return (
             <TableHeaderCell
-            title="2日再生増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('viewsIncrease')(value)}
-            isActive={Boolean(columnFilters['viewsIncrease']?.active)}
-            sortDirection={
-                primarySort?.field === 'viewsIncrease' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'viewsIncrease' 
-                    ? secondarySort.direction 
+              title="2日再生増加数"
+              type="number"
+              align="right"
+              onFilter={(value) => handleFilter('viewsIncrease')(value)}
+              isActive={Boolean(columnFilters['viewsIncrease']?.active)}
+              sortDirection={effectiveSortDirection}
+              sortPriority={
+                primarySort?.field === 'viewsIncrease' || primarySort?.field === 'play_count_increase' 
+                  ? 1 
+                  : secondarySort?.field === 'viewsIncrease' || secondarySort?.field === 'play_count_increase' 
+                    ? 2 
                     : null
-            }
-            sortPriority={primarySort?.field === 'viewsIncrease' ? 1 : secondarySort?.field === 'viewsIncrease' ? 2 : null}
+              }
             />
-        ),
+          );
+        },
         cell: ({ row }) => cellRenderers.renderViewsIncreaseCell(row)
     },
 
@@ -370,6 +431,75 @@ export const createColumns = (
           />
         ),
         cell: ({ row }) => cellRenderers.renderTenDaysCommentCountIncreaseCell(row)
+      },
+
+      // 保存数カラム
+      {
+        accessorKey: 'save_count',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="保存数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('save_count')(value)}
+            isActive={Boolean(columnFilters['save_count']?.active)}
+            sortDirection={
+              primarySort?.field === 'save_count' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'save_count' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'save_count' ? 1 : secondarySort?.field === 'save_count' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderSaveCountCell(row)
+      },
+
+      // 保存増加数カラム
+      {
+        accessorKey: 'save_count_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="2日保存増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('save_count_increase')(value)}
+            isActive={Boolean(columnFilters['save_count_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'save_count_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'save_count_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'save_count_increase' ? 1 : secondarySort?.field === 'save_count_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderSaveCountIncreaseCell(row)
+      },
+
+      // 10日間保存増加数カラム
+      {
+        accessorKey: 'ten_days_save_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日保存増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('ten_days_save_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_save_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'ten_days_save_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_save_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_save_increase' ? 1 : secondarySort?.field === 'ten_days_save_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderTenDaysSaveIncreaseCell(row)
       },
 
       // アカウント名カラム

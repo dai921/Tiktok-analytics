@@ -71,6 +71,9 @@ export interface VideoData {
   ten_days_likes_increase: number
   comment_count_increase: number
   ten_days_comment_increase: number
+  save_count: number
+  save_count_increase: number
+  ten_days_save_increase: number
 }
 
 // 数値フォーマット用の型定義を追加
@@ -84,6 +87,9 @@ export type NumberFormatType =
   | 'comment_count_increase'
   | 'ten_days_comment_increase'
   | 'ten_days_increase'
+  | 'saves'
+  | 'save_count_increase'
+  | 'ten_days_save_increase'
 
 // テーブル関連の型
 export interface Column {

@@ -1,6 +1,45 @@
 import { useState, useCallback } from 'react';
 import { FilterValue, FilterQuery } from '@/types/dashboard';
 
+// APIとUIのフィールド名の対応をマッピングする関数
+function mapFieldNameToApi(uiFieldName: string): string {
+  // UI表示用の名前からAPIで使用するフィールド名への変換
+  const fieldMapping: Record<string, string> = {
+    'views': 'play_count',
+    'viewsIncrease': 'play_count_increase',
+    'likes': 'like_count',
+    'comments': 'comment_count',
+    'likes_count_increase': 'like_count_increase',
+    'ten_days_likes_increase': 'ten_days_like_increase',
+    'comment_count_increase': 'comment_count_increase',
+    'ten_days_comment_increase': 'ten_days_comment_increase'
+    // 他のフィールドのマッピングをここに追加
+  };
+  
+  return fieldMapping[uiFieldName] || uiFieldName;
+}
+
+// APIのフィールド名からUI表示用の名前に変換する逆マッピング関数
+function mapApiFieldNameToUi(apiFieldName: string): string {
+  // APIフィールド名からUI表示用の名前への変換
+  const reverseFieldMapping: Record<string, string> = {
+    'play_count': 'views',
+    'play_count_increase': 'viewsIncrease',
+    'like_count': 'likes',
+    'comment_count': 'comments',
+    'like_count_increase': 'likes_count_increase',
+    'ten_days_like_increase': 'ten_days_likes_increase'
+    // 他のフィールドの逆マッピングをここに追加
+  };
+  
+  return reverseFieldMapping[apiFieldName] || apiFieldName;
+}
+
+// 型ガード関数をコンポーネント外に配置
+function isSortConfig(obj: any): obj is { field: string; direction: 'asc' | 'desc' } {
+  return obj !== null && typeof obj === 'object' && 'field' in obj && 'direction' in obj;
+}
+
 export interface FilterState {
   hasActiveFilters: boolean;
   columnFilters: Record<string, FilterValue>;
@@ -182,32 +221,34 @@ export function useFilterLogic(
 
   // handleBulkFilterChange関数 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
   const handleBulkFilterChange = useCallback((filters: Record<string, FilterValue>) => {
-    console.log('[DataTable] 一括フィルター変更 - 受け取ったフィルター:', filters);
-    console.log('[DataTable] 一括フィルター変更 - フィルターのactive状態:', Object.entries(filters).map(([key, value]) => {
-      return {
-        key,
+    console.log('[SORT-DEBUG] DataTable - 一括フィルター変更受信:', 
+      Object.entries(filters).map(([key, value]) => ({
+        key, 
+        type: value.type, 
         active: value.active,
-        type: value.type,
+        isSort: value.type === 'sort',
+        isPrimarySort: value.isPrimarySort,
         field: value.field
-      };
-    }));
-    
-    // 受け取ったフィルターのactiveプロパティをより詳細にチェック
-    console.log('[DataTable] 受け取ったフィルターのactive詳細:',
-      Object.entries(filters).map(([key, value]) => {
-        return {
-          key,
-          hasActiveProperty: 'active' in value,
-          activeValue: value.active,
-          activeType: typeof value.active,
-          valueJSON: JSON.stringify(value)
-        };
-      })
+      }))
     );
+    
+    // ソート関連のフィルターを特に詳しくログ
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value.type === 'sort') {
+        console.log('[SORT-DEBUG] DataTable - ソートフィルター詳細:', {
+          key,
+          field: value.field,
+          sortField: value.sortField,
+          direction: value.value,
+          isPrimarySort: value.isPrimarySort,
+          active: value.active
+        });
+      }
+    });
     
     // 明示的なリセット信号をチェック
     if (filters.reset && filters.reset.type === 'clear') {
-      console.log('[DataTable] 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
+      console.log('[SORT-DEBUG] DataTable - 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
       
       // 状態をリセット
       setColumnFilters({});
@@ -223,15 +264,12 @@ export function useFilterLogic(
       
       // フィルターポップアップを閉じる
       setIsFilterPopupOpen(false);
-      
-      // 強制的に再レンダリングを発生させる
-      // setForceUpdate(prev => prev + 1);
       return;
     }
     
     // ソート処理のための変数
-    let newPrimarySort = sortState.primarySort;
-    let newSecondarySort = sortState.secondarySort;
+    let newPrimarySort: { field: string; direction: 'asc' | 'desc' } | null = null;
+    let newSecondarySort: { field: string; direction: 'asc' | 'desc' } | null = null;
     let sortUpdated = false;
     
     // フィルター情報を処理
@@ -240,62 +278,197 @@ export function useFilterLogic(
     // ソート関連のフラグ - ソート関連のキーがあるかどうかを確認
     const hasSortKeys = Object.keys(filters).some(key => key.startsWith('sort_'));
     
-    // ソート情報が含まれているが、primary/secondaryソートがない場合は解除されたと判断
-    if (hasSortKeys && !Object.values(filters).some(filter => filter.type === 'sort')) {
-      console.log('[DataTable] ソート情報が解除されました');
-      newPrimarySort = null;
-      newSecondarySort = null;
-      sortState.setSortField(null);
-      sortState.setSortDirection(null);
-      sortUpdated = true;
-    } else {
-      // フィルターを処理し、ソート情報とフィルター情報を分離
-      Object.entries(filters).forEach(([key, filter]) => {
-        // ソート情報の処理
-        if (key.startsWith('sort_') && filter.type === 'sort') {
-          sortUpdated = true;
-          // キーから純粋なフィールド名を取得（sort_PREFIX_を削除）
-          const fieldName = key.replace(/^sort_/, '').replace(/_primary$/, '').replace(/_secondary$/, '');
-          
-          if (filter.isPrimarySort) {
-            // 第一ソートの設定
-            newPrimarySort = {
-              field: fieldName,
-              direction: filter.value as 'asc' | 'desc'
-            };
-            
-            // 後方互換性のために従来の状態も更新
-            sortState.setSortField(fieldName);
-            sortState.setSortDirection(filter.value as 'asc' | 'desc');
-          } else {
-            // 第二ソートの設定
-            newSecondarySort = {
-              field: fieldName,
-              direction: filter.value as 'asc' | 'desc'
-            };
-          }
-        } else {
-          // 通常のフィルター情報 - active プロパティを明示的に保持
-          normalFilters[key] = {
-            ...filter,
-            active: filter.active === undefined ? true : filter.active // activeが設定されていない場合はtrueをデフォルト値とする
-          };
-          console.log(`[DataTable] フィルター処理 - ${key}: active=${filter.active === undefined ? true : filter.active} を設定（元の値: ${filter.active}）`);
-        }
+    // 明示的なソートキーログ
+    if (hasSortKeys) {
+      const sortKeys = Object.keys(filters).filter(key => key.startsWith('sort_'));
+      console.log('[SORT-DEBUG] DataTable - ソートキー検出:', {
+        sortKeys,
+        values: sortKeys.map(key => ({
+          key,
+          value: filters[key].value,
+          field: filters[key].field || key.replace(/^sort_/, ''),
+          type: filters[key].type
+        }))
       });
     }
     
+    // フィルターを処理し、ソート情報とフィルター情報を分離
+    Object.entries(filters).forEach(([key, filter]) => {
+      // ソート情報の処理
+      if (filter.type === 'sort' || key.startsWith('sort_')) {
+        sortUpdated = true;
+        // キーからフィールド名を取得 - sort_prefix対応
+        const fieldName = filter.field || filter.sortField || (key.startsWith('sort_') ? key.replace(/^sort_/, '') : key);
+        
+        // フィールド名のマッピングを行う
+        const apiFieldName = mapFieldNameToApi(fieldName);
+        
+        console.log('[SORT-DEBUG] DataTable - ソート情報抽出:', {
+          key,
+          uiFieldName: fieldName,
+          apiFieldName,
+          isPrimarySort: filter.isPrimarySort,
+          direction: filter.value,
+          filterType: filter.type,
+          hasSortPrefix: key.startsWith('sort_')
+        });
+        
+        // ソート方向を取得
+        const direction = (filter.value as 'asc' | 'desc') || 'desc';
+        
+        if (filter.isPrimarySort || !newPrimarySort) {
+          // 第一ソートの設定
+          newPrimarySort = {
+            field: fieldName, // UI表示用にはオリジナルのフィールド名を保持
+            direction: direction
+          };
+          
+          // 後方互換性のために従来の状態も更新
+          sortState.setSortField(fieldName);
+          sortState.setSortDirection(direction);
+          
+          console.log('[SORT-DEBUG] DataTable - 第一ソート設定:', {
+            field: fieldName,
+            direction: direction,
+            source: filter.isPrimarySort ? 'isPrimarySort' : 'first detected',
+            timestamp: new Date().toISOString()
+          });
+        } else if (!newSecondarySort) {
+          // 第二ソートの設定（まだ設定されていない場合のみ）
+          newSecondarySort = {
+            field: fieldName, // UI表示用にはオリジナルのフィールド名を保持
+            direction: direction
+          };
+          
+          console.log('[SORT-DEBUG] DataTable - 第二ソート設定:', {
+            field: fieldName,
+            direction: direction,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        // 通常のフィルター情報 - active プロパティを明示的に保持
+        normalFilters[key] = {
+          ...filter,
+          active: filter.active === undefined ? true : filter.active // activeが設定されていない場合はtrueをデフォルト値とする
+        };
+      }
+    });
+    
     // ソート情報を更新
     if (sortUpdated) {
-      sortState.setPrimarySort(newPrimarySort);
-      sortState.setSecondarySort(newSecondarySort);
+      console.log('[SORT-DEBUG] DataTable - ソート状態更新:', {
+        primarySort: newPrimarySort,
+        secondarySort: newSecondarySort,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 必ず正しいオブジェクトを渡す
+      if (newPrimarySort) {
+        sortState.setPrimarySort(newPrimarySort);
+      }
+      
+      if (newSecondarySort) {
+        sortState.setSecondarySort(newSecondarySort);
+      } else if (!newSecondarySort && sortState.secondarySort) {
+        // セカンダリソートがなくなった場合、明示的にクリア
+        sortState.setSecondarySort(null);
+      }
+    } else if (hasSortKeys && !sortUpdated) {
+      // sort_プレフィックスのキーがあるのにソート情報が処理されなかった場合の追加対応
+      console.log('[SORT-DEBUG] DataTable - sort_プレフィックスキーがあるがソート情報が処理されませんでした。再処理を試みます。');
+      
+      // 明示的にsort_プレフィックスを持つキーを探してソート情報を処理
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (key.startsWith('sort_')) {
+          // キーから実際のフィールド名を抽出
+          const fieldName = key.replace(/^sort_/, '');
+          
+          // ソート方向を取得
+          const direction = filter.value as 'asc' | 'desc' || 'desc';
+          
+          // プライマリソートとして処理
+          if (!newPrimarySort) {
+            newPrimarySort = {
+              field: fieldName,
+              direction
+            };
+            
+            sortState.setSortField(fieldName);
+            sortState.setSortDirection(direction);
+            
+            console.log('[SORT-DEBUG] DataTable - プレフィックスから第一ソート検出:', {
+              field: fieldName,
+              direction,
+              timestamp: new Date().toISOString()
+            });
+          } else if (!newSecondarySort) {
+            // セカンダリソートとして処理
+            newSecondarySort = {
+              field: fieldName,
+              direction
+            };
+            
+            console.log('[SORT-DEBUG] DataTable - プレフィックスから第二ソート検出:', {
+              field: fieldName,
+              direction,
+              timestamp: new Date().toISOString()
+            });
+          }
+          
+          sortUpdated = true;
+        }
+      });
+      
+      if (sortUpdated) {
+        if (newPrimarySort) {
+          sortState.setPrimarySort(newPrimarySort);
+        }
+        
+        if (newSecondarySort) {
+          sortState.setSecondarySort(newSecondarySort);
+        }
+      }
     }
     
+    // newPrimarySort と newSecondarySort が有効な場合のみアクセス
+    const primarySortConfig = isSortConfig(newPrimarySort) ? {
+      [`sort_${(newPrimarySort as any).field}`]: {
+        field: (newPrimarySort as any).field,
+        type: 'sort' as const,
+        value: (newPrimarySort as any).direction,
+        isPrimarySort: true,
+        sortField: (newPrimarySort as any).field,
+        active: true
+      }
+    } : {};
+
+    const secondarySortConfig = isSortConfig(newSecondarySort) ? {
+      [`sort_${(newSecondarySort as any).field}`]: {
+        field: (newSecondarySort as any).field,
+        type: 'sort' as const,
+        value: (newSecondarySort as any).direction,
+        isPrimarySort: false,
+        sortField: (newSecondarySort as any).field,
+        active: true
+      }
+    } : {};
+
     // フィルター情報を設定
-    setColumnFilters(normalFilters);
+    setColumnFilters({
+      ...normalFilters,
+      ...primarySortConfig,
+      ...secondarySortConfig
+    });
     
-    // 現在のフィルターも更新（ソート情報は含めない）
-    setCurrentFilters(normalFilters);
+    // 現在のフィルターも更新（ソート情報も含める）
+    const newCurrentFilters = {
+      ...normalFilters,
+      ...primarySortConfig,
+      ...secondarySortConfig
+    };
+    
+    setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
     const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
@@ -306,46 +479,21 @@ export function useFilterLogic(
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
-      filters: {
-        ...normalFilters,
-        // ソート情報も追加
-        ...(newPrimarySort && {
-          [`sort_${newPrimarySort.field}`]: {
-            field: newPrimarySort.field,
-            type: 'sort',
-            value: newPrimarySort.direction,
-            isPrimarySort: true,
-            sortField: newPrimarySort.field,
-            active: true // ソート情報にもactiveを設定
-          }
-        }),
-        ...(newSecondarySort && {
-          [`sort_${newSecondarySort.field}`]: {
-            field: newSecondarySort.field,
-            type: 'sort',
-            value: newSecondarySort.direction,
-            isPrimarySort: false,
-            sortField: newSecondarySort.field,
-            active: true // ソート情報にもactiveを設定
-          }
-        }),
-        // ソートが解除された場合は明示的に解除信号を送る
-        ...(hasSortKeys && !newPrimarySort && {
-          'sort_clear': {
-            field: 'sort',
-            type: 'clear',
-            value: ''
-          }
-        })
-      }
+      filters: newCurrentFilters
     });
     
     // フィルターポップアップを閉じる
     setIsFilterPopupOpen(false);
     
-    // デバッグログ - forceUpdateの変更を確認
-    console.log('[DataTable] forceUpdate更新:', forceUpdate + 1);
-  }, [columnFilters, currentFilters, forceUpdate, onFilterChange, sortState]);
+    console.log('[SORT-DEBUG] DataTable - フィルター処理完了:', {
+      hasFilters,
+      normalFiltersCount: Object.keys(normalFilters).length,
+      columnFiltersWithSort: JSON.stringify({
+        ...normalFilters,
+        ...primarySortConfig
+      })
+    });
+  }, [onFilterChange, sortState]);
 
   return [
     { hasActiveFilters, columnFilters, currentFilters },

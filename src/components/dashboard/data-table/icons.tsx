@@ -65,6 +65,23 @@ export const CommentIcon = ({ size = 16 }: { size?: number }) => (
  </svg>
 );
   
+  // 保存アイコンを追加
+export const SaveIcon = ({ size = 16 }: { size?: number }) => (
+ <svg 
+     width={size} 
+     height={size} 
+     viewBox="0 0 24 24" 
+     fill="none" 
+     stroke="#F59E0B"
+     strokeWidth="2.5"
+     strokeLinecap="round" 
+     strokeLinejoin="round"
+     className="drop-shadow-sm"
+ >
+    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+ </svg>
+);
+  
   // 上矢印アイコンを追加
 export const UpArrowIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
  <svg 

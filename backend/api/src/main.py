@@ -121,6 +121,16 @@ async def get_videos(
     ten_days_comment_increase: Optional[int] = None,
     ten_days_comment_increase_type: Optional[str] = None,
     exact_hashtags: Optional[str] = None,
+    save_count: Optional[int] = None,
+    save_count_type: Optional[str] = None,
+    save_count_increase: Optional[int] = None,
+    save_count_increase_type: Optional[str] = None,
+    ten_days_save_increase: Optional[int] = None,
+    ten_days_save_increase_type: Optional[str] = None,
+    product: Optional[str] = None,  # 商品フィルターを追加
+    product_type: Optional[str] = None,  # 商品フィルターの比較演算子
+    account_type: Optional[str] = None,  # アカウントタイプフィルターを追加
+    account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
@@ -140,7 +150,8 @@ async def get_videos(
                 ten_days_increase, account_name, display_name, content_type, 
                 likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
                 comment_count_increase, ten_days_comment_increase, account_type,
-                hashtags, music_info, caption, category, product
+                hashtags, music_info, caption, category, product, save_count, 
+                save_count_increase, ten_days_save_increase
             FROM frontend_data
         """
         params = []
@@ -320,6 +331,40 @@ async def get_videos(
                 where_clauses.append("ten_days_comment_increase = %s")
                 params.append(ten_days_comment_increase)
 
+        # 保存数関連のフィルター条件
+        if save_count is not None:
+            if save_count_type == "greater":
+                where_clauses.append("save_count >= %s")
+                params.append(save_count)
+            elif save_count_type == "less":
+                where_clauses.append("save_count <= %s")
+                params.append(save_count)
+            else:
+                where_clauses.append("save_count = %s")
+                params.append(save_count)
+
+        if save_count_increase is not None:
+            if save_count_increase_type == "greater":
+                where_clauses.append("save_count_increase >= %s")
+                params.append(save_count_increase)
+            elif save_count_increase_type == "less":
+                where_clauses.append("save_count_increase <= %s")
+                params.append(save_count_increase)
+            else:
+                where_clauses.append("save_count_increase = %s")
+                params.append(save_count_increase)
+
+        if ten_days_save_increase is not None:
+            if ten_days_save_increase_type == "greater":
+                where_clauses.append("ten_days_save_increase >= %s")
+                params.append(ten_days_save_increase)
+            elif ten_days_save_increase_type == "less":
+                where_clauses.append("ten_days_save_increase <= %s")
+                params.append(ten_days_save_increase)
+            else:
+                where_clauses.append("ten_days_save_increase = %s")
+                params.append(ten_days_save_increase)
+
         # コンテンツタイプのフィルタリング
         if content_type:
             # カンマ区切りの場合は複数条件のORで処理
@@ -336,9 +381,43 @@ async def get_videos(
                 params.append(content_type)
                 print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
+        # 商品フィルターの処理を修正
+        if product:
+            # 商品名でフィルタリング
+            escaped_product = product.replace("_", r"\_").replace("%", r"\%")
+            # 商品名に対する部分一致検索
+            where_clauses.append("product LIKE %s")
+            params.append(f"%{escaped_product}%")
+        
+        # アカウントタイプフィルターの処理を追加（OR条件）
+        account_type_filters = []
+        account_type_params = []
+
+        # account_type_countパラメータがある場合は複数アカウントタイプ
+        if account_type_count and account_type_count.isdigit():
+            count = int(account_type_count)
+            for i in range(count):
+                account_param = request.query_params.get(f'account_type_{i}')
+                if account_param:
+                    escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
+                    account_type_filters.append("account_type LIKE %s")
+                    account_type_params.append(f"%{escaped_account}%")
+        
+        # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
+        if account_type_filters:
+            where_clauses.append(f"({' OR '.join(account_type_filters)})")
+            params.extend(account_type_params)
+        # 単一アカウントタイプ処理
+        elif account_type:
+            escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("account_type LIKE %s")
+            params.append(f"%{escaped_account_type}%")
+
         # フィルター条件のデバッグログ
         if play_count is not None:
             print(f"Applying play_count filter: {play_count} ({play_count_type})")
+        if save_count is not None:
+            print(f"Applying save_count filter: {save_count} ({save_count_type})")
 
         # WHERE句の追加
         if where_clauses:
@@ -347,7 +426,10 @@ async def get_videos(
         # ソート処理
         # フロントエンドのカラム名とデータベースのカラム名をマッピング
         column_mapping = {
-            "audioTitle": "music_info"  # フロントエンドのaudioTitleはデータベースではmusic_info
+            "audioTitle": "music_info",  # フロントエンドのaudioTitleはデータベースではmusic_info
+            "saveCount": "save_count",   # 保存数のマッピングを追加
+            "saveCountIncrease": "save_count_increase",
+            "tenDaysSaveIncrease": "ten_days_save_increase"
         }
         
         # ソートカラムのマッピングを適用
@@ -1327,6 +1409,171 @@ async def get_video_play_count_history(
             cursor.close()
         if conn:
             conn.close()
+
+@app.get("/api/video/save-count-history/{video_id}")
+async def get_video_save_count_history(
+    video_id: str,
+    days: Optional[int] = 30
+):
+    logger.info(f"保存数履歴取得リクエスト受信: video_id={video_id}, days={days}")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # テーブル存在確認
+        cursor.execute("SHOW TABLES")
+        tables = cursor.fetchall()
+        tables_list = [t[0] for t in tables]
+        logger.info(f"利用可能なテーブル: {tables_list}")
+        
+        if 'play_count_history' not in tables_list:
+            logger.error("play_count_historyテーブルが存在しません")
+            return {
+                "success": False,
+                "error": "必要なテーブルが存在しません",
+                "video_id": video_id,
+                "history": []
+            }
+
+        # video_idの形式チェック
+        if not video_id.isdigit():
+            logger.warning(f"無効な動画ID形式: {video_id}")
+            return {
+                "success": False,
+                "error": "無効な動画ID形式です",
+                "video_id": video_id,
+                "history": []
+            }
+
+        # 通常のカーソルを使用
+        cursor = conn.cursor()
+
+        query = """
+        SELECT 
+            collection_date,
+            save_count_increase
+        FROM play_count_history
+        WHERE 
+            video_id = %s
+            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+        ORDER BY collection_date ASC
+        """
+        
+        # クエリ実行前のデバッグログ
+        logger.info(f"実行するクエリ: {query}")
+        logger.info(f"パラメータ: video_id={video_id}, days={days}")
+        
+        cursor.execute(query, (video_id, days))
+        results = cursor.fetchall()
+        
+        # 結果のデバッグログ
+        logger.info(f"取得した結果: {results}")
+
+        # 結果を整形
+        history = []
+        for result in results:
+            history.append({
+                "collection_date": result[0].strftime("%Y-%m-%d"),
+                "save_count_increase": result[1] if result[1] is not None else 0
+            })
+
+        return {
+            "success": True,
+            "video_id": video_id,
+            "history": history
+        }
+
+    except Exception as e:
+        logger.error(f"保存数履歴取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "video_id": video_id,
+            "history": []
+        }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.get("/api/products")
+async def get_products():
+    """商品マスターから商品情報とカテゴリを取得するエンドポイント"""
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # product_masterテーブルから商品情報を取得
+        cursor.execute("""
+            SELECT 
+                product_name,
+                product_category
+            FROM 
+                product_master
+            WHERE 
+                product_name IS NOT NULL 
+                AND product_name != ''
+            ORDER BY 
+                product_category,
+                product_name
+        """)
+        
+        product_rows = cursor.fetchall()
+        
+        # 結果を構造化
+        products = []
+        categories = {}  # カテゴリごとに商品をグループ化
+        
+        for row in product_rows:
+            product_name = row[0]
+            product_category = row[1] or "その他"  # カテゴリがない場合は「その他」とする
+            
+            products.append({
+                "name": product_name,
+                "category": product_category
+            })
+            
+            # カテゴリごとの商品リストを作成
+            if product_category not in categories:
+                categories[product_category] = []
+            
+            categories[product_category].append(product_name)
+        
+        connection.close()
+        
+        return {
+            "success": True,
+            "data": products,
+            "categories": categories  # カテゴリ別商品リスト
+        }
+    except Exception as e:
+        logger.error(f"商品取得エラー: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/account-types")
+async def get_account_types():
+    """アカウントタイプ一覧を取得するエンドポイント"""
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+        
+        # 空でないアカウントタイプのみを取得
+        cursor.execute(
+            "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
+        )
+        account_types = [row[0] for row in cursor.fetchall()]
+        
+        connection.close()
+        
+        return {
+            "success": True,
+            "data": account_types
+        }
+    except Exception as e:
+        logger.error(f"アカウントタイプ取得エラー: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":

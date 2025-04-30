@@ -33,6 +33,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { useToast } from "@/hooks/use-toast";
+import { AccountTypeBadge } from '@/components/ui/badge';
 
 type MetricType = 'play_count_increase' | 'likes_count_increase' | 'comment_count_increase' | 'save_count_increase';
 
@@ -545,7 +546,13 @@ export default function AccountWatchlistPage() {
                                   formatNumber(totalSaveIncrease)
                                 )}
                               </TableCell>
-                              <TableCell>{getAccountTypeDisplayName(accountData?.account_type)}</TableCell>
+                              <TableCell>
+                                {accountData?.account_type ? (
+                                  <AccountTypeBadge accountType={accountData.account_type} />
+                                ) : (
+                                  <span className="text-gray-400 text-xs">未設定</span>
+                                )}
+                              </TableCell>
                               <TableCell　className="w-10 px-1">
                                 <Button
                                   className="py-1 px-1 bg-[#FE2C55] hover:bg-[#D91847] text-white rounded-md text-xs font-medium flex items-center justify-center transition-colors"

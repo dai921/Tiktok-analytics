@@ -84,14 +84,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // レンダリングごとにカウントを増加
     useEffect(() => {
       renderCountRef.current += 1;
-      console.log(`[DEBUG-RENDER-COUNT] TableHeaderCell - ${title} のレンダリング回数: ${renderCountRef.current}`);
-    });
+    }, [title]);
+
+    // 数値カラムかどうかを判定する関数
+    const isNumericColumn = (title: string): boolean => {
+      return ['再生数', 'いいね数', 'コメント数', '2日再生増加数', '10日再生増加数', '2日いいね増加数', '10日いいね増加数', '2日コメント増加数', '10日コメント増加数', '投稿日', '保存数', '2日保存増加数', '10日保存増加数'].includes(title);
+    }
 
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filterValue, setFilterValue] = useState('')
     const [filterType, setFilterType] = useState<FilterTypeLocal>('equal')
-    const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-    const alignmentClass = align === 'right' ? 'text-right' : 'text-left'
+    const [localSortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(sortDirection);
+    // 数値カラムの場合は自動的に右寄せにする
+    const alignmentClass = isNumericColumn(title) ? 'text-right' : (align === 'right' ? 'text-right' : 'text-left')
     const [categories, setCategories] = useState<string[]>([])
     const [filteredCategories, setFilteredCategories] = useState<string[]>([]) // フィルタリングされたカテゴリリスト
     const [isLoadingCategories, setIsLoadingCategories] = useState(false)
@@ -106,16 +111,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     };
 
-    // isActiveの初期値をログ出力
-    logDebug(`[TableHeaderCell] ${title} - 初期化時のisActive: ${isActive}, typeof: ${typeof isActive}`);
-
-    // デバッグ用にオブジェクト形式でログ出力
-    logDebug('[TableHeaderCell] 初期化時の詳細情報:', {
-      title,
-      isActive,
-      typeofIsActive: typeof isActive,
-      booleanCast: Boolean(isActive)
-    });
 
     // フィルターまたはソートがアクティブかどうかを判定
     const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
@@ -133,12 +128,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // isActiveの変更を監視
     useEffect(() => {
-      console.log(`[DEBUG-ACTIVE-CHANGE] TableHeaderCell - ${title} - isActive変更検知:`, {
-        isActive,
-        wasPreviouslyActive: isActive ? '有効' : '無効',
-        nowActive: isActive ? '有効' : '無効',
-        timestamp: new Date().toISOString()
-      });
       
       // リセットが必要かどうか明示的にチェック（フィルターが解除された場合）
       if (isActive === false) {
@@ -249,57 +238,141 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       };
     }, [isFilterOpen]);
 
+    // ソート状態とボタンスタイルを更新する関数
+    const updateSortStateAndStyles = useCallback(() => {
+      console.log('[SORT-DEBUG] TableHeaderCell - ボタンスタイル更新:', {
+        title,
+        sortDirection: localSortDirection,
+        isActive
+      });
+      
+      const headerElement = buttonRef.current?.closest('[data-header-cell]');
+      if (headerElement) {
+        headerElement.setAttribute('data-sort-active', localSortDirection ? 'true' : 'false');
+        headerElement.setAttribute('data-active', localSortDirection ? 'true' : isActive ? 'true' : 'false');
+      }
+    }, [title, localSortDirection, isActive, buttonRef]);
+
     // 外部からのsortDirectionプロップと内部ステートを同期させる
     useEffect(() => {
-      console.log('[DEBUG-SORT] TableHeaderCell - 外部ソート状態変更検知:', {
+      console.log('[SORT-EFFECT] TableHeaderCell - useEffect実行:', {
         title,
-        externalSortDirection: sortDirection,
+        sortDirection,
         localSortDirection,
-        changed: sortDirection !== localSortDirection
+        isDifferent: sortDirection !== localSortDirection
       });
       
       if (sortDirection !== localSortDirection) {
+        console.log('[SORT-FIX] TableHeaderCell - 強制的にソート状態を更新:', {
+          title,
+          from: localSortDirection,
+          to: sortDirection
+        });
+        
+        // 直接状態を更新
         setSortDirection(sortDirection);
         
-        // フィルターボタンがある場合のみソート状態を更新
+        // DOM要素も直接更新
         const headerElement = buttonRef.current?.closest('[data-header-cell]');
         if (headerElement) {
           headerElement.setAttribute('data-sort-active', sortDirection ? 'true' : 'false');
-          console.log('[DEBUG-SORT] TableHeaderCell - data-sort-activeを更新:', {
-            title,
-            value: sortDirection ? 'true' : 'false',
-            elementExists: !!headerElement
-          });
-        } else {
-          console.log('[DEBUG-SORT] TableHeaderCell - ヘッダー要素が見つかりません:', { title });
+          headerElement.setAttribute('data-active', sortDirection ? 'true' : isActive ? 'true' : 'false');
+          headerElement.setAttribute('data-has-sort', sortDirection ? 'true' : 'false');
+          headerElement.setAttribute('data-sort-direction', sortDirection || '');
         }
       }
-    }, [sortDirection, title]);
+    }, [sortDirection, localSortDirection]);
 
-    // 昇順・降順ソート用の新しい関数を追加
+    // レンダリング時に実際のDOM要素のスタイル状態をチェック
+    useEffect(() => {
+      // 初回レンダリング後にヘッダー要素のスタイルを確認
+      const checkHeaderStyles = () => {
+        const headerElement = buttonRef.current?.closest('[data-header-cell]');
+        if (headerElement) {
+          console.log('[SORT-RENDER-CHECK] TableHeaderCell - レンダリング後のDOM状態:', {
+            title,
+            sortDirection,
+            localSortDirection,
+            dataSortActive: headerElement.getAttribute('data-sort-active'),
+            dataActive: headerElement.getAttribute('data-active'),
+            cssClasses: headerElement.className,
+            computedStyles: {
+              color: window.getComputedStyle(headerElement).color,
+              fontWeight: window.getComputedStyle(headerElement).fontWeight,
+              // 矢印表示に関連する可能性のあるスタイル
+              display: window.getComputedStyle(headerElement).display,
+              visibility: window.getComputedStyle(headerElement).visibility,
+              overflow: window.getComputedStyle(headerElement).overflow
+            },
+            timestamp: new Date().toISOString()
+          });
+        }
+      };
+      
+      // DOM更新後に実行するためにsetTimeoutで遅延
+      setTimeout(checkHeaderStyles, 0);
+    }, [title, sortDirection, localSortDirection]);
+
+    // 実際のレンダリング出力の直前にログ
+    console.log('[SORT-RENDER-DEBUG] TableHeaderCell - レンダリング直前の状態:', {
+      title,
+      sortDirection,
+      localSortDirection,
+      willShowArrow: !!localSortDirection,
+      arrowIcon: localSortDirection === 'asc' ? '↑' : localSortDirection === 'desc' ? '↓' : 'なし',
+      sortPriority,
+      timestamp: new Date().toISOString()
+    });
+
+    // コンポーネントの初期レンダリング時にソート状態をログ
+    useEffect(() => {
+      console.log('[SORT-INIT-DEBUG] TableHeaderCell - 初期化時の状態:', {
+        title,
+        sortDirection,
+        localSortDirection,
+        isActive,
+        sortPriority,
+        props: {sortDirection, isActive, sortPriority},
+        timestamp: new Date().toISOString()
+      });
+    }, []);
+
+    // レンダリング直前の状態チェック
+    useEffect(() => {
+      // レンダリング前のチェック
+      console.log('[SORT-RENDER-DEBUG] TableHeaderCell - レンダリング前のソート状態:', {
+        title,
+        sortDirection,
+        localSortDirection,
+        willShowArrow: !!localSortDirection,
+        arrowDirection: localSortDirection === 'asc' ? '↑' : '↓',
+        timestamp: new Date().toISOString()
+      });
+    }, [title, sortDirection, localSortDirection]);
+
+    // 昇順・降順ソート用の関数を更新
     const handleSortDirection = (direction: 'asc' | 'desc') => {
-      console.log('[DEBUG-SORT-ACTION] TableHeaderCell - handleSortDirection 呼び出し:', {
+      console.log('[SORT-DEBUG] TableHeaderCell - ソート方向変更:', {
         title,
         direction,
-        previousDirection: localSortDirection,
-        timestamp: new Date().toISOString()
+        previousDirection: localSortDirection
       });
 
       // ソートの状態のみをリセット（data-sort-active属性のみ）
       document.querySelectorAll('[data-header-cell]').forEach(el => {
         if (el !== buttonRef.current?.closest('[data-header-cell]')) {
-          const button = el.querySelector('button');
-          if (button) {
-            button.setAttribute('data-sort-active', 'false');
-          }
+          el.setAttribute('data-sort-active', 'false');
         }
       });
       
       setSortDirection(direction);
+      // ポップアップを閉じる
       setIsFilterOpen(false);
-
-      // 現在のミリ秒タイムスタンプを取得
-      const currentTimestamp = Date.now();
+      
+      // ボタンスタイルを即時更新
+      setTimeout(() => {
+        updateSortStateAndStyles();
+      }, 0);
 
       // 特定のフィールドは直接内部フィールド名を使用
       let fieldName = title;
@@ -311,46 +384,53 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         fieldName = 'likes';
       } else if (title === 'コメント数') {
         fieldName = 'comments';
-      } else if (title === '再生数増加数') {
-        fieldName = 'viewsIncrease';  // バックエンドのフィールド名に合わせて調整してください
+      } else if (title === '2日再生増加数') {
+        fieldName = 'viewsIncrease';
+      } else if (title === '10日再生増加数') {
+        fieldName = 'ten_days_increase';
+      } else if (title === '2日いいね増加数') {
+        fieldName = 'likes_count_increase';
+      } else if (title === '10日いいね増加数') {
+        fieldName = 'ten_days_likes_increase';
+      } else if (title === '2日コメント増加数') {
+        fieldName = 'comment_count_increase';
+      } else if (title === '10日コメント増加数') {
+        fieldName = 'ten_days_comment_increase';
       }
 
-      // フィルター呼び出し前の状態をログ
-      console.log('[DEBUG-SORT-ACTION] TableHeaderCell - onFilter 呼び出し前:', {
+      console.log('[SORT-DEBUG] TableHeaderCell - ソートフィルター送信:', {
         title,
-        fieldName,
-        direction,
-        timestamp: currentTimestamp
+        mappedFieldName: fieldName,
+        direction
       });
 
-      // ソート情報を親コンポーネントに渡す際に、明示的に新しいソートであることを示すフラグを追加
+      // ソート情報を親コンポーネントに渡す
       onFilter?.({
         field: fieldName,  // 内部フィールド名を使用
         type: 'sort',
         value: direction,
-        timestamp: currentTimestamp,  // 現在のタイムスタンプを追加
         isPrimarySort: true,  // このソートを主ソートとして扱うフラグ
-        sortField: fieldName  // ソート対象のフィールド名を明示的に含める
+        sortField: fieldName,  // ソート対象のフィールド名を明示的に含める
+        active: true  // activeフラグを追加
       });
-
-      // フィルター呼び出し後の状態をログ
-      console.log('[DEBUG-SORT-ACTION] TableHeaderCell - onFilter 呼び出し後');
     };
 
-    const handleSort = () => {
-      if (!isFilterOpen) {
-        setIsFilterOpen(true);
-      }
-      
-      // 昇順ソート
-      if (localSortDirection === null || localSortDirection === 'desc') {
-        handleSortDirection('asc');
-        setIsFilterOpen(false);
-      } 
-      // 降順ソート
-      else if (localSortDirection === 'asc') {
-        handleSortDirection('desc');
-        setIsFilterOpen(false);
+    // ソート処理とフィルターの表示を切り替えるハンドラー
+    const handleToggleFilter = () => {
+      // 数値カラムはソート優先、その他はフィルター優先
+      if (type === 'number') {
+        // 数値カラムの場合、クリックでソート切り替え
+        if (localSortDirection === null || localSortDirection === 'desc') {
+          handleSortDirection('asc');
+        } else if (localSortDirection === 'asc') {
+          handleSortDirection('desc');
+        }
+      } else {
+        // それ以外のカラムはフィルターポップアップを表示
+        setIsFilterOpen(!isFilterOpen);
+        if (!isFilterOpen) {
+          calculatePopupPosition();
+        }
       }
     };
 
@@ -385,15 +465,11 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           actualFieldName = 'viewsIncrease';
         } else if (title === '10日再生増加数') {
           actualFieldName = 'ten_days_increase';
-        }
-        // 2日いいね増加数
-        else if (title === '2日いいね増加数') {
+        } else if (title === '2日いいね増加数') {
           actualFieldName = 'likes_count_increase';
         } else if (title === '10日いいね増加数') {
           actualFieldName = 'ten_days_likes_increase';
-        }
-        // 2日コメント増加数
-        else if (title === '2日コメント増加数') {
+        } else if (title === '2日コメント増加数') {
           actualFieldName = 'comment_count_increase';
         } else if (title === '10日コメント増加数') {
           actualFieldName = 'ten_days_comment_increase';
@@ -606,14 +682,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       }
     }, [categoryData, title]);
 
-    // フィルターポップアップが開かれたときのログ
-    const handleToggleFilter = () => {
-      setIsFilterOpen(!isFilterOpen);
-      if (!isFilterOpen) {
-        calculatePopupPosition();
-      }
-    };
-
     // カテゴリを選択する処理
     const handleCategorySelect = (category: string) => {
       logDebug(`カテゴリ選択: ${category}`);
@@ -723,11 +791,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       return '▼ 降順に並び替え';
     };
 
-    // 数値カラムかどうかを判定する関数を更新
-    const isNumericColumn = (title: string): boolean => {
-      return ['再生数', 'いいね数', 'コメント数', '2日再生増加数', '10日再生増加数', '2日いいね増加数', '10日いいね増加数', '2日コメント増加数', '10日コメント増加数'].includes(title);
-    }
-
     // renderCategoryList の前あたりに配置
     const renderSortSection = () => {
       // 数値カラムの場合のみソート機能を表示                 
@@ -772,51 +835,106 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       );
     };
 
-    console.log('[DEBUG-SORT] TableHeaderCell - レンダリング時のソート状態:', {
-      title,
-      localSortDirection, 
-      sortPriority,
-      isActive
-    });
+
+    // スタイルのデバッグ関連
+    const buttonStyleClasses = cn(
+      "cursor-pointer flex items-center border border-transparent rounded hover:bg-gray-100",
+      isNumericColumn(title) ? "pl-1 pr-0" : "p-1",
+      localSortDirection ? "font-semibold" : "",
+      (isActive || localSortDirection) ? "text-blue-600" : ""
+    );
+
+    // ボタン要素のマウント後に要素を確認
+    useEffect(() => {
+      if (buttonRef.current) {
+        console.log('[DOM-DEBUG] TableHeaderCell - ボタン要素:', {
+          title,
+          element: buttonRef.current,
+          hasDataActive: buttonRef.current.hasAttribute('data-active'),
+          hasDataSortActive: buttonRef.current.hasAttribute('data-sort-active'),
+          dataActiveValue: buttonRef.current.getAttribute('data-active'),
+          dataSortActiveValue: buttonRef.current.getAttribute('data-sort-active')
+        });
+      }
+    }, [title, localSortDirection, isActive]);
 
     return (
       <div 
         className={cn(
-          "relative p-0",  // パディングを0に設定
-          isNumericColumn(title) ? "w-24" : "",
+          "relative p-0 h-full w-full", 
+          isNumericColumn(title) ? "text-right !important" : "",
+          localSortDirection ? "has-sort-indicator" : ""
         )}
         data-header-cell 
-        data-active={isActive ? 'true' : 'false'} // data属性で活性状態を設定
+        data-active={isActive || localSortDirection ? 'true' : 'false'}
+        data-sort-active={localSortDirection ? 'true' : 'false'}
+        data-sort-direction={localSortDirection}
+        data-has-sort={!!localSortDirection ? 'true' : 'false'}
+        data-title={title}
+        style={{
+          position: 'relative',
+          width: '100%',
+          height: '100%' 
+        }}
       >
         <div className={cn(
-          "whitespace-nowrap h-full",  // 高さを100%に
-          "bg-gray-50",  // 背景色を設定（必要に応じて調整）
+          "h-full w-full",
+          "bg-gray-50",
           isNumericColumn(title) ? "pl-0 pr-0" : "pl-0 pr-0",
           "py-1 text-[12px]",
           alignmentClass,
           (isActive || localSortDirection) ? "text-blue-600 font-medium" : "text-gray-700"
         )}>
-          <span className={cn(
-            "cursor-default", 
-            localSortDirection ? "font-semibold" : ""
-          )}>
-            <span className={localSortDirection ? "text-blue-700" : ""}>{title}</span>
+          <div
+            className={cn(
+              "flex items-center border border-transparent",
+              isNumericColumn(title) ? "pl-1 pr-0" : "p-1",
+              localSortDirection ? "font-semibold" : "",
+              (isActive || localSortDirection) ? "text-blue-600" : "",
+              "w-full"
+            )}
+            data-active={isActive || localSortDirection ? 'true' : 'false'}
+            data-sort-active={localSortDirection ? 'true' : 'false'}
+            data-sort-direction={localSortDirection}
+            data-has-sort={!!localSortDirection ? 'true' : 'false'}
+            style={{
+              fontWeight: localSortDirection ? 'bold' : 'normal',
+              color: (isActive || localSortDirection) ? '#2563eb' : 'inherit',
+              width: '100%',
+              textAlign: isNumericColumn(title) ? 'right' : 'left',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: isNumericColumn(title) ? 'flex-end' : 'flex-start',
+              gap: '4px'
+            }}
+          >
+            <span className={`${localSortDirection ? "text-blue-700" : ""} ${isNumericColumn(title) ? "text-right w-full" : "w-full"}`}>
+              {title}
+            </span>
+            
+            {/* ソート方向表示 - フィルター機能は削除したがソート表示は維持 */}
             {localSortDirection && (
-              <span className="ml-1 inline-block">
-                <span className={cn(
-                  "font-bold",
-                  "text-blue-700"
-                )}>
+              <span 
+                className={`ml-1 inline-flex items-center justify-center h-4 w-4 bg-blue-100 rounded-full ${isNumericColumn(title) ? "mr-0" : ""}`}
+                data-sort-indicator="true"
+                data-sort-direction={localSortDirection}
+              >
+                <span className="font-bold text-blue-700">
                   {localSortDirection === 'asc' ? '↑' : '↓'}
                 </span>
                 {sortPriority && (
-                  <span className="ml-0.5 text-[10px] font-bold text-blue-700">
+                  <span className="ml-0.5 text-[10px] absolute top-0 right-0 font-bold text-blue-700">
                     {sortPriority}
                   </span>
                 )}
               </span>
             )}
-          </span>
+            
+            {/* フィルターアクティブ表示（ソートがない場合） */}
+            {isActive && !localSortDirection && (
+              <span className={`ml-1 inline-block w-2 h-2 rounded-full bg-blue-600 ${isNumericColumn(title) ? "mr-0" : ""}`}></span>
+            )}
+          </div>
         </div>
         
         {isFilterOpen && (

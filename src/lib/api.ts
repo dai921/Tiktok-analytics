@@ -294,7 +294,9 @@ export const COLUMN_MAP: Record<string, string> = {
   'ten_days_likes_increase': '10日いいね増加数',
   'comment_count_increase': '2日コメント増加数',
   'ten_days_comment_increase': '10日コメント増加数',
-  'ten_days_increase': '10日再生増加数'
+  'ten_days_increase': '10日再生増加数',
+  'save_count_increase': '2日保存増加数',
+  'ten_days_save_increase': '10日保存増加数'
 }
 
 // COLUMN_MAPの逆引きマップを作成
@@ -339,6 +341,12 @@ const mapFieldToApiField = (field: string): string => {
     return 'comment_count_increase';
   } else if (field === '10日コメント増加数') {
     return 'ten_days_comment_increase';
+  } else if (field === '2日保存増加数') {
+    return 'save_count_increase';
+  } else if (field === '10日保存増加数') {
+    return 'ten_days_save_increase';
+  } else if (field === '保存数') {
+    return 'save_count';
   }
   
   // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
@@ -362,7 +370,11 @@ const mapFieldToApiField = (field: string): string => {
     'ten_days_likes_increase': 'ten_days_likes_increase',
     'comment_count_increase': 'comment_count_increase',
     'ten_days_comment_increase': 'ten_days_comment_increase',
-    'ten_days_increase': 'ten_days_increase'
+    'ten_days_increase': 'ten_days_increase',
+    'saves': 'save_count',
+    'save_count_increase': 'save_count_increase',
+    'ten_days_save_increase': 'ten_days_save_increase',
+    'product': 'product',  // 商品フィルターのマッピングを追加
   };
   
   const result = fieldMapping[internalField] || internalField;
@@ -441,7 +453,10 @@ const convertToVideoData = (video: any): VideoData => {
     likes_count_increase: parseNumberSafely(video.likes_count_increase),
     ten_days_likes_increase: parseNumberSafely(video.ten_days_likes_increase),
     comment_count_increase: parseNumberSafely(video.comment_count_increase),
-    ten_days_comment_increase: parseNumberSafely(video.ten_days_comment_increase)
+    ten_days_comment_increase: parseNumberSafely(video.ten_days_comment_increase),
+    save_count: parseNumberSafely(video.save_count),
+    save_count_increase: parseNumberSafely(video.save_count_increase),
+    ten_days_save_increase: parseNumberSafely(video.ten_days_save_increase)
   };
 };
 
@@ -749,6 +764,12 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           sortField = 'comment_count_increase';  // 2日コメント増加数の対応を追加
         } else if (primarySort.field === 'ten_days_comment_increase' || primarySort.field === '10日コメント増加数') {
           sortField = 'ten_days_comment_increase';  // 10日コメント増加数の対応を追加
+        } else if (primarySort.field === 'saves' || primarySort.field === '保存数') {
+          sortField = 'save_count';  // 保存数の対応を追加
+        } else if (primarySort.field === 'save_count_increase' || primarySort.field === '2日保存増加数') {
+          sortField = 'save_count_increase';  // 2日保存増加数の対応を追加
+        } else if (primarySort.field === 'ten_days_save_increase' || primarySort.field === '10日保存増加数') {
+          sortField = 'ten_days_save_increase';  // 10日保存増加数の対応を追加
         } else {
           sortField = primarySort.apiField;
         }
@@ -774,6 +795,24 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
             secondarySortField = 'likes_count';
           } else if (secondarySort.field === 'comments') {
             secondarySortField = 'comment_count';
+          } else if (secondarySort.field === 'viewsIncrease' || secondarySort.field === '2日再生増加数') {
+            secondarySortField = 'play_count_increase';
+          } else if (secondarySort.field === 'ten_days_increase' || secondarySort.field === '10日再生増加数') {
+            secondarySortField = 'ten_days_increase';
+          } else if (secondarySort.field === 'likes_count_increase' || secondarySort.field === '2日いいね増加数') {
+            secondarySortField = 'likes_count_increase';
+          } else if (secondarySort.field === 'ten_days_likes_increase' || secondarySort.field === '10日いいね増加数') {
+            secondarySortField = 'ten_days_likes_increase';
+          } else if (secondarySort.field === 'comment_count_increase' || secondarySort.field === '2日コメント増加数') {
+            secondarySortField = 'comment_count_increase';
+          } else if (secondarySort.field === 'ten_days_comment_increase' || secondarySort.field === '10日コメント増加数') {
+            secondarySortField = 'ten_days_comment_increase';
+          } else if (secondarySort.field === 'saves' || secondarySort.field === '保存数') {
+            secondarySortField = 'save_count';  // 保存数の対応を追加
+          } else if (secondarySort.field === 'save_count_increase' || secondarySort.field === '2日保存増加数') {
+            secondarySortField = 'save_count_increase';  // 2日保存増加数の対応を追加
+          } else if (secondarySort.field === 'ten_days_save_increase' || secondarySort.field === '10日保存増加数') {
+            secondarySortField = 'ten_days_save_increase';  // 10日保存増加数の対応を追加
           } else {
             secondarySortField = secondarySort.apiField;
           }
@@ -792,7 +831,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
         } : 'なし'
       });
       
-      // 通常のフィルターを処理
+      // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
         if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
         

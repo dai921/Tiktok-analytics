@@ -2,7 +2,7 @@
 import { VideoData } from '@/types/dashboard';
 import { VideoTypeIcon, PhotoTypeIcon, MusicNoteIcon } from './icons';
 import { ImageHover } from '@/components/ui/image-hover';
-import { GenreBadge, HashtagBadge } from '@/components/ui/badge';
+import { GenreBadge, HashtagBadge, ProductBadge } from '@/components/ui/badge';
 import { formatNumber } from './formatters';
 import { useState, createContext, useContext } from 'react'
 import { AccountTypeBadge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { AccountTypeBadge } from '@/components/ui/badge';
 // コンテキスト作成
 export const TableContext = createContext<{
   setSelectedText?: (data: { title: string; content: string }) => void;
+  productCategories?: Record<string, string>;
 }>({});
 
 export const renderThumbnailCell = (row: VideoData) => {
@@ -134,22 +135,22 @@ export const renderCategoryCell = (row: VideoData) => {
 
 // プロダクトセルレンダラー
 export const renderProductCell = (row: VideoData) => { 
-             // カテゴリ（動画ジャンル）を取得
-             const category = row.category;
-          
-             return (
-               <div className="w-[120px] min-w-[120px]">
-                 <div className="flex flex-wrap gap-1 justify-start items-center">
-                   {row.product && (
-                     <GenreBadge 
-                       genre={row.product} 
-                       // カテゴリを渡して同じ色を使用
-                       categoryForColor={category}
-                     />
-                   )}
-                 </div>
-               </div>
-             );           
+  // ProductCategoriesコンテキストからマッピングを取得
+  const { productCategories } = useContext(TableContext);
+  
+  return (
+    <div className="w-[120px] min-w-[120px]">
+      <div className="flex flex-wrap gap-1 justify-start items-center">
+        {row.product && (
+          <ProductBadge 
+            product={row.product} 
+            // 製品カテゴリマッピングから製品のカテゴリを取得
+            productCategory={productCategories?.[row.product] || 'その他'}
+          />
+        )}
+      </div>
+    </div>
+  );           
 };
 
 // 日付セルレンダラー
@@ -289,6 +290,33 @@ export const renderTenDaysCommentCountIncreaseCell = (row: VideoData) => {
     return (
         <div className="text-right">
         {formatNumber(row.ten_days_comment_increase, 'ten_days_comment_increase')}
+    </div>
+    )
+};
+
+// 保存数セルレンダラー
+export const renderSaveCountCell = (row: VideoData) => {
+    return (
+        <div className="text-right">
+        {formatNumber(row.save_count, 'saves')}
+    </div>
+    )
+};
+
+// 保存増加数セルレンダラー
+export const renderSaveCountIncreaseCell = (row: VideoData) => {
+    return (
+        <div className="text-right">
+        {formatNumber(row.save_count_increase, 'save_count_increase')}
+    </div>
+    )
+};
+
+// 10日間保存増加数セルレンダラー
+export const renderTenDaysSaveIncreaseCell = (row: VideoData) => {
+    return (
+        <div className="text-right">
+        {formatNumber(row.ten_days_save_increase, 'ten_days_save_increase')}
     </div>
     )
 };

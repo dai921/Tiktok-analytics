@@ -26,6 +26,7 @@ interface HeaderProps {
 // デフォルト設定のカラム
 const defaultColumns = [
   'thumbnail_url',    // サムネイル
+  'account_type',
   'category',         // 動画ジャンル
   'product',         // 商品名
   'createdAt',       // 投稿日
