@@ -7,46 +7,24 @@ from datetime import date, datetime
 from src.utils.logger_config import setup_logger
 import logging
 from src.config import get_db_config  # 新しい設定モジュールをインポート
+from mysql.connector.pooling import MySQLConnectionPool   # ★追加
 
 print("database.py is being loaded")
 logger = setup_logger()
+# ★これを get_db_connection() の “上” に追加
+# --------------------------------------------------
+# 💡 起動時にプールを 1 個だけ作る
+_db_pool = MySQLConnectionPool(
+    pool_name="mypool",
+    pool_size=10,
+    **get_db_config()          # host / user / password / database / port or unix_socket
+)
+logger.info("MySQL pool initialised size=10")
 
 def get_db_connection():
-    """データベース接続を取得"""
-    print("get_db_connection was called!")
-    try:
-        db_config = get_db_config()
-        
-        # Cloud Run環境かどうかを検出
-        if os.environ.get("K_SERVICE"):
-            # Cloud SQL接続名を構築
-            instance_connection_name = "tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db"
-            unix_socket = f"/cloudsql/{instance_connection_name}"
-            
-            # unix_socketを使用した接続
-            connection = mysql.connector.connect(
-                unix_socket=unix_socket,
-                user=db_config.get("user"),
-                password=db_config.get("password"),
-                database=db_config.get("database")
-            )
-            logger.info(f"Unix socketを使用して接続しました: {unix_socket}")
-        else:
-            # 通常のTCP接続
-            connection = mysql.connector.connect(
-                host=db_config.get("host"),
-                user=db_config.get("user"),
-                password=db_config.get("password"),
-                database=db_config.get("database"),
-                port=int(db_config.get("port", 3306))
-            )
-            logger.info(f"TCP接続を使用: {db_config.get('host')}:{db_config.get('port')}")
-        
-        logger.debug("Database connection successful")
-        return connection
-    except Exception as e:
-        logging.error(f"Database connection failed: {str(e)}")
-        raise
+    """プールから 1 つ借りるだけ（毎回 0.5ms 程度）"""
+    return _db_pool.get_connection()
+
 
 def format_video(row):
     try:

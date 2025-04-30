@@ -282,19 +282,19 @@ export const COLUMN_MAP: Record<string, string> = {
   'duration': '動画時間(秒)',
   'isViral': '10万再生以上',
   'prevViews': '前回再生数',
-  'viewsIncrease': '再生増加数',
+  'viewsIncrease': '2日再生増加数',
   'prevLikes': '前回いいね数',
-  'likesIncrease': 'いいね数伸び',
+  'likesIncrease': '2日いいね増加数',
   'product': '商材',
   'audioId': '音声ID',
   'artist': 'アーティスト',
   'content_type': 'コンテンツタイプ',
   'account_type': 'アカウントジャンル',
-  'likes_count_increase': 'いいね増加数',
-  'ten_days_likes_increase': '10日間いいね増加数',
-  'comment_count_increase': 'コメント増加数',
-  'ten_days_comment_increase': '10日間コメント増加数',
-  'ten_days_increase': '10日間再生増加数'
+  'likes_count_increase': '2日いいね増加数',
+  'ten_days_likes_increase': '10日いいね増加数',
+  'comment_count_increase': '2日コメント増加数',
+  'ten_days_comment_increase': '10日コメント増加数',
+  'ten_days_increase': '10日再生増加数'
 }
 
 // COLUMN_MAPの逆引きマップを作成
@@ -327,10 +327,18 @@ const mapFieldToApiField = (field: string): string => {
   // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
   if (field === '動画ジャンル') {
     return 'category';
-  } else if (field === '再生増加数') {
+  }  else if (field === '2日再生増加数') {
     return 'play_count_increase';
-  } else if (field === 'viewsIncrease') {
-    return 'play_count_increase';
+  } else if (field === '10日再生増加数') {
+    return 'ten_days_increase';
+  } else if (field === '2日いいね増加数') {
+    return 'likes_count_increase';
+  } else if (field === '10日いいね増加数') {
+    return 'ten_days_likes_increase';
+  } else if (field === '2日コメント増加数') {
+    return 'comment_count_increase';
+  } else if (field === '10日コメント増加数') {
+    return 'ten_days_comment_increase';
   }
   
   // 日本語の表示名の場合は内部名に変換（例：「再生数」→ 「views」）
@@ -376,19 +384,6 @@ const parseNumberSafely = (value: any): number => {
 
 // バックエンドのレスポンスとVideoDataのマッピング
 const convertToVideoData = (video: any): VideoData => {
-  // デバッグ用のログ出力を追加
-  console.log('Converting video data:', {
-    thumbnail: video.thumbnail_url,
-    account: video.account_name,
-    type: typeof video.thumbnail_url,
-    // BGM関連の情報を追加
-    music: {
-      info: video.music_info,
-      id: video.music_id,
-      title: video.music_title,
-      artist: video.music_artist
-    }
-  });
 
   // music_infoからの情報抽出を試みる
   let musicInfo = null;
@@ -533,7 +528,8 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           filter,
           type: filter.type,
           value: filter.value,
-          apiFieldName: mapFieldToApiField(key)
+          apiFieldName: mapFieldToApiField(key),
+          active: filter.active
         });
 
         const apiField = mapFieldToApiField(key);
@@ -546,7 +542,8 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
             type: filter.type,
             comparison: filter.comparison,
             value: filter.value,
-            apiField
+            apiField,
+            active: filter.active
           });
           
           params.append(apiField, String(filter.value));
@@ -740,8 +737,18 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           sortField = 'likes_count';
         } else if (primarySort.field === 'comments') {
           sortField = 'comment_count';
-        } else if (primarySort.field === 'viewsIncrease' || primarySort.field === '再生増加数') {
+        } else if (primarySort.field === 'viewsIncrease' || primarySort.field === '2日再生増加数') {
           sortField = 'play_count_increase';  // 再生増加数の対応を追加
+        } else if (primarySort.field === 'ten_days_increase' || primarySort.field === '10日再生増加数') {
+          sortField = 'ten_days_increase';  // 10日再生増加数の対応を追加
+        } else if (primarySort.field === 'likes_count_increase' || primarySort.field === '2日いいね増加数') {
+          sortField = 'likes_count_increase';  // 2日いいね増加数の対応を追加
+        } else if (primarySort.field === 'ten_days_likes_increase' || primarySort.field === '10日いいね増加数') {
+          sortField = 'ten_days_likes_increase';  // 10日いいね増加数の対応を追加
+        } else if (primarySort.field === 'comment_count_increase' || primarySort.field === '2日コメント増加数') {
+          sortField = 'comment_count_increase';  // 2日コメント増加数の対応を追加
+        } else if (primarySort.field === 'ten_days_comment_increase' || primarySort.field === '10日コメント増加数') {
+          sortField = 'ten_days_comment_increase';  // 10日コメント増加数の対応を追加
         } else {
           sortField = primarySort.apiField;
         }

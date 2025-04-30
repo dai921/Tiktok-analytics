@@ -95,9 +95,9 @@ export default function VideoWatchlistPage() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [periodInfo, setPeriodInfo] = useState<PeriodInfo | null>(null);
   
-  // ジャンル選択関連
-  const [availableGenres, setAvailableGenres] = useState<Option[]>([]);
-  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  // // ジャンル選択関連
+  // const [availableGenres, setAvailableGenres] = useState<Option[]>([]);
+  // const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   
   // 動画データ
   const [watchlistVideos, setWatchlistVideos] = useState<WatchlistVideoItem[]>([]);
@@ -113,39 +113,39 @@ export default function VideoWatchlistPage() {
   const { toast } = useToast();
   
   // ジャンルデータを取得するuseEffectを追加
-  useEffect(() => {
-    const loadGenres = async () => {
-      try {
-        setIsLoading(true);
-        const genresResponse = await fetchTrendGenres();
+  // useEffect(() => {
+  //   const loadGenres = async () => {
+  //     try {
+  //       setIsLoading(true);
+  //       const genresResponse = await fetchTrendGenres();
         
-        if (genresResponse.success) {
-          // ジャンルをOption形式に変換
-          const genreOptions = genresResponse.data.map(genre => ({
-            value: genre,
-            label: genre
-          }));
+  //       if (genresResponse.success) {
+  //         // ジャンルをOption形式に変換
+  //         const genreOptions = genresResponse.data.map(genre => ({
+  //           value: genre,
+  //           label: genre
+  //         }));
           
-          setAvailableGenres(genreOptions);
+  //         setAvailableGenres(genreOptions);
           
-          // デフォルトですべてのジャンルを選択
-          if (genreOptions.length > 0) {
-            const initialSelected = genreOptions.map(option => option.value);
-            setSelectedGenres(initialSelected);
-          }
-        } else {
-          setError('ジャンルデータの取得に失敗しました');
-        }
-      } catch (error) {
-        console.error("ジャンルデータの読み込みに失敗しました", error);
-        setError('ジャンルデータの読み込みに失敗しました');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  //         // デフォルトですべてのジャンルを選択
+  //         if (genreOptions.length > 0) {
+  //           const initialSelected = genreOptions.map(option => option.value);
+  //           setSelectedGenres(initialSelected);
+  //         }
+  //       } else {
+  //         setError('ジャンルデータの取得に失敗しました');
+  //       }
+  //     } catch (error) {
+  //       console.error("ジャンルデータの読み込みに失敗しました", error);
+  //       setError('ジャンルデータの読み込みに失敗しました');
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
     
-    loadGenres();
-  }, []);
+  //   loadGenres();
+  // }, []);
 
   // データを取得するuseEffect
   useEffect(() => {
@@ -180,10 +180,29 @@ export default function VideoWatchlistPage() {
             if (result.data && Array.isArray(result.data) && result.data.length > 0) {
               setWatchlistVideos(result.data);
               setFilteredVideos(result.data);
-              setPeriodInfo(result.period || {
-                start_date: startDateStr,
-                end_date: endDateStr
-              });
+              
+              // APIから期間情報を取得し設定
+              if (result.period) {
+                setPeriodInfo(result.period);
+                
+                // APIから取得した期間情報をdateRangeにも設定（ユーザーが選択していない場合のみ）
+                if (!userSelectedDate) {
+                  setDateRange({
+                    start: new Date(result.period.start_date),
+                    end: new Date(result.period.end_date)
+                  });
+                  setTempDateRange({
+                    start: new Date(result.period.start_date),
+                    end: new Date(result.period.end_date)
+                  });
+                }
+              } else {
+                setPeriodInfo({
+                  start_date: startDateStr,
+                  end_date: endDateStr
+                });
+              }
+              
               setDataLoaded(true);
               setUserSelectedDate(false);
               
@@ -242,12 +261,12 @@ export default function VideoWatchlistPage() {
     }
   };
   
-  // ジャンルフィルタリングを適用するuseEffectを単純化
-  useEffect(() => {
-    // ハッシュタグでフィルタリングしない - すべてのデータを表示
-    console.log('全データ表示:', watchlistVideos.length);
-    setFilteredVideos(watchlistVideos);
-  }, [watchlistVideos]);
+  // // ジャンルフィルタリングを適用するuseEffectを単純化
+  // useEffect(() => {
+  //   // ハッシュタグでフィルタリングしない - すべてのデータを表示
+  //   console.log('全データ表示:', watchlistVideos.length);
+  //   setFilteredVideos(watchlistVideos);
+  // }, [watchlistVideos]);
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
@@ -260,10 +279,10 @@ export default function VideoWatchlistPage() {
     }
   };
 
-  // ジャンル選択用のハンドラ
-  const handleGenreChange = (selected: string[]) => {
-    setSelectedGenres(selected);
-  };
+  // // ジャンル選択用のハンドラ
+  // const handleGenreChange = (selected: string[]) => {
+  //   setSelectedGenres(selected);
+  // };
 
   // 指標変更ハンドラ
   const handleMetricChange = (value: string) => {
@@ -415,7 +434,7 @@ export default function VideoWatchlistPage() {
       <div className="space-y-4">
         {/* フィルターエリア */}
         <div className="flex gap-4 items-center flex-wrap">
-          <div className="flex items-center gap-2">
+          {/* <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">ジャンルフィルタ:</label>
             <MultiSelect
               options={availableGenres}
@@ -424,13 +443,16 @@ export default function VideoWatchlistPage() {
               className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
               placeholder="すべてのジャンル"
             />
-          </div>
+          </div> */}
           <div className="w-[280px]">
             <DateRangePicker
-              dateRange={dateRange || {
+              dateRange={dateRange || (periodInfo ? {
+                start: new Date(periodInfo.start_date),
+                end: new Date(periodInfo.end_date)
+              } : {
                 start: new Date(new Date().getTime() - 7 * 24 * 60 * 60 * 1000), // 表示用のデフォルト値
                 end: new Date()
-              }}
+              })}
               onDateRangeChange={handleDateRangeChange}
               onApply={handleDateRangeApply}
             />
@@ -444,7 +466,7 @@ export default function VideoWatchlistPage() {
               value="list" 
               className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
             >
-              一覧表示
+              動画一覧
             </TabsTrigger>
             <TabsTrigger 
               value="ranking" 

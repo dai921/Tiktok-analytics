@@ -199,14 +199,14 @@ export const FilterPopup = ({
     ],
     metrics: [
       { id: 'views', label: '再生数', type: 'number' },
-      { id: 'viewsIncrease', label: '再生増加数', type: 'number' },
+      { id: 'viewsIncrease', label: '2日再生増加数', type: 'number' },
       { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number' },
       { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' },
-      { id: 'ten_days_increase', label: '10日間再生増加数', type: 'number' },
-      { id: 'likes_count_increase', label: 'いいね増加数', type: 'number' },
-      { id: 'ten_days_likes_increase', label: '10日間いいね増加数', type: 'number' },
-      { id: 'comment_count_increase', label: 'コメント増加数', type: 'number' },
-      { id: 'ten_days_comment_increase', label: '10日間コメント増加数', type: 'number' }
+      { id: 'ten_days_increase', label: '10日再生増加数', type: 'number' },
+      { id: 'likes_count_increase', label: '2日いいね増加数', type: 'number' },
+      { id: 'ten_days_likes_increase', label: '10日いいね増加数', type: 'number' },
+      { id: 'comment_count_increase', label: '2日コメント増加数', type: 'number' },
+      { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'number' }
     ],
     categories: [
       { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect', options: ['video', 'carousel'] },
@@ -220,14 +220,14 @@ export const FilterPopup = ({
     // ソート用のフィールド - 4つに限定
     sort: [
       { id: 'views', label: '再生数', type: 'sort' },
-      { id: 'viewsIncrease', label: '再生増加数', type: 'sort' },
+      { id: 'viewsIncrease', label: '2日再生増加数', type: 'sort' },
       { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'sort' },
       { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' },
-      { id: 'ten_days_increase', label: '10日間再生増加数', type: 'sort' },
-      { id: 'likes_count_increase', label: 'いいね増加数', type: 'sort' },
-      { id: 'ten_days_likes_increase', label: '10日間いいね増加数', type: 'sort' },
-      { id: 'comment_count_increase', label: 'コメント増加数', type: 'sort' },
-      { id: 'ten_days_comment_increase', label: '10日間コメント増加数', type: 'sort' }
+      { id: 'ten_days_increase', label: '10日再生増加数', type: 'sort' },
+      { id: 'likes_count_increase', label: '2日いいね増加数', type: 'sort' },
+      { id: 'ten_days_likes_increase', label: '10日いいね増加数', type: 'sort' },
+      { id: 'comment_count_increase', label: '2日コメント増加数', type: 'sort' },
+      { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'sort' }
     ]
   }
 
@@ -449,7 +449,7 @@ export const FilterPopup = ({
 
   // フィルターを適用
   const handleApplyFilters = () => {
-    console.log('フィルターポップアップ - フィルター適用開始');
+    console.log('[FilterPopup] フィルターポップアップ - フィルター適用開始');
     
     // 最終的なフィルター状態を構築
     const finalFilters: Record<string, FilterValue> = {};
@@ -457,7 +457,12 @@ export const FilterPopup = ({
     // 1. 通常のフィルターを処理
     Object.entries(tempFilters).forEach(([key, filter]) => {
       if (filter.type !== 'sort') {
-        finalFilters[key] = filter;
+        // 各フィルターに明示的にactive=trueを追加して、テーブルヘッダーに状態を伝達
+        finalFilters[key] = {
+          ...filter,
+          active: true
+        };
+        console.log(`[FilterPopup] フィルター設定 - ${key}: active=true を設定`);
       }
     });
     
@@ -467,8 +472,10 @@ export const FilterPopup = ({
         field: 'category',
         type: 'multiselect',
         value: selectedCategories,
-        comparison: 'contains'
+        comparison: 'contains',
+        active: true  // 明示的にactiveをtrueに設定
       };
+      console.log(`[FilterPopup] カテゴリフィルター設定 - selectedCategories: ${selectedCategories.join(', ')}, active=true を設定`);
     }
     
     // 3. コンテンツタイプフィルターの処理
@@ -477,8 +484,10 @@ export const FilterPopup = ({
         field: 'content_type',
         type: 'multiselect',
         value: selectedContentTypes,
-        comparison: 'contains'
+        comparison: 'contains',
+        active: true  // 明示的にactiveをtrueに設定
       };
+      console.log(`[FilterPopup] コンテンツタイプフィルター設定 - selectedContentTypes: ${selectedContentTypes.join(', ')}, active=true を設定`);
     }
     
     // 4. ソート情報の処理
@@ -488,8 +497,10 @@ export const FilterPopup = ({
         type: 'sort',
         value: primarySort.direction,
         isPrimarySort: true,
-        sortField: primarySort.field
+        sortField: primarySort.field,
+        active: true  // 明示的にactiveをtrueに設定
       };
+      console.log(`[FilterPopup] 第一ソート設定 - field: ${primarySort.field}, direction: ${primarySort.direction}, active=true を設定`);
       
       // 第二ソートが設定されている場合
       if (secondarySort) {
@@ -498,12 +509,36 @@ export const FilterPopup = ({
           type: 'sort',
           value: secondarySort.direction,
           isPrimarySort: false,
-          sortField: secondarySort.field
+          sortField: secondarySort.field,
+          active: true  // 明示的にactiveをtrueに設定
         };
+        console.log(`[FilterPopup] 第二ソート設定 - field: ${secondarySort.field}, direction: ${secondarySort.direction}, active=true を設定`);
       }
     }
     
-    console.log('フィルターポップアップ - 最終フィルター:', finalFilters);
+    // 最終フィルターオブジェクトの詳細をログ出力
+    console.log('[FilterPopup] 最終フィルター内容:', Object.entries(finalFilters).map(([key, value]) => {
+      return {
+        key,
+        field: value.field,
+        type: value.type,
+        value: value.value,
+        active: value.active,
+        isPrimarySort: value.isPrimarySort
+      };
+    }));
+    
+    // activeプロパティの存在確認
+    console.log('[FilterPopup] activeプロパティ確認:',
+      Object.entries(finalFilters).map(([key, value]) => {
+        return {
+          key,
+          hasActiveProperty: 'active' in value,
+          activeValue: value.active,
+          activeType: typeof value.active
+        };
+      })
+    );
     
     // フィルターを親コンポーネントに渡す
     onFilterChange(finalFilters);
@@ -1035,14 +1070,14 @@ export const FilterPopup = ({
       } else if (React.isValidElement(field.label)) {
         // React要素の場合は、fieldIdからラベルを判断
         label = field.id === 'views' ? '再生数' :
-                field.id === 'viewsIncrease' ? '再生増加数' :
+                field.id === 'viewsIncrease' ? '2日再生増加数' :
                 field.id === 'likes' ? 'いいね数' :
                 field.id === 'comments' ? 'コメント数' :
-                field.id === 'ten_days_increase' ? '10日間再生増加数' :
-                field.id === 'likes_count_increase' ? 'いいね増加数' :
-                field.id === 'ten_days_likes_increase' ? '10日間いいね増加数' :
-                field.id === 'comment_count_increase' ? 'コメント増加数' :
-                field.id === 'ten_days_comment_increase' ? '10日間コメント増加数' : field.id;
+                field.id === 'ten_days_increase' ? '10日再生増加数' :
+                field.id === 'likes_count_increase' ? '2日いいね増加数' :
+                field.id === 'ten_days_likes_increase' ? '10日いいね増加数' :
+                field.id === 'comment_count_increase' ? '2日コメント増加数' :
+                field.id === 'ten_days_comment_increase' ? '10日コメント増加数' : field.id;
       }
       
       return {

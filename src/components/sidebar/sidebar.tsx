@@ -132,14 +132,6 @@ export function Sidebar() {
         </div>
         <SidebarItem
           href="#"
-          icon="Users"
-          label="インフルエンサートレンド"
-          active={false}
-          disabled={true}
-          comingSoon={true}
-        />
-        <SidebarItem
-          href="#"
           icon="FileText"
           label="台本作成"
           active={false}

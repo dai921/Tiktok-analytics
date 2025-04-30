@@ -18,6 +18,7 @@ export interface FilterQuery {
   sortField?: string  // ソート対象のフィールド名（明示的に指定）
   comparison?: ComparisonOperator  // 比較演算子を追加
   filters?: Record<string, FilterValue>  // 複数フィルター用
+  active?: boolean  // フィルターがアクティブかどうかを示すフラグ
 }
 
 export interface FilterValue extends FilterQuery {
@@ -25,6 +26,7 @@ export interface FilterValue extends FilterQuery {
   isHashtag?: boolean
   comparison?: ComparisonOperator  // 比較演算子を追加
   filterId?: string  // フィルター識別用のID（オプション）
+  active?: boolean   // フィルターがアクティブかどうかを示すフラグ
 }
 
 // データ型

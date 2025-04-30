@@ -122,13 +122,13 @@ export default function AccountWatchlistPage() {
             }
           }
           
-          // アカウントタイプの一覧を抽出（フィルタリング用）
-          const types = Array.from(new Set(
-            response.data
-              .filter((item: BookmarkAccountItem) => item.account && item.account.account_type)
-              .map((item: BookmarkAccountItem) => item.account!.account_type as string)
-          ));
-          setAccountTypes(types);
+          // // アカウントタイプの一覧を抽出（フィルタリング用）
+          // const types = Array.from(new Set(
+          //   response.data
+          //     .filter((item: BookmarkAccountItem) => item.account && item.account.account_type)
+          //     .map((item: BookmarkAccountItem) => item.account!.account_type as string)
+          // ));
+          // setAccountTypes(types);
           
           // トレンドデータを読み込む
           loadTrendData(startDate, endDate);
@@ -264,11 +264,11 @@ export default function AccountWatchlistPage() {
     }
   };
 
-  // アカウントタイプ変更ハンドラ
-  const handleAccountTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setSelectedAccountType(value === "all" ? null : value);
-  };
+  // // アカウントタイプ変更ハンドラ
+  // const handleAccountTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  //   const value = e.target.value;
+  //   setSelectedAccountType(value === "all" ? null : value);
+  // };
 
   // 指標変更ハンドラ
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -401,7 +401,7 @@ export default function AccountWatchlistPage() {
       
       {/* フィルターエリア */}
       <div className="flex gap-4 items-center mb-6">
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <label className="text-sm whitespace-nowrap">アカウントタイプ:</label>
           <select 
             value={selectedAccountType || "all"}
@@ -413,7 +413,7 @@ export default function AccountWatchlistPage() {
               <option key={type} value={type}>{getAccountTypeDisplayName(type)}</option>
             ))}
           </select>
-        </div>
+        </div> */}
         <div className="w-[280px]">
           <DateRangePicker
             dateRange={dateRange}
