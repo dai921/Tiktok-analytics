@@ -240,11 +240,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // ソート状態とボタンスタイルを更新する関数
     const updateSortStateAndStyles = useCallback(() => {
-      console.log('[SORT-DEBUG] TableHeaderCell - ボタンスタイル更新:', {
-        title,
-        sortDirection: localSortDirection,
-        isActive
-      });
       
       const headerElement = buttonRef.current?.closest('[data-header-cell]');
       if (headerElement) {
@@ -255,19 +250,8 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // 外部からのsortDirectionプロップと内部ステートを同期させる
     useEffect(() => {
-      console.log('[SORT-EFFECT] TableHeaderCell - useEffect実行:', {
-        title,
-        sortDirection,
-        localSortDirection,
-        isDifferent: sortDirection !== localSortDirection
-      });
       
       if (sortDirection !== localSortDirection) {
-        console.log('[SORT-FIX] TableHeaderCell - 強制的にソート状態を更新:', {
-          title,
-          from: localSortDirection,
-          to: sortDirection
-        });
         
         // 直接状態を更新
         setSortDirection(sortDirection);
@@ -289,23 +273,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       const checkHeaderStyles = () => {
         const headerElement = buttonRef.current?.closest('[data-header-cell]');
         if (headerElement) {
-          console.log('[SORT-RENDER-CHECK] TableHeaderCell - レンダリング後のDOM状態:', {
-            title,
-            sortDirection,
-            localSortDirection,
-            dataSortActive: headerElement.getAttribute('data-sort-active'),
-            dataActive: headerElement.getAttribute('data-active'),
-            cssClasses: headerElement.className,
-            computedStyles: {
-              color: window.getComputedStyle(headerElement).color,
-              fontWeight: window.getComputedStyle(headerElement).fontWeight,
-              // 矢印表示に関連する可能性のあるスタイル
-              display: window.getComputedStyle(headerElement).display,
-              visibility: window.getComputedStyle(headerElement).visibility,
-              overflow: window.getComputedStyle(headerElement).overflow
-            },
-            timestamp: new Date().toISOString()
-          });
         }
       };
       
@@ -313,50 +280,19 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
       setTimeout(checkHeaderStyles, 0);
     }, [title, sortDirection, localSortDirection]);
 
-    // 実際のレンダリング出力の直前にログ
-    console.log('[SORT-RENDER-DEBUG] TableHeaderCell - レンダリング直前の状態:', {
-      title,
-      sortDirection,
-      localSortDirection,
-      willShowArrow: !!localSortDirection,
-      arrowIcon: localSortDirection === 'asc' ? '↑' : localSortDirection === 'desc' ? '↓' : 'なし',
-      sortPriority,
-      timestamp: new Date().toISOString()
-    });
+
 
     // コンポーネントの初期レンダリング時にソート状態をログ
     useEffect(() => {
-      console.log('[SORT-INIT-DEBUG] TableHeaderCell - 初期化時の状態:', {
-        title,
-        sortDirection,
-        localSortDirection,
-        isActive,
-        sortPriority,
-        props: {sortDirection, isActive, sortPriority},
-        timestamp: new Date().toISOString()
-      });
     }, []);
 
     // レンダリング直前の状態チェック
     useEffect(() => {
       // レンダリング前のチェック
-      console.log('[SORT-RENDER-DEBUG] TableHeaderCell - レンダリング前のソート状態:', {
-        title,
-        sortDirection,
-        localSortDirection,
-        willShowArrow: !!localSortDirection,
-        arrowDirection: localSortDirection === 'asc' ? '↑' : '↓',
-        timestamp: new Date().toISOString()
-      });
     }, [title, sortDirection, localSortDirection]);
 
     // 昇順・降順ソート用の関数を更新
     const handleSortDirection = (direction: 'asc' | 'desc') => {
-      console.log('[SORT-DEBUG] TableHeaderCell - ソート方向変更:', {
-        title,
-        direction,
-        previousDirection: localSortDirection
-      });
 
       // ソートの状態のみをリセット（data-sort-active属性のみ）
       document.querySelectorAll('[data-header-cell]').forEach(el => {
@@ -398,11 +334,6 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
         fieldName = 'ten_days_comment_increase';
       }
 
-      console.log('[SORT-DEBUG] TableHeaderCell - ソートフィルター送信:', {
-        title,
-        mappedFieldName: fieldName,
-        direction
-      });
 
       // ソート情報を親コンポーネントに渡す
       onFilter?.({

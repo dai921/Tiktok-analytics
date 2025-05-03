@@ -1,9 +1,12 @@
 // src/components/dashboard/data-table/columns.tsx
+import React, { useContext } from 'react';
 import { Column } from '@/types/dashboard';
 import { TableHeaderCell } from './table-header-cell';
 import * as cellRenderers from './cell-renderers';
 import { formatNumber } from './formatters';
-import { useState} from 'react'
+import { useState } from 'react'
+import { TableContext } from './cell-renderers';
+import { ProductBadge } from '@/components/ui/badge';
 
 // デバッグフラグ
 const DEBUG = false;
@@ -17,7 +20,8 @@ export const createColumns = (
   getFilteredOptions: (columnName: string) => string[],
   isLoadingFilterOptions?: boolean,
   sortField?: string | null,
-  sortDirection?: 'asc' | 'desc' | null
+  sortDirection?: 'asc' | 'desc' | null,
+  productCellRenderer?: (row: any) => React.ReactElement
 ): Column[] => {
     console.log('[DEBUG-SORT] カラム生成時のソート状態:', {
         primarySort,
@@ -99,26 +103,26 @@ export const createColumns = (
 
     // 商品名カラム
     {
-        accessorKey: 'product',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="商品名"
-            type="text"
-            onFilter={(value) => handleFilter('product')(value)}
-            isActive={Boolean(columnFilters['product']?.active)}
-            categoryData={getFilteredOptions('商品名')}
-            sortDirection={
-              primarySort?.field === 'product' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'product' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => cellRenderers.renderProductCell(row)
-      },
+      accessorKey: 'product',
+      header: ({ column }) => (
+        <TableHeaderCell
+          title="商品名"
+          type="text"
+          onFilter={(value) => handleFilter('product')(value)}
+          isActive={Boolean(columnFilters['product']?.active)}
+          categoryData={getFilteredOptions('商品名')}
+          sortDirection={
+            primarySort?.field === 'product' 
+              ? primarySort.direction 
+              : secondarySort?.field === 'product' 
+                ? secondarySort.direction 
+                : null
+          }
+          sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
+        />
+      ),
+      cell: ({ row }) => productCellRenderer ? productCellRenderer(row) : null
+    },
 
       // 投稿日カラム
       {

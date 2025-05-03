@@ -27,11 +27,7 @@ export const SortableHeaderCell = ({ column, index }: { column: Column; index: n
     return ['views', 'likes', 'comments', 'viewsIncrease', 'ten_days_increase', 'likes_count_increase', 'ten_days_likes_increase', 'comment_count_increase', 'ten_days_comment_increase', 'createdAt', 'save_count', 'save_count_increase', 'ten_days_save_increase'].includes(String(key));
   };
 
-  // デバッグログを追加
-  console.log('[SORT-DEBUG] SortableHeaderCell - カラム情報:', {
-    accessorKey: column.accessorKey,
-    hasHeader: !!column.header
-  });
+  
 
   return (
     <th

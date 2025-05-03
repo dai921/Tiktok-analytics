@@ -134,31 +134,55 @@ export const renderCategoryCell = (row: VideoData) => {
 };
 
 // プロダクトセルレンダラー
-export const renderProductCell = (row: VideoData) => { 
-  // ProductCategoriesコンテキストからマッピングを取得
+export const createProductCellRenderer = () => {
+  return (row: VideoData) => {
+    return (
+      <TableContext.Consumer>
+        {(context) => {
+          console.log('TableContext.Consumer内で確認:', {
+            hasContext: !!context,
+            hasCategories: !!context.productCategories,
+            product: row.product
+          });
+          
+          const productCategory = context.productCategories?.[row.product];
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <div className="flex flex-wrap gap-1 justify-start items-center">
+                {row.product && (
+                  <ProductBadge 
+                    product={row.product} 
+                    productCategory={productCategory || 'その他'}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        }}
+      </TableContext.Consumer>
+    );
+  };
+};
+
+// 修正版のrenderProductCell
+export const renderProductCell = (row: VideoData) => {
+  // コンテキストからproductCategoriesを取得
   const { productCategories } = useContext(TableContext);
   
-  // デバッグ用のログを追加
-  console.log('Product Debug Info:', {
-    productName: row.product,
-    allProductCategories: productCategories,
-    mappedCategory: productCategories?.[row.product] || 'マッピングなし',
-    productType: typeof row.product,
+  // デバッグログを追加
+  console.log('renderProductCell内のContext確認:', {
+    hasProductCategories: !!productCategories,
+    productCategoriesSize: productCategories ? Object.keys(productCategories).length : 0,
+    product: row.product
   });
   
-  return (
-    <div className="w-[120px] min-w-[120px]">
-      <div className="flex flex-wrap gap-1 justify-start items-center">
-        {row.product && (
-          <ProductBadge 
-            product={row.product} 
-            // 製品カテゴリマッピングから製品のカテゴリを取得
-            productCategory={productCategories?.[row.product] || 'その他'}
-          />
-        )}
-      </div>
-    </div>
-  );           
+  // 警告ログを出力（参考用）
+  console.warn('renderProductCell is deprecated, createProductCellRenderer should be used instead');
+  
+  // コンテキストからのproductCategoriesを使用する
+  const renderFn = createProductCellRenderer();
+  return renderFn(row);
 };
 
 // 日付セルレンダラー

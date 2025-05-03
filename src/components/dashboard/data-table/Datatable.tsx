@@ -17,6 +17,8 @@ import { useColumnDnd } from './column-dnd';
 import { useColumnVisibility } from './column-visibility';
 import { useProductCategories } from '@/hooks/useProductCategories';
 import { TableContext } from './cell-renderers';
+import { createProductCellRenderer } from './cell-renderers';
+import { ProductBadge } from '@/components/ui/badge';
 
 // EXCLUDED_COLUMNS をここで定義
 const EXCLUDED_COLUMNS = ['description'];
@@ -170,6 +172,19 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
     }, [handleFilter, getFilteredOptions]);
     
+    // 製品カテゴリを取得
+    const { productCategories, loading: loadingProductCategories } = useProductCategories();
+    
+    useEffect(() => {
+      if (!loadingProductCategories) {
+        console.log('[DEBUG-PRODUCTS] 製品カテゴリマッピング取得完了', productCategories);
+      }
+    }, [loadingProductCategories, productCategories]);
+
+    const productCellRenderer = useMemo(() => {
+      return createProductCellRenderer(productCategories);
+    }, [productCategories]);
+
     // カラム定義を取得
     const columns = useMemo(() => {
       const createdColumns = createColumns(
@@ -180,16 +195,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         getFilteredOptions,
         isLoadingFilterOptions,
         sortField,
-        sortDirection
+        sortDirection,
+        productCellRenderer
       );
-      
-      // ソート情報を表示
-      console.log('[SORT-DEBUG] DataTable - 生成されたカラム:', {
-        columns: createdColumns.map(col => ({
-          accessorKey: col.accessorKey,
-          hasSortInfo: col.header?.toString().includes('sortDirection')
-        }))
-      });
       
       return createdColumns;
     }, [
@@ -200,7 +208,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       getFilteredOptions, 
       isLoadingFilterOptions, 
       sortField, 
-      sortDirection
+      sortDirection,
+      productCellRenderer
     ]);
     
     // 依存配列の変更を監視するための追加ログ
@@ -275,7 +284,48 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
     };
 
-    // フィルタされたカラムを取得（useMemoで安定化）
+    // ColumnのcellプロパティをDataTable.tsx側で直接オーバーライド
+    // filteredColumnsを作成する前に、product カラムの cell プロパティを直接変更する
+    const columnsWithProductRenderer = useMemo(() => {
+      return columns.map(column => {
+        if (column.accessorKey === 'product') {
+          return {
+            ...column,
+            cell: ({ row }: { row: VideoData }) => {
+              // 完全なrow情報をログ出力
+              console.log('製品セル内のrow全データ:', row);
+              
+              // キーが"product"ではなく別の可能性がある場合の検証
+              const possibleProductKeys = ['product', 'products', 'productName', 'product_name'];
+              const foundKey = possibleProductKeys.find(key => row[key as keyof typeof row]);
+              
+              console.log('検出された製品キー:', {
+                foundKey,
+                value: foundKey ? row[foundKey as keyof typeof row] : null
+              });
+              
+              return (
+                <div className="w-[120px] min-w-[120px]">
+                  <div className="flex flex-wrap gap-1 justify-start items-center">
+                    {row.product && (
+                      <div className="px-2 py-1 bg-gray-100 rounded text-xs">
+                        {row.product} 
+                        <span className="text-gray-500">
+                          ({productCategories?.[row.product] || 'その他'})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+          };
+        }
+        return column;
+      });
+    }, [columns, productCategories]);
+
+    // filteredColumns の定義で columnsWithProductRenderer を使用
     const filteredColumns = useMemo(() => {
       console.log('[DEBUG-FILTERED] filteredColumns の再計算:', {
         orderedColumnsLength: orderedColumns.length,
@@ -291,25 +341,19 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
             visibleColumns.includes(String(col.accessorKey))
           )
-        : columns.filter(col =>
+        : columnsWithProductRenderer.filter(col =>
             !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
             visibleColumns.includes(String(col.accessorKey))
           );
-    }, [orderedColumns, columns, visibleColumns]);
+    }, [orderedColumns, columnsWithProductRenderer, visibleColumns]);
     
     useEffect(() => {
       // ソート状態の変更をデバッグ
-      console.log('[DEBUG-SORT] DataTable ソート状態:', {
-        primarySort,
-        secondarySort,
-        sortField,
-        sortDirection
-      });
+
     }, [primarySort, secondarySort, sortField, sortDirection]);
     
     // フィルターのバルク変更ハンドラーにデバッグログを追加
     const handleDebugBulkFilterChange = (filters: Record<string, FilterValue>) => {
-      console.log('[SORT-DEBUG] DataTable - バルクフィルター変更受信:', filters);
       
       // ソート関連のフィルターを特に詳しくログ
       const sortFilters = Object.entries(filters).filter(([key, value]) => 
@@ -317,44 +361,40 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       );
       
       if (sortFilters.length > 0) {
-        console.log('[SORT-DEBUG] DataTable - ソートフィルター検出数:', sortFilters.length);
         
         sortFilters.forEach(([key, value]) => {
-          console.log('[SORT-DEBUG] DataTable - ソートフィルター詳細:', {
-            key,
-            field: value.field,
-            sortField: value.sortField,
-            direction: value.value,
-            isPrimarySort: value.isPrimarySort,
-            active: value.active,
-            type: value.type,
-            keyStartsWithSort: key.startsWith('sort_')
-          });
+
         });
       } else {
-        console.log('[SORT-DEBUG] DataTable - ソートフィルターなし');
       }
       
       // 元のハンドラーを呼び出し
       handleBulkFilterChange(filters);
       
       // ソート状態が正しく更新されたか確認
-      console.log('[SORT-DEBUG] DataTable - フィルター適用後のソート状態:', {
-        primarySort,
-        secondarySort,
-        sortField,
-        sortDirection
-      });
+
     };
 
-    // 製品カテゴリを取得
-    const { productCategories, loading: loadingProductCategories } = useProductCategories();
-    
+    // productCategoriesの変化を監視
     useEffect(() => {
-      if (!loadingProductCategories) {
-        console.log('[DEBUG-PRODUCTS] 製品カテゴリマッピング取得完了', productCategories);
-      }
-    }, [loadingProductCategories, productCategories]);
+      console.log('[PRODUCT-CATEGORIES-CHANGE] productCategories変更検知', {
+        timestamp: new Date().toISOString(),
+        hasProductCategories: !!productCategories,
+        productCategoriesSize: productCategories ? Object.keys(productCategories).length : 0,
+        loadingState: loadingProductCategories,
+        renderCount: renderCountRef.current
+      });
+    }, [productCategories, loadingProductCategories]);
+
+    console.log('製品名とカテゴリーのマッピング比較:', {
+      availableProducts: data.map(item => item.product).filter(Boolean),
+      availableCategories: productCategories ? Object.keys(productCategories) : []
+    });
+
+    console.log('データサンプル詳細確認:', {
+      firstRow: data.length > 0 ? data[0] : null,
+      allKeys: data.length > 0 ? Object.keys(data[0]) : [],
+    });
 
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -446,9 +486,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 setSelectedText, 
                 productCategories 
               }}>
-                {/* コンテキストに提供されるproductCategoriesの内容を確認 */}
+                {/* プロバイダーの値をより詳細にログ出力 */}
                 {(() => {
-                  console.log('TableContext Provider - productCategories:', productCategories);
+                  console.log('[CONTEXT-PROVIDER] TableContext.Provider値設定', {
+                    timestamp: new Date().toISOString(),
+                    hasProductCategories: !!productCategories,
+                    productCategoriesSize: productCategories ? Object.keys(productCategories).length : 0,
+                    productCategoriesKeys: productCategories ? Object.keys(productCategories).slice(0, 5) : [], // 最初の5つだけ表示
+                    renderCount: renderCountRef.current
+                  });
                   return null;
                 })()}
                 <table className="min-w-full divide-y divide-gray-200">
@@ -459,13 +505,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                           {filteredColumns.map((column, index) => {
                             // 再生数カラムの場合、特別に詳細なログを出力
                             if (column.accessorKey === 'views') {
-                              console.log('[SORT-DEBUG] DataTable - 再生数カラムの詳細:', {
-                                column,
-                                primarySort,
-                                secondarySort,
-                                sortDirection,
-                                timestamp: new Date().toISOString()
-                              });
                             }
                             
                             return (
