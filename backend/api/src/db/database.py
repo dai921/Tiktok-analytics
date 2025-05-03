@@ -16,7 +16,7 @@ logger = setup_logger()
 # 💡 起動時にプールを 1 個だけ作る
 _db_pool = MySQLConnectionPool(
     pool_name="mypool",
-    pool_size=10,
+    pool_size=32,
     **get_db_config()          # host / user / password / database / port or unix_socket
 )
 logger.info("MySQL pool initialised size=10")

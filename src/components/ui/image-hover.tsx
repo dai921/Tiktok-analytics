@@ -206,7 +206,13 @@ export function ImageHover({
 
   const formatGrowth = (growth?: number): string => {
     if (growth === undefined) return "0.0%";
-    return growth > 0 ? `+${growth.toFixed(1)}%` : `${growth.toFixed(1)}%`
+    
+    // 増加数を総再生数で割って％に変換
+    const normalizedGrowth = videoData.views > 0 ? (growth / videoData.views) * 100 : 0;
+    
+    return normalizedGrowth > 0 
+      ? `+${normalizedGrowth.toFixed(1)}%` 
+      : `${normalizedGrowth.toFixed(1)}%`;
   }
 
   const formatDate = (dateString: string): string => {

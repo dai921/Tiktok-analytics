@@ -109,9 +109,9 @@ export const renderCategoryCell = (row: VideoData) => {
           // すべての要素を処理して、必要に応じて分割
           (category as string[]).forEach((cat: string, idx: number) => {
             // 区切り文字を含む場合は分割
-            if (cat.includes(',') || cat.includes('、') || cat.includes('/')) {
+            if (cat.includes(',') || cat.includes('、')) {
               const subGenres = cat
-                .split(/[,、\/]/)
+                .split(/[,、]/)
                 .map(g => g.trim())
                 .filter(Boolean);
                 
@@ -137,6 +137,14 @@ export const renderCategoryCell = (row: VideoData) => {
 export const renderProductCell = (row: VideoData) => { 
   // ProductCategoriesコンテキストからマッピングを取得
   const { productCategories } = useContext(TableContext);
+  
+  // デバッグ用のログを追加
+  console.log('Product Debug Info:', {
+    productName: row.product,
+    allProductCategories: productCategories,
+    mappedCategory: productCategories?.[row.product] || 'マッピングなし',
+    productType: typeof row.product,
+  });
   
   return (
     <div className="w-[120px] min-w-[120px]">
@@ -200,17 +208,81 @@ export const renderDateCell = (row: VideoData) => {
 export const renderAccountTypeCell = (row: VideoData) => { 
   const accountType = row.account_type;
   
+  if (!accountType) {
+    return (
+      <div className="w-[120px] min-w-[120px]">
+        <div className="flex flex-wrap gap-1 justify-start items-center">
+          <span className="text-gray-400 text-xs">未設定</span>
+        </div>
+      </div>
+    );
+  }
+  
+  // 文字列の場合
+  if (typeof accountType === 'string') {
+    // 複数の種類がカンマや区切り文字で分割されている場合
+    if (accountType.includes(',') || accountType.includes('、')) {
+      const types = accountType
+        .split(/[,、]/)
+        .map(t => t.trim())
+        .filter(Boolean);
+        
+      return (
+        <div className="w-[120px] min-w-[120px]">
+          <div className="flex flex-wrap gap-1 justify-start items-center">
+            {types.map((type, idx) => (
+              <AccountTypeBadge key={idx} accountType={type} />
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="w-[120px] min-w-[120px]">
+        <div className="flex flex-wrap gap-1 justify-start items-center">
+          <AccountTypeBadge accountType={accountType} />
+        </div>
+      </div>
+    );
+  }
+  
+  // 配列の場合（複数タイプに対応）
+  if (Array.isArray(accountType)) {
+    const allTypeBadges: React.ReactElement[] = [];
+    
+    // すべての要素を処理して、必要に応じて分割
+    (accountType as string[]).forEach((type: string, idx: number) => {
+      // 区切り文字を含む場合は分割
+      if (type.includes(',') || type.includes('、')) {
+        const subTypes = type
+          .split(/[,、]/)
+          .map(t => t.trim())
+          .filter(Boolean);
+          
+        subTypes.forEach((subType, subIdx) => {
+          allTypeBadges.push(<AccountTypeBadge key={`${idx}-${subIdx}`} accountType={subType} />);
+        });
+      } else {
+        allTypeBadges.push(<AccountTypeBadge key={idx} accountType={type} />);
+      }
+    });
+    
+    return (
+      <div className="w-[120px] min-w-[120px]">
+        <div className="flex flex-wrap gap-1 justify-start items-center">
+          {allTypeBadges}
+        </div>
+      </div>
+    );
+  }
+  
   return (
     <div className="w-[120px] min-w-[120px]">
       <div className="flex flex-wrap gap-1 justify-start items-center">
-        {accountType ? (
-          <AccountTypeBadge accountType={accountType} />
-        ) : (
-          <span className="text-gray-400 text-xs">未設定</span>
-        )}
+        <span className="text-gray-400 text-xs">未設定</span>
       </div>
     </div>
-  )
+  );
 };
 
 // 再生数セルレンダラー

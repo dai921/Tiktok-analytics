@@ -3,7 +3,7 @@
  */
 
 // API Base URL - 環境変数から取得するか、デフォルト値を使用
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // TikTokのブランドカラー
 export const TIKTOK_COLORS = {

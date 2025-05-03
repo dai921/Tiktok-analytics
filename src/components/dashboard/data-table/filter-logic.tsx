@@ -52,6 +52,7 @@ export interface FilterHandlers {
   handleClearAllFilters: () => void;
   handleClearFilterInputs: () => void;
   setIsFilterPopupOpen: (isOpen: boolean) => void;
+  setColumnFilters: (filters: Record<string, FilterValue> | ((prev: Record<string, FilterValue>) => Record<string, FilterValue>)) => void;
 }
 
 export function useFilterLogic(
@@ -490,9 +491,37 @@ export function useFilterLogic(
       normalFiltersCount: Object.keys(normalFilters).length,
       columnFiltersWithSort: JSON.stringify({
         ...normalFilters,
-        ...primarySortConfig
+        ...primarySortConfig,
+        ...secondarySortConfig
       })
     });
+
+    // 重要: ここでソート状態を改めて確認し、UIに反映させる
+    if (sortUpdated) {
+      // 再度ソート状態を設定して、UIに確実に反映されるようにする
+      if (newPrimarySort !== null) {
+        setTimeout(() => {
+          sortState.setPrimarySort(newPrimarySort);
+          if (newPrimarySort && newPrimarySort.field) {
+            sortState.setSortField(newPrimarySort.field);
+            sortState.setSortDirection(newPrimarySort.direction);
+          }
+        }, 0);
+      } else {
+        // 明示的にnullに設定
+        sortState.setPrimarySort(null);
+        sortState.setSortField(null);
+        sortState.setSortDirection(null);
+      }
+      
+      if (newSecondarySort) {
+        setTimeout(() => {
+          sortState.setSecondarySort(newSecondarySort);
+        }, 0);
+      } else {
+        sortState.setSecondarySort(null);
+      }
+    }
   }, [onFilterChange, sortState]);
 
   return [
@@ -502,7 +531,8 @@ export function useFilterLogic(
       handleBulkFilterChange, 
       handleClearAllFilters, 
       handleClearFilterInputs,
-      setIsFilterPopupOpen
+      setIsFilterPopupOpen,
+      setColumnFilters
     }
   ];
 } 

@@ -57,19 +57,19 @@ def sync_video_history(event, context):
             video_id,
             url,
             %s as collection_date,
-            playCount,
-            likesCount,
-            commentCount,
-            saveCount,
-            playCountIncrease,
-            likesCountIncrease,
-            commentCountIncrease,
-            saveCountIncrease
+            play_count,
+            likes_count,
+            comment_count,
+            save_count,
+            play_count_increase,
+            likes_count_increase,
+            comment_count_increase,
+            save_count_increase
         FROM 
-            video_master
+            frontend_data
         WHERE 
             video_id IS NOT NULL
-            AND playCountIncrease IS NOT NULL
+            AND play_count_increase IS NOT NULL
         ON DUPLICATE KEY UPDATE
             play_count = VALUES(play_count),
             likes_count = VALUES(likes_count),
@@ -88,12 +88,12 @@ def sync_video_history(event, context):
 
         # 10日間の集計を更新
         update_ten_days_metrics_query = """
-        UPDATE video_master vm
+        UPDATE frontend_data fd
         SET 
             ten_days_increase = (
                 SELECT COALESCE(SUM(play_count_increase), 0)
                 FROM play_count_history pch
-                WHERE pch.video_id = vm.video_id
+                WHERE pch.video_id = fd.video_id
                 AND pch.collection_date IN (
                     CURDATE(),
                     DATE_SUB(CURDATE(), INTERVAL 2 DAY),
@@ -105,7 +105,7 @@ def sync_video_history(event, context):
             ten_days_likes_increase = (
                 SELECT COALESCE(SUM(likes_count_increase), 0)
                 FROM play_count_history pch
-                WHERE pch.video_id = vm.video_id
+                WHERE pch.video_id = fd.video_id
                 AND pch.collection_date IN (
                     CURDATE(),
                     DATE_SUB(CURDATE(), INTERVAL 2 DAY),
@@ -117,7 +117,7 @@ def sync_video_history(event, context):
             ten_days_comment_increase = (
                 SELECT COALESCE(SUM(comment_count_increase), 0)
                 FROM play_count_history pch
-                WHERE pch.video_id = vm.video_id
+                WHERE pch.video_id = fd.video_id
                 AND pch.collection_date IN (
                     CURDATE(),
                     DATE_SUB(CURDATE(), INTERVAL 2 DAY),
@@ -129,7 +129,7 @@ def sync_video_history(event, context):
             ten_days_save_increase = (
                 SELECT COALESCE(SUM(save_count_increase), 0)
                 FROM play_count_history pch
-                WHERE pch.video_id = vm.video_id
+                WHERE pch.video_id = fd.video_id
                 AND pch.collection_date IN (
                     CURDATE(),
                     DATE_SUB(CURDATE(), INTERVAL 2 DAY),

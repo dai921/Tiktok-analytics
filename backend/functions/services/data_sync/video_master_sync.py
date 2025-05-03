@@ -44,9 +44,9 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
     """
     try:
         # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
-        if not account_type or account_type.lower() != 'affi':
+        if not account_type or account_type.lower() != 'アフィリエイト':
             return {
-                'category': account_type or '',  # Noneまたは空の場合は空文字を返す
+                'category':'',  # Noneまたは空の場合は空文字を返す
                 'product_name': ''
             }
 

@@ -402,7 +402,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const filterButtonRef = useRef<HTMLButtonElement>(null)
     
     // API関連の設定
-    const API_BASE_URL = 'http://localhost:8080';
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
     // 最後にクリックしたソートフィールドを追跡
     const [lastClickedSort, setLastClickedSort] = useState<string | null>(null);

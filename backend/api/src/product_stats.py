@@ -5,6 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from src.db.database import get_db_connection
 from fastapi.responses import JSONResponse
+from contextlib import closing
 from fastapi.encoders import jsonable_encoder
 import json
 import random
@@ -306,9 +307,6 @@ async def get_product_trends(
     except ValueError as e:
         logger.error(f"Invalid date format: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
-    conn   = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
 
     # ----- フィルタ SQL 断片 -----
     genre_filter_sql = ""
@@ -370,9 +368,10 @@ async def get_product_trends(
     GROUP BY b.collection_date, b.product
     ORDER BY b.collection_date;
     """
-
-    cursor.execute(sql, params)
-    rows = cursor.fetchall()
+    with closing(get_db_connection()) as conn:
+        with closing(conn.cursor(dictionary=True)) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
     # ---------- 整形 ----------
     trend_data = []

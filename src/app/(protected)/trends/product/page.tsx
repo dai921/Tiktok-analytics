@@ -96,6 +96,7 @@ export default function ProductPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [availableGenres, setAvailableGenres] = useState<Option[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [tempSelectedGenres, setTempSelectedGenres] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [productStats, setProductStats] = useState<ProductStats[]>([]);
   const [trendData, setTrendData] = useState<ProductTrendData[]>([]);
@@ -142,6 +143,7 @@ export default function ProductPage() {
           if (genreOptions.length > 0) {
             const initialSelected = genreOptions.map(option => option.value);
             setSelectedGenres(initialSelected);
+            setTempSelectedGenres(initialSelected);
           }
         } else {
           setError('ジャンルデータの取得に失敗しました');
@@ -376,7 +378,12 @@ export default function ProductPage() {
 
   // ジャンル選択用のハンドラを修正
   const handleGenreChange = (selected: string[]) => {
-    setSelectedGenres(selected);
+    setTempSelectedGenres(selected);
+  };
+
+  // ジャンルフィルターを適用するハンドラを追加
+  const handleApplyGenreFilter = () => {
+    setSelectedGenres(tempSelectedGenres);
     // ジャンル変更時にデータを再ロードするためのフラグをリセット
     setDataLoaded(false);
     setGraphDataLoaded(false);
@@ -478,8 +485,9 @@ export default function ProductPage() {
             <label className="text-sm whitespace-nowrap">ジャンルフィルタ:</label>
             <MultiSelect
               options={availableGenres}
-              selected={selectedGenres}
+              selected={tempSelectedGenres}
               onChange={handleGenreChange}
+              onApply={handleApplyGenreFilter}
               className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
               placeholder="すべてのジャンル"
             />

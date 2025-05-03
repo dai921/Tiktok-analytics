@@ -446,6 +446,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 setSelectedText, 
                 productCategories 
               }}>
+                {/* コンテキストに提供されるproductCategoriesの内容を確認 */}
+                {(() => {
+                  console.log('TableContext Provider - productCategories:', productCategories);
+                  return null;
+                })()}
                 <table className="min-w-full divide-y divide-gray-200">
                   <DndContextProvider>
                     <thead className="bg-gray-50 border-b">

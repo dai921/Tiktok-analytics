@@ -114,10 +114,11 @@ def process_update_all_categories():
         
         # 処理すべき動画データの取得（バッチサイズ分）
         video_query = f"""
-            SELECT id, video_id, username, description, hashtags
-            FROM video_master
-            WHERE id > {last_cursor_id}
-            ORDER BY id
+            SELECT vm.id, vm.video_id, vm.username, vm.description, vm.hashtags
+            FROM video_master vm
+            INNER JOIN frontend_data fd ON vm.video_id = fd.video_id
+            WHERE vm.id > {last_cursor_id}
+            ORDER BY vm.id
             LIMIT {batch_size}
         """
         videos = execute_query(video_query)
@@ -159,8 +160,6 @@ def process_update_all_categories():
                 description = video.get('description', '')
                 title_analysis = analyze_title(description, account_type)
                 
-                if account_type == 'affi':
-                    account_type = 'アフィリエイト'
                 # video_masterテーブルの更新
                 update_query = """
                     UPDATE video_master 
@@ -381,7 +380,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
     """
     try:
         # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
-        if not account_type or account_type.lower() != 'affi':
+        if not account_type or account_type.lower() != 'アフィリエイト':
             return {
                 'category': '',
                 'product_name': ''

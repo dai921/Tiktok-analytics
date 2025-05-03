@@ -15,6 +15,7 @@ const nextConfig = {
       }
     ]
   },
+
   // バックエンドAPIへのリダイレクト設定
   async rewrites() {
     return [
@@ -28,7 +29,10 @@ const nextConfig = {
       }
     ]
   },
-  
+  productionBrowserSourceMaps: true,
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080',
+  },
   // ESLintチェックを無効化
   eslint: {
     ignoreDuringBuilds: true,
@@ -41,11 +45,6 @@ const nextConfig = {
   
   // Cloud Runでの実行のためにスタンドアロンモードを有効化
   output: 'standalone',
- 
-  // 実行時の環境変数を優先して使用
-  env: {
-    NEXT_PUBLIC_API_URL: 'http://localhost:8080',
-  },
   
   // 動的レンダリングを強制
   experimental: {

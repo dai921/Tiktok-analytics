@@ -7,6 +7,7 @@ from src.display_settings.router import router as display_settings_router
 from src.product_stats import router as product_stats_router
 from src.genre_stats import router as genre_stats_router
 from src.watchlist import router as watchlist_router
+from contextlib import closing
 from fastapi import FastAPI
 from src.timing_middleware import timing_middleware
 import traceback
@@ -19,6 +20,7 @@ from fastapi.encoders import jsonable_encoder
 import pathlib
 import json
 import re
+from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
 
@@ -131,6 +133,8 @@ async def get_videos(
     product_type: Optional[str] = None,  # 商品フィルターの比較演算子
     account_type: Optional[str] = None,  # アカウントタイプフィルターを追加
     account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
+    created_at: Optional[str] = None,  # 作成日フィルターを追加
+    created_at_type: Optional[str] = None,  # 作成日の比較演算子
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
@@ -241,6 +245,19 @@ async def get_videos(
             else:
                 where_clauses.append("play_count = %s")
                 params.append(play_count)
+
+        # 作成日のフィルタリング
+        if created_at:
+            if created_at_type == "after" or created_at_type == "greater":
+                where_clauses.append("created_at >= %s")
+                params.append(created_at)
+            elif created_at_type == "before" or created_at_type == "less":
+                where_clauses.append("created_at <= %s")
+                params.append(created_at)
+            else:  # exact date
+                # 日付が "YYYY-MM-DD" 形式の場合、その日の範囲を指定
+                where_clauses.append("DATE(created_at) = DATE(%s)")
+                params.append(created_at)
 
         if likes_count is not None:
             if likes_count_type == "greater":
@@ -620,57 +637,52 @@ async def debug_row(row_id: str):
 @app.get("/api/categories")
 async def get_categories():
     """カテゴリ一覧を取得するエンドポイント"""
+
     try:
-        # データベースに接続
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        
-        # データベース構造を確認
-        cursor.execute("SHOW TABLES")
-        tables = [row[0] for row in cursor.fetchall()]
-        logger.info(f"データベース内のテーブル: {tables}")
-        
-        # frontend_dataテーブルの構造確認
-        cursor.execute("DESCRIBE frontend_data")
-        columns = [row[0] for row in cursor.fetchall()]
-        logger.info(f"frontend_dataテーブルのカラム: {columns}")
-        
-        # カテゴリ情報があるか確認
-        if 'category' in columns:
-            # カテゴリ一覧の取得
-            cursor.execute(
-                "SELECT DISTINCT category FROM frontend_data WHERE category IS NOT NULL AND category != ''"
-            )
-            categories_rows = cursor.fetchall()
-            
-            # デバッグ情報の出力
-            logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
-            if categories_rows:
-                logger.info(f"カテゴリデータサンプル: {categories_rows[:5]}")
-            
-            # カテゴリリストの作成
-            categories = [row[0] for row in categories_rows if row[0]]
-            
-            # レスポンス作成
-            result = {
-                "success": True,
-                "categories": categories,
-                "products": [],  # 簡略化のため空リストで返す
-                "category_products": {}  # 簡略化のため空辞書で返す
-            }
-        else:
-            # カテゴリカラムがない場合
-            result = {
-                "success": False,
-                "error": "カテゴリ情報が見つかりません",
-                "categories": []
-            }
-        
-        connection.close()
+        # ← ここで接続もカーソルも借りて、ブロックを抜けたら自動 close
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+
+            # データベース構造を確認
+            cursor.execute("SHOW TABLES")
+            tables = [row[0] for row in cursor.fetchall()]
+            logger.info(f"データベース内のテーブル: {tables}")
+
+            # frontend_dataテーブルの構造確認
+            cursor.execute("DESCRIBE frontend_data")
+            columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"frontend_dataテーブルのカラム: {columns}")
+
+            # カテゴリ情報があるか確認
+            if "category" in columns:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT category
+                    FROM frontend_data
+                    WHERE category IS NOT NULL AND category != ''
+                    """
+                )
+                categories_rows = cursor.fetchall()
+                logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
+
+                categories = [row[0] for row in categories_rows if row[0]]
+                result = {
+                    "success": True,
+                    "categories": categories,
+                    "products": [],
+                    "category_products": {}
+                }
+            else:
+                result = {
+                    "success": False,
+                    "error": "カテゴリ情報が見つかりません",
+                    "categories": []
+                }
+
+        # with ブロックを抜けた時点で cursor / conn は閉じられている
         return result
-        
+
     except Exception as e:
-        logger.error(f"カテゴリ取得エラー: {str(e)}")
+        logger.error(f"カテゴリ取得エラー: {e}")
         logger.error(traceback.format_exc())
         return {
             "success": False,
@@ -682,16 +694,13 @@ async def get_categories():
 async def get_accounts():
     """アカウント一覧を取得するエンドポイント"""
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # アカウント一覧の取得
-        cursor.execute(
-            "SELECT DISTINCT account_name FROM frontend_data WHERE account_name IS NOT NULL AND account_name != ''"
-        )
-        accounts = [row[0] for row in cursor.fetchall()]
-        
-        connection.close()
+            # アカウント一覧の取得
+            cursor.execute(
+                "SELECT DISTINCT account_name FROM frontend_data WHERE account_name IS NOT NULL AND account_name != ''"
+            )
+            accounts = [row[0] for row in cursor.fetchall()]
         
         return {
             "success": True,
@@ -705,43 +714,40 @@ async def get_accounts():
 async def get_hashtags(limit: int = None):
     """ハッシュタグ一覧を取得するエンドポイント"""
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # ハッシュタグ一覧の取得
-        if limit:
-            cursor.execute(
-                "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
-                (limit,)
-            )
-        else:
-            cursor.execute(
-                "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != ''"
-            )
-        hashtags_rows = cursor.fetchall()
-        
-        # ハッシュタグはJSONとして保存されている可能性があるため、パースして個別のハッシュタグを抽出
-        all_hashtags = []
-        for row in hashtags_rows:
-            try:
-                # JSON文字列をパースして配列として扱う
-                hashtags_list = json.loads(row[0])
-                if isinstance(hashtags_list, list):
-                    all_hashtags.extend(hashtags_list)
-                else:
-                    # 単一の値の場合
+            # ハッシュタグ一覧の取得
+            if limit:
+                cursor.execute(
+                    "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
+                    (limit,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != ''"
+                )
+            hashtags_rows = cursor.fetchall()
+            
+            # ハッシュタグはJSONとして保存されている可能性があるため、パースして個別のハッシュタグを抽出
+            all_hashtags = []
+            for row in hashtags_rows:
+                try:
+                    # JSON文字列をパースして配列として扱う
+                    hashtags_list = json.loads(row[0])
+                    if isinstance(hashtags_list, list):
+                        all_hashtags.extend(hashtags_list)
+                    else:
+                        # 単一の値の場合
+                        all_hashtags.append(row[0])
+                except json.JSONDecodeError:
+                    # JSON形式でない場合は単一の値として扱う
                     all_hashtags.append(row[0])
-            except json.JSONDecodeError:
-                # JSON形式でない場合は単一の値として扱う
-                all_hashtags.append(row[0])
-        
-        # 重複を除去
-        unique_hashtags = list(set(all_hashtags))
-        # ハッシュタグをオブジェクト形式に変換
-        hashtags = [{"hashtags": tag} for tag in unique_hashtags if tag]
-        
-        connection.close()
-        
+            
+            # 重複を除去
+            unique_hashtags = list(set(all_hashtags))
+            # ハッシュタグをオブジェクト形式に変換
+            hashtags = [{"hashtags": tag} for tag in unique_hashtags if tag]
+
         return {
             "success": True,
             "data": hashtags
@@ -754,65 +760,61 @@ async def get_hashtags(limit: int = None):
 async def get_music(limit: int = 100):
     """BGM(音声タイトル)一覧を取得するエンドポイント"""
     try:
-        # データベースに接続
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # テーブルの構造確認
-        cursor.execute("DESCRIBE frontend_data")
-        columns = [row[0] for row in cursor.fetchall()]
-        logger.info(f"frontend_dataテーブルのカラム: {columns}")
-        
-        music_titles = []
-        # audio_titleカラムがあるか確認
-        if 'audio_title' in columns:
-            # BGM一覧の取得
-            cursor.execute(
-                "SELECT DISTINCT audio_title FROM frontend_data WHERE audio_title IS NOT NULL AND audio_title != '' LIMIT %s",
-                (limit,)
-            )
-            music_rows = cursor.fetchall()
-            logger.info(f"audio_titleから取得したBGM行数: {len(music_rows)}")
+            # テーブルの構造確認
+            cursor.execute("DESCRIBE frontend_data")
+            columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"frontend_dataテーブルのカラム: {columns}")
             
-            # データ抽出
-            music_titles = [row[0] for row in music_rows if row[0]]
-            if music_titles:
-                logger.info(f"BGMサンプル: {music_titles[:5]}")
-        
-        # music_infoカラムがあるか確認
-        elif 'music_info' in columns:
-            # 代替として music_info カラムを使用
-            cursor.execute(
-                "SELECT DISTINCT music_info FROM frontend_data WHERE music_info IS NOT NULL AND music_info != '' LIMIT %s",
-                (limit,)
-            )
-            music_rows = cursor.fetchall()
-            logger.info(f"music_infoから取得したBGM行数: {len(music_rows)}")
+            music_titles = []
+            # audio_titleカラムがあるか確認
+            if 'audio_title' in columns:
+                # BGM一覧の取得
+                cursor.execute(
+                    "SELECT DISTINCT audio_title FROM frontend_data WHERE audio_title IS NOT NULL AND audio_title != '' LIMIT %s",
+                    (limit,)
+                )
+                music_rows = cursor.fetchall()
+                logger.info(f"audio_titleから取得したBGM行数: {len(music_rows)}")
+                
+                # データ抽出
+                music_titles = [row[0] for row in music_rows if row[0]]
+                if music_titles:
+                    logger.info(f"BGMサンプル: {music_titles[:5]}")
             
-            # データ処理
-            for row in music_rows:
-                if row[0]:
-                    try:
-                        # JSON文字列の場合はパース
-                        if isinstance(row[0], str) and (row[0].startswith('{') or row[0].startswith('[')):
-                            music_info = json.loads(row[0])
-                            if isinstance(music_info, dict) and 'title' in music_info:
-                                music_titles.append(music_info['title'])
+            # music_infoカラムがあるか確認
+            elif 'music_info' in columns:
+                # 代替として music_info カラムを使用
+                cursor.execute(
+                    "SELECT DISTINCT music_info FROM frontend_data WHERE music_info IS NOT NULL AND music_info != '' LIMIT %s",
+                    (limit,)
+                )
+                music_rows = cursor.fetchall()
+                logger.info(f"music_infoから取得したBGM行数: {len(music_rows)}")
+                
+                # データ処理
+                for row in music_rows:
+                    if row[0]:
+                        try:
+                            # JSON文字列の場合はパース
+                            if isinstance(row[0], str) and (row[0].startswith('{') or row[0].startswith('[')):
+                                music_info = json.loads(row[0])
+                                if isinstance(music_info, dict) and 'title' in music_info:
+                                    music_titles.append(music_info['title'])
+                                else:
+                                    music_titles.append(str(music_info))
                             else:
-                                music_titles.append(str(music_info))
-                        else:
+                                music_titles.append(str(row[0]))
+                        except json.JSONDecodeError:
                             music_titles.append(str(row[0]))
-                    except json.JSONDecodeError:
-                        music_titles.append(str(row[0]))
+                
+                if music_titles:
+                    logger.info(f"パース後のBGMサンプル: {music_titles[:5]}")
             
-            if music_titles:
-                logger.info(f"パース後のBGMサンプル: {music_titles[:5]}")
-        
-        # 音楽情報がない場合
-        if not music_titles:
-            logger.warning("BGM情報を取得できませんでした")
-        
-        connection.close()
+            # 音楽情報がない場合
+            if not music_titles:
+                logger.warning("BGM情報を取得できませんでした")
         
         return {
             "success": True,
@@ -1243,7 +1245,7 @@ async def get_trend_genres():
         cursor = conn.cursor()
         
         # ユニークなジャンル一覧を取得
-        query = "SELECT DISTINCT genre FROM trend_analysis ORDER BY genre"
+        query = "SELECT DISTINCT category_name FROM category_master ORDER BY category_name"
         cursor.execute(query)
         rows = cursor.fetchall()
         
@@ -1502,47 +1504,44 @@ async def get_video_save_count_history(
 async def get_products():
     """商品マスターから商品情報とカテゴリを取得するエンドポイント"""
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # product_masterテーブルから商品情報を取得
-        cursor.execute("""
-            SELECT 
-                product_name,
-                product_category
-            FROM 
-                product_master
-            WHERE 
-                product_name IS NOT NULL 
-                AND product_name != ''
-            ORDER BY 
-                product_category,
-                product_name
-        """)
-        
-        product_rows = cursor.fetchall()
-        
-        # 結果を構造化
-        products = []
-        categories = {}  # カテゴリごとに商品をグループ化
-        
-        for row in product_rows:
-            product_name = row[0]
-            product_category = row[1] or "その他"  # カテゴリがない場合は「その他」とする
+            # product_masterテーブルから商品情報を取得
+            cursor.execute("""
+                SELECT 
+                    product_name,
+                    product_category
+                FROM 
+                    product_master
+                WHERE 
+                    product_name IS NOT NULL 
+                    AND product_name != ''
+                ORDER BY 
+                    product_category,
+                    product_name
+            """)
             
-            products.append({
-                "name": product_name,
-                "category": product_category
-            })
+            product_rows = cursor.fetchall()
             
-            # カテゴリごとの商品リストを作成
-            if product_category not in categories:
-                categories[product_category] = []
+            # 結果を構造化
+            products = []
+            categories = {}  # カテゴリごとに商品をグループ化
             
-            categories[product_category].append(product_name)
-        
-        connection.close()
-        
+            for row in product_rows:
+                product_name = row[0]
+                product_category = row[1] or "その他"  # カテゴリがない場合は「その他」とする
+                
+                products.append({
+                    "name": product_name,
+                    "category": product_category
+                })
+                
+                # カテゴリごとの商品リストを作成
+                if product_category not in categories:
+                    categories[product_category] = []
+                
+                categories[product_category].append(product_name)
+            
         return {
             "success": True,
             "data": products,
@@ -1556,16 +1555,13 @@ async def get_products():
 async def get_account_types():
     """アカウントタイプ一覧を取得するエンドポイント"""
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # 空でないアカウントタイプのみを取得
-        cursor.execute(
-            "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
-        )
-        account_types = [row[0] for row in cursor.fetchall()]
-        
-        connection.close()
+            # 空でないアカウントタイプのみを取得
+            cursor.execute(
+                "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
+            )
+            account_types = [row[0] for row in cursor.fetchall()]
         
         return {
             "success": True,

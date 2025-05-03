@@ -18,6 +18,7 @@ interface MultiSelectProps {
   options: Option[]
   selected: string[]
   onChange: (selected: string[]) => void
+  onApply?: () => void
   placeholder?: string
   emptyMessage?: string
   className?: string
@@ -28,6 +29,7 @@ export function MultiSelect({
   options,
   selected,
   onChange,
+  onApply,
   placeholder = "項目を選択",
   emptyMessage = "選択できる項目がありません",
   className,
@@ -45,6 +47,13 @@ export function MultiSelect({
 
   const handleRemove = (value: string) => {
     onChange(selected.filter(item => item !== value))
+  }
+
+  const handleApply = () => {
+    if (onApply) {
+      onApply();
+      setOpen(false);
+    }
   }
 
   // 選択された項目のラベルを取得
@@ -125,16 +134,27 @@ export function MultiSelect({
           <div className="text-sm text-muted-foreground">
             {selected.length} / {options.length} 選択中
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              onChange([])
-            }}
-            disabled={selected.length === 0}
-          >
-            すべて解除
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onChange([])
+              }}
+              disabled={selected.length === 0}
+            >
+              すべて解除
+            </Button>
+            {onApply && (
+              <Button
+                size="sm"
+                onClick={handleApply}
+                className="bg-[#FE2C55] hover:bg-[#FE2C55]/90 text-white"
+              >
+                適用
+              </Button>
+            )}
+          </div>
         </div>
       </PopoverContent>
     </Popover>

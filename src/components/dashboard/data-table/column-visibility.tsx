@@ -8,10 +8,13 @@ export function useColumnVisibility(
   defaultColumns?: string[],
   onColumnSettingsChange?: (visibleColumns: string[]) => void
 ) {
+  // defaultColumnsが空配列の場合もDEFAULT_VISIBLE_COLUMNSを使用
+  const initialColumns = (!defaultColumns || defaultColumns.length === 0) 
+    ? DEFAULT_VISIBLE_COLUMNS 
+    : defaultColumns;
+  
   const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState<string[]>(
-    defaultColumns || DEFAULT_VISIBLE_COLUMNS
-  );
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(initialColumns);
   
   // デバッグログ
   if (DEBUG) {

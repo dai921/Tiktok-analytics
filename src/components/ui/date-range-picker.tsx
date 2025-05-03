@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { format } from "date-fns"
+import { format, isValid } from "date-fns"
 import { ja } from "date-fns/locale"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
@@ -51,6 +51,8 @@ export function DateRangePicker({
 
   // 日付をYYYY-MM-DD形式に変換する関数
   const formatDateForInput = (date: Date) => {
+    console.log('formatDateForInput ->', date);   // ★追加
+    if (!date || !isValid(date)) return ""; 
     return date.toISOString().split('T')[0];
   };
 
@@ -92,7 +94,8 @@ export function DateRangePicker({
       <PopoverTrigger asChild>
         <Button variant="outline" className="w-full justify-between text-left font-normal">
           <span>
-            {format(dateRange.start, "yyyy年MM月dd日")} 〜 {format(dateRange.end, "yyyy年MM月dd日")}
+            {isValid(dateRange.start) ? format(dateRange.start, "yyyy年MM月dd日") : "―"} 〜
+            {isValid(dateRange.end)   ? format(dateRange.end,   "yyyy年MM月dd日") : "―"}
           </span>
           <CalendarIcon />
         </Button>

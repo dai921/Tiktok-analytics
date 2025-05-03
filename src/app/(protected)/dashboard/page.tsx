@@ -553,11 +553,29 @@ const Dashboard = () => {
     const loadSettings = async () => {
       try {
         const response = await displaySettingsApi.getSettings();
-        if (response.success && response.settings) {
+        console.log('表示設定のレスポンス:', response);
+        
+        if (response.success && response.settings && response.settings.columns && response.settings.columns.length > 0) {
           const visibleColumnNames = response.settings.columns
             .filter(col => col.is_visible)
             .map(col => col.column_name);
-          setVisibleColumns(visibleColumnNames);
+          
+          console.log('読み込まれた表示カラム:', visibleColumnNames);
+          
+          // カラムが空の場合はデフォルト値を使用
+          if (visibleColumnNames.length === 0) {
+            console.log('表示カラムが空のため、デフォルト値を使用します');
+            // constants.tsからインポートする
+            const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
+            setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+          } else {
+            setVisibleColumns(visibleColumnNames);
+          }
+        } else {
+          console.log('表示設定が取得できないため、デフォルト値を使用します');
+          // constants.tsからインポートする
+          const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
+          setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
         }
         setIsSettingsLoaded(true);
       } catch (error) {
@@ -567,6 +585,11 @@ const Dashboard = () => {
           description: "表示設定の読み込みに失敗しました",
           variant: "destructive",
         });
+        
+        console.log('エラーのため、デフォルト値を使用します');
+        // constants.tsからインポートする
+        const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
+        setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
         setIsSettingsLoaded(true);
       }
     };

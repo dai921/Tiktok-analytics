@@ -1204,6 +1204,40 @@ export const FilterPopup = ({
             ? [...selectedItems.filter(item => item !== option), option] 
             : selectedItems.filter(item => item !== option)
         });
+      } else if (field.id === 'account_type') {
+        // アカウントタイプの選択状態を更新
+        if (checked) {
+          setSelectedAccountCategories(prev => [...prev, option]);
+        } else {
+          setSelectedAccountCategories(prev => prev.filter(item => item !== option));
+        }
+        
+        // フィルター状態を更新
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked 
+            ? [...selectedItems.filter(item => item !== option), option] 
+            : selectedItems.filter(item => item !== option)
+        });
+      } else if (field.id === 'product') {
+        // 商品の選択状態を更新
+        if (checked) {
+          setSelectedProducts(prev => [...prev, option]);
+        } else {
+          setSelectedProducts(prev => prev.filter(item => item !== option));
+        }
+        
+        // フィルター状態を更新
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked 
+            ? [...selectedItems.filter(item => item !== option), option] 
+            : selectedItems.filter(item => item !== option)
+        });
       }
     };
 
