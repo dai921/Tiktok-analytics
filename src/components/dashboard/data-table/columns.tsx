@@ -23,12 +23,6 @@ export const createColumns = (
   sortDirection?: 'asc' | 'desc' | null,
   productCellRenderer?: (row: any) => React.ReactElement
 ): Column[] => {
-    console.log('[DEBUG-SORT] カラム生成時のソート状態:', {
-        primarySort,
-        secondarySort,
-        sortField,
-        sortDirection
-      });
       
   return [
     // サムネイルカラム
@@ -67,16 +61,6 @@ export const createColumns = (
     {
       accessorKey: 'category',
       header: ({ column }) => {
-        console.log('[DEBUG-SORT] 動画ジャンルカラムのソート状態:', {
-          primarySortField: primarySort?.field,
-          primarySortDirection: primarySort?.direction,
-          isSortActive: primarySort?.field === 'category' || secondarySort?.field === 'category',
-          sortDirection: primarySort?.field === 'category' 
-            ? primarySort.direction 
-            : secondarySort?.field === 'category' 
-              ? secondarySort.direction 
-              : null
-        });
         
         const options = getFilteredOptions('動画ジャンル');
         return (
@@ -154,23 +138,6 @@ export const createColumns = (
         header: ({ column }) => {        
         // ソート状態のデバッグログを追加
         if (DEBUG) {
-          console.log('[SORT-RENDER-DEBUG] 再生数カラムのソート情報:', {
-            primarySort,
-            secondarySort,
-            isViewsActivePrimary: primarySort?.field === 'views',
-            isPlayCountActivePrimary: primarySort?.field === 'play_count',
-            isPrimarySortActive: primarySort?.field === 'views' || primarySort?.field === 'play_count',
-            isSecondarySortActive: secondarySort?.field === 'views' || secondarySort?.field === 'play_count',
-            sortDirection: primarySort?.field === 'views' || primarySort?.field === 'play_count' 
-              ? primarySort.direction 
-              : secondarySort?.field === 'views' || secondarySort?.field === 'play_count'
-                ? secondarySort.direction
-                : null,
-            sortField,
-            allCurrentFilters: columnFilters,
-            viewsFilterValue: columnFilters['views'],
-            viewsSortActive: columnFilters['views_sort']?.active || false
-          });
         }
         
         // ソート状態の判定を明示的に行う
@@ -187,26 +154,14 @@ export const createColumns = (
         
         if (primarySort?.field === 'views' || primarySort?.field === 'play_count') {
           effectiveSortDirection = primarySort.direction;
-          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - プライマリソートからの方向:', primarySort.direction);
         } else if (secondarySort?.field === 'views' || secondarySort?.field === 'play_count') {
           effectiveSortDirection = secondarySort.direction;
-          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - セカンダリソートからの方向:', secondarySort.direction);
         } else if (columnFilters['sort_views']?.value) {
           effectiveSortDirection = columnFilters['sort_views'].value as 'asc' | 'desc';
-          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - columnFiltersからの方向:', effectiveSortDirection);
         } else if (sortField === 'views' && sortDirection) {
           effectiveSortDirection = sortDirection;
-          console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - 従来のsortField/Directionからの方向:', sortDirection);
         }
         
-        // 最終的に使用するソート情報
-        console.log('[SORT-COLUMNS-DEBUG] 再生数カラム - 最終的なソート状態:', {
-          isActiveSort,
-          effectiveSortDirection,
-          primarySortField: primarySort?.field,
-          secondarySortField: secondarySort?.field,
-          timestamp: new Date().toISOString()
-        });
         
         // ソート優先度の決定
         const sortPriorityValue = primarySort?.field === 'views' || primarySort?.field === 'play_count' 
@@ -235,16 +190,6 @@ export const createColumns = (
         accessorKey: 'viewsIncrease',
         header: ({ column }) => {
           // ソート状態のデバッグログを追加
-          console.log('[SORT-RENDER-DEBUG] 再生増加数カラムのソート情報:', {
-            primarySort,
-            secondarySort,
-            isViewsIncreaseActivePrimary: primarySort?.field === 'viewsIncrease',
-            isPlayCountIncreaseActivePrimary: primarySort?.field === 'play_count_increase',
-            isPrimarySortActive: primarySort?.field === 'viewsIncrease' || primarySort?.field === 'play_count_increase',
-            isSecondarySortActive: secondarySort?.field === 'viewsIncrease' || secondarySort?.field === 'play_count_increase',
-            allCurrentFilters: columnFilters,
-            viewsIncreaseFilterValue: columnFilters['viewsIncrease']
-          });
           
           const effectiveSortDirection = 
             primarySort?.field === 'viewsIncrease' || primarySort?.field === 'play_count_increase'
@@ -253,7 +198,6 @@ export const createColumns = (
                 ? secondarySort.direction 
                 : null;
           
-          console.log('[SORT-RENDER-DEBUG] 再生増加数カラム - 計算されたソート方向:', effectiveSortDirection);
           
           return (
             <TableHeaderCell

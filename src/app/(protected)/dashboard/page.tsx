@@ -327,6 +327,17 @@ const Dashboard = () => {
       // PRフィルターを削除
       const updatedFilters = { ...filters };
       delete updatedFilters.hashtags_pr;
+      
+      // hashtags関連のPRフィルターも削除する
+      Object.keys(updatedFilters).forEach(key => {
+        const filter = updatedFilters[key];
+        if ((key === 'hashtags' || key.includes('hashtag')) && 
+            filter && filter.type === 'exact_hashtags' && 
+            filter.value === 'pr') {
+          delete updatedFilters[key];
+        }
+      });
+      
       setFilters(updatedFilters);
     }
     

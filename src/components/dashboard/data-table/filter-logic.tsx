@@ -227,16 +227,16 @@ export function useFilterLogic(
 
   // handleBulkFilterChange関数 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
   const handleBulkFilterChange = useCallback((filters: Record<string, FilterValue>) => {
-    console.log('[SORT-DEBUG] DataTable - 一括フィルター変更受信:', 
-      Object.entries(filters).map(([key, value]) => ({
-        key, 
-        type: value.type, 
-        active: value.active,
-        isSort: value.type === 'sort',
-        isPrimarySort: value.isPrimarySort,
-        field: value.field
-      }))
-    );
+    console.log('[デバッグ-犯人捜し] handleBulkFilterChange 呼び出し', {
+      isPrOnly,
+      receivedFilters: JSON.stringify(filters),
+      hasPrFilter: Object.keys(filters).some(key => 
+        (key === 'hashtags_pr' || 
+         (filters[key].field === 'hashtags' && 
+          filters[key].type === 'exact_hashtags' && 
+          filters[key].value === 'pr'))
+      )
+    });
     
     // ソート関連のフィルターを特に詳しくログ
     Object.entries(filters).forEach(([key, value]) => {
@@ -279,6 +279,8 @@ export function useFilterLogic(
       setIsFilterPopupOpen(false);
       return;
     }
+    
+    // 以下の部分が重要 - フィルターポップアップから受け取ったフィルターセットを処理
     
     // ソート処理のための変数
     let newPrimarySort: { field: string; direction: 'asc' | 'desc' } | null = null;
@@ -359,11 +361,19 @@ export function useFilterLogic(
             timestamp: new Date().toISOString()
           });
         }
+      } else if (
+        key === 'hashtags_pr' || 
+        (filter.field === 'hashtags' && 
+         filter.type === 'exact_hashtags' && 
+         filter.value === 'pr')
+      ) {
+        // PRフィルターは無視する - このフィルターはisPrOnlyの状態のみで制御
+        console.log('[デバッグ-犯人捜し] PRフィルターを検出、無視します', { key, filter });
       } else {
         // 通常のフィルター情報 - active プロパティを明示的に保持
         normalFilters[key] = {
           ...filter,
-          active: filter.active === undefined ? true : filter.active // activeが設定されていない場合はtrueをデフォルト値とする
+          active: filter.active === undefined ? true : filter.active
         };
       }
     });
@@ -467,21 +477,30 @@ export function useFilterLogic(
       }
     } : {};
 
-    // PR動画フィルターの維持
-    // もしisPrOnlyがtrueであれば、hashtags_prフィルターを追加
-    const prFilterConfig: Record<string, FilterValue> = isPrOnly 
-      ? {
-          hashtags_pr: {
-            field: 'hashtags',
-            type: 'exact_hashtags' as const,
-            value: 'pr',
-            isHashtag: true,
-            active: true
-          }
-        } 
-      : {};
+    // ここが重要な修正ポイント：
+    // isPrOnlyの状態に応じてPRフィルターを追加または削除する
+    const prFilterConfig: Record<string, FilterValue> = {};
+    
+    // フィルター情報からPR状態を確認
+    const hasPrFilter = Object.values(normalFilters).some(
+      filter => filter.field === 'hashtags' && 
+                filter.type === 'exact_hashtags' && 
+                filter.value === 'pr' && 
+                filter.active === true
+    );
+    
+    // もしフィルターにPRが含まれているか、または明示的にisPrOnly=trueが設定されている場合
+    if (hasPrFilter || isPrOnly) {
+      prFilterConfig.hashtags_pr = {
+        field: 'hashtags',
+        type: 'exact_hashtags' as const,
+        value: 'pr',
+        isHashtag: true,
+        active: true
+      };
+    }
 
-    // フィルター情報を設定 - PRフィルターを追加
+    // フィルター情報を設定 - PRフィルターの状態を正確に反映
     const updatedColumnFilters: Record<string, FilterValue> = {
       ...normalFilters,
       ...primarySortConfig,
@@ -502,7 +521,7 @@ export function useFilterLogic(
     setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
-    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || isPrOnly;
+    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0;
     setHasActiveFilters(hasFilters);
     
     // 親コンポーネントに通知 - isPrOnlyの状態も含める
@@ -511,7 +530,7 @@ export function useFilterLogic(
       field: 'multipleFilters',
       value: Object.values(normalFilters),
       filters: newCurrentFilters,
-      isPrOnly // PR状態も含める
+      isPrOnly: !!Object.keys(prFilterConfig).length // PRフィルターの有無に基づいて設定
     });
     
     // フィルターポップアップを閉じる
@@ -520,7 +539,7 @@ export function useFilterLogic(
     console.log('[SORT-DEBUG] DataTable - フィルター処理完了:', {
       hasFilters,
       normalFiltersCount: Object.keys(normalFilters).length,
-      isPrOnly, // PRフィルター状態をログ出力
+      hasPrFilter: !!Object.keys(prFilterConfig).length, // PRフィルター状態をログ出力
       columnFiltersWithSort: JSON.stringify({
         ...normalFilters,
         ...primarySortConfig,
@@ -529,33 +548,14 @@ export function useFilterLogic(
       })
     });
 
-    // 重要: ここでソート状態を改めて確認し、UIに反映させる
-    if (sortUpdated) {
-      // 再度ソート状態を設定して、UIに確実に反映されるようにする
-      if (newPrimarySort !== null) {
-        setTimeout(() => {
-          sortState.setPrimarySort(newPrimarySort);
-          if (newPrimarySort && newPrimarySort.field) {
-            sortState.setSortField(newPrimarySort.field);
-            sortState.setSortDirection(newPrimarySort.direction);
-          }
-        }, 0);
-      } else {
-        // 明示的にnullに設定
-        sortState.setPrimarySort(null);
-        sortState.setSortField(null);
-        sortState.setSortDirection(null);
-      }
-      
-      if (newSecondarySort) {
-        setTimeout(() => {
-          sortState.setSecondarySort(newSecondarySort);
-        }, 0);
-      } else {
-        sortState.setSecondarySort(null);
-      }
-    }
-  }, [onFilterChange, sortState, isPrOnly]); // isPrOnlyを依存配列に追加
+    // 修正: 変数名を正しいものに変更
+    console.log('[デバッグ-犯人捜し] PRフィルター処理後の状態', {
+      columnFilters: JSON.stringify(updatedColumnFilters),
+      currentFilters: JSON.stringify(newCurrentFilters),
+      remainingFiltersCount: Object.keys(updatedColumnFilters).length,
+      isPrOnlyValue: isPrOnly
+    });
+  }, [onFilterChange, sortState, isPrOnly]);
 
   // フィルター適用時にisPrOnlyも含める
   const applyFilters = useCallback((filters: Record<string, FilterValue>) => {
@@ -577,10 +577,106 @@ export function useFilterLogic(
   
   // PR状態変更ハンドラー
   const handlePrOnlyChange = useCallback((newPrOnly: boolean) => {
+    console.log('[デバッグ-犯人捜し] handlePrOnlyChange 呼び出し', {
+      oldPrState: isPrOnly,
+      newPrState: newPrOnly,
+      currentFilters: JSON.stringify(currentFilters),
+      columnFilters: JSON.stringify(columnFilters)
+    });
+    
     setIsPrOnly(newPrOnly);
-    // 現在のフィルターを維持したままPR状態だけ更新
-    applyFilters(currentFilters);
-  }, [currentFilters, applyFilters]);
+    
+    if (!newPrOnly) {
+      // 新しいフィルターを作成（PRフィルターを除外）
+      const newColumnFilters = { ...columnFilters };
+      delete newColumnFilters.hashtags_pr;
+      delete newColumnFilters.hashtags;
+      
+      // 他のハッシュタグ関連フィルターもチェックして削除
+      Object.keys(newColumnFilters).forEach(key => {
+        const filter = newColumnFilters[key];
+        if (
+          (filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'pr') ||
+          (key.includes('hashtag') && filter.value === 'pr')
+        ) {
+          delete newColumnFilters[key];
+        }
+      });
+      
+      // フィルター状態を更新
+      setColumnFilters(newColumnFilters);
+      
+      // 現在のフィルターからもPR関連を削除
+      const newCurrentFilters = { ...currentFilters };
+      delete newCurrentFilters.hashtags_pr;
+      delete newCurrentFilters.hashtags;
+      
+      // 同様に関連フィルターをすべて削除
+      Object.keys(newCurrentFilters).forEach(key => {
+        const filter = newCurrentFilters[key];
+        if (
+          (filter && filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'pr') ||
+          (key.includes('hashtag') && filter && filter.value === 'pr')
+        ) {
+          delete newCurrentFilters[key];
+        }
+      });
+      
+      // 現在のフィルターを更新
+      setCurrentFilters(newCurrentFilters);
+      
+      // フィルターポップアップを閉じて内部状態をリセット
+      setIsFilterPopupOpen(false);
+      
+      // 親コンポーネントに通知 - ダッシュボードに対して明示的にPRフィルターを削除する信号を送信
+      onFilterChange(Object.keys(newColumnFilters).length > 0, {
+        type: 'multiple',
+        field: 'multipleFilters',
+        value: Object.values(newCurrentFilters),
+        filters: newCurrentFilters,  // PRフィルターが含まれていないフィルターセットを渡す
+        isPrOnly: false  // 明示的にPR状態をfalseに設定
+      });
+
+      console.log('[デバッグ-犯人捜し] PRフィルター削除後の状態', {
+        columnFilters: JSON.stringify(newColumnFilters),
+        currentFilters: JSON.stringify(newCurrentFilters),
+        remainingFiltersCount: Object.keys(newColumnFilters).length,
+        isPrOnlyValue: newPrOnly
+      });
+    } else {
+      // PR有効時
+      const prFilter: FilterQuery = {
+        field: 'hashtags',
+        type: 'exact_hashtags' as const,
+        value: 'pr',
+        isHashtag: true,
+        active: true
+      };
+      
+      // 既存のフィルターにPRフィルターを追加
+      const newFilters = {
+        ...currentFilters,
+        hashtags_pr: prFilter
+      };
+      
+      // フィルター状態を更新
+      setColumnFilters(newFilters);
+      setCurrentFilters(newFilters);
+      
+      // フィルターポップアップを閉じて内部状態をリセット
+      setIsFilterPopupOpen(false);
+      
+      // 親コンポーネントに通知
+      onFilterChange(true, prFilter);
+
+      console.log('[デバッグ-犯人捜し] PRフィルター追加後の状態', {
+        columnFilters: JSON.stringify(newFilters),
+        currentFilters: JSON.stringify(newFilters),
+        remainingFiltersCount: Object.keys(newFilters).length,
+        isPrOnlyValue: newPrOnly
+      });
+    }
+  }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
 
   return [
     { hasActiveFilters, columnFilters, currentFilters, isPrOnly },

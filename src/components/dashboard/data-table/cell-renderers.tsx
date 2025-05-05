@@ -139,11 +139,7 @@ export const createProductCellRenderer = () => {
     return (
       <TableContext.Consumer>
         {(context) => {
-          console.log('TableContext.Consumer内で確認:', {
-            hasContext: !!context,
-            hasCategories: !!context.productCategories,
-            product: row.product
-          });
+
           
           const productCategory = context.productCategories?.[row.product];
           
@@ -170,12 +166,7 @@ export const renderProductCell = (row: VideoData) => {
   // コンテキストからproductCategoriesを取得
   const { productCategories } = useContext(TableContext);
   
-  // デバッグログを追加
-  console.log('renderProductCell内のContext確認:', {
-    hasProductCategories: !!productCategories,
-    productCategoriesSize: productCategories ? Object.keys(productCategories).length : 0,
-    product: row.product
-  });
+
   
   // 警告ログを出力（参考用）
   console.warn('renderProductCell is deprecated, createProductCellRenderer should be used instead');
