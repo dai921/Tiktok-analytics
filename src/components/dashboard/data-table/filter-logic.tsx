@@ -44,6 +44,7 @@ export interface FilterState {
   hasActiveFilters: boolean;
   columnFilters: Record<string, FilterValue>;
   currentFilters: Record<string, FilterQuery>;
+  isPrOnly: boolean;
 }
 
 export interface FilterHandlers {
@@ -53,6 +54,8 @@ export interface FilterHandlers {
   handleClearFilterInputs: () => void;
   setIsFilterPopupOpen: (isOpen: boolean) => void;
   setColumnFilters: (filters: Record<string, FilterValue> | ((prev: Record<string, FilterValue>) => Record<string, FilterValue>)) => void;
+  isPrOnly: boolean;
+  handlePrOnlyChange: (newPrOnly: boolean) => void;
 }
 
 export function useFilterLogic(
@@ -64,13 +67,15 @@ export function useFilterLogic(
     setSortDirection: (direction: 'asc' | 'desc' | null) => void;
     setPrimarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
     setSecondarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
-  }
+  },
+  initialPrOnly = false // PR状態の初期値
 ): [FilterState, FilterHandlers] {
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({});
   const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({});
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(0);
+  const [isPrOnly, setIsPrOnly] = useState(initialPrOnly);
   
   // フィルターをクリアする関数 - データテーブルとAPIの両方を更新
   const handleClearAllFilters = useCallback(() => {
@@ -260,8 +265,15 @@ export function useFilterLogic(
       sortState.setSortDirection(null);
       setHasActiveFilters(false);
       
+      // PR状態はリセットしない - フィルター共存のため維持する
+      
       // 親コンポーネントに通知 - リセット信号を含める
-      onFilterChange(false, { field: 'reset', type: 'clear', value: '' });
+      onFilterChange(isPrOnly, { 
+        field: 'reset', 
+        type: 'clear', 
+        value: '',
+        isPrOnly // PR状態を含める
+      });
       
       // フィルターポップアップを閉じる
       setIsFilterPopupOpen(false);
@@ -455,32 +467,51 @@ export function useFilterLogic(
       }
     } : {};
 
-    // フィルター情報を設定
-    setColumnFilters({
+    // PR動画フィルターの維持
+    // もしisPrOnlyがtrueであれば、hashtags_prフィルターを追加
+    const prFilterConfig: Record<string, FilterValue> = isPrOnly 
+      ? {
+          hashtags_pr: {
+            field: 'hashtags',
+            type: 'exact_hashtags' as const,
+            value: 'pr',
+            isHashtag: true,
+            active: true
+          }
+        } 
+      : {};
+
+    // フィルター情報を設定 - PRフィルターを追加
+    const updatedColumnFilters: Record<string, FilterValue> = {
       ...normalFilters,
       ...primarySortConfig,
-      ...secondarySortConfig
-    });
+      ...secondarySortConfig,
+      ...prFilterConfig
+    };
+    
+    setColumnFilters(updatedColumnFilters);
     
     // 現在のフィルターも更新（ソート情報も含める）
-    const newCurrentFilters = {
+    const newCurrentFilters: Record<string, FilterQuery> = {
       ...normalFilters,
       ...primarySortConfig,
-      ...secondarySortConfig
+      ...secondarySortConfig,
+      ...prFilterConfig
     };
     
     setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
-    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
+    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || isPrOnly;
     setHasActiveFilters(hasFilters);
     
-    // 親コンポーネントに通知
+    // 親コンポーネントに通知 - isPrOnlyの状態も含める
     onFilterChange(hasFilters, {
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
-      filters: newCurrentFilters
+      filters: newCurrentFilters,
+      isPrOnly // PR状態も含める
     });
     
     // フィルターポップアップを閉じる
@@ -489,10 +520,12 @@ export function useFilterLogic(
     console.log('[SORT-DEBUG] DataTable - フィルター処理完了:', {
       hasFilters,
       normalFiltersCount: Object.keys(normalFilters).length,
+      isPrOnly, // PRフィルター状態をログ出力
       columnFiltersWithSort: JSON.stringify({
         ...normalFilters,
         ...primarySortConfig,
-        ...secondarySortConfig
+        ...secondarySortConfig,
+        ...prFilterConfig
       })
     });
 
@@ -522,17 +555,44 @@ export function useFilterLogic(
         sortState.setSecondarySort(null);
       }
     }
-  }, [onFilterChange, sortState]);
+  }, [onFilterChange, sortState, isPrOnly]); // isPrOnlyを依存配列に追加
+
+  // フィルター適用時にisPrOnlyも含める
+  const applyFilters = useCallback((filters: Record<string, FilterValue>) => {
+    // フィルターオブジェクトの構築
+    const filterQuery: FilterQuery = {
+      field: 'multiple',
+      type: 'multiple',
+      value: Object.values(filters),
+      filters,
+      isPrOnly // PR状態も含める
+    };
+    
+    // フィルターがあるかどうかの判定
+    const hasFilters = Object.keys(filters).length > 0 || isPrOnly;
+    
+    // 親コンポーネントに通知
+    onFilterChange(hasFilters, filterQuery);
+  }, [isPrOnly, onFilterChange, currentFilters]);
+  
+  // PR状態変更ハンドラー
+  const handlePrOnlyChange = useCallback((newPrOnly: boolean) => {
+    setIsPrOnly(newPrOnly);
+    // 現在のフィルターを維持したままPR状態だけ更新
+    applyFilters(currentFilters);
+  }, [currentFilters, applyFilters]);
 
   return [
-    { hasActiveFilters, columnFilters, currentFilters },
+    { hasActiveFilters, columnFilters, currentFilters, isPrOnly },
     { 
       handleFilter, 
       handleBulkFilterChange, 
       handleClearAllFilters, 
       handleClearFilterInputs,
       setIsFilterPopupOpen,
-      setColumnFilters
+      setColumnFilters,
+      isPrOnly,
+      handlePrOnlyChange
     }
   ];
 } 

@@ -127,12 +127,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSecondarySort,
       setSortField,
       setSortDirection
-    });
+    }, isPrOnly);
     
     const { 
       columnFilters, 
       currentFilters, 
-      hasActiveFilters 
+      hasActiveFilters,
+      isPrOnly: internalIsPrOnly
     } = filterState;
     
     const { 
@@ -140,7 +141,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleBulkFilterChange, 
       handleClearAllFilters, 
       handleClearFilterInputs,
-      setIsFilterPopupOpen
+      setIsFilterPopupOpen,
+      handlePrOnlyChange
     } = filterHandlers;
     
     // フィルターポップアップの状態
@@ -182,8 +184,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     }, [loadingProductCategories, productCategories]);
 
     const productCellRenderer = useMemo(() => {
-      return createProductCellRenderer(productCategories);
-    }, [productCategories]);
+      return createProductCellRenderer();
+    }, []);
 
     // カラム定義を取得
     const columns = useMemo(() => {
@@ -396,6 +398,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       allKeys: data.length > 0 ? Object.keys(data[0]) : [],
     });
 
+    // PR切り替えハンドラーの連携
+    const handlePrToggle = useCallback((checked: boolean) => {
+      handlePrOnlyChange(checked);
+      onPrOnlyChange(checked); // 親コンポーネントにも通知
+    }, [handlePrOnlyChange, onPrOnlyChange]);
+
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -428,8 +436,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <label className="flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={isPrOnly}
-                onChange={(e) => onPrOnlyChange(e.target.checked)}
+                checked={internalIsPrOnly}
+                onChange={(e) => handlePrToggle(e.target.checked)}
                 className="sr-only peer"
               />
               <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-[#FE2C55] peer-focus:ring-2 peer-focus:ring-[#FE2C55]/30 transition-colors">

@@ -19,6 +19,7 @@ export interface FilterQuery {
   comparison?: ComparisonOperator  // 比較演算子を追加
   filters?: Record<string, FilterValue>  // 複数フィルター用
   active?: boolean  // フィルターがアクティブかどうかを示すフラグ
+  isPrOnly?: boolean // PR動画フィルターのフラグを追加
 }
 
 export interface FilterValue extends FilterQuery {
