@@ -7,12 +7,12 @@ from src.db.database import get_db_connection
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 import json
-import random
+from src.db.database import get_db_connection
 
-# ロガーの設定
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
+
+# ---------- Pydantic ---------- #
 
 class VideoStats(BaseModel):
     url: str
@@ -23,7 +23,6 @@ class VideoStats(BaseModel):
 
 class GenreStats(BaseModel):
     genre: str
-    genre_category: Optional[str]
     total_play_count_increase: int
     videos_over_100k: int
     total_posts: int
@@ -31,399 +30,261 @@ class GenreStats(BaseModel):
 
 class GenreTrendData(BaseModel):
     date: str
-    value: int
     genre: str
-    genre_category: Optional[str]
+    metrics: dict
 
 class GenreTrendResponse(BaseModel):
     data: List[GenreTrendData]
     genres: List[str]
     date_range: Optional[dict]
 
+# ---------- util ---------- #
+
 def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
-    if url and url.startswith('gs://'):
-        parts = url.split('/')
-        bucket = parts[2]
-        object_path = '/'.join(parts[3:])
-        return f"https://storage.googleapis.com/{bucket}/{object_path}"
+    if url and url.startswith("gs://"):
+        b, *p = url.split("/")[2:]
+        return f"https://storage.googleapis.com/{b}/{'/'.join(p)}"
     return url
+
+# ---------- /api/genre-stats ---------- #
 
 @router.get("/api/genre-stats")
 async def get_genre_stats(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    metric: Optional[str] = "viewsIncrease"  # 指標パラメータを追加（デフォルトは再生増加数）
+    end_date:   Optional[str] = None,
+    metric:     str = "viewsIncrease"
 ):
-    try:
-        # 日付パラメータが指定されていない場合、自動的に計算
-        if start_date is None or end_date is None:
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            # 収集日の一覧を取得
-            query = """
+    # ----- 日付決定 ----- #
+    if start_date is None or end_date is None:
+        conn = get_db_connection(); cur = conn.cursor(dictionary=True)
+        cur.execute("""
             SELECT DISTINCT collection_date
             FROM play_count_history
             WHERE collection_date IS NOT NULL
             ORDER BY collection_date DESC
             LIMIT 7
-            """
-            
-            cursor.execute(query)
-            dates = cursor.fetchall()
-            
-            if dates:
-                # 7回分のデータ期間を設定
-                end_date = dates[0]["collection_date"].strftime('%Y-%m-%d')
-                start_date = dates[-1]["collection_date"].strftime('%Y-%m-%d')
-            else:
-                # データがない場合はデフォルト値
-                end_date = datetime.now().strftime('%Y-%m-%d')
-                start_date = (datetime.now() - timedelta(days=18)).strftime('%Y-%m-%d')
-            
-            cursor.close()
-            conn.close()
-            
-            # start_dateとend_dateの値をログに出力
-            print(f"Calculated date range: start={start_date}, end={end_date}")
-            logger.info(f"Calculated date range: start={start_date}, end={end_date}")
-            
-            # datesの内容をログに出力
-            print(f"Found collection dates: {[d['collection_date'] for d in dates]}")
-    except ValueError as e:
-        logger.error(f"Invalid date format: {str(e)}")
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        """)
+        dates = cur.fetchall(); cur.close(); conn.close()
+        end_date   = dates[0]["collection_date"].strftime("%Y-%m-%d") if dates else datetime.now().strftime("%Y-%m-%d")
+        start_date = dates[-1]["collection_date"].strftime("%Y-%m-%d") if dates else (datetime.now()-timedelta(days=18)).strftime("%Y-%m-%d")
+        logger.info(f"Calculated date range: {start_date=}  {end_date=}")
 
+    # 集約列→ORDER BY 用
+    sort_column = {
+        "viewsIncrease": "total_play_inc",
+        "over100kViews": "over100k_cnt",
+        "postCount":     "post_cnt"
+    }.get(metric, "total_play_inc")
+
+    conn = cur = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        print("Executing genre stats query")
-        
-        # 指標に基づいて並び替えるためのカラム名を決定
-        sort_column = {
-            "viewsIncrease": "total_play_count_increase",
-            "over100kViews": "videos_over_100k",
-            "postCount": "total_posts"
-        }.get(metric, "total_play_count_increase")  # デフォルトは再生増加数
-        
-        query = """
-        WITH video_genres AS (
-            SELECT
-                fd.video_id,
-                TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre
-            FROM frontend_data fd
-            CROSS JOIN (
-                SELECT 1 AS n UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5
-            ) n
-            WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
-            AND fd.category IS NOT NULL
-            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-        ),
-        video_stats AS (
-            SELECT
-                pch.video_id,
-                vg.genre,
-                SUM(pch.play_count_increase) as total_video_increase
-            FROM play_count_history pch
-            JOIN video_genres vg ON pch.video_id = vg.video_id
-            WHERE pch.collection_date BETWEEN %s AND %s
-            AND vg.genre IS NOT NULL AND vg.genre != ''
-            GROUP BY pch.video_id, vg.genre
-        ),
-        category_stats AS (
-            SELECT 
-                vs.genre as category,
-                SUM(vs.total_video_increase) as total_play_count_increase,
-                COUNT(CASE WHEN vs.total_video_increase >= 100000 THEN 1 END) as videos_over_100k,
-                COUNT(DISTINCT vs.video_id) as total_posts
-            FROM video_stats vs
-            GROUP BY vs.genre
-        ),
-        top_videos AS (
-            SELECT 
-                vg.genre as category,
-                fd.url,
-                fd.thumbnail_url,
-                SUM(pch.play_count_increase) AS play_count_increase,
-                SUM(pch.likes_count_increase) AS likes_count_increase,
-                fd.created_at,
-                fd.play_count,
-                fd.ten_days_increase,
-                fd.account_name,
-                fd.display_name,
-                ROW_NUMBER() OVER (PARTITION BY vg.genre ORDER BY SUM(pch.play_count_increase) DESC) as rank_col
-            FROM frontend_data fd
-            JOIN play_count_history pch ON fd.video_id = pch.video_id
-            JOIN video_genres vg ON fd.video_id = vg.video_id
-            WHERE pch.collection_date BETWEEN %s AND %s
-            AND vg.genre IS NOT NULL AND vg.genre != ''
-            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-        """
-            
-            
-        query += """
-            GROUP BY vg.genre, fd.url, fd.thumbnail_url, fd.created_at, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.video_id
-        )
-        SELECT 
-            cs.category,
-            cs.total_play_count_increase,
-            cs.videos_over_100k,
-            cs.total_posts,
-            JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'url', tv.url,
-                    'thumbnail_url', tv.thumbnail_url,
-                    'play_count_increase', tv.play_count_increase,
-                    'likes_count_increase', tv.likes_count_increase,
-                    'created_at', tv.created_at,
-                    'play_count', tv.play_count,
-                    'ten_days_increase', tv.ten_days_increase,
-                    'account_name', tv.account_name,
-                    'display_name', tv.display_name
-                )
-            ) as top_videos
-            FROM category_stats cs
-        LEFT JOIN top_videos tv ON cs.category = tv.category AND tv.rank_col <= 10
-        GROUP BY cs.category, cs.total_play_count_increase, cs.videos_over_100k, cs.total_posts
-        """
+        cur  = conn.cursor(dictionary=True)
+        logger.info("Executing genre-stats query")
 
-        # 指定された指標に基づいて並び替え
-        query += f" ORDER BY cs.{sort_column} DESC;"
+        # ---------- ここから変更 ---------- #
+        # ① explode → genre×video を一次表に
+        cur.execute("""
+            CREATE TEMPORARY TABLE tmp_gen_base (
+                genre              VARCHAR(255),
+                video_id           BIGINT UNSIGNED,
+                play_inc           INT,
+                like_inc           INT,
+                created_at         DATETIME,
+                play_count         INT,
+                ten_days_increase  INT,
+                account_name       VARCHAR(255),
+                display_name       VARCHAR(255),
+                url                TEXT,
+                thumbnail_url      TEXT,
+                PRIMARY KEY (genre, video_id),
+                INDEX idx_g      (genre),
+                INDEX idx_g_inc  (genre, play_inc DESC)
+            ) ENGINE=InnoDB
+        """)
 
-        # パラメータに日付を追加（top_videosクエリ用）
-        params = [start_date, end_date, start_date, end_date]
-        
-        cursor.execute(query, tuple(params))
-        results = cursor.fetchall()
-        
-        # 結果を整形
-        formatted_results = []
-        for row in results:
-            # top_videosはJSON文字列なのでパース
-            top_videos = json.loads(row["top_videos"]) if row["top_videos"] else []
-            for video in top_videos:
-                video["thumbnail_url"] = convert_gs_to_https(video.get("thumbnail_url"))
-            formatted_results.append({
-                "genre": row["category"],
-                "total_play_count_increase": row["total_play_count_increase"],
-                "videos_over_100k": row["videos_over_100k"],
-                "total_posts": row["total_posts"],
-                "top_videos": top_videos
+        insert_sql = """
+        INSERT INTO tmp_gen_base
+        SELECT
+            TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre,
+            fd.video_id,
+            SUM(pch.play_count_increase)  AS play_inc,
+            SUM(pch.likes_count_increase) AS like_inc,
+            ANY_VALUE(fd.created_at) AS created_at,
+            ANY_VALUE(fd.play_count) AS play_count,
+            ANY_VALUE(fd.ten_days_increase) AS ten_days_increase,
+            ANY_VALUE(fd.account_name) AS account_name,
+            ANY_VALUE(fd.display_name) AS display_name,
+            ANY_VALUE(fd.url) AS url,
+            ANY_VALUE(fd.thumbnail_url) AS thumbnail_url
+        FROM play_count_history pch
+        JOIN frontend_data fd ON fd.video_id = pch.video_id
+        CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3
+                    UNION ALL SELECT 4 UNION ALL SELECT 5) n
+        WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
+        AND fd.category IS NOT NULL
+        AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
+        AND pch.collection_date BETWEEN %s AND %s
+        GROUP BY genre, fd.video_id
+        """
+        cur.execute(insert_sql, [start_date, end_date])
+
+        # ② genre サマリ
+        cur.execute(f"""
+            SELECT
+                genre,
+                SUM(play_inc)           AS total_play_inc,
+                SUM(play_inc>=100000)   AS over100k_cnt,
+                COUNT(*)                AS post_cnt
+            FROM tmp_gen_base
+            GROUP BY genre
+            ORDER BY {sort_column} DESC
+        """)
+        stats = {r["genre"]: {
+            "genre"                       : r["genre"],
+            "total_play_count_increase"   : r["total_play_inc"],
+            "videos_over_100k"            : r["over100k_cnt"],
+            "total_posts"                 : r["post_cnt"],
+            "top_videos"                  : []
+        } for r in cur.fetchall()}
+
+        # ③ 各 genre の TOP10
+        cur.execute("""
+            SELECT *
+            FROM (
+                SELECT
+                    genre, url, thumbnail_url,
+                    play_inc, like_inc,
+                    created_at, play_count, ten_days_increase,
+                    account_name, display_name,
+                    ROW_NUMBER() OVER (PARTITION BY genre ORDER BY play_inc DESC) rn
+                FROM tmp_gen_base
+            ) t WHERE rn <= 10
+        """)
+        for v in cur.fetchall():
+            g = stats[v["genre"]]
+            g["top_videos"].append({
+                "url"                 : v["url"],
+                "thumbnail_url"       : convert_gs_to_https(v["thumbnail_url"]),
+                "play_count_increase" : v["play_inc"],
+                "likes_count_increase": v["like_inc"],
+                "created_at"          : v["created_at"],
+                "play_count"          : v["play_count"],
+                "ten_days_increase"   : v["ten_days_increase"],
+                "account_name"        : v["account_name"],
+                "display_name"        : v["display_name"]
             })
+        ### ここまで変更 ###
 
-        formatted_response = {
-            "data": formatted_results,
-            "date_range": {
-                "start_date": start_date,
-                "end_date": end_date
-            }
+        resp = {
+            "data": list(stats.values()),
+            "date_range": {"start_date": start_date, "end_date": end_date}
         }
-
-        return JSONResponse(content=jsonable_encoder(formatted_response))
-
-    except Exception as e:
-        logger.error(f"Error fetching category stats: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(content=jsonable_encoder(resp))
     finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-        print("Database connection closed") 
+        if cur:  cur.close()
+        if conn: conn.close()  
+
+
+    # ---------- /api/genre-trends ---------- #
 
 @router.get("/api/genre-trends")
 async def get_genre_trends(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    metric: Optional[str] = "viewsIncrease"  # 指標パラメータを追加（デフォルトは再生増加数）
+    end_date:   Optional[str] = None,
+    metric:     str = "viewsIncrease"
 ):
-    
-    try:
-        # 日付パラメータが指定されていない場合、自動的に計算
-        if start_date is None or end_date is None:
-            conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            # 収集日の一覧を取得
-            query = """
-            SELECT DISTINCT collection_date
-            FROM play_count_history
-            WHERE collection_date IS NOT NULL
-            ORDER BY collection_date DESC
-            LIMIT 7
-            """
-            
-            cursor.execute(query)
-            dates = cursor.fetchall()
-            
-            if dates:
-                # 最新7日間のデータ期間を設定
-                end_date = dates[0]["collection_date"].strftime('%Y-%m-%d')
-                start_date = dates[-1]["collection_date"].strftime('%Y-%m-%d')
-            else:
-                # データがない場合はデフォルト値
-                end_date = datetime.now().strftime('%Y-%m-%d')
-                start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-            
-            cursor.close()
-            conn.close()
-            
-            logger.info(f"Calculated date range: start={start_date}, end={end_date}")
-        
-        # 日付の検証
+    # ----- 日付決定 ----- #
+    if start_date is None or end_date is None:
+        conn = cur = None
         try:
-            start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
-            end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
-        except ValueError:
-            logger.error(f"Invalid date format: {start_date} or {end_date}")
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-        
-        # 日付の範囲確認
-        if start_datetime > end_datetime:
-            logger.error(f"Start date {start_date} is after end date {end_date}")
-            raise HTTPException(status_code=400, detail="Start date cannot be after end date")
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        # 指標に基づいてクエリを調整
-        metric_column = {
-            "viewsIncrease": "play_count_increase",
-            "over100kViews": "CASE WHEN pch.play_count_increase >= 100000 THEN 1 ELSE 0 END",
-            "postCount": "1"  # 投稿数は後でCOUNT DISTINCTする
-        }.get(metric, "play_count_increase")
-        
-        metric_aggregate = {
-            "viewsIncrease": "SUM",
-            "over100kViews": "SUM",
-            "postCount": "COUNT(DISTINCT pch.video_id)"
-        }.get(metric, "SUM")
-        
-        # 指定された指標に基づいてトップ10のジャンルを取得
-        base_query = f"""
-        SELECT 
-            COALESCE(fd.genre, 'その他') as genre,
-            {metric_aggregate}({metric_column}) as metric_value
-        FROM play_count_history pch
-        JOIN frontend_data fd ON pch.video_id = fd.video_id
-        WHERE pch.collection_date BETWEEN %s AND %s
-        AND fd.genre IS NOT NULL
-        AND fd.genre != ''
-        """
-        
-        # トップ10のジャンルを取得
-        top_genres_query = base_query + """
-        GROUP BY fd.genre
-        """
-        
-        # 指標が10万再生以上の場合は、1件以上あるもののみに絞る
-        if metric == "over100kViews":
-            top_genres_query += " HAVING metric_value > 0"
-            
-        top_genres_query += """
-        ORDER BY metric_value DESC
-        LIMIT 10
-        """
-        
-        cursor.execute(top_genres_query, (start_date, end_date))
-        top_genres_data = cursor.fetchall()
-        
-        # 各指標のトップジャンルリストを作成
-        top_genres = [row['genre'] for row in top_genres_data]
-        top_genres_by_metric = {metric: top_genres}
-        
-        # 他の指標についても取得（後方互換性のため）
-        if metric != "viewsIncrease":
-            cursor.execute(base_query + """
-            GROUP BY fd.genre
-            ORDER BY SUM(pch.play_count_increase) DESC
-            LIMIT 10
-            """, (start_date, end_date))
-            top_genres_by_metric["viewsIncrease"] = [row['genre'] for row in cursor.fetchall()]
-        
-        if metric != "over100kViews":
-            cursor.execute(base_query + """
-            GROUP BY fd.genre
-            HAVING SUM(CASE WHEN pch.play_count_increase >= 100000 THEN 1 ELSE 0 END) > 0
-            ORDER BY SUM(CASE WHEN pch.play_count_increase >= 100000 THEN 1 ELSE 0 END) DESC
-            LIMIT 10
-            """, (start_date, end_date))
-            top_genres_by_metric["over100kViews"] = [row['genre'] for row in cursor.fetchall()]
-        
-        if metric != "postCount":
-            cursor.execute(base_query + """
-            GROUP BY fd.genre
-            ORDER BY COUNT(DISTINCT pch.video_id) DESC
-            LIMIT 10
-            """, (start_date, end_date))
-            top_genres_by_metric["postCount"] = [row['genre'] for row in cursor.fetchall()]
-        
-        # すべてのユニークなジャンルのリストを作成
-        all_genres = list(set(
-            top_genres_by_metric.get("viewsIncrease", []) + 
-            top_genres_by_metric.get("over100kViews", []) + 
-            top_genres_by_metric.get("postCount", [])
-        ))
-        
-        # 時系列データを取得
-        trend_data = []
-        
-        # 日付ごとの各ジャンルのデータを取得
-        if all_genres:
-            genres_placeholder = ', '.join(['%s'] * len(all_genres))
-            
-            trends_query = """
-            SELECT 
-                pch.collection_date as date,
-                COALESCE(fd.genre, 'その他') as genre,
-                SUM(pch.play_count_increase) as views_increase,
-                COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k_views,
-                COUNT(DISTINCT pch.video_id) as post_count
-            FROM play_count_history pch
-            JOIN frontend_data fd ON pch.video_id = fd.video_id
-            WHERE pch.collection_date BETWEEN %s AND %s
-            AND fd.genre IN ({})
-            GROUP BY pch.collection_date, fd.genre
-            ORDER BY pch.collection_date
-            """.format(genres_placeholder)
-            
-            # パラメータリストの作成
-            params = [start_date, end_date] + all_genres
-            
-            cursor.execute(trends_query, params)
-            trends_results = cursor.fetchall()
-            
-            # 結果を整形
-            for row in trends_results:
-                trend_data.append({
-                    "date": row["date"].strftime('%Y-%m-%d'),
-                    "genre": row["genre"],
-                    "metrics": {
-                        "viewsIncrease": row["views_increase"],
-                        "over100kViews": row["over_100k_views"],
-                        "postCount": row["post_count"]
-                    }
-                })
-        
-        response = {
-            "data": trend_data,
-            "genres": all_genres,
-            "topGenresByMetric": top_genres_by_metric,
-            "date_range": {
-                "start_date": start_date,
-                "end_date": end_date
-            }
-        }
-        
-        return JSONResponse(content=jsonable_encoder(response))
-    
-    except Exception as e:
-        logger.error(f"Error in genre trends API: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
+            conn = get_db_connection()
+            cur  = conn.cursor(dictionary=True)
+            cur.execute("""
+                SELECT DISTINCT collection_date
+                FROM play_count_history
+                WHERE collection_date IS NOT NULL
+                ORDER BY collection_date DESC
+                LIMIT 7
+            """)
+            dates = cur.fetchall()
+        finally:
+            if cur:  cur.close()
+            if conn: conn.close()
 
+        end_date   = dates[0]["collection_date"].strftime("%Y-%m-%d") if dates else datetime.now().strftime("%Y-%m-%d")
+        start_date = dates[-1]["collection_date"].strftime("%Y-%m-%d") if dates else (datetime.now()-timedelta(days=18)).strftime("%Y-%m-%d")
+        logger.info(f"Calculated date range: {start_date=}  {end_date=}")
+
+    metric_expr = {
+        "viewsIncrease": "SUM(play_inc)",
+        "over100kViews": "SUM(play_inc >= 100000)",
+        "postCount"    : "COUNT(DISTINCT video_id)"
+    }[metric]
+
+    conn = cur = None
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(dictionary=True)
+        logger.info("Executing genre-trends query")
+
+        sql = f"""
+        WITH base AS (
+            SELECT
+                pch.collection_date,
+                TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre,
+                fd.video_id,
+                SUM(pch.play_count_increase) AS play_inc
+            FROM play_count_history pch
+            JOIN frontend_data fd ON fd.video_id = pch.video_id
+            CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3
+                        UNION ALL SELECT 4 UNION ALL SELECT 5) n
+            WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
+              AND fd.category IS NOT NULL
+              AND pch.collection_date BETWEEN %s AND %s
+            GROUP BY pch.collection_date, fd.video_id, genre
+        ),
+        top10 AS (
+            SELECT genre, {metric_expr} AS metric_value
+            FROM base
+            GROUP BY genre
+            ORDER BY metric_value DESC
+            LIMIT 10
+        )
+        SELECT
+            b.collection_date                  AS date,
+            b.genre,
+            SUM(b.play_inc)                   AS viewsIncrease,
+            SUM(b.play_inc >= 100000)         AS over100kViews,
+            COUNT(DISTINCT b.video_id)        AS postCount
+        FROM base b
+        JOIN top10 t ON t.genre = b.genre
+        GROUP BY b.collection_date, b.genre
+        ORDER BY b.collection_date
+        """
+        cur.execute(sql, [start_date, end_date])
+        rows = cur.fetchall()
+
+        trend_data = [{
+            "date":   r["date"].strftime("%Y-%m-%d"),
+            "genre":  r["genre"],
+            "metrics": {
+                "viewsIncrease": int(r["viewsIncrease"]),
+                "over100kViews": int(r["over100kViews"]),
+                "postCount"    : int(r["postCount"])
+            }
+        } for r in rows]
+
+        resp = {
+            "data": trend_data,
+            "genres": list({r["genre"] for r in rows}),
+            "date_range": {"start_date": start_date, "end_date": end_date}
+        }
+        return JSONResponse(content=jsonable_encoder(resp))
+
+    finally:
+        if cur:  cur.close()
+        if conn: conn.close()
+
+
+  

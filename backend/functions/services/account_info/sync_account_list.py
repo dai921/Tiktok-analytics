@@ -144,15 +144,12 @@ def process_account_list():
                 favorite_user_username = row[1].strip() if len(row) > 1 and row[1] else None
                 account_type = row[5].strip() if len(row) > 5 and row[5] else None
                 crawler_account_id = row[6].strip() if len(row) > 6 and row[6] else None
-                favorite_user_is_alive = row[7].strip() if len(row) > 7 and row[7] else None
-
+                parent_type = row[8].strip() if len(row) > 8 and row[8] else None
                 # 必須項目のチェック
                 if not account_url or not favorite_user_username:
                     print(f"警告: 必須項目が不足しているためスキップします: {row}")
                     continue
 
-                # favorite_user_is_aliveの値を変換
-                is_alive = True if favorite_user_is_alive and favorite_user_is_alive.lower() == 'true' else False
 
                 # 既存レコードのチェック
                 check_query = '''
@@ -170,8 +167,8 @@ def process_account_list():
                         SET favorite_user_username = %(favorite_user_username)s,
                             account_type = %(account_type)s,
                             crawler_account_id = %(crawler_account_id)s,
-                            favorite_user_is_alive = %(favorite_user_is_alive)s,
-                            updated_at = NOW()
+                            updated_at = NOW(),
+                            parent_type = %(parent_type)s
                         WHERE account_url = %(account_url)s
                     '''
                     update_params = {
@@ -179,7 +176,7 @@ def process_account_list():
                         'favorite_user_username': favorite_user_username,
                         'account_type': account_type,
                         'crawler_account_id': crawler_account_id,
-                        'favorite_user_is_alive': is_alive
+                        'parent_type': parent_type
                     }
                     
                     affected_rows = execute_write_query(update_query, update_params)
@@ -190,15 +187,16 @@ def process_account_list():
                     insert_query = '''
                         INSERT INTO account_list 
                         (account_url, favorite_user_username, account_type, 
-                         crawler_account_id, created_at, updated_at)
+                         crawler_account_id, created_at, updated_at, parent_type)
                         VALUES (%(account_url)s, %(favorite_user_username)s, %(account_type)s,
-                                %(crawler_account_id)s,  NOW(), NOW())
+                                %(crawler_account_id)s,  NOW(), NOW(), %(parent_type)s)
                     '''
                     insert_params = {
                         'account_url': account_url,
                         'favorite_user_username': favorite_user_username,
                         'account_type': account_type,
-                        'crawler_account_id': crawler_account_id
+                        'crawler_account_id': crawler_account_id,
+                        'parent_type': parent_type
                     }
                     
                     affected_rows = execute_write_query(insert_query, insert_params)

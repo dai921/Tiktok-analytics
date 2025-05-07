@@ -16,7 +16,7 @@ import { formatNumber } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { VideoStats, GenreTrendData, GenreTrendResponse } from '@/types/genre';
-import { TableHeaderCell } from '@/components/dashboard/table-header-cell';
+import { TableHeaderCell } from '@/components/dashboard/data-table/table-header-cell';
 import { GenreBadge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 

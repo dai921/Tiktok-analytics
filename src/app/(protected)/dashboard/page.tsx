@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
-import { DataTable } from '@/components/dashboard/data-table'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { DataTable } from '@/components/dashboard/data-table/Datatable'
 import { getDbData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
-import { TableHeaderCellRef } from '@/components/dashboard/table-header-cell'
+import { TableHeaderCellRef } from '@/components/dashboard/data-table/table-header-cell'
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
 
@@ -40,13 +40,21 @@ const Dashboard = () => {
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(50)
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
   const [isPrOnly, setIsPrOnly] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
+
+  // 関数参照をモニタリングするためのrefを追加
+  const handleFilterRef = useRef<Function | null>(null);
+  const handleMultipleFiltersRef = useRef<Function | null>(null);
+  const fetchDataRef = useRef<Function | null>(null);
+  
+  // コンポーネントのレンダリング回数を追跡するref
+  const renderCountRef = useRef(0);
 
   const convertFilterValueToQuery = (filter: FilterValue): FilterQuery => {
     // ハッシュタグ用のフラグを引き継ぐ
@@ -65,7 +73,8 @@ const Dashboard = () => {
     }
   }
 
-  const handleFilter = (newFilter: FilterValue) => {
+  // handleFilter 関数をメモ化
+  const handleFilter = useCallback((newFilter: FilterValue) => {
     console.log('Dashboard - フィルター受信:', newFilter);
     
     // クリア操作を明示的に検出
@@ -130,6 +139,7 @@ const Dashboard = () => {
       field: field,
       type: newFilter.type,
       value: newFilter.value,
+      active: true,
       ...(newFilter.isHashtag && { isHashtag: true }),
       ...(newFilter.timestamp !== undefined && { timestamp: newFilter.timestamp }),
       ...(newFilter.isPrimarySort !== undefined && { isPrimarySort: newFilter.isPrimarySort }),
@@ -171,12 +181,28 @@ const Dashboard = () => {
         [field]: filterQuery
       }));
     }
-  };
+  }, [filters]); // フィルター状態のみに依存
 
-  const fetchData = async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
+  // fetchData 関数をメモ化
+  const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true);
     try {
       console.log('フェッチデータ - 使用するフィルター:', currentFilters);
+      
+      // より詳細なフィルターログを追加
+      if (currentFilters) {
+        console.log('フェッチデータ - 詳細フィルター情報:');
+        Object.entries(currentFilters).forEach(([key, filter]) => {
+          console.log(`  フィルター[${key}]:`, {
+            field: filter.field,
+            type: filter.type,
+            value: filter.value,
+            comparison: filter.comparison,
+            active: filter.active,  // active状態を明示的に出力
+            isHashtag: filter.isHashtag
+          });
+        });
+      }
       
       const response = await getDbData(page, currentFilters, pageSize);
       console.log('APIレスポンス:', response);
@@ -215,7 +241,7 @@ const Dashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [pageSize]); // ページサイズのみに依存
 
   useEffect(() => {
     console.log('Dashboard - フィルター変更を検知:', filters);
@@ -252,9 +278,10 @@ const Dashboard = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [filters, currentPage, pageSize]);
+  }, [filters, currentPage, pageSize, fetchData]);
 
-  const handleClearAllFilters = () => {
+  // handleClearAllFilters 関数をメモ化
+  const handleClearAllFilters = useCallback(() => {
     console.log('すべてのフィルターをクリア');
     
     // 重要: 状態更新の順序を整理して無限ループを防ぐ
@@ -276,17 +303,18 @@ const Dashboard = () => {
     
     // 最後にデータを再取得
     fetchData(1, {});
-  };
+  }, [fetchData]); // fetchDataのみに依存
 
-  const handlePrOnlyChange = (checked: boolean) => {
+  // handlePrOnlyChange 関数をメモ化
+  const handlePrOnlyChange = useCallback((checked: boolean) => {
     console.log('PR動画のみ表示:', checked);
     setIsPrOnly(checked);
     
     if (checked) {
-      // PRフィルターを追加
+      // PRフィルターを追加（完全一致検索に変更）
       const prFilter: FilterQuery = {
         field: 'hashtags',
-        type: 'contains',
+        type: 'exact_hashtags', // containsから変更
         value: 'pr',
         isHashtag: true
       };
@@ -299,20 +327,31 @@ const Dashboard = () => {
       // PRフィルターを削除
       const updatedFilters = { ...filters };
       delete updatedFilters.hashtags_pr;
+      
+      // hashtags関連のPRフィルターも削除する
+      Object.keys(updatedFilters).forEach(key => {
+        const filter = updatedFilters[key];
+        if ((key === 'hashtags' || key.includes('hashtag')) && 
+            filter && filter.type === 'exact_hashtags' && 
+            filter.value === 'pr') {
+          delete updatedFilters[key];
+        }
+      });
+      
       setFilters(updatedFilters);
     }
     
     // ページをリセット
     setCurrentPage(1);
-  };
+  }, [filters]); // filters のみに依存
 
-  const handlePageSizeChange = (size: number) => {
+  const handlePageSizeChange = useCallback((size: number) => {
     setPageSize(size);
     setCurrentPage(1);
-  };
+  }, []);
 
-  // 複数フィルターを処理する関数を追加
-  const handleMultipleFilters = (filters: Record<string, FilterQuery>) => {
+  // handleMultipleFilters 関数をメモ化
+  const handleMultipleFilters = useCallback((filters: Record<string, FilterQuery>) => {
     console.log('Dashboard - 複数フィルター処理:', filters);
     
     // すべてのフィルターをクリアするリセット信号をチェック
@@ -370,6 +409,7 @@ const Dashboard = () => {
             field: field,
             type: value.type,
             value: value.value,
+            active: true,
             ...(value.isHashtag && { isHashtag: true }),
             ...(value.comparison && { comparison: value.comparison })
           };
@@ -430,6 +470,7 @@ const Dashboard = () => {
         field: field,
         type: filterValue.type,
         value: filterValue.value,
+        active: true,
         ...(filterValue.isHashtag && { isHashtag: true }),
         ...(filterValue.timestamp !== undefined && { timestamp: filterValue.timestamp }),
         ...(filterValue.isPrimarySort !== undefined && { isPrimarySort: filterValue.isPrimarySort }),
@@ -451,6 +492,7 @@ const Dashboard = () => {
           type: 'multiselect',
           value: filterValue.value,
           comparison: 'contains', // 明示的に比較演算子を指定
+          active: true, // activeプロパティを追加
           ...(filterValue.isHashtag && { isHashtag: true }),
           ...(filterValue.timestamp !== undefined && { timestamp: filterValue.timestamp }),
           ...(filterValue.isPrimarySort !== undefined && { isPrimarySort: filterValue.isPrimarySort }),
@@ -469,6 +511,7 @@ const Dashboard = () => {
           type: 'multiselect',
           value: filterValue.value,
           comparison: 'contains', // 明示的に比較演算子を指定
+          active: true, // activeプロパティを追加
         };
       }
       // 数値フィルターの特別処理
@@ -484,6 +527,7 @@ const Dashboard = () => {
           type: 'number',
           value: filterValue.value,
           comparison: filterValue.comparison || 'equal', // 比較演算子を明示
+          active: true, // activeプロパティを追加
         };
       }
       // ソート処理の場合は特別なキーを使用
@@ -496,24 +540,53 @@ const Dashboard = () => {
     
     console.log('Dashboard - 構築された複数フィルター:', newFilters);
     
+    // フィルターのactive状態を詳細にログ出力
+    Object.entries(newFilters).forEach(([key, filter]) => {
+      console.log(`Dashboard - 最終フィルター[${key}]の詳細:`, {
+        field: filter.field,
+        type: filter.type,
+        value: filter.value,
+        comparison: filter.comparison,
+        active: filter.active
+      });
+    });
+    
     // フィルター状態を更新
     setFilters(newFilters);
     setCurrentPage(1);
     
     // 新しいフィルター状態でデータを取得
     fetchData(1, newFilters);
-  };
+  }, [fetchData]); // fetchDataのみに依存
 
   // 初期読み込み時に設定を取得
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const response = await displaySettingsApi.getSettings();
-        if (response.success && response.settings) {
+        console.log('表示設定のレスポンス:', response);
+        
+        if (response.success && response.settings && response.settings.columns && response.settings.columns.length > 0) {
           const visibleColumnNames = response.settings.columns
             .filter(col => col.is_visible)
             .map(col => col.column_name);
-          setVisibleColumns(visibleColumnNames);
+          
+          console.log('読み込まれた表示カラム:', visibleColumnNames);
+          
+          // カラムが空の場合はデフォルト値を使用
+          if (visibleColumnNames.length === 0) {
+            console.log('表示カラムが空のため、デフォルト値を使用します');
+            // constants.tsからインポートする
+            const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
+            setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+          } else {
+            setVisibleColumns(visibleColumnNames);
+          }
+        } else {
+          console.log('表示設定が取得できないため、デフォルト値を使用します');
+          // constants.tsからインポートする
+          const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
+          setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
         }
         setIsSettingsLoaded(true);
       } catch (error) {
@@ -523,6 +596,11 @@ const Dashboard = () => {
           description: "表示設定の読み込みに失敗しました",
           variant: "destructive",
         });
+        
+        console.log('エラーのため、デフォルト値を使用します');
+        // constants.tsからインポートする
+        const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
+        setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
         setIsSettingsLoaded(true);
       }
     };
@@ -530,10 +608,36 @@ const Dashboard = () => {
     loadSettings();
   }, []);
 
-  // 設定の変更を処理
-  const handleColumnSettingsChange = (columns: string[]) => {
+  // handleColumnSettingsChange 関数をメモ化
+  const handleColumnSettingsChange = useCallback((columns: string[]) => {
     setVisibleColumns(columns);
-  };
+  }, []);
+  
+  // レンダリング回数をカウントするuseEffect
+  useEffect(() => {
+    renderCountRef.current += 1;
+    console.log(`[DEBUG-RENDER] Dashboard コンポーネントの再レンダリング回数: ${renderCountRef.current}`, {
+      timestamp: new Date().toISOString()
+    });
+  });
+  
+  // 関数の参照が変更されているかをチェックするuseEffect - 関数定義後に配置
+  useEffect(() => {
+    if (handleFilterRef.current && handleFilterRef.current !== handleFilter) {
+      console.log('[DEBUG-REF] handleFilter 関数の参照が変更されました');
+    }
+    handleFilterRef.current = handleFilter;
+
+    if (handleMultipleFiltersRef.current && handleMultipleFiltersRef.current !== handleMultipleFilters) {
+      console.log('[DEBUG-REF] handleMultipleFilters 関数の参照が変更されました');
+    }
+    handleMultipleFiltersRef.current = handleMultipleFilters;
+
+    if (fetchDataRef.current && fetchDataRef.current !== fetchData) {
+      console.log('[DEBUG-REF] fetchData 関数の参照が変更されました');
+    }
+    fetchDataRef.current = fetchData;
+  }, [handleFilter, handleMultipleFilters, fetchData]);
 
   // DataTableコンポーネントは設定のロードが完了してから表示
   if (!isSettingsLoaded) {

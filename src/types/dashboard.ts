@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
 // フィルタ関連の型
-export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect' | 'multiple' | 'indicator';
+export type FilterType = 'equal' | 'greater' | 'less' | 'between' | 'contains' | 'sort' | 'clear' | 'date' | 'number' | 'text' | 'multiselect' | 'multiple' | 'indicator' | 'exact_hashtags';
 
 // 比較演算子の型
 export type ComparisonOperator = 'before' | 'after' | 'equal' | 'greater' | 'less' | 'contains';
@@ -18,6 +18,8 @@ export interface FilterQuery {
   sortField?: string  // ソート対象のフィールド名（明示的に指定）
   comparison?: ComparisonOperator  // 比較演算子を追加
   filters?: Record<string, FilterValue>  // 複数フィルター用
+  active?: boolean  // フィルターがアクティブかどうかを示すフラグ
+  isPrOnly?: boolean // PR動画フィルターのフラグを追加
 }
 
 export interface FilterValue extends FilterQuery {
@@ -25,6 +27,7 @@ export interface FilterValue extends FilterQuery {
   isHashtag?: boolean
   comparison?: ComparisonOperator  // 比較演算子を追加
   filterId?: string  // フィルター識別用のID（オプション）
+  active?: boolean   // フィルターがアクティブかどうかを示すフラグ
 }
 
 // データ型
@@ -69,6 +72,9 @@ export interface VideoData {
   ten_days_likes_increase: number
   comment_count_increase: number
   ten_days_comment_increase: number
+  save_count: number
+  save_count_increase: number
+  ten_days_save_increase: number
 }
 
 // 数値フォーマット用の型定義を追加
@@ -82,6 +88,9 @@ export type NumberFormatType =
   | 'comment_count_increase'
   | 'ten_days_comment_increase'
   | 'ten_days_increase'
+  | 'saves'
+  | 'save_count_increase'
+  | 'ten_days_save_increase'
 
 // テーブル関連の型
 export interface Column {
@@ -167,7 +176,7 @@ export interface CategoryData {
 }
 
 export interface HashtagData {
-  hashtag: string;
+  hashtags: string;
   count: number;
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, forwardRef, useCallback, useImperativeHandle, ReactElement } from 'react'
 import type { VideoData, FilterValue, Column, FilterQuery, NumberFormatType } from '@/types/dashboard'
-import { TableHeaderCell } from './table-header-cell'
+import { TableHeaderCell } from './data-table/table-header-cell'
 import Image from 'next/image'
 import { TextPopup } from '@/components/ui/text-popup'
 import { COLUMN_MAP } from '@/lib/api'
@@ -352,7 +352,9 @@ const SortableHeaderCell = ({ column, index }: { column: Column; index: number }
       {...listeners}
       className="px-2 py-2 font-medium text-xs text-gray-700 bg-gray-50 sticky top-0"
     >
-      {column.header({ column })}
+      <div className="w-full h-full cursor-move">
+        {column.header({ column })}
+      </div>
     </th>
   );
 };
@@ -392,12 +394,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [sortField, setSortField] = useState<string | null>(null)
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
     
+    // 強制再レンダリング用のstate追加
+    const [forceUpdate, setForceUpdate] = useState(0)
+    
     // フィルターポップアップの状態を管理
     const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false)
     const filterButtonRef = useRef<HTMLButtonElement>(null)
     
     // API関連の設定
-    const API_BASE_URL = 'http://localhost:8080';
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
 
     // 最後にクリックしたソートフィールドを追跡
     const [lastClickedSort, setLastClickedSort] = useState<string | null>(null);
@@ -451,10 +456,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       console.log('DataTable - columnFilters after clear: {}');
       
       // 親コンポーネントに通知 - 明示的なフィルターリセット信号を送る
-      onFilterChange(false, { field: 'reset', type: 'clear', value: '' });
+      onFilterChange(false, { field: 'reset', type: 'clear', value: '', active: false });
       
       // フィルターポップアップを閉じる
       setIsFilterPopupOpen(false);
+
+      // 強制的に再レンダリングを発生させる
+      setForceUpdate(prev => prev + 1);
     }, [onFilterChange, columnFilters]);
 
     // ポップアップ内のフィルター入力のみをクリアする関数 - ポップアップの入力のみクリア（APIリクエストなし）
@@ -472,7 +480,1093 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     // columnFiltersの変更を監視
     useEffect(() => {
       console.log('DataTable - columnFilters changed:', columnFilters);
+      
+      // フィルターが更新された後の最新状態を表示
+      if (Object.keys(columnFilters).length > 0) {
+        console.log('[DataTable] フィルター状態更新後の詳細:', Object.entries(columnFilters).map(([key, filter]) => {
+          return {
+            key,
+            hasActiveProperty: 'active' in filter,
+            activeValue: filter.active,
+            field: filter.field,
+            type: filter.type
+          };
+        }));
+      
+        // 各カラムのisActive判定値を確認
+        console.log('[DataTable] カテゴリisActive判定:', Boolean(columnFilters['category']?.active));
+        console.log('[DataTable] 投稿日isActive判定:', Boolean(columnFilters['createdAt']?.active));
+        console.log('[DataTable] 再生数isActive判定:', Boolean(columnFilters['views']?.active));
+        
+        // カラムのisActiveに関する情報を記録
+        const isActiveStatus = {
+          'category': Boolean(columnFilters['category']?.active),
+          'createdAt': Boolean(columnFilters['createdAt']?.active),
+          'views': Boolean(columnFilters['views']?.active),
+          'viewsIncrease': Boolean(columnFilters['viewsIncrease']?.active),
+          'likes': Boolean(columnFilters['likes']?.active),
+          'comments': Boolean(columnFilters['comments']?.active),
+          'account_name': Boolean(columnFilters['account_name']?.active),
+          'audioTitle': Boolean(columnFilters['audioTitle']?.active),
+          'content_type': Boolean(columnFilters['content_type']?.active)
+        };
+        console.log('[DataTable] 各カラムのisActive判定結果 (更新後):', isActiveStatus);
+        
+        // 強制的に再レンダリングを発生させる
+        setForceUpdate(prev => prev + 1);
+      }
     }, [columnFilters]);
+
+    // handleFilterを拡張してソート処理を明示的に扱う
+    const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
+      console.log(`[DataTable] フィルター処理 - フィールド: ${field}`, filterValue);
+      
+      if (filterValue.type === 'sort') {
+        // ソート処理
+        const isPrimarySort = filterValue.isPrimarySort === true;
+        
+        if (isPrimarySort) {
+          // 第一ソートの設定
+          setPrimarySort({
+            field: field,
+            direction: filterValue.value as 'asc' | 'desc'
+          });
+          
+          // 後方互換性のために従来の状態も更新
+          setSortField(field);
+          setSortDirection(filterValue.value as 'asc' | 'desc');
+        } else {
+          // 第二ソートの設定
+          setSecondarySort({
+            field: field,
+            direction: filterValue.value as 'asc' | 'desc'
+          });
+        }
+        
+        // 親コンポーネントに通知
+        onFilterChange(true, filterValue);
+        
+        // 強制的に再レンダリングを発生させる
+        setForceUpdate(prev => prev + 1);
+        return;
+      }
+      
+      if (filterValue.type === 'clear') {
+        console.log(`[DataTable] 明示的なクリア処理 - フィールド: ${field}`, filterValue);
+        
+        // ソートもクリアする
+        if (sortField === field) {
+          setSortField(null);
+          setSortDirection(null);
+        }
+        
+        // このフィールドのフィルターを削除
+        const newFilters = { ...columnFilters };
+        delete newFilters[field];
+        setColumnFilters(newFilters);
+        
+        // 現在のフィルターからも削除
+        const newCurrentFilters = { ...currentFilters };
+        delete newCurrentFilters[field];
+        setCurrentFilters(newCurrentFilters);
+        
+        // フィルターが全て空になったかをチェック
+        const hasFilters = Object.keys(newFilters).length > 0;
+        setHasActiveFilters(hasFilters);
+        
+        // 親コンポーネントに通知 - 明示的なクリアフラグを含む
+        if (hasFilters) {
+          // まだフィルターが残っている場合
+          // 複数フィルターを配列として渡す
+          onFilterChange(hasFilters, { 
+            type: 'multiple',
+            field: 'multipleFilters',
+            value: Object.values(newCurrentFilters),
+            filters: newCurrentFilters  // 全フィルターをオブジェクトとして渡す
+          });
+        } else {
+          // 全てのフィルターが空になった場合、明示的にリセット信号を送る
+          onFilterChange(false, { field: 'reset', type: 'clear', value: '', clear: true });
+        }
+        
+        // 強制的に再レンダリングを発生させる
+        setForceUpdate(prev => prev + 1);
+        return;
+      }
+      
+      // 新しいフィルターを適用する前に、active: trueを設定
+      const updatedFilterValue = {
+        ...filterValue,
+        active: true
+      };
+      console.log(`[DataTable] フィルター値を更新 - フィールド: ${field}, active=true を設定`);
+      
+      // 新しいフィルターを適用
+      const newFilters = shouldMerge 
+        ? { ...columnFilters, [field]: updatedFilterValue } 
+        : { [field]: updatedFilterValue };
+      
+      setColumnFilters(newFilters);
+      console.log(`[DataTable] columnFiltersを更新 - フィールド: ${field}`, newFilters[field]);
+      
+      // 現在のフィルターに追加
+      const updatedFilter = {
+        ...currentFilters,
+        [field]: {
+          ...updatedFilterValue
+        }
+      };
+      setCurrentFilters(updatedFilter);
+      console.log(`[DataTable] currentFiltersを更新 - フィールド: ${field}`, updatedFilter[field]);
+      
+      // フィルターがアクティブになったことを通知
+      setHasActiveFilters(true);
+      
+      // 親コンポーネントに通知（フィルター条件を含める）
+      onFilterChange(true, {
+        ...updatedFilterValue
+      });
+      
+      // 強制的に再レンダリングを発生させる
+      setForceUpdate(prev => prev + 1);
+    };
+
+    const handlePageChange = (page: number) => {
+      onPageChange(page)
+    }
+
+
+
+    // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
+    const getFilteredOptions = useCallback((columnName: string) => {
+      // 現在アクティブなフィルターの数を確認
+      const activeFilterCount = Object.keys(currentFilters).length;
+      
+      // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
+      const useInitialCache = activeFilterCount === 0;
+      
+      // フィルタークリア直後のローディング中であるかを判断
+      const isTransitioning = isLoadingFilterOptions && activeFilterCount > 0;
+      
+      // フィルタークリア直後のローディング中かつ一部フィルターのみクリアの場合はloadingを表示
+      if (isTransitioning) {
+        console.log(`${columnName} - ローディング中のため空の配列を返します`);
+        return [];
+      }
+      
+      switch (columnName) {
+        case '動画ジャンル':
+          // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
+          return useInitialCache && categoryList.length > 0 
+            ? categoryList 
+            : categoryList;
+          
+        case 'アカウント名':
+          return useInitialCache && accountList.length > 0
+            ? accountList
+            : accountList;
+          
+        case 'ハッシュタグ':
+          return useInitialCache && hashtagList.length > 0
+            ? hashtagList
+            : hashtagList;
+          
+        case 'BGM':
+          return useInitialCache && audioTitleList.length > 0
+            ? audioTitleList
+            : audioTitleList;
+          
+        default:
+          return [];
+      }
+    }, [categoryList, accountList, hashtagList, audioTitleList, isLoadingFilterOptions, currentFilters]);
+
+    // handleBulkFilterChange関数を修正 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
+    const handleBulkFilterChange = (filters: Record<string, FilterValue>) => {
+      console.log('[DataTable] 一括フィルター変更 - 受け取ったフィルター:', filters);
+      console.log('[DataTable] 一括フィルター変更 - フィルターのactive状態:', Object.entries(filters).map(([key, value]) => {
+        return {
+          key,
+          active: value.active,
+          type: value.type,
+          field: value.field
+        };
+      }));
+      
+      // 受け取ったフィルターのactiveプロパティをより詳細にチェック
+      console.log('[DataTable] 受け取ったフィルターのactive詳細:',
+        Object.entries(filters).map(([key, value]) => {
+          return {
+            key,
+            hasActiveProperty: 'active' in value,
+            activeValue: value.active,
+            activeType: typeof value.active,
+            valueJSON: JSON.stringify(value)
+          };
+        })
+      );
+      
+      // 明示的なリセット信号をチェック
+      if (filters.reset && filters.reset.type === 'clear') {
+        console.log('[DataTable] 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
+        
+        // 状態をリセット
+        setColumnFilters({});
+        setCurrentFilters({});
+        setPrimarySort(null);
+        setSecondarySort(null);
+        setSortField(null);
+        setSortDirection(null);
+        setHasActiveFilters(false);
+        
+        // 親コンポーネントに通知 - リセット信号を含める
+        onFilterChange(false, { field: 'reset', type: 'clear', value: '' });
+        
+        // フィルターポップアップを閉じる
+        setIsFilterPopupOpen(false);
+        
+        // 強制的に再レンダリングを発生させる
+        setForceUpdate(prev => prev + 1);
+        return;
+      }
+      
+      // ソート処理のための変数
+      let newPrimarySort = primarySort;
+      let newSecondarySort = secondarySort;
+      let sortUpdated = false;
+      
+      // フィルター情報を処理
+      const normalFilters: Record<string, FilterValue> = {};
+      
+      // ソート関連のフラグ - ソート関連のキーがあるかどうかを確認
+      const hasSortKeys = Object.keys(filters).some(key => key.startsWith('sort_'));
+      
+      // ソート情報が含まれているが、primary/secondaryソートがない場合は解除されたと判断
+      if (hasSortKeys && !Object.values(filters).some(filter => filter.type === 'sort')) {
+        console.log('[DataTable] ソート情報が解除されました');
+        newPrimarySort = null;
+        newSecondarySort = null;
+        setSortField(null);
+        setSortDirection(null);
+        sortUpdated = true;
+      } else {
+        // フィルターを処理し、ソート情報とフィルター情報を分離
+        Object.entries(filters).forEach(([key, filter]) => {
+          // ソート情報の処理
+          if (key.startsWith('sort_') && filter.type === 'sort') {
+            sortUpdated = true;
+            // キーから純粋なフィールド名を取得（sort_PREFIX_を削除）
+            const fieldName = key.replace(/^sort_/, '').replace(/_primary$/, '').replace(/_secondary$/, '');
+            
+            if (filter.isPrimarySort) {
+              // 第一ソートの設定
+              newPrimarySort = {
+                field: fieldName,
+                direction: filter.value as 'asc' | 'desc'
+              };
+              
+              // 後方互換性のために従来の状態も更新
+              setSortField(fieldName);
+              setSortDirection(filter.value as 'asc' | 'desc');
+            } else {
+              // 第二ソートの設定
+              newSecondarySort = {
+                field: fieldName,
+                direction: filter.value as 'asc' | 'desc'
+              };
+            }
+          } else {
+            // 通常のフィルター情報 - active プロパティを明示的に保持
+            normalFilters[key] = {
+              ...filter,
+              active: filter.active === undefined ? true : filter.active // activeが設定されていない場合はtrueをデフォルト値とする
+            };
+            console.log(`[DataTable] フィルター処理 - ${key}: active=${filter.active === undefined ? true : filter.active} を設定（元の値: ${filter.active}）`);
+          }
+        });
+      }
+      
+      // ソート情報を更新
+      if (sortUpdated) {
+        setPrimarySort(newPrimarySort);
+        setSecondarySort(newSecondarySort);
+      }
+      
+      // フィルター情報を設定
+      setColumnFilters(normalFilters);
+      
+      // 現在のフィルターも更新（ソート情報は含めない）
+      setCurrentFilters(normalFilters);
+      
+      // フィルターがアクティブになったことを通知
+      const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
+      setHasActiveFilters(hasFilters);
+      
+      // 親コンポーネントに通知
+      onFilterChange(hasFilters, {
+        type: 'multiple',
+        field: 'multipleFilters',
+        value: Object.values(normalFilters),
+        filters: {
+          ...normalFilters,
+          // ソート情報も追加
+          ...(newPrimarySort && {
+            [`sort_${newPrimarySort.field}`]: {
+              field: newPrimarySort.field,
+              type: 'sort',
+              value: newPrimarySort.direction,
+              isPrimarySort: true,
+              sortField: newPrimarySort.field,
+              active: true // ソート情報にもactiveを設定
+            }
+          }),
+          ...(newSecondarySort && {
+            [`sort_${newSecondarySort.field}`]: {
+              field: newSecondarySort.field,
+              type: 'sort',
+              value: newSecondarySort.direction,
+              isPrimarySort: false,
+              sortField: newSecondarySort.field,
+              active: true // ソート情報にもactiveを設定
+            }
+          }),
+          // ソートが解除された場合は明示的に解除信号を送る
+          ...(hasSortKeys && !newPrimarySort && {
+            'sort_clear': {
+              field: 'sort',
+              type: 'clear',
+              value: ''
+            }
+          })
+        }
+      });
+      
+      // フィルターポップアップを閉じる
+      setIsFilterPopupOpen(false);
+      
+      // 強制的に再レンダリングを発生させる - 最後に実行して確実に更新を反映
+      setForceUpdate(prev => prev + 1);
+      
+      // デバッグログ - forceUpdateの変更を確認
+      console.log('[DataTable] forceUpdate更新:', forceUpdate + 1);
+    };
+
+    const columns: Column[] = [
+      {
+        accessorKey: 'thumbnail_url',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="サムネイル"
+          />
+        ),
+        cell: ({ row }) => {
+
+          let thumbnailUrl = null;
+          if (typeof row.thumbnail_url === 'string') {
+            thumbnailUrl = row.thumbnail_url;
+          } else if (row.thumbnail_url && typeof row.thumbnail_url === 'object') {
+            thumbnailUrl = row.thumbnail_url.url;
+          }
+
+          // アカウント情報をマッピング - account_name を accountName に変換
+          const videoData = {
+            views: row.views || 0,
+            viewsIncrease: row.viewsIncrease || 0,
+            ten_days_increase: row.ten_days_increase || 0,
+            createdAt: row.createdAt || '',
+            accountName: row.account_name || '' // account_name を accountName に変換
+          };
+
+          // サムネイルがなくても ImageHover を表示する
+          return (
+            <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+              <div className="relative w-full h-full overflow-hidden rounded">
+                {thumbnailUrl ? (
+                  <ImageHover 
+                    src={thumbnailUrl} 
+                    alt="サムネイル" 
+                    videoUrl={row.url}
+                    videoData={videoData}
+                  />
+                ) : (
+                  // サムネイルがない場合でも ImageHover を表示
+                  <div className="cursor-pointer">
+                    <ImageHover 
+                      src="/images/no-thumbnail.png" 
+                      alt="サムネイルなし" 
+                      videoUrl={row.url}
+                      videoData={videoData}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded pointer-events-none">
+                      <svg 
+                        className="w-8 h-8 text-gray-400" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M10 8l6 4-6 4V8z" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute bottom-[0px] right-[0px] bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-0.2">
+                  {row.content_type === 'video' ? (
+                    <VideoTypeIcon size={32} />
+                  ) : (
+                    <PhotoTypeIcon size={32} />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+      },
+      {
+        accessorKey: 'category',
+        header: ({ column }) => {
+          const options = getFilteredOptions('動画ジャンル');
+          console.log('動画ジャンルカラムのレンダリング:', {
+            categoryDataLength: options.length,
+            sample: options.slice(0, 3),
+            hasActiveFilter: Boolean(columnFilters['category']?.active),
+            isLoading: isLoadingFilterOptions
+          });
+          return (
+            <TableHeaderCell
+              title="動画ジャンル"
+              type="text"
+              align="left"
+              onFilter={(value) => handleFilter('category')(value)}
+              isActive={Boolean(columnFilters['category']?.active)}
+              categoryData={options}
+              sortDirection={
+                primarySort?.field === 'category' 
+                  ? primarySort.direction 
+                  : secondarySort?.field === 'category' 
+                    ? secondarySort.direction 
+                    : null
+              }
+              sortPriority={primarySort?.field === 'category' ? 1 : secondarySort?.field === 'category' ? 2 : null}
+              isLoadingFilterOptions={isLoadingFilterOptions}
+            />
+          );
+        },
+        cell: ({ row }) => {
+          // カテゴリが文字列かどうかをチェック
+          const category = row.category;
+          if (!category) return null;
+          
+          // カテゴリが文字列の場合
+          if (typeof category === 'string') {
+            // 複数のジャンルがカンマや区切り文字で分割されている場合
+            if (category.includes(',') || category.includes('、')) {
+              const genres = category
+                .split(/[,、]/)
+                .map(g => g.trim())
+                .filter(Boolean);
+                
+              return (
+                <div className="flex flex-wrap gap-1 justify-start items-center">
+                  {genres.map((genre, idx) => (
+                    <GenreBadge key={idx} genre={genre} />
+                  ))}
+                </div>
+              );
+            }
+            return <div className="flex justify-start items-center"><GenreBadge genre={category} /></div>;
+          }
+          
+          // カテゴリが配列の場合（複数カテゴリに対応）
+          if (Array.isArray(category)) {
+            const allGenreBadges: React.ReactElement[] = [];
+            
+            // すべての要素を処理して、必要に応じて分割
+            (category as string[]).forEach((cat: string, idx: number) => {
+              // 区切り文字を含む場合は分割
+              if (cat.includes(',') || cat.includes('、') || cat.includes('/')) {
+                const subGenres = cat
+                  .split(/[,、\/]/)
+                  .map(g => g.trim())
+                  .filter(Boolean);
+                  
+                subGenres.forEach((genre, subIdx) => {
+                  allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} />);
+                });
+              } else {
+                allGenreBadges.push(<GenreBadge key={idx} genre={cat} />);
+              }
+            });
+            
+            return (
+              <div className="flex flex-wrap gap-1 justify-start items-center">
+                {allGenreBadges}
+              </div>
+            );
+          }
+          
+          return null;
+        }
+      },
+      {
+        accessorKey: 'product',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="商品名"
+            type="text"
+            onFilter={(value) => handleFilter('product')(value)}
+            isActive={Boolean(columnFilters['product']?.active)}
+            categoryData={getFilteredOptions('商品名')}
+            sortDirection={
+              primarySort?.field === 'product' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'product' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => {
+          // カテゴリ（動画ジャンル）を取得
+          const category = row.category;
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <div className="flex flex-wrap gap-1 justify-start items-center">
+                {row.product && (
+                  <GenreBadge 
+                    genre={row.product} 
+                    // カテゴリを渡して同じ色を使用
+                    categoryForColor={category}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        }
+      },
+      {
+        accessorKey: 'account_type',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウントジャンル"
+            type="text"
+            onFilter={(value) => handleFilter('account_type')(value)}
+            isActive={Boolean(columnFilters['account_type']?.active)}
+            categoryData={getFilteredOptions('アカウントジャンル')}
+            sortDirection={
+              primarySort?.field === 'account_type' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'account_type' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <div className="flex flex-wrap gap-1 justify-start items-center">
+              {row.account_type ? (
+                <div className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                  {row.account_type}
+                </div>
+              ) : (
+                <span className="text-gray-400 text-xs">未設定</span>
+              )}
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'createdAt',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="投稿日"
+            type="date"
+            align="right"
+            onFilter={(value) => handleFilter('createdAt')(value)}
+            isActive={Boolean(columnFilters['createdAt']?.active)}
+            sortDirection={
+              primarySort?.field === 'createdAt' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'createdAt' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'createdAt' ? 1 : secondarySort?.field === 'createdAt' ? 2 : null}
+            isLoadingFilterOptions={isLoadingFilterOptions}
+          />
+        ),
+        cell: ({ row }) => {
+          const date = row.createdAt;
+          if (!date) return null;
+          
+          try {
+            // ISO形式や標準的な日付文字列の場合
+            const dateObj = new Date(date);
+            if (!isNaN(dateObj.getTime())) {
+              // YY/MM/DD形式に変換
+              const year = dateObj.getFullYear().toString().slice(-2);
+              const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+              const day = dateObj.getDate().toString().padStart(2, '0');
+              return (
+                <div className="text-right font-medium text-gray-700">
+                  {`${year}/${month}/${day}`}
+                </div>
+              );
+            }
+            
+            // すでに文字列として存在する日付形式の変換
+            if (typeof date === 'string') {
+              // YYYY-MM-DDパターンにマッチ
+              const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (match) {
+                const year = match[1].slice(-2);
+                const month = match[2];
+                const day = match[3];
+                return (
+                  <div className="text-right font-medium text-gray-700">
+                    {`${year}/${month}/${day}`}
+                  </div>
+                );
+              }
+            }
+            
+            return <div className="text-right text-gray-700">{date}</div>;
+          } catch (e) {
+            console.error('日付変換エラー:', e);
+            return <div className="text-right text-gray-700">{date}</div>;
+          }
+        },
+      },
+      {
+        accessorKey: 'views',
+        header: ({ column }) => {
+          // forceUpdateログ出力追加（デバッグ用）
+          console.log('Views column rendering, forceUpdate:', forceUpdate);
+          
+          // columnFiltersを直接確認（デバッグ用）
+          console.log('[Views] 現在のcolumnFilters:', columnFilters);
+          console.log('[Views] views filterのactive値:', columnFilters['views']?.active);
+          
+          // すべてのフィルターのactiveプロパティをログ出力
+          console.log('[Views] 全フィルターのactive状態:', 
+            Object.entries(columnFilters).map(([key, filter]) => ({
+              key,
+              active: filter.active,
+              hasActiveProperty: 'active' in filter
+            }))
+          );
+          
+          const isActive = Boolean(columnFilters['views']?.active);
+          console.log('[Views] 最終的なisActive値:', isActive);
+          
+          return (
+            <TableHeaderCell
+              title="再生数"
+              type="number"
+              align="right"
+              onFilter={(value) => handleFilter('views')(value)}
+              isActive={isActive}
+              sortDirection={
+                primarySort?.field === 'views' 
+                  ? primarySort.direction 
+                  : secondarySort?.field === 'views' 
+                    ? secondarySort.direction 
+                    : null
+              }
+              sortPriority={primarySort?.field === 'views' ? 1 : secondarySort?.field === 'views' ? 2 : null}
+            />
+          );
+        },
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.views, 'views')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'viewsIncrease',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="再生増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('viewsIncrease')(value)}
+            isActive={Boolean(columnFilters['viewsIncrease']?.active)}
+            sortDirection={
+              primarySort?.field === 'viewsIncrease' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'viewsIncrease' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'viewsIncrease' ? 1 : secondarySort?.field === 'viewsIncrease' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.viewsIncrease, 'viewsIncrease')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'ten_days_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日間再生増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('ten_days_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'ten_days_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_increase' ? 1 : secondarySort?.field === 'ten_days_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.ten_days_increase, 'ten_days_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'likes',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="いいね数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('likes')(value)}
+            isActive={Boolean(columnFilters['likes']?.active)}
+            sortDirection={
+              primarySort?.field === 'likes' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'likes' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'likes' ? 1 : secondarySort?.field === 'likes' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.likes, 'likes')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'likes_count_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="いいね増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('likes_count_increase')(value)}
+            isActive={Boolean(columnFilters['likes_count_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'likes_count_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'likes_count_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'likes_count_increase' ? 1 : secondarySort?.field === 'likes_count_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.likes_count_increase, 'likes_count_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'ten_days_likes_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日間いいね増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('ten_days_likes_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_likes_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'ten_days_likes_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_likes_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_likes_increase' ? 1 : secondarySort?.field === 'ten_days_likes_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.ten_days_likes_increase, 'ten_days_likes_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'comments',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="コメント数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('comments')(value)}
+            isActive={Boolean(columnFilters['comments']?.active)}
+            sortDirection={
+              primarySort?.field === 'comments' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'comments' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'comments' ? 1 : secondarySort?.field === 'comments' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.comments, 'comments')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'comment_count_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="コメント増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('comment_count_increase')(value)}
+            isActive={Boolean(columnFilters['comment_count_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'comment_count_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'comment_count_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'comment_count_increase' ? 1 : secondarySort?.field === 'comment_count_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.comment_count_increase, 'comment_count_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'ten_days_comment_increase',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="10日間コメント増加数"
+            type="number"
+            align="right"
+            onFilter={(value) => handleFilter('ten_days_comment_increase')(value)}
+            isActive={Boolean(columnFilters['ten_days_comment_increase']?.active)}
+            sortDirection={
+              primarySort?.field === 'ten_days_comment_increase' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'ten_days_comment_increase' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'ten_days_comment_increase' ? 1 : secondarySort?.field === 'ten_days_comment_increase' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="text-right">
+            {formatNumber(row.ten_days_comment_increase, 'ten_days_comment_increase')}
+          </div>
+        )
+      },
+      {
+        accessorKey: 'account_name',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="アカウント名"
+            type="text"
+            onFilter={(value) => handleFilter('account_name')(value)}
+            isActive={Boolean(columnFilters['account_name']?.active)}
+            sortDirection={
+              primarySort?.field === 'account_name' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'account_name' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'account_name' ? 1 : secondarySort?.field === 'account_name' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <div className="flex flex-col">
+              <span className="font-bold truncate text-base">
+                {row.account_name || '不明'}
+              </span>
+              {row.display_name && (
+                <span className="text-xs text-gray-500 truncate">
+                  {row.display_name}
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      },
+      {
+        accessorKey: 'hashtags',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="ハッシュタグ"
+            type="text"
+            onFilter={(value) => handleFilter('hashtags')(value)}
+            isActive={Boolean(columnFilters['hashtags']?.active)}
+            categoryData={getFilteredOptions('ハッシュタグ')}
+            sortDirection={sortField === 'hashtags' ? sortDirection : null}
+            sortPriority={primarySort?.field === 'hashtags' ? 1 : secondarySort?.field === 'hashtags' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => {
+          // キャプションからのみハッシュタグを抽出する
+          const caption = row.description || '';
+          
+          // キャプションからハッシュタグを抽出（#付きの形式で）
+          const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
+          
+          // 重複を除去
+          const uniqueTags = [...new Set(hashtagsFromCaption)].filter(Boolean);
+          
+          if (uniqueTags.length === 0) {
+            return <span className="text-gray-400 text-xs">ハッシュタグなし</span>;
+          }
+          
+          // ハッシュタグの表示（最大3つまで表示し、それ以上は省略）
+          const displayTags = uniqueTags.slice(0, 3);
+          const remainingCount = uniqueTags.length - displayTags.length;
+          
+          return (
+            <div className="w-[120px] min-w-[120px]">
+              <button 
+                onClick={() => setSelectedText({ 
+                  title: 'ハッシュタグ', 
+                  content: uniqueTags.join(', ') || 'ハッシュタグなし'
+                })}
+                className="text-left w-full"
+              >
+                <div className="flex flex-wrap">
+                  {displayTags.map((tag: string, idx: number) => (
+                    <HashtagBadge key={idx} tag={tag.substring(1)} />
+                  ))}
+                  {remainingCount > 0 && (
+                    <span className="text-xs text-gray-500 mt-1">
+                      他{remainingCount}個...
+                    </span>
+                  )}
+                </div>
+              </button>
+            </div>
+          );
+        }
+      },
+      {
+        accessorKey: 'audioTitle',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="BGM"
+            type="text"
+            onFilter={(value) => handleFilter('audioTitle')(value)}
+            isActive={Boolean(columnFilters['audioTitle']?.active)}
+            categoryData={getFilteredOptions('BGM')}
+            sortDirection={
+              primarySort?.field === 'audioTitle' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'audioTitle' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'audioTitle' ? 1 : secondarySort?.field === 'audioTitle' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="w-[120px] min-w-[120px]">
+            <button 
+              onClick={() => setSelectedText({ 
+                title: 'BGM情報', 
+                content: `${row.audioTitle || 'BGMなし'}${row.artist ? `\nアーティスト: ${row.artist}` : ''}`
+              })}
+              className="text-left w-full"
+            >
+              <div className="flex items-center gap-1">
+                <MusicNoteIcon size={14} />
+                <span className="line-clamp-2 text-xs text-gray-600">
+                  {row.audioTitle || 'BGMなし'}
+                </span>
+              </div>
+            </button>
+          </div>
+        )
+      },
+    ]
+
+    // カラム設定の状態を追加
+    const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false)
+    const [visibleColumns, setVisibleColumns] = useState<string[]>(
+      defaultVisibleColumns || DEFAULT_VISIBLE_COLUMNS
+    )
+    const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>
+
+    // カラムの表示/非表示を切り替える関数
+    const handleColumnVisibilityChange = (columnKey: string, isVisible: boolean, newColumns?: string[]) => {
+      if (newColumns) {
+        // 一括更新の場合
+        setVisibleColumns(newColumns);
+        onColumnSettingsChange?.(newColumns);
+        return;
+      }
+
+      // 個別更新の場合
+      const newVisibleColumns = isVisible
+        ? [...visibleColumns, columnKey]
+        : visibleColumns.filter(key => key !== columnKey);
+      
+      setVisibleColumns(newVisibleColumns);
+      onColumnSettingsChange?.(newVisibleColumns);
+    };
+
+    // フィルタされたカラムを取得
+    const filteredColumns = orderedColumns.length > 0
+      ? orderedColumns.filter(col => 
+          !EXCLUDED_COLUMNS.includes(col.accessorKey) && 
+          visibleColumns.includes(col.accessorKey)
+        )
+      : columns.filter(col => 
+          !EXCLUDED_COLUMNS.includes(col.accessorKey) && 
+          visibleColumns.includes(col.accessorKey)
+        );
+
+    // スクロール制御のためのeffect
+    useEffect(() => {
+      if (isColumnSettingsOpen) {
+        // スクロールを無効化
+        document.body.style.overflow = 'hidden'
+      } else {
+        // スクロールを有効化
+        document.body.style.overflow = 'unset'
+      }
+      
+      return () => {
+        // クリーンアップ時にスクロールを有効化
+        document.body.style.overflow = 'unset'
+      }
+    }, [isColumnSettingsOpen])
 
     // フィルター条件に基づいて選択肢を取得する関数（共通関数として抽出）
     const loadFilterOptions = useCallback(async () => {
@@ -666,987 +1760,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       loadFilterOptions();
     }, [currentFilters, loadFilterOptions]);
 
-    // handleFilterを拡張してソート処理を明示的に扱う
-    const handleFilter = (field: string) => (filterValue: FilterValue, shouldMerge = false) => {
-      console.log(`フィルター処理: ${field}`, filterValue);
-      
-      if (filterValue.type === 'sort') {
-        // ソート処理
-        const isPrimarySort = filterValue.isPrimarySort === true;
-        
-        if (isPrimarySort) {
-          // 第一ソートの設定
-          setPrimarySort({
-            field: field,
-            direction: filterValue.value as 'asc' | 'desc'
-          });
-          
-          // 後方互換性のために従来の状態も更新
-          setSortField(field);
-          setSortDirection(filterValue.value as 'asc' | 'desc');
-        } else {
-          // 第二ソートの設定
-          setSecondarySort({
-            field: field,
-            direction: filterValue.value as 'asc' | 'desc'
-          });
-        }
-        
-        // 親コンポーネントに通知
-        onFilterChange(true, filterValue);
-        return;
-      }
-      
-      if (filterValue.type === 'clear') {
-        console.log(`明示的なクリア処理: ${field}`, filterValue);
-        
-        // ソートもクリアする
-        if (sortField === field) {
-          setSortField(null);
-          setSortDirection(null);
-        }
-        
-        // このフィールドのフィルターを削除
-        const newFilters = { ...columnFilters };
-        delete newFilters[field];
-        setColumnFilters(newFilters);
-        
-        // 現在のフィルターからも削除
-        const newCurrentFilters = { ...currentFilters };
-        delete newCurrentFilters[field];
-        setCurrentFilters(newCurrentFilters);
-        
-        // フィルターが全て空になったかをチェック
-        const hasFilters = Object.keys(newFilters).length > 0;
-        setHasActiveFilters(hasFilters);
-        
-        // 親コンポーネントに通知 - 明示的なクリアフラグを含む
-        if (hasFilters) {
-          // まだフィルターが残っている場合
-          // 複数フィルターを配列として渡す
-          onFilterChange(hasFilters, { 
-            type: 'multiple',
-            field: 'multipleFilters',
-            value: Object.values(newCurrentFilters),
-            filters: newCurrentFilters  // 全フィルターをオブジェクトとして渡す
-          });
-        } else {
-          // 全てのフィルターが空になった場合、明示的にリセット信号を送る
-          onFilterChange(false, { field: 'reset', type: 'clear', value: '', clear: true });
-        }
-        return;
-      }
-      
-      // 新しいフィルターを適用
-      const newFilters = shouldMerge 
-        ? { ...columnFilters, [field]: filterValue } 
-        : { [field]: filterValue };
-      
-      setColumnFilters(newFilters);
-      
-      // 現在のフィルターに追加
-      const updatedFilter = {
-        ...currentFilters,
-        [field]: {
-          ...filterValue
-        }
-      };
-      setCurrentFilters(updatedFilter);
-      
-      // フィルターがアクティブになったことを通知
-      setHasActiveFilters(true);
-      
-      // 親コンポーネントに通知（フィルター条件を含める）
-      onFilterChange(true, {
-        ...filterValue
-      });
-    };
-
-    const handlePageChange = (page: number) => {
-      onPageChange(page)
-    }
-
-    // 表示件数変更のハンドラーを追加
-    const handlePageSizeChange = (size: number) => {
-      if (onPageSizeChange) {
-        onPageSizeChange(size);
-      }
-    }
-
-    // フィルタリングされたデータから、各カラムで選択可能な値を抽出する関数
-    const getFilteredOptions = useCallback((columnName: string) => {
-      // 現在アクティブなフィルターの数を確認
-      const activeFilterCount = Object.keys(currentFilters).length;
-      
-      // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
-      const useInitialCache = activeFilterCount === 0;
-      
-      // フィルタークリア直後のローディング中であるかを判断
-      const isTransitioning = isLoadingFilterOptions && activeFilterCount > 0;
-      
-      // フィルタークリア直後のローディング中かつ一部フィルターのみクリアの場合はloadingを表示
-      if (isTransitioning) {
-        console.log(`${columnName} - ローディング中のため空の配列を返します`);
-        return [];
-      }
-      
-      switch (columnName) {
-        case '動画ジャンル':
-          // すべてのフィルターがクリアされた場合のみ初期キャッシュを使用
-          return useInitialCache && categoryList.length > 0 
-            ? categoryList 
-            : categoryList;
-          
-        case 'アカウント名':
-          return useInitialCache && accountList.length > 0
-            ? accountList
-            : accountList;
-          
-        case 'ハッシュタグ':
-          return useInitialCache && hashtagList.length > 0
-            ? hashtagList
-            : hashtagList;
-          
-        case 'BGM':
-          return useInitialCache && audioTitleList.length > 0
-            ? audioTitleList
-            : audioTitleList;
-          
-        default:
-          return [];
-      }
-    }, [categoryList, accountList, hashtagList, audioTitleList, isLoadingFilterOptions, currentFilters]);
-
-    // handleBulkFilterChange関数を修正 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
-    const handleBulkFilterChange = (filters: Record<string, FilterValue>) => {
-      console.log('一括フィルター変更:', filters);
-      
-      // 明示的なリセット信号をチェック
-      if (filters.reset && filters.reset.type === 'clear') {
-        console.log('DataTable - 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
-        
-        // 状態をリセット
-        setColumnFilters({});
-        setCurrentFilters({});
-        setPrimarySort(null);
-        setSecondarySort(null);
-        setSortField(null);
-        setSortDirection(null);
-        setHasActiveFilters(false);
-        
-        // 親コンポーネントに通知 - リセット信号を含める
-        onFilterChange(false, { field: 'reset', type: 'clear', value: '' });
-        
-        // フィルターポップアップを閉じる
-        setIsFilterPopupOpen(false);
-        return;
-      }
-      
-      // ソート処理のための変数
-      let newPrimarySort = primarySort;
-      let newSecondarySort = secondarySort;
-      let sortUpdated = false;
-      
-      // フィルター情報を処理
-      const normalFilters: Record<string, FilterValue> = {};
-      
-      // ソート関連のフラグ - ソート関連のキーがあるかどうかを確認
-      const hasSortKeys = Object.keys(filters).some(key => key.startsWith('sort_'));
-      
-      // ソート情報が含まれているが、primary/secondaryソートがない場合は解除されたと判断
-      if (hasSortKeys && !Object.values(filters).some(filter => filter.type === 'sort')) {
-        console.log('ソート情報が解除されました');
-        newPrimarySort = null;
-        newSecondarySort = null;
-        setSortField(null);
-        setSortDirection(null);
-        sortUpdated = true;
-      } else {
-        // フィルターを処理し、ソート情報とフィルター情報を分離
-        Object.entries(filters).forEach(([key, filter]) => {
-          // ソート情報の処理
-          if (key.startsWith('sort_') && filter.type === 'sort') {
-            sortUpdated = true;
-            // キーから純粋なフィールド名を取得（sort_PREFIX_を削除）
-            const fieldName = key.replace(/^sort_/, '').replace(/_primary$/, '').replace(/_secondary$/, '');
-            
-            if (filter.isPrimarySort) {
-              // 第一ソートの設定
-              newPrimarySort = {
-                field: fieldName,
-                direction: filter.value as 'asc' | 'desc'
-              };
-              
-              // 後方互換性のために従来の状態も更新
-              setSortField(fieldName);
-              setSortDirection(filter.value as 'asc' | 'desc');
-            } else {
-              // 第二ソートの設定
-              newSecondarySort = {
-                field: fieldName,
-                direction: filter.value as 'asc' | 'desc'
-              };
-            }
-          } else {
-            // 通常のフィルター情報
-            normalFilters[key] = filter;
-          }
-        });
-      }
-      
-      // ソート情報を更新
-      if (sortUpdated) {
-        setPrimarySort(newPrimarySort);
-        setSecondarySort(newSecondarySort);
-      }
-      
-      // フィルター情報を設定
-      setColumnFilters(normalFilters);
-      
-      // 現在のフィルターも更新（ソート情報は含めない）
-      setCurrentFilters(normalFilters);
-      
-      // フィルターがアクティブになったことを通知
-      const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
-      setHasActiveFilters(hasFilters);
-      
-      // 親コンポーネントに通知
-      onFilterChange(hasFilters, {
-        type: 'multiple',
-        field: 'multipleFilters',
-        value: Object.values(normalFilters),
-        filters: {
-          ...normalFilters,
-          // ソート情報も追加
-          ...(newPrimarySort && {
-            [`sort_${newPrimarySort.field}`]: {
-              field: newPrimarySort.field,
-              type: 'sort',
-              value: newPrimarySort.direction,
-              isPrimarySort: true,
-              sortField: newPrimarySort.field
-            }
-          }),
-          ...(newSecondarySort && {
-            [`sort_${newSecondarySort.field}`]: {
-              field: newSecondarySort.field,
-              type: 'sort',
-              value: newSecondarySort.direction,
-              isPrimarySort: false,
-              sortField: newSecondarySort.field
-            }
-          }),
-          // ソートが解除された場合は明示的に解除信号を送る
-          ...(hasSortKeys && !newPrimarySort && {
-            'sort_clear': {
-              field: 'sort',
-              type: 'clear',
-              value: ''
-            }
-          })
-        }
-      });
-      
-      // フィルターポップアップを閉じる
-      setIsFilterPopupOpen(false);
-    };
-
-    const columns: Column[] = [
-      {
-        accessorKey: 'thumbnail_url',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="サムネイル"
-          />
-        ),
-        cell: ({ row }) => {
-          console.log('Thumbnail data:', {
-            row,
-            thumbnail: row.thumbnail_url,
-            type: typeof row.thumbnail_url
-          });
-
-          let thumbnailUrl = null;
-          if (typeof row.thumbnail_url === 'string') {
-            thumbnailUrl = row.thumbnail_url;
-          } else if (row.thumbnail_url && typeof row.thumbnail_url === 'object') {
-            thumbnailUrl = row.thumbnail_url.url;
-          }
-
-          // アカウント情報をマッピング - account_name を accountName に変換
-          const videoData = {
-            views: row.views || 0,
-            viewsIncrease: row.viewsIncrease || 0,
-            ten_days_increase: row.ten_days_increase || 0,
-            createdAt: row.createdAt || '',
-            accountName: row.account_name || '' // account_name を accountName に変換
-          };
-
-          // サムネイルがなくても ImageHover を表示する
-          return (
-            <div className="relative w-[120px] h-[120px] my-1 mx-auto">
-              <div className="relative w-full h-full overflow-hidden rounded">
-                {thumbnailUrl ? (
-                  <ImageHover 
-                    src={thumbnailUrl} 
-                    alt="サムネイル" 
-                    videoUrl={row.url}
-                    videoData={videoData}
-                  />
-                ) : (
-                  // サムネイルがない場合でも ImageHover を表示
-                  <div className="cursor-pointer">
-                    <ImageHover 
-                      src="/images/no-thumbnail.png" 
-                      alt="サムネイルなし" 
-                      videoUrl={row.url}
-                      videoData={videoData}
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded pointer-events-none">
-                      <svg 
-                        className="w-8 h-8 text-gray-400" 
-                        viewBox="0 0 24 24" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2"
-                      >
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M10 8l6 4-6 4V8z" />
-                      </svg>
-                    </div>
-                  </div>
-                )}
-                <div className="absolute bottom-[0px] right-[0px] bg-white/80 backdrop-blur-sm rounded-lg shadow-sm p-0.2">
-                  {row.content_type === 'video' ? (
-                    <VideoTypeIcon size={32} />
-                  ) : (
-                    <PhotoTypeIcon size={32} />
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        }
-      },
-      {
-        accessorKey: 'category',
-        header: ({ column }) => {
-          const options = getFilteredOptions('動画ジャンル');
-          console.log('動画ジャンルカラムのレンダリング:', {
-            categoryDataLength: options.length,
-            sample: options.slice(0, 3),
-            hasActiveFilter: Boolean(columnFilters['category']),
-            isLoading: isLoadingFilterOptions
-          });
-          return (
-            <TableHeaderCell
-              title="動画ジャンル"
-              type="text"
-              align="left"
-              onFilter={(value) => handleFilter('category')(value)}
-              isActive={Boolean(columnFilters['category'])}
-              categoryData={options}
-              sortDirection={
-                primarySort?.field === 'category' 
-                  ? primarySort.direction 
-                  : secondarySort?.field === 'category' 
-                    ? secondarySort.direction 
-                    : null
-              }
-              sortPriority={primarySort?.field === 'category' ? 1 : secondarySort?.field === 'category' ? 2 : null}
-              isLoadingFilterOptions={isLoadingFilterOptions}
-            />
-          );
-        },
-        cell: ({ row }) => {
-          // カテゴリが文字列かどうかをチェック
-          const category = row.category;
-          if (!category) return null;
-          
-          // カテゴリが文字列の場合
-          if (typeof category === 'string') {
-            // 複数のジャンルがカンマや区切り文字で分割されている場合
-            if (category.includes(',') || category.includes('、')) {
-              const genres = category
-                .split(/[,、]/)
-                .map(g => g.trim())
-                .filter(Boolean);
-                
-              return (
-                <div className="flex flex-wrap gap-1 justify-start items-center">
-                  {genres.map((genre, idx) => (
-                    <GenreBadge key={idx} genre={genre} />
-                  ))}
-                </div>
-              );
-            }
-            return <div className="flex justify-start items-center"><GenreBadge genre={category} /></div>;
-          }
-          
-          // カテゴリが配列の場合（複数カテゴリに対応）
-          if (Array.isArray(category)) {
-            const allGenreBadges: React.ReactElement[] = [];
-            
-            // すべての要素を処理して、必要に応じて分割
-            (category as string[]).forEach((cat: string, idx: number) => {
-              // 区切り文字を含む場合は分割
-              if (cat.includes(',') || cat.includes('、') || cat.includes('/')) {
-                const subGenres = cat
-                  .split(/[,、\/]/)
-                  .map(g => g.trim())
-                  .filter(Boolean);
-                  
-                subGenres.forEach((genre, subIdx) => {
-                  allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} />);
-                });
-              } else {
-                allGenreBadges.push(<GenreBadge key={idx} genre={cat} />);
-              }
-            });
-            
-            return (
-              <div className="flex flex-wrap gap-1 justify-start items-center">
-                {allGenreBadges}
-              </div>
-            );
-          }
-          
-          return null;
-        }
-      },
-      {
-        accessorKey: 'product',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="商品名"
-            type="text"
-            onFilter={(value) => handleFilter('product')(value)}
-            isActive={Boolean(columnFilters['product'])}
-            categoryData={getFilteredOptions('商品名')}
-            sortDirection={
-              primarySort?.field === 'product' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'product' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'product' ? 1 : secondarySort?.field === 'product' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => {
-          // カテゴリ（動画ジャンル）を取得
-          const category = row.category;
-          
-          return (
-            <div className="w-[120px] min-w-[120px]">
-              <div className="flex flex-wrap gap-1 justify-start items-center">
-                {row.product && (
-                  <GenreBadge 
-                    genre={row.product} 
-                    // カテゴリを渡して同じ色を使用
-                    categoryForColor={category}
-                  />
-                )}
-              </div>
-            </div>
-          );
-        }
-      },
-      {
-        accessorKey: 'account_type',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="アカウントジャンル"
-            type="text"
-            onFilter={(value) => handleFilter('account_type')(value)}
-            isActive={Boolean(columnFilters['account_type'])}
-            categoryData={getFilteredOptions('アカウントジャンル')}
-            sortDirection={
-              primarySort?.field === 'account_type' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'account_type' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'account_type' ? 1 : secondarySort?.field === 'account_type' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[120px] min-w-[120px]">
-            <div className="flex flex-wrap gap-1 justify-start items-center">
-              {row.account_type ? (
-                <div className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">
-                  {row.account_type}
-                </div>
-              ) : (
-                <span className="text-gray-400 text-xs">未設定</span>
-              )}
-            </div>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'createdAt',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="投稿日"
-            type="date"
-            align="right"
-            onFilter={(value) => handleFilter('createdAt')(value)}
-            isActive={Boolean(columnFilters['createdAt'])}
-            sortDirection={
-              primarySort?.field === 'createdAt' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'createdAt' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'createdAt' ? 1 : secondarySort?.field === 'createdAt' ? 2 : null}
-            isLoadingFilterOptions={isLoadingFilterOptions}
-          />
-        ),
-        cell: ({ row }) => {
-          const date = row.createdAt;
-          if (!date) return null;
-          
-          try {
-            // ISO形式や標準的な日付文字列の場合
-            const dateObj = new Date(date);
-            if (!isNaN(dateObj.getTime())) {
-              // YY/MM/DD形式に変換
-              const year = dateObj.getFullYear().toString().slice(-2);
-              const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-              const day = dateObj.getDate().toString().padStart(2, '0');
-              return (
-                <div className="text-right font-medium text-gray-700">
-                  {`${year}/${month}/${day}`}
-                </div>
-              );
-            }
-            
-            // すでに文字列として存在する日付形式の変換
-            if (typeof date === 'string') {
-              // YYYY-MM-DDパターンにマッチ
-              const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
-              if (match) {
-                const year = match[1].slice(-2);
-                const month = match[2];
-                const day = match[3];
-                return (
-                  <div className="text-right font-medium text-gray-700">
-                    {`${year}/${month}/${day}`}
-                  </div>
-                );
-              }
-            }
-            
-            return <div className="text-right text-gray-700">{date}</div>;
-          } catch (e) {
-            console.error('日付変換エラー:', e);
-            return <div className="text-right text-gray-700">{date}</div>;
-          }
-        },
-      },
-      {
-        accessorKey: 'views',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="再生数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('views')(value)}
-            isActive={Boolean(columnFilters['views'])}
-            sortDirection={
-              primarySort?.field === 'views' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'views' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'views' ? 1 : secondarySort?.field === 'views' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.views, 'views')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'viewsIncrease',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="再生増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('viewsIncrease')(value)}
-            isActive={Boolean(columnFilters['viewsIncrease'])}
-            sortDirection={
-              primarySort?.field === 'viewsIncrease' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'viewsIncrease' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'viewsIncrease' ? 1 : secondarySort?.field === 'viewsIncrease' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.viewsIncrease, 'viewsIncrease')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'ten_days_increase',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="10日間再生増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('ten_days_increase')(value)}
-            isActive={Boolean(columnFilters['ten_days_increase'])}
-            sortDirection={
-              primarySort?.field === 'ten_days_increase' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'ten_days_increase' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'ten_days_increase' ? 1 : secondarySort?.field === 'ten_days_increase' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.ten_days_increase, 'ten_days_increase')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'likes',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="いいね数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('likes')(value)}
-            isActive={Boolean(columnFilters['likes'])}
-            sortDirection={
-              primarySort?.field === 'likes' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'likes' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'likes' ? 1 : secondarySort?.field === 'likes' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.likes, 'likes')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'likes_count_increase',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="いいね増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('likes_count_increase')(value)}
-            isActive={Boolean(columnFilters['likes_count_increase'])}
-            sortDirection={
-              primarySort?.field === 'likes_count_increase' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'likes_count_increase' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'likes_count_increase' ? 1 : secondarySort?.field === 'likes_count_increase' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.likes_count_increase, 'likes_count_increase')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'ten_days_likes_increase',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="10日間いいね増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('ten_days_likes_increase')(value)}
-            isActive={Boolean(columnFilters['ten_days_likes_increase'])}
-            sortDirection={
-              primarySort?.field === 'ten_days_likes_increase' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'ten_days_likes_increase' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'ten_days_likes_increase' ? 1 : secondarySort?.field === 'ten_days_likes_increase' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.ten_days_likes_increase, 'ten_days_likes_increase')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'comments',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="コメント数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('comments')(value)}
-            isActive={Boolean(columnFilters['comments'])}
-            sortDirection={
-              primarySort?.field === 'comments' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'comments' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'comments' ? 1 : secondarySort?.field === 'comments' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.comments, 'comments')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'comment_count_increase',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="コメント増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('comment_count_increase')(value)}
-            isActive={Boolean(columnFilters['comment_count_increase'])}
-            sortDirection={
-              primarySort?.field === 'comment_count_increase' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'comment_count_increase' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'comment_count_increase' ? 1 : secondarySort?.field === 'comment_count_increase' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.comment_count_increase, 'comment_count_increase')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'ten_days_comment_increase',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="10日間コメント増加数"
-            type="number"
-            align="right"
-            onFilter={(value) => handleFilter('ten_days_comment_increase')(value)}
-            isActive={Boolean(columnFilters['ten_days_comment_increase'])}
-            sortDirection={
-              primarySort?.field === 'ten_days_comment_increase' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'ten_days_comment_increase' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'ten_days_comment_increase' ? 1 : secondarySort?.field === 'ten_days_comment_increase' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="text-right">
-            {formatNumber(row.ten_days_comment_increase, 'ten_days_comment_increase')}
-          </div>
-        )
-      },
-      {
-        accessorKey: 'account_name',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="アカウント名"
-            type="text"
-            onFilter={(value) => handleFilter('account_name')(value)}
-            isActive={Boolean(columnFilters['account_name'])}
-            sortDirection={
-              primarySort?.field === 'account_name' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'account_name' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'account_name' ? 1 : secondarySort?.field === 'account_name' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[120px] min-w-[120px]">
-            <div className="flex flex-col">
-              <span className="font-bold truncate text-base">
-                {row.account_name || '不明'}
-              </span>
-              {row.display_name && (
-                <span className="text-xs text-gray-500 truncate">
-                  {row.display_name}
-                </span>
-              )}
-            </div>
-          </div>
-        )
-      },
-      {
-        accessorKey: 'hashtags',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="ハッシュタグ"
-            type="text"
-            onFilter={(value) => handleFilter('hashtags')(value)}
-            isActive={Boolean(columnFilters['hashtags'])}
-            categoryData={getFilteredOptions('ハッシュタグ')}
-            sortDirection={sortField === 'hashtags' ? sortDirection : null}
-            sortPriority={primarySort?.field === 'hashtags' ? 1 : secondarySort?.field === 'hashtags' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => {
-          // キャプションからのみハッシュタグを抽出する
-          const caption = row.description || '';
-          
-          // キャプションからハッシュタグを抽出（#付きの形式で）
-          const hashtagsFromCaption = caption.match(/#[^\s#]+/g) || [];
-          
-          // 重複を除去
-          const uniqueTags = [...new Set(hashtagsFromCaption)].filter(Boolean);
-          
-          if (uniqueTags.length === 0) {
-            return <span className="text-gray-400 text-xs">ハッシュタグなし</span>;
-          }
-          
-          // ハッシュタグの表示（最大3つまで表示し、それ以上は省略）
-          const displayTags = uniqueTags.slice(0, 3);
-          const remainingCount = uniqueTags.length - displayTags.length;
-          
-          return (
-            <div className="w-[120px] min-w-[120px]">
-              <button 
-                onClick={() => setSelectedText({ 
-                  title: 'ハッシュタグ', 
-                  content: uniqueTags.join(', ') || 'ハッシュタグなし'
-                })}
-                className="text-left w-full"
-              >
-                <div className="flex flex-wrap">
-                  {displayTags.map((tag: string, idx: number) => (
-                    <HashtagBadge key={idx} tag={tag.substring(1)} />
-                  ))}
-                  {remainingCount > 0 && (
-                    <span className="text-xs text-gray-500 mt-1">
-                      他{remainingCount}個...
-                    </span>
-                  )}
-                </div>
-              </button>
-            </div>
-          );
-        }
-      },
-      {
-        accessorKey: 'audioTitle',
-        header: ({ column }) => (
-          <TableHeaderCell
-            title="BGM"
-            type="text"
-            onFilter={(value) => handleFilter('audioTitle')(value)}
-            isActive={Boolean(columnFilters['audioTitle'])}
-            categoryData={getFilteredOptions('BGM')}
-            sortDirection={
-              primarySort?.field === 'audioTitle' 
-                ? primarySort.direction 
-                : secondarySort?.field === 'audioTitle' 
-                  ? secondarySort.direction 
-                  : null
-            }
-            sortPriority={primarySort?.field === 'audioTitle' ? 1 : secondarySort?.field === 'audioTitle' ? 2 : null}
-          />
-        ),
-        cell: ({ row }) => (
-          <div className="w-[120px] min-w-[120px]">
-            <button 
-              onClick={() => setSelectedText({ 
-                title: 'BGM情報', 
-                content: `${row.audioTitle || 'BGMなし'}${row.artist ? `\nアーティスト: ${row.artist}` : ''}`
-              })}
-              className="text-left w-full"
-            >
-              <div className="flex items-center gap-1">
-                <MusicNoteIcon size={14} />
-                <span className="line-clamp-2 text-xs text-gray-600">
-                  {row.audioTitle || 'BGMなし'}
-                </span>
-              </div>
-            </button>
-          </div>
-        )
-      },
-    ]
-
-    // カラム設定の状態を追加
-    const [isColumnSettingsOpen, setIsColumnSettingsOpen] = useState(false)
-    const [visibleColumns, setVisibleColumns] = useState<string[]>(
-      defaultVisibleColumns || DEFAULT_VISIBLE_COLUMNS
-    )
-    const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>
-
-    // カラムの表示/非表示を切り替える関数
-    const handleColumnVisibilityChange = (columnKey: string, isVisible: boolean, newColumns?: string[]) => {
-      if (newColumns) {
-        // 一括更新の場合
-        setVisibleColumns(newColumns);
-        onColumnSettingsChange?.(newColumns);
-        return;
-      }
-
-      // 個別更新の場合
-      const newVisibleColumns = isVisible
-        ? [...visibleColumns, columnKey]
-        : visibleColumns.filter(key => key !== columnKey);
-      
-      setVisibleColumns(newVisibleColumns);
-      onColumnSettingsChange?.(newVisibleColumns);
-    };
-
-    // フィルタされたカラムを取得
-    const filteredColumns = columns.filter(col => 
-      !EXCLUDED_COLUMNS.includes(col.accessorKey) && 
-      visibleColumns.includes(col.accessorKey)
-    )
-
-    // スクロール制御のためのeffect
-    useEffect(() => {
-      if (isColumnSettingsOpen) {
-        // スクロールを無効化
-        document.body.style.overflow = 'hidden'
-      } else {
-        // スクロールを有効化
-        document.body.style.overflow = 'unset'
-      }
-      
-      return () => {
-        // クリーンアップ時にスクロールを有効化
-        document.body.style.overflow = 'unset'
-      }
-    }, [isColumnSettingsOpen])
-
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -1674,11 +1787,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             >
               <FilterIcon size={16} />
               <span className="ml-1">フィルター</span>
-              {hasActiveFilters && Object.keys(columnFilters).length > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 bg-[#FE2C55] text-white text-xs rounded-full">
-                  {Object.keys(columnFilters).length}
-                </span>
-              )}
             </button>
             
             <label className="flex items-center cursor-pointer">
@@ -1727,6 +1835,20 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           visibleColumns={visibleColumns}
           onColumnVisibilityChange={handleColumnVisibilityChange}
         />
+        
+        {/* デバッグ情報表示 */}
+        <div className="bg-gray-100 px-2 py-1 text-xs">
+          <details>
+            <summary className="cursor-pointer">デバッグ情報: フィルター状態</summary>
+            <pre className="text-[10px] overflow-auto max-h-[100px]">
+              {JSON.stringify({
+                フィルター: columnFilters,
+                views_active: columnFilters['views']?.active,
+                views_isActive: Boolean(columnFilters['views']?.active)
+              }, null, 2)}
+            </pre>
+          </details>
+        </div>
         
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">

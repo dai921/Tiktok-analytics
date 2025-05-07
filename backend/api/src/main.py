@@ -7,6 +7,7 @@ from src.display_settings.router import router as display_settings_router
 from src.product_stats import router as product_stats_router
 from src.genre_stats import router as genre_stats_router
 from src.watchlist import router as watchlist_router
+from contextlib import closing
 from fastapi import FastAPI
 from src.timing_middleware import timing_middleware
 import traceback
@@ -19,6 +20,7 @@ from fastapi.encoders import jsonable_encoder
 import pathlib
 import json
 import re
+from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
 
@@ -89,7 +91,8 @@ async def get_videos(
     limit: int = 50,
     account_name: Optional[str] = None,
     category: Optional[str] = None,
-    hashtag: Optional[str] = None,
+    hashtags: Optional[str] = None,
+    hashtag: Optional[str] = None,  # 後方互換性のために残す
     music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -119,10 +122,24 @@ async def get_videos(
     comment_count_increase_type: Optional[str] = None,
     ten_days_comment_increase: Optional[int] = None,
     ten_days_comment_increase_type: Optional[str] = None,
+    exact_hashtags: Optional[str] = None,
+    save_count: Optional[int] = None,
+    save_count_type: Optional[str] = None,
+    save_count_increase: Optional[int] = None,
+    save_count_increase_type: Optional[str] = None,
+    ten_days_save_increase: Optional[int] = None,
+    ten_days_save_increase_type: Optional[str] = None,
+    product: Optional[str] = None,  # 商品フィルターを追加
+    product_type: Optional[str] = None,  # 商品フィルターの比較演算子
+    account_type: Optional[str] = None,  # アカウントタイプフィルターを追加
+    account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
+    created_at: Optional[str] = None,  # 作成日フィルターを追加
+    created_at_type: Optional[str] = None,  # 作成日の比較演算子
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
     conn = None
     cursor = None
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -137,7 +154,8 @@ async def get_videos(
                 ten_days_increase, account_name, display_name, content_type, 
                 likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
                 comment_count_increase, ten_days_comment_increase, account_type,
-                hashtags, music_info, caption, category, product
+                hashtags, music_info, caption, category, product, save_count, 
+                save_count_increase, ten_days_save_increase
             FROM frontend_data
         """
         params = []
@@ -175,11 +193,27 @@ async def get_videos(
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
         
-        if hashtag:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{escaped_hashtag}%")
+        if hashtags:
+            # exact_hashtags タイプが指定されている場合は完全一致検索
+            exact_hashtags = request.query_params.get('exact_hashtags')
+            if exact_hashtags == 'true':
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
+                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                hashtags_exact = hashtags
+                params.extend([
+                    hashtags_exact,                 # 完全一致
+                    f"{hashtags_exact},%",         # 先頭に位置する場合
+                    f"%,{hashtags_exact},%",       # 中間に位置する場合
+                    f"%,{hashtags_exact}"          # 末尾に位置する場合
+                ])
+                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+            else:
+                # 従来の部分一致検索
+                # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+                escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
+                where_clauses.append("hashtags LIKE %s")
+                params.append(f"%{escaped_hashtags}%")
+                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
@@ -211,6 +245,19 @@ async def get_videos(
             else:
                 where_clauses.append("play_count = %s")
                 params.append(play_count)
+
+        # 作成日のフィルタリング
+        if created_at:
+            if created_at_type == "after" or created_at_type == "greater":
+                where_clauses.append("created_at >= %s")
+                params.append(created_at)
+            elif created_at_type == "before" or created_at_type == "less":
+                where_clauses.append("created_at <= %s")
+                params.append(created_at)
+            else:  # exact date
+                # 日付が "YYYY-MM-DD" 形式の場合、その日の範囲を指定
+                where_clauses.append("DATE(created_at) = DATE(%s)")
+                params.append(created_at)
 
         if likes_count is not None:
             if likes_count_type == "greater":
@@ -301,6 +348,40 @@ async def get_videos(
                 where_clauses.append("ten_days_comment_increase = %s")
                 params.append(ten_days_comment_increase)
 
+        # 保存数関連のフィルター条件
+        if save_count is not None:
+            if save_count_type == "greater":
+                where_clauses.append("save_count >= %s")
+                params.append(save_count)
+            elif save_count_type == "less":
+                where_clauses.append("save_count <= %s")
+                params.append(save_count)
+            else:
+                where_clauses.append("save_count = %s")
+                params.append(save_count)
+
+        if save_count_increase is not None:
+            if save_count_increase_type == "greater":
+                where_clauses.append("save_count_increase >= %s")
+                params.append(save_count_increase)
+            elif save_count_increase_type == "less":
+                where_clauses.append("save_count_increase <= %s")
+                params.append(save_count_increase)
+            else:
+                where_clauses.append("save_count_increase = %s")
+                params.append(save_count_increase)
+
+        if ten_days_save_increase is not None:
+            if ten_days_save_increase_type == "greater":
+                where_clauses.append("ten_days_save_increase >= %s")
+                params.append(ten_days_save_increase)
+            elif ten_days_save_increase_type == "less":
+                where_clauses.append("ten_days_save_increase <= %s")
+                params.append(ten_days_save_increase)
+            else:
+                where_clauses.append("ten_days_save_increase = %s")
+                params.append(ten_days_save_increase)
+
         # コンテンツタイプのフィルタリング
         if content_type:
             # カンマ区切りの場合は複数条件のORで処理
@@ -317,9 +398,43 @@ async def get_videos(
                 params.append(content_type)
                 print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
+        # 商品フィルターの処理を修正
+        if product:
+            # 商品名でフィルタリング
+            escaped_product = product.replace("_", r"\_").replace("%", r"\%")
+            # 商品名に対する部分一致検索
+            where_clauses.append("product LIKE %s")
+            params.append(f"%{escaped_product}%")
+        
+        # アカウントタイプフィルターの処理を追加（OR条件）
+        account_type_filters = []
+        account_type_params = []
+
+        # account_type_countパラメータがある場合は複数アカウントタイプ
+        if account_type_count and account_type_count.isdigit():
+            count = int(account_type_count)
+            for i in range(count):
+                account_param = request.query_params.get(f'account_type_{i}')
+                if account_param:
+                    escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
+                    account_type_filters.append("account_type LIKE %s")
+                    account_type_params.append(f"%{escaped_account}%")
+        
+        # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
+        if account_type_filters:
+            where_clauses.append(f"({' OR '.join(account_type_filters)})")
+            params.extend(account_type_params)
+        # 単一アカウントタイプ処理
+        elif account_type:
+            escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("account_type LIKE %s")
+            params.append(f"%{escaped_account_type}%")
+
         # フィルター条件のデバッグログ
         if play_count is not None:
             print(f"Applying play_count filter: {play_count} ({play_count_type})")
+        if save_count is not None:
+            print(f"Applying save_count filter: {save_count} ({save_count_type})")
 
         # WHERE句の追加
         if where_clauses:
@@ -328,7 +443,10 @@ async def get_videos(
         # ソート処理
         # フロントエンドのカラム名とデータベースのカラム名をマッピング
         column_mapping = {
-            "audioTitle": "music_info"  # フロントエンドのaudioTitleはデータベースではmusic_info
+            "audioTitle": "music_info",  # フロントエンドのaudioTitleはデータベースではmusic_info
+            "saveCount": "save_count",   # 保存数のマッピングを追加
+            "saveCountIncrease": "save_count_increase",
+            "tenDaysSaveIncrease": "ten_days_save_increase"
         }
         
         # ソートカラムのマッピングを適用
@@ -402,211 +520,6 @@ async def get_videos(
 
     except Exception as e:
         print(f"Error in get_videos: {str(e)}")
-        print(traceback.format_exc())
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "error": str(e)
-            }
-        )
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-@app.get("/videos")
-async def get_videos_alt(
-    request: Request,
-    page: int = 1,
-    limit: int = 50,
-    account_name: Optional[str] = None,
-    category: Optional[str] = None,
-    hashtag: Optional[str] = None,
-    music_info: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    min_play_count: Optional[int] = None,
-    min_likes_count: Optional[int] = None,
-    is_viral: Optional[bool] = None,
-    sort_by: Optional[str] = "created_at",
-    sort_order: Optional[str] = "desc",
-    sort_by_secondary: Optional[str] = None,
-    sort_order_secondary: Optional[str] = "desc",
-    play_count: Optional[int] = None,
-    play_count_type: Optional[str] = None,
-    likes_count: Optional[int] = None,
-    likes_count_type: Optional[str] = None,
-    comment_count: Optional[int] = None,
-    comment_count_type: Optional[str] = None,
-    created_at: Optional[str] = None,
-    created_at_type: Optional[str] = None,
-    play_count_increase: Optional[int] = None,
-    play_count_increase_type: Optional[str] = None,
-    content_type: Optional[str] = None,
-    likes_count_increase: Optional[int] = None,
-    likes_count_increase_type: Optional[str] = None,
-    ten_days_increase: Optional[int] = None,
-    ten_days_increase_type: Optional[str] = None,
-    ten_days_likes_increase: Optional[int] = None,
-    ten_days_likes_increase_type: Optional[str] = None,
-    comment_count_increase: Optional[int] = None,
-    comment_count_increase_type: Optional[str] = None,
-    ten_days_comment_increase: Optional[int] = None,
-    ten_days_comment_increase_type: Optional[str] = None
-):
-    print(f"Received request with params: {request.query_params}")
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # 基本クエリ
-        query = """
-            SELECT 
-                url, thumbnail_url, created_at, play_count, play_count_increase, 
-                ten_days_increase, account_name, display_name, content_type, 
-                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
-                comment_count_increase, ten_days_comment_increase, account_type,
-                hashtags, music_info, caption, category, product
-            FROM frontend_data
-        """
-        params = []
-        where_clauses = []
-
-        # 新しいフィルター条件を追加
-        if likes_count_increase is not None:
-            if likes_count_increase_type == "greater":
-                where_clauses.append("likes_count_increase >= %s")
-                params.append(likes_count_increase)
-            elif likes_count_increase_type == "less":
-                where_clauses.append("likes_count_increase <= %s")
-                params.append(likes_count_increase)
-            else:
-                where_clauses.append("likes_count_increase = %s")
-                params.append(likes_count_increase)
-
-        if ten_days_increase is not None:
-            if ten_days_increase_type == "greater":
-                where_clauses.append("ten_days_increase >= %s")
-                params.append(ten_days_increase)
-            elif ten_days_increase_type == "less":
-                where_clauses.append("ten_days_increase <= %s")
-                params.append(ten_days_increase)
-            else:
-                where_clauses.append("ten_days_increase = %s")
-                params.append(ten_days_increase)
-
-        if ten_days_likes_increase is not None:
-            if ten_days_likes_increase_type == "greater":
-                where_clauses.append("ten_days_likes_increase >= %s")
-                params.append(ten_days_likes_increase)
-            elif ten_days_likes_increase_type == "less":
-                where_clauses.append("ten_days_likes_increase <= %s")
-                params.append(ten_days_likes_increase)
-            else:
-                where_clauses.append("ten_days_likes_increase = %s")
-                params.append(ten_days_likes_increase)
-
-        if comment_count_increase is not None:
-            if comment_count_increase_type == "greater":
-                where_clauses.append("comment_count_increase >= %s")
-                params.append(comment_count_increase)
-            elif comment_count_increase_type == "less":
-                where_clauses.append("comment_count_increase <= %s")
-                params.append(comment_count_increase)
-            else:
-                where_clauses.append("comment_count_increase = %s")
-                params.append(comment_count_increase)
-
-        if ten_days_comment_increase is not None:
-            if ten_days_comment_increase_type == "greater":
-                where_clauses.append("ten_days_comment_increase >= %s")
-                params.append(ten_days_comment_increase)
-            elif ten_days_comment_increase_type == "less":
-                where_clauses.append("ten_days_comment_increase <= %s")
-                params.append(ten_days_comment_increase)
-            else:
-                where_clauses.append("ten_days_comment_increase = %s")
-                params.append(ten_days_comment_increase)
-
-        # コンテンツタイプのフィルタリング
-        if content_type:
-            if ',' in content_type:
-                content_types = content_type.split(',')
-                content_type_clauses = []
-                for ct in content_types:
-                    content_type_clauses.append("content_type = %s")
-                    params.append(ct.strip())
-                where_clauses.append(f"({' OR '.join(content_type_clauses)})")
-            else:
-                where_clauses.append("content_type = %s")
-                params.append(content_type)
-
-        # WHERE句の追加
-        if where_clauses:
-            query += " WHERE " + " AND ".join(where_clauses)
-
-        # ソート処理
-        valid_sort_fields = {
-            'created_at', 'play_count', 'likes_count', 'comment_count',
-            'play_count_increase', 'likes_count_increase', 'comment_count_increase',
-            'ten_days_increase', 'ten_days_likes_increase', 'ten_days_comment_increase'
-        }
-        
-        valid_sort_orders = {'asc', 'desc'}
-
-        if sort_by in valid_sort_fields:
-            # sort_orderのサニタイズ
-            clean_sort_order = sort_order.lower().split()[0] if sort_order else 'desc'
-            clean_sort_order = clean_sort_order if clean_sort_order in valid_sort_orders else 'desc'
-            
-            query += f" ORDER BY {sort_by} {clean_sort_order}"
-            
-            if sort_by_secondary in valid_sort_fields:
-                # secondary_sort_orderのサニタイズ
-                clean_secondary_order = sort_order_secondary.lower().split()[0] if sort_order_secondary else 'desc'
-                clean_secondary_order = clean_secondary_order if clean_secondary_order in valid_sort_orders else 'desc'
-                
-                query += f", {sort_by_secondary} {clean_secondary_order}"
-        else:
-            query += " ORDER BY created_at DESC"
-
-        # ページネーション
-        if limit != -1:
-            query += " LIMIT %s OFFSET %s"
-            offset = (page - 1) * limit
-            params.extend([limit, offset])
-
-        print(f"Executing query: {query}")
-        print(f"With parameters: {params}")
-
-        # クエリ実行
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        # 総件数取得
-        count_query = """
-            SELECT COUNT(*) FROM frontend_data
-        """
-        if where_clauses:
-            count_query += " WHERE " + " AND ".join(where_clauses)
-        
-        cursor.execute(count_query, params[:-2] if limit != -1 else params)
-        total = cursor.fetchone()[0]
-
-        return {
-            "success": True,
-            "data": [format_video(row) for row in rows],
-            "currentPage": page,
-            "totalPages": (total + limit - 1) // limit if limit != -1 else 1,
-            "total": total
-        }
-
-    except Exception as e:
-        print(f"Error in get_videos_alt: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
@@ -724,57 +637,52 @@ async def debug_row(row_id: str):
 @app.get("/api/categories")
 async def get_categories():
     """カテゴリ一覧を取得するエンドポイント"""
+
     try:
-        # データベースに接続
-        connection = get_db_connection()
-        cursor = connection.cursor()
-        
-        # データベース構造を確認
-        cursor.execute("SHOW TABLES")
-        tables = [row[0] for row in cursor.fetchall()]
-        logger.info(f"データベース内のテーブル: {tables}")
-        
-        # frontend_dataテーブルの構造確認
-        cursor.execute("DESCRIBE frontend_data")
-        columns = [row[0] for row in cursor.fetchall()]
-        logger.info(f"frontend_dataテーブルのカラム: {columns}")
-        
-        # カテゴリ情報があるか確認
-        if 'category' in columns:
-            # カテゴリ一覧の取得
-            cursor.execute(
-                "SELECT DISTINCT category FROM frontend_data WHERE category IS NOT NULL AND category != ''"
-            )
-            categories_rows = cursor.fetchall()
-            
-            # デバッグ情報の出力
-            logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
-            if categories_rows:
-                logger.info(f"カテゴリデータサンプル: {categories_rows[:5]}")
-            
-            # カテゴリリストの作成
-            categories = [row[0] for row in categories_rows if row[0]]
-            
-            # レスポンス作成
-            result = {
-                "success": True,
-                "categories": categories,
-                "products": [],  # 簡略化のため空リストで返す
-                "category_products": {}  # 簡略化のため空辞書で返す
-            }
-        else:
-            # カテゴリカラムがない場合
-            result = {
-                "success": False,
-                "error": "カテゴリ情報が見つかりません",
-                "categories": []
-            }
-        
-        connection.close()
+        # ← ここで接続もカーソルも借りて、ブロックを抜けたら自動 close
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+
+            # データベース構造を確認
+            cursor.execute("SHOW TABLES")
+            tables = [row[0] for row in cursor.fetchall()]
+            logger.info(f"データベース内のテーブル: {tables}")
+
+            # frontend_dataテーブルの構造確認
+            cursor.execute("DESCRIBE frontend_data")
+            columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"frontend_dataテーブルのカラム: {columns}")
+
+            # カテゴリ情報があるか確認
+            if "category" in columns:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT category
+                    FROM frontend_data
+                    WHERE category IS NOT NULL AND category != ''
+                    """
+                )
+                categories_rows = cursor.fetchall()
+                logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
+
+                categories = [row[0] for row in categories_rows if row[0]]
+                result = {
+                    "success": True,
+                    "categories": categories,
+                    "products": [],
+                    "category_products": {}
+                }
+            else:
+                result = {
+                    "success": False,
+                    "error": "カテゴリ情報が見つかりません",
+                    "categories": []
+                }
+
+        # with ブロックを抜けた時点で cursor / conn は閉じられている
         return result
-        
+
     except Exception as e:
-        logger.error(f"カテゴリ取得エラー: {str(e)}")
+        logger.error(f"カテゴリ取得エラー: {e}")
         logger.error(traceback.format_exc())
         return {
             "success": False,
@@ -786,16 +694,13 @@ async def get_categories():
 async def get_accounts():
     """アカウント一覧を取得するエンドポイント"""
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # アカウント一覧の取得
-        cursor.execute(
-            "SELECT DISTINCT account_name FROM frontend_data WHERE account_name IS NOT NULL AND account_name != ''"
-        )
-        accounts = [row[0] for row in cursor.fetchall()]
-        
-        connection.close()
+            # アカウント一覧の取得
+            cursor.execute(
+                "SELECT DISTINCT account_name FROM frontend_data WHERE account_name IS NOT NULL AND account_name != ''"
+            )
+            accounts = [row[0] for row in cursor.fetchall()]
         
         return {
             "success": True,
@@ -809,43 +714,40 @@ async def get_accounts():
 async def get_hashtags(limit: int = None):
     """ハッシュタグ一覧を取得するエンドポイント"""
     try:
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # ハッシュタグ一覧の取得
-        if limit:
-            cursor.execute(
-                "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
-                (limit,)
-            )
-        else:
-            cursor.execute(
-                "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != ''"
-            )
-        hashtags_rows = cursor.fetchall()
-        
-        # ハッシュタグはJSONとして保存されている可能性があるため、パースして個別のハッシュタグを抽出
-        all_hashtags = []
-        for row in hashtags_rows:
-            try:
-                # JSON文字列をパースして配列として扱う
-                hashtags_list = json.loads(row[0])
-                if isinstance(hashtags_list, list):
-                    all_hashtags.extend(hashtags_list)
-                else:
-                    # 単一の値の場合
+            # ハッシュタグ一覧の取得
+            if limit:
+                cursor.execute(
+                    "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
+                    (limit,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != ''"
+                )
+            hashtags_rows = cursor.fetchall()
+            
+            # ハッシュタグはJSONとして保存されている可能性があるため、パースして個別のハッシュタグを抽出
+            all_hashtags = []
+            for row in hashtags_rows:
+                try:
+                    # JSON文字列をパースして配列として扱う
+                    hashtags_list = json.loads(row[0])
+                    if isinstance(hashtags_list, list):
+                        all_hashtags.extend(hashtags_list)
+                    else:
+                        # 単一の値の場合
+                        all_hashtags.append(row[0])
+                except json.JSONDecodeError:
+                    # JSON形式でない場合は単一の値として扱う
                     all_hashtags.append(row[0])
-            except json.JSONDecodeError:
-                # JSON形式でない場合は単一の値として扱う
-                all_hashtags.append(row[0])
-        
-        # 重複を除去
-        unique_hashtags = list(set(all_hashtags))
-        # ハッシュタグをオブジェクト形式に変換
-        hashtags = [{"hashtag": tag} for tag in unique_hashtags if tag]
-        
-        connection.close()
-        
+            
+            # 重複を除去
+            unique_hashtags = list(set(all_hashtags))
+            # ハッシュタグをオブジェクト形式に変換
+            hashtags = [{"hashtags": tag} for tag in unique_hashtags if tag]
+
         return {
             "success": True,
             "data": hashtags
@@ -858,65 +760,61 @@ async def get_hashtags(limit: int = None):
 async def get_music(limit: int = 100):
     """BGM(音声タイトル)一覧を取得するエンドポイント"""
     try:
-        # データベースに接続
-        connection = get_db_connection()
-        cursor = connection.cursor()
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
         
-        # テーブルの構造確認
-        cursor.execute("DESCRIBE frontend_data")
-        columns = [row[0] for row in cursor.fetchall()]
-        logger.info(f"frontend_dataテーブルのカラム: {columns}")
-        
-        music_titles = []
-        # audio_titleカラムがあるか確認
-        if 'audio_title' in columns:
-            # BGM一覧の取得
-            cursor.execute(
-                "SELECT DISTINCT audio_title FROM frontend_data WHERE audio_title IS NOT NULL AND audio_title != '' LIMIT %s",
-                (limit,)
-            )
-            music_rows = cursor.fetchall()
-            logger.info(f"audio_titleから取得したBGM行数: {len(music_rows)}")
+            # テーブルの構造確認
+            cursor.execute("DESCRIBE frontend_data")
+            columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"frontend_dataテーブルのカラム: {columns}")
             
-            # データ抽出
-            music_titles = [row[0] for row in music_rows if row[0]]
-            if music_titles:
-                logger.info(f"BGMサンプル: {music_titles[:5]}")
-        
-        # music_infoカラムがあるか確認
-        elif 'music_info' in columns:
-            # 代替として music_info カラムを使用
-            cursor.execute(
-                "SELECT DISTINCT music_info FROM frontend_data WHERE music_info IS NOT NULL AND music_info != '' LIMIT %s",
-                (limit,)
-            )
-            music_rows = cursor.fetchall()
-            logger.info(f"music_infoから取得したBGM行数: {len(music_rows)}")
+            music_titles = []
+            # audio_titleカラムがあるか確認
+            if 'audio_title' in columns:
+                # BGM一覧の取得
+                cursor.execute(
+                    "SELECT DISTINCT audio_title FROM frontend_data WHERE audio_title IS NOT NULL AND audio_title != '' LIMIT %s",
+                    (limit,)
+                )
+                music_rows = cursor.fetchall()
+                logger.info(f"audio_titleから取得したBGM行数: {len(music_rows)}")
+                
+                # データ抽出
+                music_titles = [row[0] for row in music_rows if row[0]]
+                if music_titles:
+                    logger.info(f"BGMサンプル: {music_titles[:5]}")
             
-            # データ処理
-            for row in music_rows:
-                if row[0]:
-                    try:
-                        # JSON文字列の場合はパース
-                        if isinstance(row[0], str) and (row[0].startswith('{') or row[0].startswith('[')):
-                            music_info = json.loads(row[0])
-                            if isinstance(music_info, dict) and 'title' in music_info:
-                                music_titles.append(music_info['title'])
+            # music_infoカラムがあるか確認
+            elif 'music_info' in columns:
+                # 代替として music_info カラムを使用
+                cursor.execute(
+                    "SELECT DISTINCT music_info FROM frontend_data WHERE music_info IS NOT NULL AND music_info != '' LIMIT %s",
+                    (limit,)
+                )
+                music_rows = cursor.fetchall()
+                logger.info(f"music_infoから取得したBGM行数: {len(music_rows)}")
+                
+                # データ処理
+                for row in music_rows:
+                    if row[0]:
+                        try:
+                            # JSON文字列の場合はパース
+                            if isinstance(row[0], str) and (row[0].startswith('{') or row[0].startswith('[')):
+                                music_info = json.loads(row[0])
+                                if isinstance(music_info, dict) and 'title' in music_info:
+                                    music_titles.append(music_info['title'])
+                                else:
+                                    music_titles.append(str(music_info))
                             else:
-                                music_titles.append(str(music_info))
-                        else:
+                                music_titles.append(str(row[0]))
+                        except json.JSONDecodeError:
                             music_titles.append(str(row[0]))
-                    except json.JSONDecodeError:
-                        music_titles.append(str(row[0]))
+                
+                if music_titles:
+                    logger.info(f"パース後のBGMサンプル: {music_titles[:5]}")
             
-            if music_titles:
-                logger.info(f"パース後のBGMサンプル: {music_titles[:5]}")
-        
-        # 音楽情報がない場合
-        if not music_titles:
-            logger.warning("BGM情報を取得できませんでした")
-        
-        connection.close()
+            # 音楽情報がない場合
+            if not music_titles:
+                logger.warning("BGM情報を取得できませんでした")
         
         return {
             "success": True,
@@ -937,7 +835,7 @@ async def get_filter_options(
     filter_type: str = "all",
     account_name: Optional[str] = None,
     category: Optional[str] = None,
-    hashtag: Optional[str] = None,
+    hashtags: Optional[str] = None,
     music_info: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -994,11 +892,27 @@ async def get_filter_options(
             where_clauses.append("category LIKE %s")
             params.append(f"%{escaped_category}%")
         
-        if hashtag:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_hashtag = hashtag.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("hashtags LIKE %s")
-            params.append(f"%{escaped_hashtag}%")
+        if hashtags:
+            # exact_hashtags タイプが指定されている場合は完全一致検索
+            exact_hashtags = request.query_params.get('exact_hashtags')
+            if exact_hashtags == 'true':
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
+                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                hashtags_exact = hashtags
+                params.extend([
+                    hashtags_exact,                 # 完全一致
+                    f"{hashtags_exact},%",         # 先頭に位置する場合
+                    f"%,{hashtags_exact},%",       # 中間に位置する場合
+                    f"%,{hashtags_exact}"          # 末尾に位置する場合
+                ])
+                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+            else:
+                # 従来の部分一致検索
+                # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+                escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
+                where_clauses.append("hashtags LIKE %s")
+                params.append(f"%{escaped_hashtags}%")
+                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
@@ -1331,7 +1245,7 @@ async def get_trend_genres():
         cursor = conn.cursor()
         
         # ユニークなジャンル一覧を取得
-        query = "SELECT DISTINCT genre FROM trend_analysis ORDER BY genre"
+        query = "SELECT DISTINCT category_name FROM category_master ORDER BY category_name"
         cursor.execute(query)
         rows = cursor.fetchall()
         
@@ -1497,6 +1411,179 @@ async def get_video_play_count_history(
             cursor.close()
         if conn:
             conn.close()
+
+@app.get("/api/video/save-count-history/{video_id}")
+async def get_video_save_count_history(
+    video_id: str,
+    days: Optional[int] = 30
+):
+    logger.info(f"保存数履歴取得リクエスト受信: video_id={video_id}, days={days}")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # テーブル存在確認
+        cursor.execute("SHOW TABLES")
+        tables = cursor.fetchall()
+        tables_list = [t[0] for t in tables]
+        logger.info(f"利用可能なテーブル: {tables_list}")
+        
+        if 'play_count_history' not in tables_list:
+            logger.error("play_count_historyテーブルが存在しません")
+            return {
+                "success": False,
+                "error": "必要なテーブルが存在しません",
+                "video_id": video_id,
+                "history": []
+            }
+
+        # video_idの形式チェック
+        if not video_id.isdigit():
+            logger.warning(f"無効な動画ID形式: {video_id}")
+            return {
+                "success": False,
+                "error": "無効な動画ID形式です",
+                "video_id": video_id,
+                "history": []
+            }
+
+        # 通常のカーソルを使用
+        cursor = conn.cursor()
+
+        query = """
+        SELECT 
+            collection_date,
+            save_count_increase
+        FROM play_count_history
+        WHERE 
+            video_id = %s
+            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+        ORDER BY collection_date ASC
+        """
+        
+        # クエリ実行前のデバッグログ
+        logger.info(f"実行するクエリ: {query}")
+        logger.info(f"パラメータ: video_id={video_id}, days={days}")
+        
+        cursor.execute(query, (video_id, days))
+        results = cursor.fetchall()
+        
+        # 結果のデバッグログ
+        logger.info(f"取得した結果: {results}")
+
+        # 結果を整形
+        history = []
+        for result in results:
+            history.append({
+                "collection_date": result[0].strftime("%Y-%m-%d"),
+                "save_count_increase": result[1] if result[1] is not None else 0
+            })
+
+        return {
+            "success": True,
+            "video_id": video_id,
+            "history": history
+        }
+
+    except Exception as e:
+        logger.error(f"保存数履歴取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "video_id": video_id,
+            "history": []
+        }
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.get("/api/products")
+async def get_products():
+    """商品マスターから商品情報とカテゴリを取得するエンドポイント"""
+    try:
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+        
+            # product_masterテーブルから商品情報を取得
+            cursor.execute("""
+                SELECT 
+                    product_name,
+                    product_category
+                FROM 
+                    product_master
+                WHERE 
+                    product_name IS NOT NULL 
+                    AND product_name != ''
+                ORDER BY 
+                    product_category,
+                    product_name
+            """)
+            
+            product_rows = cursor.fetchall()
+            
+            # 結果を構造化
+            products = []
+            categories = {}  # カテゴリごとに商品をグループ化
+            
+            for row in product_rows:
+                product_name = row[0]
+                product_category = row[1] or "その他"  # カテゴリがない場合は「その他」とする
+                
+                products.append({
+                    "name": product_name,
+                    "category": product_category
+                })
+                
+                # カテゴリごとの商品リストを作成
+                if product_category not in categories:
+                    categories[product_category] = []
+                
+                categories[product_category].append(product_name)
+            
+        return {
+            "success": True,
+            "data": products,
+            "categories": categories  # カテゴリ別商品リスト
+        }
+    except Exception as e:
+        logger.error(f"商品取得エラー: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/account-types")
+async def get_account_types():
+    """アカウントタイプ一覧を取得するエンドポイント"""
+    try:
+        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+        
+            # 空でないアカウントタイプのみを取得
+            cursor.execute(
+                "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
+            )
+            account_types_raw = [row[0] for row in cursor.fetchall()]
+            
+            # アカウントタイプを分割して処理
+            processed_account_types = []
+            for account_type in account_types_raw:
+                if "、" in account_type or "," in account_type:
+                    parts = account_type.replace("、", ",").split(",")
+                    processed_account_types.extend([part.strip() for part in parts if part.strip()])
+                else:
+                    processed_account_types.append(account_type)
+            
+            # 重複を削除
+            unique_account_types = list(set(processed_account_types))
+            # ソートして返す
+            sorted_account_types = sorted(unique_account_types)
+        
+        return {
+            "success": True,
+            "data": sorted_account_types
+        }
+    except Exception as e:
+        logger.error(f"アカウントタイプ取得エラー: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 # uvicornでの直接起動用（Option 2の場合は不要）
 if __name__ == "__main__":

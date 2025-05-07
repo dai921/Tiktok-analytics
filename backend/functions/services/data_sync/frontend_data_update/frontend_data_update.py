@@ -58,9 +58,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             null_reset_query = """
             UPDATE video_master
-            SET playCountIncrease = NULL
+            SET playCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 3 DAY)
             AND playCountIncrease = play_count
+            AND is_new_video = 1
             """
             
             null_affected_rows = execute_write_query(null_reset_query)
@@ -105,6 +106,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         SELECT 
             vm.id,
             vm.url,
+            vm.video_id,
             vm.cover_image_url as thumbnail_url,
             vm.created_at,
             vm.play_count,
@@ -121,7 +123,11 @@ def update_frontend_from_master() -> Dict[str, Any]:
             vm.status,
             vm.display_name,
             vm.content_type,
-            vm.ten_days_increase
+            vm.save_count,
+            vm.likesCountIncrease,
+            vm.commentCountIncrease,
+            vm.saveCountIncrease,
+            vm.account_type
         FROM 
             video_master vm
         LEFT JOIN frontend_data fd ON vm.id = fd.id
@@ -227,21 +233,22 @@ def update_frontend_from_master() -> Dict[str, Any]:
                 
                 update_query = """
                 REPLACE INTO frontend_data (
-                    id, url, thumbnail_url, created_at, play_count, 
+                    id, url, video_id, thumbnail_url, created_at, play_count, 
                     play_count_increase, account_name, likes_count, comment_count, 
                     hashtags, music_info, caption, category, display_name,
-                    content_type, ten_days_increase, product
+                    content_type, product, save_count, likes_count_increase, comment_count_increase, save_count_increase, account_type
                 ) VALUES (
-                    %(id)s, %(url)s, %(thumbnail_url)s, %(created_at)s, %(play_count)s, 
+                    %(id)s, %(url)s, %(video_id)s, %(thumbnail_url)s, %(created_at)s, %(play_count)s, 
                     %(play_count_increase)s, %(account_name)s, %(likes_count)s, %(comment_count)s, 
                     %(hashtags)s, %(music_info)s, %(caption)s, %(category)s, %(display_name)s,
-                    %(content_type)s, %(ten_days_increase)s, %(product)s
+                    %(content_type)s, %(product)s, %(save_count)s, %(likesCountIncrease)s, %(commentCountIncrease)s, %(saveCountIncrease)s, %(account_type)s
                 )
                 """
                 
                 params = {
                     'id': row['id'],
                     'url': row['url'],
+                    'video_id': row['video_id'],
                     'thumbnail_url': row['thumbnail_url'],
                     'created_at': created_at,
                     'play_count': row['play_count'],
@@ -255,8 +262,12 @@ def update_frontend_from_master() -> Dict[str, Any]:
                     'category': row['category'],
                     'display_name': row['display_name'],
                     'content_type': row['content_type'],
-                    'ten_days_increase': row['ten_days_increase'],
-                    'product': row['product']
+                    'product': row['product'],
+                    'save_count': row['save_count'],
+                    'likesCountIncrease': row['likesCountIncrease'],
+                    'commentCountIncrease': row['commentCountIncrease'],
+                    'saveCountIncrease': row['saveCountIncrease'],
+                    'account_type': row['account_type']
                 }
                 
                 execute_write_query(update_query, params)
@@ -291,7 +302,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             # カテゴリー統計集計用のトリガーメッセージを送信
             logger.info("カテゴリー統計集計のトリガーメッセージを送信します")
-            publish_message("frontend-analytics-trigger", {
+            publish_message("needs-update-flag", {
                 "status": "completed",
                 "message": "カテゴリー統計集計を開始します",
                 "timestamp": datetime.now().isoformat()

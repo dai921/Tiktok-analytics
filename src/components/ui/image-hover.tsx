@@ -206,7 +206,13 @@ export function ImageHover({
 
   const formatGrowth = (growth?: number): string => {
     if (growth === undefined) return "0.0%";
-    return growth > 0 ? `+${growth.toFixed(1)}%` : `${growth.toFixed(1)}%`
+    
+    // 増加数を総再生数で割って％に変換
+    const normalizedGrowth = videoData.views > 0 ? (growth / videoData.views) * 100 : 0;
+    
+    return normalizedGrowth > 0 
+      ? `+${normalizedGrowth.toFixed(1)}%` 
+      : `${normalizedGrowth.toFixed(1)}%`;
   }
 
   const formatDate = (dateString: string): string => {
@@ -218,7 +224,7 @@ export function ImageHover({
   }
 
   const extractVideoId = (url: string): string => {
-    const match = url.match(/video\/(\d+)/)
+    const match = url.match(/(?:video|photo)\/(\d+)/)
     return match ? match[1] : ''
   }
 
@@ -309,6 +315,19 @@ export function ImageHover({
                     <div className="order-2">
                       <h4 className="text-sm text-gray-600 mb-1">投稿日</h4>
                       <p className="text-xl font-medium leading-none">{formatDate(videoData.createdAt)}</p>
+                    </div>
+
+                    {/* 動画URL */}
+                    <div className="order-2.5">
+                      <h4 className="text-sm text-gray-600 mb-1">動画URL</h4>
+                      <a 
+                        href={videoUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-600 hover:text-blue-800 underline text-sm break-all"
+                      >
+                        {videoUrl}
+                      </a>
                     </div>
                   </div>
 

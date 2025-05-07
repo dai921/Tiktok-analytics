@@ -3,6 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from "@/lib/constants"
+import { ACCOUNT_TYPE_COLORS, DEFAULT_ACCOUNT_TYPE_COLOR } from "@/lib/constants"
 
 const badgeVariants = cva(
   "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
@@ -86,4 +87,63 @@ function GenreBadge({ genre, categoryForColor, className, ...props }: GenreBadge
   )
 }
 
-export { Badge, HashtagBadge, GenreBadge, badgeVariants }
+// 製品バッジのプロパティ
+export interface ProductBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  product: string;
+  productCategory?: string;
+}
+
+// 製品バッジコンポーネント
+function ProductBadge({ product, productCategory, className, ...props }: ProductBadgeProps) {
+  // 製品カテゴリに基づいて色を決定
+  // カテゴリが指定されていない場合はデフォルト色を使用
+  const colorKey = productCategory || 'その他';
+  const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+  
+  return (
+    <div 
+      className={cn(
+        "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold",
+        className
+      )}
+      style={{ 
+        backgroundColor: colors.bg,
+        color: colors.text,
+        border: `1px solid ${colors.border}`
+      }}
+      {...props}
+    >
+      {product}
+    </div>
+  )
+}
+
+// アカウントタイプバッジのプロパティ
+export interface AccountTypeBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
+  accountType: string;
+}
+
+// アカウントタイプバッジコンポーネント
+function AccountTypeBadge({ accountType, className, ...props }: AccountTypeBadgeProps) {
+  // アカウントタイプに基づいて色を決定
+  const colors = ACCOUNT_TYPE_COLORS[accountType as keyof typeof ACCOUNT_TYPE_COLORS] || DEFAULT_ACCOUNT_TYPE_COLOR;
+  
+  return (
+    <div 
+      className={cn(
+        "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold",
+        className
+      )}
+      style={{ 
+        backgroundColor: colors.bg,
+        color: colors.text,
+        border: `1px solid ${colors.border}`
+      }}
+      {...props}
+    >
+      {accountType}
+    </div>
+  )
+}
+
+export { Badge, HashtagBadge, GenreBadge, ProductBadge, AccountTypeBadge, badgeVariants }

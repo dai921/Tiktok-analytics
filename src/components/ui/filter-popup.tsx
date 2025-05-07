@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useRef, useEffect, RefObject } from 'react'
+import React, { useState, useRef, useEffect, RefObject, useLayoutEffect } from 'react'
 import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashboard'
-import { TIKTOK_COLORS, GENRE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
+import { TIKTOK_COLORS, GENRE_COLORS, ACCOUNT_TYPE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
+const apiUrl = process.env.NEXT_PUBLIC_API_URL 
 interface FilterPopupProps {
   isOpen: boolean
   onClose: () => void
@@ -14,6 +15,7 @@ interface FilterPopupProps {
   categories: string[]
   accounts: string[]
   hashtags: string[]
+  products: string[]
   isLoading: boolean
   onClearAll: () => void
 }
@@ -61,6 +63,23 @@ const CommentIcon = ({ size = 16 }: { size?: number }) => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
   </svg>
 );
+
+// 保存（アウトライン）
+export const SaveIcon = ({ size = 16 }: { size?: number }) => (
+  <svg 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="#F59E0B"
+      strokeWidth="2"
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+      className="drop-shadow-sm"
+  >
+     <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+  </svg>
+ );
 
 // カレンダーアイコン
 const CalendarIcon = ({ size = 16 }: { size?: number }) => (
@@ -177,6 +196,7 @@ export const FilterPopup = ({
   categories,
   accounts,
   hashtags,
+  products: productsList,
   isLoading,
   onClearAll
 }: FilterPopupProps) => {
@@ -191,6 +211,50 @@ export const FilterPopup = ({
   // ソート用の状態を追加
   const [primarySort, setPrimarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
   const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
+  // アカウントジャンル用の複数選択状態
+  const [selectedAccountCategories, setSelectedAccountCategories] = useState<string[]>([])
+  // 商品用の複数選択状態
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+
+  // ダッシュボードページ
+  const [products, setProducts] = useState<any[]>([])
+  const [productCategories, setProductCategories] = useState<Record<string, string[]>>({})
+  const [accountTypes, setAccountTypes] = useState<string[]>([])
+
+  // データ取得
+  useEffect(() => {
+    // 商品データを取得
+    const fetchProductData = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/products`)
+        const data = await response.json()
+        
+        if (data.success) {
+          setProducts(data.data || [])
+          setProductCategories(data.categories || {})
+        }
+      } catch (error) {
+        console.error('商品データ取得エラー:', error)
+      }
+    }
+    
+    // アカウントタイプを取得
+    const fetchAccountTypes = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/account-types`)
+        const data = await response.json()
+        
+        if (data.success) {
+          setAccountTypes(data.data || [])
+        }
+      } catch (error) {
+        console.error('アカウントタイプ取得エラー:', error)
+      }
+    }
+    
+    fetchProductData()
+    fetchAccountTypes()
+  }, [])
 
   // フィルターフィールドの定義
   const filterFields: Record<string, FilterField[]> = {
@@ -199,18 +263,29 @@ export const FilterPopup = ({
     ],
     metrics: [
       { id: 'views', label: '再生数', type: 'number' },
-      { id: 'viewsIncrease', label: '再生増加数', type: 'number' },
+      { id: 'viewsIncrease', label: '2日再生増加数', type: 'number' },
+      { id: 'ten_days_increase', label: '10日再生増加数', type: 'number' },
       { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number' },
+      { id: 'likes_count_increase', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">2日いいね増加数</span></span>, type: 'number' },
+      { id: 'ten_days_likes_increase', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">10日いいね増加数</span></span>, type: 'number' },
       { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' },
-      { id: 'ten_days_increase', label: '10日間再生増加数', type: 'number' },
-      { id: 'likes_count_increase', label: 'いいね増加数', type: 'number' },
-      { id: 'ten_days_likes_increase', label: '10日間いいね増加数', type: 'number' },
-      { id: 'comment_count_increase', label: 'コメント増加数', type: 'number' },
-      { id: 'ten_days_comment_increase', label: '10日間コメント増加数', type: 'number' }
+      { id: 'comment_count_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">2日コメント増加数</span></span>, type: 'number' },
+      { id: 'ten_days_comment_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">10日コメント増加数</span></span>, type: 'number' },
+      { id: 'saves', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">保存数</span></span>, type: 'number' },
+      { id: 'saves_count_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">2日保存増加数</span></span>, type: 'number' },
+      { id: 'ten_days_saves_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">10日保存増加数</span></span>, type: 'number' }
     ],
     categories: [
       { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect', options: ['video', 'carousel'] },
-      { id: 'category', label: '動画ジャンル', type: 'multiselect', options: categories }
+      { id: 'category', label: 'PR動画ジャンル', type: 'multiselect', options: categories },
+      { id: 'product', label: '商品', type: 'multiselect', options: products.length > 0 
+        ? products.map(p => p.name) 
+        : productsList
+      },
+      { id: 'account_type', label: 'アカウントジャンル', type: 'multiselect', options: accountTypes.length > 0 
+        ? accountTypes 
+        : []
+      }
     ],
     text: [
       { id: 'accountName', label: 'アカウント検索', type: 'text' },
@@ -220,14 +295,17 @@ export const FilterPopup = ({
     // ソート用のフィールド - 4つに限定
     sort: [
       { id: 'views', label: '再生数', type: 'sort' },
-      { id: 'viewsIncrease', label: '再生増加数', type: 'sort' },
+      { id: 'viewsIncrease', label: '2日再生増加数', type: 'sort' },
+      { id: 'ten_days_increase', label: '10日再生増加数', type: 'sort' },
       { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'sort' },
+      { id: 'likes_count_increase', label: '2日いいね増加数', type: 'sort' },
+      { id: 'ten_days_likes_increase', label: '10日いいね増加数', type: 'sort' },
       { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' },
-      { id: 'ten_days_increase', label: '10日間再生増加数', type: 'sort' },
-      { id: 'likes_count_increase', label: 'いいね増加数', type: 'sort' },
-      { id: 'ten_days_likes_increase', label: '10日間いいね増加数', type: 'sort' },
-      { id: 'comment_count_increase', label: 'コメント増加数', type: 'sort' },
-      { id: 'ten_days_comment_increase', label: '10日間コメント増加数', type: 'sort' }
+      { id: 'comment_count_increase', label: '2日コメント増加数', type: 'sort' },
+      { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'sort' },
+      { id: 'saves', label: '保存数', type: 'sort' },
+      { id: 'saves_count_increase', label: '2日保存増加数', type: 'sort' },
+      { id: 'ten_days_saves_increase', label: '10日保存増加数', type: 'sort' }
     ]
   }
 
@@ -289,20 +367,60 @@ export const FilterPopup = ({
         setPrimarySort(null);
         setSecondarySort(null);
       }
+
+      // アカウントジャンルの選択初期化
+      const accountTypeFilter = currentFilters['account_type'];
+      if (accountTypeFilter && accountTypeFilter.value) {
+        if (typeof accountTypeFilter.value === 'string') {
+          setSelectedAccountCategories([accountTypeFilter.value]);
+        } else if (Array.isArray(accountTypeFilter.value)) {
+          setSelectedAccountCategories(accountTypeFilter.value as string[]);
+        }
+      } else {
+        setSelectedAccountCategories([]);
+      }
+      
+      // 商品の選択初期化
+      const productFilter = currentFilters['product'];
+      if (productFilter && productFilter.value) {
+        if (typeof productFilter.value === 'string') {
+          setSelectedProducts([productFilter.value]);
+        } else if (Array.isArray(productFilter.value)) {
+          setSelectedProducts(productFilter.value as string[]);
+        }
+      } else {
+        setSelectedProducts([]);
+      }
     }
   }, [isOpen, currentFilters]);
 
   // ポップアップの位置を計算
-  useEffect(() => {
-    if (isOpen && anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect()
-      setPopupPosition({
-        top: rect.bottom + window.scrollY + 5,
-        left: rect.left + window.scrollX
-      })
-    }
-  }, [isOpen, anchorRef])
+  // ① 座標計算ユーティリティはそのまま
+  const calcPos = (anchor: HTMLElement | null) => {
+    if (!anchor) return { top: 0, left: 0 };
+  
+    const { bottom, left } = anchor.getBoundingClientRect();
+    const xoffset = 250;
+    const yoffset = 60;                         // 下方向に 8px 余白
+    return {
+      top:  bottom + window.scrollY - yoffset, // ← window.scrollY を必ず加算
+      left: left   + window.scrollX - xoffset           // ← 横スクロール対策
+    };
+  };
+  
 
+  /* ② useLayoutEffect ―― “開いた瞬間だけ” 計算 */
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    // 1回だけ座標を決定
+    setPopupPosition(calcPos(anchorRef.current))
+  }, [isOpen, anchorRef])   // ← listener は付けない！
+
+
+
+  useEffect(() => {
+    console.log('[pos]', popupPosition);   // 位置が変わるたびに確認
+  }, [popupPosition]);
   // 外部クリックでポップアップを閉じる
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -335,12 +453,17 @@ export const FilterPopup = ({
       type: value.type
     });
     
-    // 値が空の場合はフィルターをクリア
+    // 値が空の場合でも比較演算子のみ選択する場合は処理を続行
+    // 数値や日付でない場合のみ空値チェックを行う
     if (
-      (typeof value.value === 'string' && value.value.trim() === '') || 
-      value.value === null || 
-      value.value === undefined ||
-      (typeof value.value === 'number' && isNaN(value.value))
+      value.type !== 'date' && 
+      value.type !== 'number' && 
+      (
+        (typeof value.value === 'string' && value.value.trim() === '') || 
+        value.value === null || 
+        value.value === undefined ||
+        (typeof value.value === 'number' && isNaN(value.value))
+      )
     ) {
       // 数値が0の場合は有効な値として扱う（0より小さいなどのフィルターのため）
       if (!(typeof value.value === 'number' && value.value === 0)) {
@@ -349,12 +472,24 @@ export const FilterPopup = ({
       }
     }
     
+    // 数値型で空文字列の場合、比較演算子だけを設定
+    if (value.type === 'number' && (value.value === '' || value.value === undefined)) {
+      setTempFilters(prev => ({
+        ...prev,
+        [fieldId]: {
+          ...value,
+          value: ''  // 空のままにして比較演算子だけを保持
+        }
+      }));
+      return;
+    }
+    
     // 日付フィルターの場合、type='date'になるよう確保
     if (fieldId === 'createdAt' && value.type === 'date') {
       // 比較演算子を変換せず、そのまま使用
       const apiCompatibleValue = {
         ...value,
-        comparison: value.comparison || 'date' as ComparisonOperator
+        comparison: value.comparison || 'equal' as ComparisonOperator
       };
       
       console.log('FilterPopup - 日付フィルター:', {
@@ -420,6 +555,8 @@ export const FilterPopup = ({
     setTempFilters({})
     setSelectedCategories([]);
     setSelectedContentTypes(['video', 'carousel']);
+    setSelectedAccountCategories([]);
+    setSelectedProducts([]);
     setPrimarySort(null);
     setSecondarySort(null);
     
@@ -432,7 +569,7 @@ export const FilterPopup = ({
 
   // フィルターを適用
   const handleApplyFilters = () => {
-    console.log('フィルターポップアップ - フィルター適用開始');
+    console.log('[FILTER-DEBUG] フィルターポップアップ - フィルター適用開始');
     
     // 最終的なフィルター状態を構築
     const finalFilters: Record<string, FilterValue> = {};
@@ -440,7 +577,11 @@ export const FilterPopup = ({
     // 1. 通常のフィルターを処理
     Object.entries(tempFilters).forEach(([key, filter]) => {
       if (filter.type !== 'sort') {
-        finalFilters[key] = filter;
+        // 各フィルターに明示的にactive=trueを追加して、テーブルヘッダーに状態を伝達
+        finalFilters[key] = {
+          ...filter,
+          active: true
+        };
       }
     });
     
@@ -450,29 +591,71 @@ export const FilterPopup = ({
         field: 'category',
         type: 'multiselect',
         value: selectedCategories,
-        comparison: 'contains'
+        comparison: 'contains',
+        active: true
       };
     }
     
-    // 3. コンテンツタイプフィルターの処理
+    // 3. アカウントジャンルフィルターの処理を追加
+    if (selectedAccountCategories && selectedAccountCategories.length > 0) {
+      finalFilters['account_type'] = {
+        field: 'account_type',
+        type: 'multiselect',
+        value: selectedAccountCategories,
+        comparison: 'contains',
+        active: true
+      };
+    }
+    
+    // 4. 商品フィルターの処理を追加
+    if (selectedProducts && selectedProducts.length > 0) {
+      finalFilters['product'] = {
+        field: 'product',
+        type: 'multiselect',
+        value: selectedProducts,
+        comparison: 'contains',
+        active: true
+      };
+    }
+    
+    // 5. コンテンツタイプフィルターの処理
     if (selectedContentTypes.length > 0 && selectedContentTypes.length < 3) {
       finalFilters['content_type'] = {
         field: 'content_type',
         type: 'multiselect',
         value: selectedContentTypes,
-        comparison: 'contains'
+        comparison: 'contains',
+        active: true
       };
     }
     
-    // 4. ソート情報の処理
+    // 6. ソート情報の処理
     if (primarySort) {
+      // primarySortのフィルターを詳細にログ
+      console.log('[SORT-DEBUG] フィルターポップアップ - 第一ソート詳細情報:', {
+        field: primarySort.field,
+        direction: primarySort.direction,
+        isPrimarySort: true,
+        filterKey: `sort_${primarySort.field}`,
+        timestamp: new Date().toISOString()
+      });
+      
       finalFilters[`sort_${primarySort.field}`] = {
         field: primarySort.field,
         type: 'sort',
         value: primarySort.direction,
         isPrimarySort: true,
-        sortField: primarySort.field
+        sortField: primarySort.field,
+        active: true  // 明示的にactiveをtrueに設定
       };
+      
+      console.log('[SORT-DEBUG] フィルターポップアップ - 第一ソート設定:', {
+        field: primarySort.field,
+        direction: primarySort.direction,
+        isPrimarySort: true,
+        active: true,
+        filterValue: finalFilters[`sort_${primarySort.field}`]
+      });
       
       // 第二ソートが設定されている場合
       if (secondarySort) {
@@ -481,14 +664,36 @@ export const FilterPopup = ({
           type: 'sort',
           value: secondarySort.direction,
           isPrimarySort: false,
-          sortField: secondarySort.field
+          sortField: secondarySort.field,
+          active: true  // 明示的にactiveをtrueに設定
         };
+        
+        console.log('[SORT-DEBUG] フィルターポップアップ - 第二ソート設定:', {
+          field: secondarySort.field,
+          direction: secondarySort.direction,
+          isPrimarySort: false,
+          active: true
+        });
       }
     }
     
-    console.log('フィルターポップアップ - 最終フィルター:', finalFilters);
-    
     // フィルターを親コンポーネントに渡す
+    console.log('[FILTER-DEBUG] フィルターポップアップ - 最終フィルター：', finalFilters);
+    
+    // ソート関連の最終フィルターを詳細にログ
+    const sortFilters = Object.entries(finalFilters)
+      .filter(([key, filter]) => filter.type === 'sort' || key.startsWith('sort_'))
+      .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+    
+    if (Object.keys(sortFilters).length > 0) {
+      console.log('[SORT-DEBUG] フィルターポップアップ - 最終ソートフィルター:', {
+        sortFilters,
+        count: Object.keys(sortFilters).length,
+        keys: Object.keys(sortFilters),
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     onFilterChange(finalFilters);
     onClose();
   };
@@ -504,25 +709,45 @@ export const FilterPopup = ({
 
   // ソート選択のハンドラー
   const handleSortChange = (fieldId: string, direction: 'asc' | 'desc') => {
-    console.log('フィルターポップアップ - ソート変更:', { fieldId, direction });
+    console.log('[SORT-DEBUG] フィルターポップアップ - ソート変更:', { 
+      fieldId, 
+      direction,
+      tempFiltersBeforeUpdate: { ...tempFilters }
+    });
     
     // 新しいソート情報を作成
     const sortFilter: FilterValue = {
       field: fieldId,
       type: 'sort',
       value: direction,
-      sortField: fieldId
+      sortField: fieldId,
+      active: true // activeフラグを明示的に追加
     };
     
     // 一時フィルターを更新
-    setTempFilters(prev => ({
-      ...prev,
-      [`sort_${fieldId}`]: sortFilter
-    }));
+    setTempFilters(prev => {
+      const updated = {
+        ...prev,
+        [`sort_${fieldId}`]: sortFilter
+      };
+      console.log('[SORT-DEBUG] フィルターポップアップ - 一時フィルター更新後:', {
+        updatedFilters: updated,
+        sortFilterAdded: updated[`sort_${fieldId}`],
+        timestamp: new Date().toISOString()
+      });
+      return updated;
+    });
   };
 
   // ソート項目の設定関数
   const handlePrimarySortChange = (fieldId: string, direction: 'asc' | 'desc') => {
+    console.log('[SORT-DEBUG] フィルターポップアップ - 第一ソート変更:', {
+      fieldId,
+      direction,
+      prevPrimarySort: primarySort,
+      prevSecondarySort: secondarySort
+    });
+    
     // 同じフィールドが第二ソートに設定されている場合、第二ソートをクリア
     if (secondarySort && secondarySort.field === fieldId) {
       setSecondarySort(null);
@@ -550,7 +775,7 @@ export const FilterPopup = ({
             {field.label || ''}
           </label>
           {isActive && (
-            <button 
+              <button
               onClick={() => handleClearFilter(field.id)}
               className="text-gray-400 hover:text-gray-600"
               title="フィルターをクリア"
@@ -565,52 +790,67 @@ export const FilterPopup = ({
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="before"
-                checked={isActive && filterValue.comparison === 'before'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date' as FilterType, 
-                  comparison: 'before' as ComparisonOperator, 
-                  value: filterValue?.value || '' 
-                })}
+                checked={tempFilters[field.id]?.comparison === 'before'}
+                onChange={() => {
+                  console.log('日付フィルター - "以前"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value || '';
+                  handleFilterChange(field.id, { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: 'before' as ComparisonOperator, 
+                    value: currentValue 
+                  });
+                }}
               />
-              <span className="ml-2 text-sm text-gray-700">以前</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'before' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>以前</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
-                value="date"
-                checked={isActive && filterValue.comparison === 'date' as ComparisonOperator}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date' as FilterType, 
-                  comparison: 'date' as ComparisonOperator, 
-                  value: filterValue?.value || '' 
-                })}
+                value="equal"
+                checked={tempFilters[field.id]?.comparison === 'equal'}
+                onChange={() => {
+                  console.log('日付フィルター - "等しい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value || '';
+                  handleFilterChange(field.id, { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: 'equal' as ComparisonOperator, 
+                    value: currentValue 
+                  });
+                }}
               />
-              <span className="ml-2 text-sm text-gray-700">等しい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'equal' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>等しい</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="after"
-                checked={isActive && filterValue.comparison === 'after'}
-                onChange={(e) => handleFilterChange(field.id, { 
-                  field: field.id,
-                  type: 'date' as FilterType, 
-                  comparison: 'after' as ComparisonOperator, 
-                  value: filterValue?.value || '' 
-                })}
+                checked={tempFilters[field.id]?.comparison === 'after'}
+                onChange={() => {
+                  console.log('日付フィルター - "以降"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value || '';
+                  handleFilterChange(field.id, { 
+                    field: field.id,
+                    type: 'date' as FilterType, 
+                    comparison: 'after' as ComparisonOperator, 
+                    value: currentValue 
+                  });
+                }}
               />
-              <span className="ml-2 text-sm text-gray-700">以降</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'after' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>以降</span>
             </label>
           </div>
           
@@ -636,8 +876,7 @@ export const FilterPopup = ({
                     return;
                   }
                   
-                  // 比較演算子が設定されていない場合はラジオボタンの選択状態に基づいて設定
-                  // デフォルトは「等しい」(equal)
+                  // 比較演算子が設定されていない場合はデフォルトで"等しい"に設定
                   const comparison = filterValue?.comparison || 'equal';
                   
                   const newFilterValue = { 
@@ -723,49 +962,73 @@ export const FilterPopup = ({
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="greater"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'greater'}
+                checked={tempFilters[field.id]?.comparison === 'greater'}
                 onChange={() => {
-                  if (numericValue !== '') {
-                    handleNumberFilterChange(numericValue.toString(), 'greater');
-                  }
+                  console.log('数値フィルター - "より大きい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value !== undefined ? 
+                    tempFilters[field.id].value : 
+                    '';
+                  handleFilterChange(field.id, {
+                    field: field.id,
+                    type: 'number',
+                    value: currentValue === '' ? '' : parseFloat(currentValue.toString()),
+                    comparison: 'greater'
+                  });
                 }}
               />
-              <span className="ml-2 text-sm text-gray-700">より大きい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'greater' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>より大きい</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="equal"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'equal'}
+                checked={tempFilters[field.id]?.comparison === 'equal'}
                 onChange={() => {
-                  if (numericValue !== '') {
-                    handleNumberFilterChange(numericValue.toString(), 'equal');
-                  }
+                  console.log('数値フィルター - "等しい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value !== undefined ? 
+                    tempFilters[field.id].value : 
+                    '';
+                  handleFilterChange(field.id, {
+                    field: field.id,
+                    type: 'number',
+                    value: currentValue === '' ? '' : parseFloat(currentValue.toString()),
+                    comparison: 'equal'
+                  });
                 }}
               />
-              <span className="ml-2 text-sm text-gray-700">等しい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'equal' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>等しい</span>
             </label>
             
             <label className="inline-flex items-center">
               <input
                 type="radio"
-                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300"
+                className="form-radio h-4 w-4 text-[#FE2C55] border-gray-300 focus:ring-[#FE2C55]"
                 name={`${field.id}-comparison`}
                 value="less"
-                checked={isActive && filterValue.type === 'number' && filterValue.comparison === 'less'}
+                checked={tempFilters[field.id]?.comparison === 'less'}
                 onChange={() => {
-                  if (numericValue !== '') {
-                    handleNumberFilterChange(numericValue.toString(), 'less');
-                  }
+                  console.log('数値フィルター - "より小さい"選択');
+                  // 既存の値を保持しながら比較演算子だけを更新
+                  const currentValue = tempFilters[field.id]?.value !== undefined ? 
+                    tempFilters[field.id].value : 
+                    '';
+                  handleFilterChange(field.id, {
+                    field: field.id,
+                    type: 'number',
+                    value: currentValue === '' ? '' : parseFloat(currentValue.toString()),
+                    comparison: 'less'
+                  });
                 }}
               />
-              <span className="ml-2 text-sm text-gray-700">より小さい</span>
+              <span className={`ml-2 text-sm ${tempFilters[field.id]?.comparison === 'less' ? 'text-[#FE2C55] font-semibold' : 'text-gray-700'}`}>より小さい</span>
             </label>
           </div>
           
@@ -777,10 +1040,21 @@ export const FilterPopup = ({
               onChange={(e) => {
                 const newValue = e.target.value;
                 // 現在選択されている比較演算子を取得（デフォルトは'equal'）
-                const currentComparison = filterValue?.comparison || 'equal';
+                const currentComparison = tempFilters[field.id]?.comparison || 'equal';
                 handleNumberFilterChange(newValue, currentComparison as ComparisonOperator);
               }}
+              onWheel={(e) => {
+                e.preventDefault();       // ① 値の変化を止める
+                e.currentTarget.blur();   // ② フォーカスを外して次のホイールも無効化
+              }}
+              /* ↑↓キーも無効にしたい場合は追加 */
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                }
+              }}
               placeholder="数値を入力"
+              step="1"
               min="0"
             />
           </div>
@@ -799,7 +1073,7 @@ export const FilterPopup = ({
       if (typeof label === 'string') {
         return label;
       } else if (React.isValidElement(label)) {
-        // Reactエレメントの場合はレンダリング結果の取得が難しいので、固定値を返す
+        // Reactエレメントの場合は、fieldIdからラベルを判断
         return field.id === 'accountName' ? 'アカウント' :
                field.id === 'hashtags' ? 'ハッシュタグ' :
                field.id === 'audioTitle' ? 'BGM' : '';
@@ -850,13 +1124,73 @@ export const FilterPopup = ({
     )
   }
 
+  // 商品用のマルチセレクトフィルターを追加
+  const renderProductFilter = (field: FilterField) => {
+    const isActive = selectedProducts.length > 0;
+
+    return (
+      <div key={field.id} className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
+          {isActive && (
+            <button 
+              onClick={() => {
+                handleClearFilter(field.id);
+                setSelectedProducts([]);
+              }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <ClearIcon size={14} />
+            </button>
+          )}
+        </div>
+        
+        <div className="mt-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md shadow-sm p-2">
+          {Object.entries(productCategories).map(([category, productList]) => (
+            <div key={category} className="mb-3">
+              <div className="font-medium text-gray-700 mb-1">{category}</div>
+              {productList.map((productName, index) => (
+                <div key={index} className="flex items-center mb-2 ml-2">
+                  <input
+                    id={`product-${index}-${category}`}
+                    type="checkbox"
+                    className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300 rounded"
+                    checked={selectedProducts.includes(productName)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedProducts(prev => [...prev, productName]);
+                      } else {
+                        setSelectedProducts(prev => prev.filter(p => p !== productName));
+                      }
+                    }}
+                  />
+                  <label htmlFor={`product-${index}-${category}`} className="ml-2 text-sm text-gray-700">
+                    {productName}
+                  </label>
+                </div>
+              ))}
+            </div>
+          ))}
+          {Object.keys(productCategories).length === 0 && (
+            <div className="text-sm text-gray-500 py-2 text-center">商品情報がありません</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // カテゴリー用の複数選択フィルターセクション
   const renderMultiSelectFilter = (field: FilterField) => {
     // フィールドに応じた選択状態と更新関数を選択
     const selectedItems = field.id === 'category' ? selectedCategories : 
-                         field.id === 'content_type' ? selectedContentTypes : [];
+                         field.id === 'content_type' ? selectedContentTypes :
+                         field.id === 'account_type' ? selectedAccountCategories : [];
+                         
     const setSelectedItems = field.id === 'category' ? setSelectedCategories : 
-                            field.id === 'content_type' ? setSelectedContentTypes : () => {};
+                            field.id === 'content_type' ? setSelectedContentTypes :
+                            field.id === 'account_type' ? setSelectedAccountCategories : () => {};
     
     // コンテンツタイプの場合は表示名を変換
     const getDisplayName = (option: string) => {
@@ -886,10 +1220,44 @@ export const FilterPopup = ({
             ? [...selectedItems.filter(item => item !== option), option] 
             : selectedItems.filter(item => item !== option)
         });
+      } else if (field.id === 'account_type') {
+        // アカウントタイプの選択状態を更新
+        if (checked) {
+          setSelectedAccountCategories(prev => [...prev, option]);
+        } else {
+          setSelectedAccountCategories(prev => prev.filter(item => item !== option));
+        }
+        
+        // フィルター状態を更新
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked 
+            ? [...selectedItems.filter(item => item !== option), option] 
+            : selectedItems.filter(item => item !== option)
+        });
+      } else if (field.id === 'product') {
+        // 商品の選択状態を更新
+        if (checked) {
+          setSelectedProducts(prev => [...prev, option]);
+        } else {
+          setSelectedProducts(prev => prev.filter(item => item !== option));
+        }
+        
+        // フィルター状態を更新
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked 
+            ? [...selectedItems.filter(item => item !== option), option] 
+            : selectedItems.filter(item => item !== option)
+        });
       }
     };
 
-    // カテゴリーの並び替え（「その他」を最後に配置）
+    // カテゴリーの並び替え（"その他"を最後に配置）
     const sortedOptions = field.options ? [...field.options].sort((a, b) => {
       if (a === 'その他') return 1;
       if (b === 'その他') return -1;
@@ -919,10 +1287,19 @@ export const FilterPopup = ({
         
         <div className="mt-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md shadow-sm p-2">
           {sortedOptions.map((option, index) => {
-            // カテゴリー名に対応する色を取得
-            const colors = option in GENRE_COLORS 
-              ? GENRE_COLORS[option as keyof typeof GENRE_COLORS] 
-              : DEFAULT_GENRE_COLOR;
+            // フィールドIDに応じて適切な色を取得
+            let colors;
+            if (field.id === 'account_type') {
+              // アカウントタイプの場合はACCOUNT_TYPE_COLORSを使用
+              colors = option in ACCOUNT_TYPE_COLORS
+                ? ACCOUNT_TYPE_COLORS[option as keyof typeof ACCOUNT_TYPE_COLORS]
+                : DEFAULT_GENRE_COLOR;
+            } else {
+              // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
+              colors = option in GENRE_COLORS 
+                ? GENRE_COLORS[option as keyof typeof GENRE_COLORS] 
+                : DEFAULT_GENRE_COLOR;
+            }
             
             return (
               <div key={index} className="flex items-center mb-2">
@@ -969,14 +1346,17 @@ export const FilterPopup = ({
       } else if (React.isValidElement(field.label)) {
         // React要素の場合は、fieldIdからラベルを判断
         label = field.id === 'views' ? '再生数' :
-                field.id === 'viewsIncrease' ? '再生増加数' :
+                field.id === 'viewsIncrease' ? '2日再生増加数' :
+                field.id === 'ten_days_increase' ? '10日再生増加数' :
                 field.id === 'likes' ? 'いいね数' :
+                field.id === 'likes_count_increase' ? '2日いいね増加数' :
+                field.id === 'ten_days_likes_increase' ? '10日いいね増加数' :
                 field.id === 'comments' ? 'コメント数' :
-                field.id === 'ten_days_increase' ? '10日間再生増加数' :
-                field.id === 'likes_count_increase' ? 'いいね増加数' :
-                field.id === 'ten_days_likes_increase' ? '10日間いいね増加数' :
-                field.id === 'comment_count_increase' ? 'コメント増加数' :
-                field.id === 'ten_days_comment_increase' ? '10日間コメント増加数' : field.id;
+                field.id === 'comment_count_increase' ? '2日コメント増加数' :
+                field.id === 'ten_days_comment_increase' ? '10日コメント増加数' :
+                field.id === 'saves' ? '保存数' :
+                field.id === 'saves_count_increase' ? '2日保存増加数' :
+                field.id === 'ten_days_saves_increase' ? '10日保存増加数' : field.id;
       }
       
       return {
@@ -1140,6 +1520,10 @@ export const FilterPopup = ({
             return renderTextFilter(field)
           }
           if (field.type === 'multiselect') {
+            // 商品フィルターの場合は専用レンダリング関数を使用
+            if (field.id === 'product') {
+              return renderProductFilter(field);
+            }
             return renderMultiSelectFilter(field)
           }
           return null
@@ -1153,7 +1537,7 @@ export const FilterPopup = ({
   return (
     <div
       ref={popupRef}
-      className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200"
+      className="absolute z-50 mt-2 bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200 flex flex-col max-h-[66vh]"
       style={{
         top: `${popupPosition.top}px`,
         left: `${popupPosition.left}px`,
@@ -1165,10 +1549,9 @@ export const FilterPopup = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={handleClearAllFilters}
-            className="text-gray-400 hover:text-gray-600"
-            title="すべてクリア"
+            className="text-sm font-medium text-[#FE2C55] hover:text-[#DE1B47]"
           >
-            <ClearIcon size={18} />
+            フィルタを全てクリア
           </button>
           <button
             onClick={onClose}
@@ -1180,7 +1563,7 @@ export const FilterPopup = ({
       </div>
 
       {/* タブコンテンツ */}
-      <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         <div className="flex border-b sticky top-0 bg-white z-10">
           <button
             className={`px-3 py-2 text-sm font-medium ${

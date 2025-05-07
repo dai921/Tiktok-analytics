@@ -427,6 +427,7 @@ class TikTokCrawler:
                 # サムネイル画像と動画の代替テキストを取得
                 thumbnail_element = video_element.find_element(By.CSS_SELECTOR, "img")
                 thumbnail_url = thumbnail_element.get_attribute("src")
+                
                 video_alt_info_text = thumbnail_element.get_attribute("alt")
                 
                 # いいね数を取得（表示形式のまま）
