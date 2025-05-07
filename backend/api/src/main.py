@@ -1561,11 +1561,25 @@ async def get_account_types():
             cursor.execute(
                 "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
             )
-            account_types = [row[0] for row in cursor.fetchall()]
+            account_types_raw = [row[0] for row in cursor.fetchall()]
+            
+            # アカウントタイプを分割して処理
+            processed_account_types = []
+            for account_type in account_types_raw:
+                if "、" in account_type or "," in account_type:
+                    parts = account_type.replace("、", ",").split(",")
+                    processed_account_types.extend([part.strip() for part in parts if part.strip()])
+                else:
+                    processed_account_types.append(account_type)
+            
+            # 重複を削除
+            unique_account_types = list(set(processed_account_types))
+            # ソートして返す
+            sorted_account_types = sorted(unique_account_types)
         
         return {
             "success": True,
-            "data": account_types
+            "data": sorted_account_types
         }
     except Exception as e:
         logger.error(f"アカウントタイプ取得エラー: {str(e)}")
