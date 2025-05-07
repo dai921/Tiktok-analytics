@@ -12,6 +12,14 @@ export function middleware(request: NextRequest) {
   // 管理者専用ページかどうか（/admin/loginは除外）
   const isAdminPage = path === '/register' || (path.startsWith('/admin') && path !== '/admin/login')
   
+  // レスポンスオブジェクトを作成
+  let response = NextResponse.next()
+  
+  // ログインページやその他認証関連ページにはX-Robots-Tagを設定
+  if (path === '/login' || path === '/admin/login' || path === '/register') {
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
+  }
+  
   // 管理者ログインページへのアクセス
   if (path === '/admin/login') {
     // すでに認証済みの管理者の場合はダッシュボードへリダイレクト
@@ -20,7 +28,7 @@ export function middleware(request: NextRequest) {
     }
 
     // 未認証の場合はそのまま管理者ログインページを表示
-    return NextResponse.next()
+    return response
   }
   
   // 管理者専用ページに非管理者がアクセスした場合
@@ -49,7 +57,7 @@ export function middleware(request: NextRequest) {
     cookies: request.cookies.getAll().map(c => `${c.name}=${c.value}`).join('; ')
   });
   
-  return NextResponse.next()
+  return response
 }
 
 export const config = {

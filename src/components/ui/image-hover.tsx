@@ -224,7 +224,7 @@ export function ImageHover({
   }
 
   const extractVideoId = (url: string): string => {
-    const match = url.match(/video\/(\d+)/)
+    const match = url.match(/(?:video|photo)\/(\d+)/)
     return match ? match[1] : ''
   }
 

@@ -40,7 +40,7 @@ const Dashboard = () => {
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(50)
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const headerRefs = useRef<(TableHeaderCellRef | null)[]>([])
   const [isPrOnly, setIsPrOnly] = useState(false)
