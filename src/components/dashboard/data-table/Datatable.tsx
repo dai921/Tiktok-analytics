@@ -19,6 +19,7 @@ import { useProductCategories } from '@/hooks/useProductCategories';
 import { TableContext } from './cell-renderers';
 import { createProductCellRenderer } from './cell-renderers';
 import { ProductBadge } from '@/components/ui/badge';
+import { createPortal } from 'react-dom'; 
 
 // EXCLUDED_COLUMNS をここで定義
 const EXCLUDED_COLUMNS = ['description'];
@@ -48,7 +49,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     isLoading = false,
     isPrOnly = false,
     onPrOnlyChange,
-    pageSize = 10,
+    pageSize = 50,
     onPageSizeChange,
     defaultVisibleColumns,
     onColumnSettingsChange
@@ -67,17 +68,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
       
       if (onPageChangeRef.current !== onPageChange) {
-        console.log('[DEBUG-PROPS] DataTable - onPageChange の参照が変化しました');
         onPageChangeRef.current = onPageChange;
       }
       
       if (onPrOnlyChangeRef.current !== onPrOnlyChange) {
-        console.log('[DEBUG-PROPS] DataTable - onPrOnlyChange の参照が変化しました');
         onPrOnlyChangeRef.current = onPrOnlyChange;
       }
       
       if (onPageSizeChangeRef.current !== onPageSizeChange) {
-        console.log('[DEBUG-PROPS] DataTable - onPageSizeChange の参照が変化しました');
         onPageSizeChangeRef.current = onPageSizeChange;
       }
     }, [onFilterChange, onPageChange, onPrOnlyChange, onPageSizeChange]);
@@ -88,7 +86,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     // レンダリングごとにカウントを増加
     useEffect(() => {
       renderCountRef.current += 1;
-      console.log(`[DEBUG-LOOP] DataTable - レンダリング回数: ${renderCountRef.current}`);
     });
     
     // 選択されたテキスト（ポップアップ表示用）
@@ -111,12 +108,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // ソート状態の初期化をログ
     useEffect(() => {
-      console.log('[DEBUG-LOOP] DataTable - sortLogic 初期化:', {
-        primarySort,
-        secondarySort,
-        sortField,
-        sortDirection
-      });
     }, []);
     
     // フィルターロジック
@@ -164,12 +155,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     useEffect(() => {
       if (prevHandleFilterRef.current !== handleFilter) {
-        console.log('[DEBUG-FUNC-REFS] handleFilter の参照が変化しました');
+
         prevHandleFilterRef.current = handleFilter;
       }
       
       if (prevGetFilteredOptionsRef.current !== getFilteredOptions) {
-        console.log('[DEBUG-FUNC-REFS] getFilteredOptions の参照が変化しました');
         prevGetFilteredOptionsRef.current = getFilteredOptions;
       }
     }, [handleFilter, getFilteredOptions]);
@@ -179,7 +169,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     useEffect(() => {
       if (!loadingProductCategories) {
-        console.log('[DEBUG-PRODUCTS] 製品カテゴリマッピング取得完了', productCategories);
       }
     }, [loadingProductCategories, productCategories]);
 
@@ -216,13 +205,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // 依存配列の変更を監視するための追加ログ
     useEffect(() => {
-      console.log('[DEBUG-LOOP] DataTable - columns 依存配列の変更:', {
-        primarySort: primarySort?.field,
-        secondarySort: secondarySort?.field,
-        sortField,
-        sortDirection,
-        timestamp: new Date().toISOString(),
-      });
     }, [primarySort, secondarySort, sortField, sortDirection]);
     
     // カラムのドラッグ＆ドロップ機能
@@ -235,20 +217,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // useColumnDndの直後にメモイゼーションのデバッグログを追加
     useEffect(() => {
-      console.log('[DEBUG-COLUMNS-REF] columns参照変更検知:', {
-        columnsLength: columns.length,
-        columnsRef: columns,
-        timestamp: new Date().toISOString()
-      });
     }, [columns]);
     
     // orderedColumnsの変更をデバッグ
     useEffect(() => {
-      console.log('[DEBUG-ORDERED-COLUMNS] orderedColumns変更検知:', {
-        orderedColumnsLength: orderedColumns.length,
-        orderedColumnsRef: orderedColumns,
-        timestamp: new Date().toISOString()
-      });
     }, [orderedColumns]);
     
     // 初期化時にカラムの順序を設定（ここが問題と思われる箇所）
@@ -295,16 +267,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             ...column,
             cell: ({ row }: { row: VideoData }) => {
               // 完全なrow情報をログ出力
-              console.log('製品セル内のrow全データ:', row);
               
               // キーが"product"ではなく別の可能性がある場合の検証
               const possibleProductKeys = ['product', 'products', 'productName', 'product_name'];
               const foundKey = possibleProductKeys.find(key => row[key as keyof typeof row]);
               
-              console.log('検出された製品キー:', {
-                foundKey,
-                value: foundKey ? row[foundKey as keyof typeof row] : null
-              });
               
               return (
                 <div className="w-[120px] min-w-[120px]">
@@ -329,29 +296,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     // filteredColumns の定義で columnsWithProductRenderer を使用
     const filteredColumns = useMemo(() => {
-      console.log('[DEBUG-FILTERED] filteredColumns の再計算:', {
-        orderedColumnsLength: orderedColumns.length,
-        visibleColumnsLength: visibleColumns.length,
-        timestamp: new Date().toISOString()
-      });
-      
-      console.log('EXCLUDED_COLUMNS:', EXCLUDED_COLUMNS);
-      console.log('visibleColumns:', visibleColumns);
-      
-      return orderedColumns.length > 0
-        ? orderedColumns.filter(col =>
-            !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
-            visibleColumns.includes(String(col.accessorKey))
-          )
-        : columnsWithProductRenderer.filter(col =>
-            !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
-            visibleColumns.includes(String(col.accessorKey))
-          );
+      return orderedColumns.filter(col => 
+        !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
+        visibleColumns.includes(String(col.accessorKey))
+      );
     }, [orderedColumns, columnsWithProductRenderer, visibleColumns]);
     
     useEffect(() => {
       // ソート状態の変更をデバッグ
-
+      
     }, [primarySort, secondarySort, sortField, sortDirection]);
     
     // フィルターのバルク変更ハンドラーにデバッグログを追加
@@ -374,29 +327,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleBulkFilterChange(filters);
       
       // ソート状態が正しく更新されたか確認
-
+      
     };
 
     // productCategoriesの変化を監視
     useEffect(() => {
-      console.log('[PRODUCT-CATEGORIES-CHANGE] productCategories変更検知', {
-        timestamp: new Date().toISOString(),
-        hasProductCategories: !!productCategories,
-        productCategoriesSize: productCategories ? Object.keys(productCategories).length : 0,
-        loadingState: loadingProductCategories,
-        renderCount: renderCountRef.current
-      });
+      // productCategoriesの変化をデバッグ
     }, [productCategories, loadingProductCategories]);
-
-    console.log('製品名とカテゴリーのマッピング比較:', {
-      availableProducts: data.map(item => item.product).filter(Boolean),
-      availableCategories: productCategories ? Object.keys(productCategories) : []
-    });
-
-    console.log('データサンプル詳細確認:', {
-      firstRow: data.length > 0 ? data[0] : null,
-      allKeys: data.length > 0 ? Object.keys(data[0]) : [],
-    });
 
     // PR切り替えハンドラーの連携
     const handlePrToggle = useCallback((checked: boolean) => {
@@ -405,7 +342,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     }, [handlePrOnlyChange, onPrOnlyChange]);
 
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
         <div className="flex items-center justify-between p-3">
           <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
@@ -456,32 +393,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         </div>
         
-        {/* フィルターポップアップを追加 */}
-        <FilterPopup 
-          isOpen={isFilterPopupOpen}
-          onClose={() => setFilterPopupOpenState(false)}
-          anchorRef={filterButtonRef}
-          onFilterChange={handleDebugBulkFilterChange}
-          currentFilters={columnFilters}
-          categories={categoryList}
-          accounts={accountList}
-          hashtags={hashtagList}
-          products={[]}
-          isLoading={isLoadingFilterOptions}
-          onClearAll={handleClearFilterInputs}
-        />
-        
-        {/* カラム設定ポップアップを追加 */}
-        <ColumnSettings
-          isOpen={isColumnSettingsOpen}
-          onClose={() => setIsColumnSettingsOpen(false)}
-          anchorRef={columnSettingsButtonRef}
-          columns={columns}
-          visibleColumns={visibleColumns}
-          onColumnVisibilityChange={handleColumnVisibilityChange}
-        />
-        
-        
+        {/* テーブルの内容 */}
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
             {isLoading && (
@@ -496,13 +408,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               }}>
                 {/* プロバイダーの値をより詳細にログ出力 */}
                 {(() => {
-                  console.log('[CONTEXT-PROVIDER] TableContext.Provider値設定', {
-                    timestamp: new Date().toISOString(),
-                    hasProductCategories: !!productCategories,
-                    productCategoriesSize: productCategories ? Object.keys(productCategories).length : 0,
-                    productCategoriesKeys: productCategories ? Object.keys(productCategories).slice(0, 5) : [], // 最初の5つだけ表示
-                    renderCount: renderCountRef.current
-                  });
                   return null;
                 })()}
                 <table className="min-w-full divide-y divide-gray-200">
@@ -553,9 +458,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                     column.accessorKey === 'viewsIncrease' ? '100px' :
                                     column.accessorKey === 'likes' ? '100px' :
                                     column.accessorKey === 'comments' ? '100px' :
-                                    column.accessorKey === 'product' ? '120px' :
-                                    column.accessorKey === 'account_type' ? '120px' :
-                                    column.accessorKey === 'hashtags' ? '120px' :
+                                    column.accessorKey === 'product' ? '150px' :
+                                    column.accessorKey === 'account_type' ? '150px' :
+                                    column.accessorKey === 'hashtags' ? '150px' :
                                     column.accessorKey === 'ten_days_increase' ? '120px' :
                                     column.accessorKey === 'likes_count_increase' ? '120px' :
                                     column.accessorKey === 'ten_days_likes_increase' ? '140px' :
@@ -571,9 +476,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                        column.accessorKey === 'viewsIncrease' ? '100px' :
                                        column.accessorKey === 'likes' ? '100px' :
                                        column.accessorKey === 'comments' ? '100px' :
-                                       column.accessorKey === 'product' ? '120px' :
-                                       column.accessorKey === 'account_type' ? '120px' :
-                                       column.accessorKey === 'hashtags' ? '120px' :
+                                       column.accessorKey === 'product' ? '150px' :
+                                       column.accessorKey === 'account_type' ? '150px' :
+                                       column.accessorKey === 'hashtags' ? '150px' :
                                        column.accessorKey === 'ten_days_increase' ? '120px' :
                                        column.accessorKey === 'likes_count_increase' ? '120px' :
                                        column.accessorKey === 'ten_days_likes_increase' ? '140px' :
@@ -589,9 +494,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                        column.accessorKey === 'viewsIncrease' ? '100px' :
                                        column.accessorKey === 'likes' ? '100px' :
                                        column.accessorKey === 'comments' ? '100px' :
-                                       column.accessorKey === 'product' ? '120px' :
-                                       column.accessorKey === 'account_type' ? '120px' :
-                                       column.accessorKey === 'hashtags' ? '120px' :
+                                       column.accessorKey === 'product' ? '150px' :
+                                       column.accessorKey === 'account_type' ? '150px' :
+                                       column.accessorKey === 'hashtags' ? '150px' :
                                        column.accessorKey === 'ten_days_increase' ? '120px' :
                                        column.accessorKey === 'likes_count_increase' ? '120px' :
                                        column.accessorKey === 'ten_days_likes_increase' ? '140px' :
@@ -605,9 +510,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                           >
                             {column.cell 
                               ? column.cell({ row }) 
-                              : typeof row[column.accessorKey] === 'object'
-                                ? JSON.stringify(row[column.accessorKey])
-                                : String(row[column.accessorKey])
+                              : typeof row[column.accessorKey as keyof VideoData] === 'object'
+                                ? JSON.stringify(row[column.accessorKey as keyof VideoData])
+                                : String(row[column.accessorKey as keyof VideoData] || '')
                             }
                           </td>
                         ))}
@@ -623,8 +528,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <TextPopup
               isOpen={!!selectedText}
               onClose={() => setSelectedText(null)}
-              title={selectedText.title}
-              content={selectedText.content}
+              title={selectedText?.title || ''}
+              content={selectedText?.content || ''}
             />
           )}
         </div>
@@ -639,6 +544,31 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             pageSizeOptions={[10, 20, 50]}
           />
         </div>
+
+        {/* ▼▼▼ ここが今回のポイント：relative 親の中で absolute 表示 ▼▼▼ */}
+        <FilterPopup
+          isOpen={isFilterPopupOpen}
+          onClose={() => setFilterPopupOpenState(false)}
+          anchorRef={filterButtonRef}
+          onFilterChange={handleBulkFilterChange}
+          currentFilters={columnFilters}
+          categories={categoryList}
+          accounts={accountList}
+          hashtags={hashtagList}
+          products={[]}
+          isLoading={isLoadingFilterOptions}
+          onClearAll={handleClearFilterInputs}
+        />
+
+        <ColumnSettings
+          isOpen={isColumnSettingsOpen}
+          onClose={() => setIsColumnSettingsOpen(false)}
+          anchorRef={columnSettingsButtonRef}
+          columns={columns}
+          visibleColumns={visibleColumns}
+          onColumnVisibilityChange={handleColumnVisibilityChange}
+        />
+        {/* ▲▲▲---------------------------------------------------- */}
       </div>
     );
   }

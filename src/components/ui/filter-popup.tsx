@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, RefObject } from 'react'
+import React, { useState, useRef, useEffect, RefObject, useLayoutEffect } from 'react'
 import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashboard'
 import { TIKTOK_COLORS, GENRE_COLORS, ACCOUNT_TYPE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -277,7 +277,7 @@ export const FilterPopup = ({
     ],
     categories: [
       { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect', options: ['video', 'carousel'] },
-      { id: 'category', label: '動画ジャンル', type: 'multiselect', options: categories },
+      { id: 'category', label: 'PR動画ジャンル', type: 'multiselect', options: categories },
       { id: 'product', label: '商品', type: 'multiselect', options: products.length > 0 
         ? products.map(p => p.name) 
         : productsList
@@ -395,16 +395,32 @@ export const FilterPopup = ({
   }, [isOpen, currentFilters]);
 
   // ポップアップの位置を計算
-  useEffect(() => {
-    if (isOpen && anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect()
-      setPopupPosition({
-        top: rect.bottom + window.scrollY + 5,
-        left: rect.left + window.scrollX
-      })
-    }
-  }, [isOpen, anchorRef])
+  // ① 座標計算ユーティリティはそのまま
+  const calcPos = (anchor: HTMLElement | null) => {
+    if (!anchor) return { top: 0, left: 0 };
+  
+    const { bottom, left } = anchor.getBoundingClientRect();
+    const xoffset = 250;
+    const yoffset = 60;                         // 下方向に 8px 余白
+    return {
+      top:  bottom + window.scrollY - yoffset, // ← window.scrollY を必ず加算
+      left: left   + window.scrollX - xoffset           // ← 横スクロール対策
+    };
+  };
+  
 
+  /* ② useLayoutEffect ―― “開いた瞬間だけ” 計算 */
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    // 1回だけ座標を決定
+    setPopupPosition(calcPos(anchorRef.current))
+  }, [isOpen, anchorRef])   // ← listener は付けない！
+
+
+
+  useEffect(() => {
+    console.log('[pos]', popupPosition);   // 位置が変わるたびに確認
+  }, [popupPosition]);
   // 外部クリックでポップアップを閉じる
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

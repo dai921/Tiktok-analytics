@@ -62,10 +62,10 @@ export const createColumns = (
       accessorKey: 'category',
       header: ({ column }) => {
         
-        const options = getFilteredOptions('動画ジャンル');
+        const options = getFilteredOptions('PR動画ジャンル');
         return (
           <TableHeaderCell
-            title="動画ジャンル"
+            title="PR動画ジャンル"
             type="text"
             align="left"
             onFilter={(value) => handleFilter('category')(value)}

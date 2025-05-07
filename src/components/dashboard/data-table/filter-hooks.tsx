@@ -64,7 +64,7 @@ export const useFilterOptions = (currentFilters: Record<string, FilterQuery>) =>
     }
     
     switch (columnName) {
-      case '動画ジャンル':
+      case 'PR動画ジャンル':
         return useInitialCache && categoryList.length > 0 
           ? categoryList 
           : categoryList;

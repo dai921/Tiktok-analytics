@@ -79,8 +79,20 @@ def update_needs_flags(event, context):
         WHERE front_needs_update = 1;
         """
         
+
         master_affected_rows = execute_write_query(reset_master_flag_query)
         logger.info(f"video_masterの更新完了: {master_affected_rows}件更新")
+        
+        # 4. video_masterのis_new_videoを全て0にする
+        logger.info("4. video_masterのis_new_videoフラグの更新を開始")
+        reset_is_new_video_query = """
+        UPDATE video_master
+        SET is_new_video = 0
+        WHERE is_new_video = 1;
+        """
+        
+        is_new_video_affected_rows = execute_write_query(reset_is_new_video_query)
+        logger.info(f"video_masterのis_new_video更新完了: {is_new_video_affected_rows}件更新")
         
         # 処理完了後、video_history_syncにPub/Subメッセージを送信
         logger.info("動画履歴同期処理のトリガーメッセージを送信します")

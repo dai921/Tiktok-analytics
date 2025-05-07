@@ -268,7 +268,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'likes': 'いいね数',
   'comments': 'コメント数',
   'account_name': 'アカウント名',
-  'category': '動画ジャンル',
+  'category': 'PR動画ジャンル',
   'hashtags': 'ハッシュタグ',
   'description': '説明',
   'audioTitle': '音声タイトル',
@@ -327,7 +327,7 @@ const convertFilterType = (type: FilterType, field: string): string => {
 const mapFieldToApiField = (field: string): string => {
   
   // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
-  if (field === '動画ジャンル') {
+  if (field === 'PR動画ジャンル') {
     return 'category';
   }  else if (field === '2日再生増加数') {
     return 'play_count_increase';
@@ -586,7 +586,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
         }
 
         // カテゴリフィルター
-        if (key === 'category' || key === '動画ジャンル') {
+        if (key === 'category' || key === 'PR動画ジャンル') {
           if (Array.isArray(filter.value)) {
             filter.value.forEach((category, index) => {
               params.append(`category_${index}`, category.toString().trim());

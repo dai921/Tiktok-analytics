@@ -58,9 +58,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             null_reset_query = """
             UPDATE video_master
-            SET playCountIncrease = NULL
+            SET playCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 3 DAY)
             AND playCountIncrease = play_count
+            AND is_new_video = 1
             """
             
             null_affected_rows = execute_write_query(null_reset_query)

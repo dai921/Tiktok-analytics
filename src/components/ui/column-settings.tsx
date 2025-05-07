@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { Column } from '@/types/dashboard'
 import { Button } from "@/components/ui/button"
 import { SaveIcon, RotateCcw } from "lucide-react"
@@ -52,29 +52,24 @@ export const ColumnSettings = ({
   const [isSaving, setIsSaving] = useState(false)
   const popupRef = useRef<HTMLDivElement>(null)
 
-  // ポップアップの位置を計算（一度だけ）
-  useEffect(() => {
-    if (isOpen && anchorRef.current && popupRef.current) {
-      const anchorRect = anchorRef.current.getBoundingClientRect()
-      const popupRect = popupRef.current.getBoundingClientRect()
-      
-      // 固定位置を計算（スクロール位置を含む）
-      const top = anchorRect.bottom + window.scrollY + 8
-      const left = anchorRect.left + window.scrollX
-
-      // 画面右端をはみ出す場合は左寄せ
-      const adjustedLeft = Math.min(
-        left,
-        window.innerWidth - popupRect.width - 16
-      )
-
-      setPosition({ 
-        top: top,
-        left: adjustedLeft
-      })
+  const calcPos = (anchor: HTMLElement | null) => {
+    if (!anchor) return { top: 0, left: 0 }
+    const rect = anchor.getBoundingClientRect()
+    const xoffset = -100           // ↓ボタン下に 8px 余白
+    const yoffset = 10
+    return {
+      top:  rect.bottom + window.scrollY + yoffset,
+      left: rect.left   + window.scrollX + xoffset
     }
-  }, [isOpen])
+  }
 
+  /* ---------- 3. スクロール / リサイズ で再計算 ---------- */
+   /* ② useLayoutEffect ―― “開いた瞬間だけ” 計算 */
+   useLayoutEffect(() => {
+    if (!isOpen) return
+    // 1回だけ座標を決定
+    setPosition(calcPos(anchorRef.current))
+  }, [isOpen, anchorRef])   
   // デフォルト設定を適用する処理
   const handleApplyDefault = () => {
     // デフォルト設定のカラムを一括で更新

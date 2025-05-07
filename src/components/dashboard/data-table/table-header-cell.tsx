@@ -428,7 +428,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
           value: value,
           type: 'contains'  // キャプションは常に部分一致
         }, true);
-      } else if (title === '動画ジャンル') {
+      } else if (title === 'PR動画ジャンル') {
         // ジャンルの既存の特別処理を維持
         onFilter({
           field: title,
@@ -635,7 +635,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // カテゴリリストを描画する関数を改善
     const renderCategoryList = () => {
       // カテゴリーデータが関連するカラムにのみ表示
-      if (!['動画ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title)) {
+      if (!['PR動画ジャンル', 'アカウント名', 'ハッシュタグ', 'BGM'].includes(title)) {
         return null;
       }
 
@@ -690,7 +690,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
     // タイトルに応じたラベルを取得
     const getTitleLabel = () => {
       switch (title) {
-        case '動画ジャンル':
+        case 'PR動画ジャンル':
           return 'カテゴリ';
         case 'アカウント名':
           return 'アカウント';
