@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.db.database import get_db_connection
 from .models import UserCreate, User, Token, Session, PasswordChange
 from .utils import (
@@ -13,6 +13,10 @@ from .utils import (
     create_session,
     create_verification_token
 )
+import httpx, os, time, jwt
+from src.utils.encryption import encrypt_data, decrypt_data
+import uuid
+import secrets
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
@@ -238,3 +242,250 @@ async def change_password(
     finally:
         cursor.close()
         conn.close() 
+
+@router.get("/tiktok/auth")
+async def tiktok_auth(request: Request):
+    """TikTok認証フローを開始"""
+    # ユーザーの状態をチェック
+    user_id = None
+    session_cookie = request.cookies.get("session")
+    
+    if session_cookie:
+        try:
+            payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+            user_id = payload.get("uid")
+        except:
+            # 無効なセッション
+            pass
+    
+    # ログインしていない場合はanonymousユーザーを作成
+    if not user_id:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        try:
+            # 匿名ユーザーを作成
+            user_id = str(uuid.uuid4())
+            temp_email = f"temp_{user_id}@example.com"
+            temp_password = secrets.token_urlsafe(16)
+            hashed_password = get_password_hash(temp_password)
+            
+            cursor.execute(
+                """
+                INSERT INTO users (id, email, password, name)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (user_id, temp_email, hashed_password, "一時ユーザー")
+            )
+            conn.commit()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"一時ユーザーの作成に失敗しました: {str(e)}"
+            )
+        finally:
+            cursor.close()
+            conn.close()
+    
+    # stateパラメータを生成して保存
+    state = secrets.token_urlsafe(32)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 古いstateを削除
+        cursor.execute(
+            "DELETE FROM user_oauth_states WHERE user_id = %s OR created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)",
+            (user_id,)
+        )
+        
+        # 新しいstateを保存
+        cursor.execute(
+            """
+            INSERT INTO user_oauth_states (user_id, oauth_state)
+            VALUES (%s, %s)
+            """,
+            (user_id, state)
+        )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OAuth状態の保存に失敗しました: {str(e)}"
+        )
+    finally:
+        cursor.close()
+        conn.close()
+    
+    # セッションクッキーを設定
+    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    
+    # TikTokの認証URLを生成
+    auth_url = (
+        "https://www.tiktok.com/v2/auth/authorize?"
+        f"client_key={os.getenv('TT_CLIENT_KEY')}&"
+        f"redirect_uri={os.getenv('BASE_URL')}/api/auth/tiktok/callback&"
+        "response_type=code&"
+        f"state={state}&"
+        "scope=user.info.basic,video.list"
+    )
+    
+    # 一時セッションを設定してTikTokにリダイレクト
+    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": auth_url})
+    response.set_cookie(
+        key="session", 
+        value=cookie, 
+        httponly=True, 
+        secure=True, 
+        max_age=3600  # 1時間
+    )
+    
+    return response
+
+@router.get("/tiktok/callback")
+async def tiktok_callback(request: Request, code: str = None, state: str = None):
+    """TikTok認証コールバック処理"""
+    # codeの検証
+    if not code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="認可コードがありません")
+    
+    # セッションからユーザーIDを取得
+    session_cookie = request.cookies.get("session")
+    if not session_cookie:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="セッションが見つかりません"
+        )
+    
+    try:
+        payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+        user_id = payload.get("uid")
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="ユーザーIDが見つかりません"
+            )
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="無効なセッション"
+        )
+    
+    # stateパラメータの検証
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        cursor.execute(
+            "SELECT oauth_state FROM user_oauth_states WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+            (user_id,)
+        )
+        state_record = cursor.fetchone()
+        
+        if not state_record or state_record["oauth_state"] != state:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不正なstateパラメータ"
+            )
+    finally:
+        cursor.close()
+        conn.close()
+    
+    # TikTok APIとトークン交換
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                "https://open.tiktokapis.com/v2/oauth/token/",
+                data={
+                    "client_key": os.getenv("TT_CLIENT_KEY"),
+                    "client_secret": os.getenv("TT_CLIENT_SECRET"),
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": f"{os.getenv('BASE_URL')}/api/auth/tiktok/callback",
+                }
+            )
+            response.raise_for_status()
+            token_data = response.json()
+            
+            if "data" not in token_data:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="TikTokからのレスポンスに必要なデータがありません"
+                )
+            
+            token_data = token_data["data"]
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TikTokとの通信エラー: {str(e)}"
+        )
+    
+    # トークンの暗号化と保存
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # トークンの暗号化
+        encrypted_access_token = encrypt_data(token_data.get("access_token"))
+        encrypted_refresh_token = encrypt_data(token_data.get("refresh_token"))
+        expires_in = token_data.get("expires_in")
+        expires_at = (datetime.now() + timedelta(seconds=int(expires_in))).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # テーブルが存在するか確認し、存在しなければ作成
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tiktok_tokens (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT NOT NULL,
+                expires_in INT NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                INDEX idx_user_id (user_id)
+            )
+        """)
+        
+        # トークンを保存
+        cursor.execute("""
+            INSERT INTO tiktok_tokens (user_id, access_token, refresh_token, expires_in, expires_at)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                access_token = VALUES(access_token),
+                refresh_token = VALUES(refresh_token),
+                expires_in = VALUES(expires_in),
+                expires_at = VALUES(expires_at),
+                updated_at = NOW()
+        """, (user_id, encrypted_access_token, encrypted_refresh_token, expires_in, expires_at))
+        
+        # 使用済みstateを削除
+        cursor.execute("DELETE FROM user_oauth_states WHERE user_id = %s", (user_id,))
+        
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"トークンの保存に失敗しました: {str(e)}"
+        )
+    finally:
+        cursor.close()
+        conn.close()
+    
+    # ログインセッションの発行
+    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    
+    # フロントエンドへリダイレクト
+    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-account"})
+    response.set_cookie(
+        key="session", 
+        value=cookie, 
+        httponly=True, 
+        secure=True, 
+        max_age=7*86400  # 7日間
+    )
+    
+    return response
