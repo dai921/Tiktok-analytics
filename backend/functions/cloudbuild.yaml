@@ -71,7 +71,7 @@ steps:
           echo "スケジュールジョブ frontend-update-schedule は既に存在します。更新します。"
           gcloud scheduler jobs update http frontend-update-schedule \
             --location=asia-northeast1 \
-            --schedule="0 3 1-31/2 * *" \
+            --schedule="0 3 * * *"\
             --uri="$$FUNCTION_URL" \
             --http-method=POST \
             --time-zone="Asia/Tokyo" \
