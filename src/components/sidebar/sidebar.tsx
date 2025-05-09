@@ -131,6 +131,12 @@ export function Sidebar() {
           </div>
         </div>
         <SidebarItem
+          href="/my-account"
+          icon="Users"
+          label="自アカウント分析"
+          active={pathname.startsWith('/my-account')}
+        />
+        <SidebarItem
           href="#"
           icon="FileText"
           label="台本作成"

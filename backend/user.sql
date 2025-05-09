@@ -104,13 +104,13 @@ CREATE TABLE sort_settings (
 CREATE TABLE video_watchlists (
   watchlist_id INT AUTO_INCREMENT PRIMARY KEY,
   email VARCHAR(255) NOT NULL,
-  url VARCHAR(255) NOT NULL,
+  video_id VARCHAR(255) NOT NULL,
   watchlist_name VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
-  FOREIGN KEY (url) REFERENCES frontend_data(url) ON DELETE CASCADE,
-  UNIQUE KEY unique_user_video (email, url),
+  FOREIGN KEY (video_id) REFERENCES frontend_data(video_id) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_video (email, video_id),
   INDEX idx_email (email)
 );
 
@@ -125,4 +125,29 @@ CREATE TABLE account_bookmarks (
   FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
   UNIQUE KEY unique_user_account (email, account_name),
   INDEX idx_email (email)
+);
+
+-- TikTokトークン保存用テーブル
+CREATE TABLE tiktok_tokens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expires_in INT NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_user_id (user_id)
+);
+
+-- OAuth stateパラメータ保存テーブル
+CREATE TABLE user_oauth_states (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  oauth_state VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_user_id (user_id),
+  INDEX idx_oauth_state (oauth_state)
 );
