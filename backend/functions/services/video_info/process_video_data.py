@@ -264,90 +264,62 @@ def process_video_data(cloud_event):
 
             # 正常な場合は既存の処理を続行
             if is_new_video:
-                # video_masterテーブルへの同期
-                sync_rows = [
-                    {
-                        'video_id': message_data['video_id'],
-                        'url': message_data['url'],
-                        'username': message_data['username'],
-                        'display_name': message_data['display_name'],
-                        'cover_image_url': message_data['cover_image_url'],
-                        'description': message_data['description'],
-                        'hashtags': hashtags_str,
-                        'category': category_names,
-                        'product': product_names,
-                        'content_type': content_type,
-                        'created_at': message_data['created_at'],
-                        'play_count': message_data['play_count'],
-                        'likes_count': message_data['likes_count'],
-                        'comment_count': message_data['comment_count'],
-                        'save_count': message_data['save_count'],
-                        'music_title': message_data['music_title'],
-                        'playCountIncrease': play_count_increase,
-                        'likesCountIncrease': likes_count_increase,
-                        'commentCountIncrease': message_data['comment_count'],
-                        'saveCountIncrease': message_data['save_count']
-                    }
-                ]
-
                 insert_query = """
-                INSERT INTO video_master (
-                    video_id, url, username, display_name, cover_image_url,
-                    description, hashtags, category, product, content_type,
-                    created_at, playCountIncrease, likesCountIncrease,
-                    commentCountIncrease, saveCountIncrease, music_title,
-                    play_count, likes_count, comment_count, save_count
-                ) VALUES (
-                    %(video_id)s, %(url)s, %(username)s, %(display_name)s,
-                    %(cover_image_url)s, %(description)s, %(hashtags)s,
-                    %(category)s, %(product)s, %(content_type)s,
-                    %(created_at)s, %(playCountIncrease)s, %(likesCountIncrease)s,
-                    %(commentCountIncrease)s, %(saveCountIncrease)s,
-                    %(music_title)s, %(play_count)s, %(likes_count)s,
-                    %(comment_count)s, %(save_count)s
-                )
-                ON DUPLICATE KEY UPDATE
-                    url = VALUES(url),
-                    username = VALUES(username),
-                    display_name = VALUES(display_name),
-                    cover_image_url = VALUES(cover_image_url),
-                    description = VALUES(description),
-                    hashtags = VALUES(hashtags),
-                    category = VALUES(category),
-                    product = VALUES(product),
-                    content_type = VALUES(content_type),
-                    playCountIncrease = VALUES(playCountIncrease),
-                    likesCountIncrease = VALUES(likesCountIncrease),
-                    commentCountIncrease = VALUES(commentCountIncrease),
-                    saveCountIncrease = VALUES(saveCountIncrease),
-                    music_title = VALUES(music_title),
-                    play_count = VALUES(play_count),
-                    likes_count = VALUES(likes_count),
-                    comment_count = VALUES(comment_count),
-                    save_count = VALUES(save_count)
+                    INSERT INTO video_master (
+                        url, video_id, username, display_name, 
+                        cover_image_url, description, likes_count, play_count,
+                        comment_count, share_count, save_count, created_at,
+                        hashtags, duration, isViral, currentFetchDate,
+                        music_id, music_title, music_artist, category, product,
+                        status, content_type, file_path, folder_path, image_count,
+                        playCountIncrease
+                    ) VALUES (
+                        %(url)s, %(video_id)s, %(username)s, %(display_name)s, 
+                        %(cover_image_url)s, %(description)s, %(likes_count)s, %(play_count)s,
+                        %(comment_count)s, %(share_count)s, %(save_count)s, %(created_at)s,
+                        %(hashtags)s, %(duration)s, %(isViral)s, %(currentFetchDate)s,
+                        %(music_id)s, %(music_title)s, %(music_artist)s, %(category)s, %(product)s,
+                        %(status)s, %(content_type)s, %(file_path)s, %(folder_path)s, %(image_count)s,
+                        %(playCountIncrease)s
+                    )
                 """
+                
+                # ファイルパスとステータスの処理
+                file_path = message_data.get('file_path')
+                folder_path = message_data.get('folder_path')
+                image_count = message_data.get('image_count', 0)
 
-                # エラーハンドリングを追加した一括処理
-                try:
-                    execute_write_query(insert_query, sync_rows, is_bulk=True)
-                except Exception as e:
-                    logging.error(f"一括挿入に失敗したため、1件ずつ処理を試みます: {str(e)}")
-                    success_count = 0
-                    error_count = 0
-                    
-                    # 一括処理が失敗した場合は1件ずつ処理
-                    for row in sync_rows:
-                        try:
-                            execute_write_query(insert_query, row)
-                            success_count += 1
-                        except Exception as row_error:
-                            logging.error(f"行の処理に失敗: video_id={row['video_id']}, error={str(row_error)}")
-                            error_count += 1
-
-                    return {
-                        'status': 'partial_success',
-                        'message': f'Processed {len(sync_rows)} records: {success_count} succeeded, {error_count} failed'
-                    }
+                insert_params = {
+                    'url': message_data['url'],
+                    'video_id': message_data['video_id'],
+                    'username': message_data['username'],
+                    'display_name': message_data['display_name'],
+                    'cover_image_url': message_data['cover_image_url'],
+                    'description': message_data['description'],
+                    'likes_count': message_data['likes_count'],
+                    'play_count': message_data['play_count'],
+                    'comment_count': message_data['comment_count'],
+                    'share_count': message_data['share_count'],
+                    'save_count': message_data['save_count'],
+                    'created_at': message_data['created_at'],
+                    'hashtags': hashtags_str,
+                    'duration': message_data['duration'],
+                    'isViral': message_data['isViral'],
+                    'currentFetchDate': message_data['currentFetchDate'],
+                    'music_id': message_data['music_id'],
+                    'music_title': message_data['music_title'],
+                    'music_artist': message_data['music_artist'],
+                    'category': category_names,
+                    'product': product_names,
+                    'status': status,
+                    'content_type': content_type,
+                    'file_path': file_path,
+                    'folder_path': folder_path,
+                    'image_count': image_count,
+                    'playCountIncrease': play_count_increase
+                }
+                
+                execute_write_query(insert_query, insert_params)
             else:
                 # 既存動画の更新クエリ
                 update_query = """

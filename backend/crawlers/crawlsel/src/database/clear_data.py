@@ -14,7 +14,7 @@ def clear_all_data():
         # 各テーブルを空にする
         tables = [
             "crawler_accounts",
-            "favorite_users",
+            "account_list",
             "video_heavy_raw_data",
             "video_light_raw_data",
         ]

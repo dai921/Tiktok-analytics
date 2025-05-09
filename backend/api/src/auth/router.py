@@ -252,7 +252,7 @@ async def tiktok_auth(request: Request):
     
     if session_cookie:
         try:
-            payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+            payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET_KEY"), algorithms=["HS256"])
             user_id = payload.get("uid")
         except:
             # 無効なセッション
@@ -319,7 +319,7 @@ async def tiktok_auth(request: Request):
         conn.close()
     
     # セッションクッキーを設定
-    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
     
     # TikTokの認証URLを生成
     auth_url = (
@@ -359,7 +359,7 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         )
     
     try:
-        payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+        payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET_KEY"), algorithms=["HS256"])
         user_id = payload.get("uid")
         
         if not user_id:
@@ -476,10 +476,10 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         conn.close()
     
     # ログインセッションの発行
-    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
     
     # フロントエンドへリダイレクト
-    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-account"})
+    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-account?tiktok_connected=true"})
     response.set_cookie(
         key="session", 
         value=cookie, 

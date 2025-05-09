@@ -17,8 +17,8 @@ def test_login():
     
     try:
         # データベースから取得する代わりに、テスト用のアカウントを直接指定
-        username = "wskorng+01@gmail.com"
-        password = "<gitwn2%W$j?H93"
+        username = ""
+        password = ""
         
         # クローラーの初期化
         crawler = TikTokCrawler(username=username, password=password)

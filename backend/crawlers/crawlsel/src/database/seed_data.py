@@ -14,8 +14,8 @@ logger = setup_logger(__name__)
 def insert_crawler_accounts(db: Database) -> List[int]:
     crawler_accounts = [
         {
-            "username": "wskorng+01@gmail.com",
-            "password": "<gitwn2%W$j?H93",
+            "username": "",
+            "password": "",
             "proxy": None,
             "is_alive": True
         }
@@ -141,7 +141,7 @@ def insert_favorite_users(db: Database, crawler_account_id: int, max_users: int 
     
     for account in target_accounts:
         query = """
-            INSERT INTO favorite_users (
+            INSERT INTO account_list (
                 favorite_user_username,
                 crawler_account_id,
                 favorite_user_is_alive,

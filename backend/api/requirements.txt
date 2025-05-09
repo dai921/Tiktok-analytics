@@ -10,3 +10,5 @@ libpass[bcrypt]==1.9.0
 python-multipart==0.0.7
 email-validator==2.1.0
 google-cloud-secret-manager==2.16.1
+httpx
+PyJWT

@@ -1190,7 +1190,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
 }
 
 // APIのベースURL（環境変数から取得）
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // レスポンス型定義
 type ApiResponse<T> = {
