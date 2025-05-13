@@ -234,6 +234,8 @@ async def get_tiktok_videos(
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
         
+        print(f"[DEBUG] 動画取得: period={period}, start_date={start_date}, end_date={end_date}")
+        
         # データベースから動画情報を取得
         # 既存のテーブル構造（users_videos と users_video_daily_metrics_new）に合わせたクエリ
         query = text("""
@@ -241,11 +243,11 @@ async def get_tiktok_videos(
             v.video_id as id,
             v.caption as title,
             v.created_at as create_time,
-            COALESCE(latest.play_cnt, 0) as view_count,
-            COALESCE(SUM(m.play_cnt - prev.play_cnt), 0) as view_growth,
-            COALESCE(latest.like_cnt, 0) as like_count,
-            COALESCE(latest.comment_cnt, 0) as comment_count,
-            COALESCE(latest.share_cnt, 0) as share_count,
+            MAX(latest.play_cnt) as view_count,
+            COALESCE(SUM(CAST(m.play_cnt AS SIGNED) - CAST(IFNULL(prev.play_cnt, 0) AS SIGNED)), 0) as view_growth,
+            MAX(latest.like_cnt) as like_count,
+            MAX(latest.comment_cnt) as comment_count,
+            MAX(latest.share_cnt) as share_count,
             v.thumbnail_url
         FROM 
             users_videos v
@@ -268,7 +270,7 @@ async def get_tiktok_videos(
             v.open_id = :tiktok_user_id
             AND v.user_number = :user_number
         GROUP BY 
-            v.video_id
+            v.video_id, v.caption, v.created_at, v.thumbnail_url
         ORDER BY 
             v.created_at DESC
         """)
@@ -281,14 +283,20 @@ async def get_tiktok_videos(
             "user_number": user_number
         }
         
-        results = conn.execute(query, params).mappings().all()
+        try:
+            print(f"[DEBUG] 動画取得クエリパラメータ: {params}")
+            results = conn.execute(query, params).mappings().all()
+            print(f"[DEBUG] 動画取得結果件数: {len(results)}")
+        except Exception as e:
+            print(f"[ERROR] 動画クエリ実行エラー: {str(e)}")
+            raise
         
         videos = []
         for row in results:
             videos.append(TikTokVideo(
                 id=row['id'],
                 title=row['title'] or "タイトルなし",
-                createTime=row['create_time'].isoformat() if isinstance(row['create_time'], datetime) else row['create_time'],
+                createTime=row['create_time'].isoformat() if isinstance(row['create_time'], datetime) else (row['create_time'] or ""),
                 viewCount=int(row['view_count']) if row['view_count'] else 0,
                 viewGrowth=int(row['view_growth']) if row['view_growth'] else 0,
                 likeCount=int(row['like_count']) if row['like_count'] else 0,
