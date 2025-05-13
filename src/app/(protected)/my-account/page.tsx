@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TikTokStats, TikTokVideo, generateMockStats, generateMockVideos, mockApiDelay } from "@/lib/mock-data";
+import { TikTokStats, TikTokVideo } from "@/types/my-account";
 import Image from "next/image";
 
 // ISR・SSG を完全に無効化（常にリクエスト時に実行）
@@ -16,8 +16,8 @@ export default function MyAccountPage() {
   const [reportPeriod, setReportPeriod] = useState('30d');
   const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('viewGrowth');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // desc: 降順, asc: 昇順
-  const [ngrokUrl, setNgrokUrl] = useState('');
   
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
   /** ---------- 認可 URL ---------- */
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
     (typeof window !== 'undefined' ? window.location.origin : '');
@@ -35,67 +35,82 @@ export default function MyAccountPage() {
     client_key: process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'mock-client-key',
     redirect_uri: `${baseUrl}/api/auth/tiktok/callback`,
     response_type: 'code',
-    scope: ['user.info.basic', 'video.list', 'account_insights.read'].join(','),
+    scope: ['user.info.basic', 'video.list'].join(','),
     state: generateRandomState(),
   });
   const authorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
 
-  // モックデータを取得する関数
-  const fetchMockData = async (period: string = reportPeriod) => {
+  // バックエンドAPIからデータを取得する関数
+  const fetchApiData = async (period: string = reportPeriod) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      // 期間に応じてデータを調整する係数
-      let periodMultiplier = 1.0;
-      let growthMultiplier = 0.0;
-      
-      // 期間に応じて異なる数値を返す
-      if (period === '7d') {
-        periodMultiplier = 0.6; // 7日間は少なめ
-        growthMultiplier = 0.02; // 増加率 2%
-      } else if (period === '30d') {
-        periodMultiplier = 1.0; // 30日間は標準
-        growthMultiplier = 0.05; // 増加率 5%
-      } else {
-        periodMultiplier = 1.8; // 90日間は多め
-        growthMultiplier = 0.12; // 増加率 12%
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
       }
       
-      // わずかにランダム性を持たせる
-      const randomVariation = 0.9 + Math.random() * 0.2; // 0.9〜1.1の範囲
+      console.log(`[DEBUG] 認証トークン: ${token.substring(0, 10)}...（残りは安全のため省略）`);
+      console.log(`[DEBUG] API URL: ${API_BASE_URL}/api/tiktok/stats?period=${period}`);
       
-      // 基本統計値
-      const followerCount = Math.floor(12500 * periodMultiplier * randomVariation);
-      const likeCount = Math.floor(87300 * periodMultiplier * randomVariation);
-      const avgViewCount = Math.floor(5600 * periodMultiplier * randomVariation);
-      const engagementRate = 4.2 * (periodMultiplier > 1 ? 0.9 : 1.1) * randomVariation;
+      // アカウント統計情報の取得
+      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${period}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
-      // 期間内増加分
-      const followerGrowth = Math.floor(followerCount * growthMultiplier * (0.8 + Math.random() * 0.4));
-      const likeGrowth = Math.floor(likeCount * growthMultiplier * (0.8 + Math.random() * 0.4));
-      const viewGrowth = Math.floor(avgViewCount * 8 * growthMultiplier * (0.8 + Math.random() * 0.4));
+      console.log(`[DEBUG] 統計情報レスポンスステータス: ${statsResponse.status} ${statsResponse.statusText}`);
       
-      // API呼び出しをシミュレート
-      const mockStats = await mockApiDelay({
-        followerCount,
-        followerGrowth,
-        likeCount,
-        likeGrowth,
-        avgViewCount,
-        viewGrowth,
-        engagementRate
-      }, 800, 1500);
+      if (!statsResponse.ok) {
+        // レスポンスの詳細を取得
+        let errorDetail = '';
+        try {
+          const errorData = await statsResponse.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await statsResponse.text() || `ステータスコード: ${statsResponse.status}`;
+        }
+        console.error(`[ERROR] 統計情報取得エラー詳細: ${errorDetail}`);
+        throw new Error(`統計情報の取得に失敗しました: ${statsResponse.status} - ${errorDetail}`);
+      }
       
-      // 期間に応じて生成する動画数を変える
-      const videoCount = period === '7d' ? 3 : period === '30d' ? 8 : 15;
-      const mockVideos = await mockApiDelay(generateMockVideos(videoCount), 1200, 2000);
+      const statsData = await statsResponse.json();
+      console.log('[DEBUG] 取得した統計データ:', statsData);
+      setStats(statsData);
       
-      setStats(mockStats);
-      setVideos(mockVideos);
+      // 動画リストの取得
+      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}`);
+      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}`, {
+        headers: {
+          'Authorization': `Bearer ${token}` // 認証ヘッダーを追加
+        }
+      });
+      
+      console.log(`[DEBUG] 動画リストレスポンスステータス: ${videosResponse.status} ${videosResponse.statusText}`);
+      
+      if (!videosResponse.ok) {
+        // レスポンスの詳細を取得
+        let errorDetail = '';
+        try {
+          const errorData = await videosResponse.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await videosResponse.text() || `ステータスコード: ${videosResponse.status}`;
+        }
+        console.error(`[ERROR] 動画リスト取得エラー詳細: ${errorDetail}`);
+        throw new Error(`動画情報の取得に失敗しました: ${videosResponse.status} - ${errorDetail}`);
+      }
+      
+      const videosData = await videosResponse.json();
+      console.log('[DEBUG] 取得した動画データ:', videosData);
+      setVideos(videosData);
+      
     } catch (err) {
-      console.error('モックデータ取得エラー:', err);
-      setError('データの取得に失敗しました。再度お試しください。');
+      console.error('[ERROR] APIデータ取得エラー:', err);
+      setError(err instanceof Error ? err.message : 'データの取得に失敗しました。再度お試しください。');
     } finally {
       setIsLoading(false);
     }
@@ -108,23 +123,96 @@ export default function MyAccountPage() {
     const tiktokConnected = params.get('tiktok_connected');
     const code = params.get('code'); // TikTok認証後に返されるコード
     
-    // tiktok_connected=trueまたはcodeパラメータがある場合（認証後）
-    if (tiktokConnected === 'true' || code) {
+    // コードがある場合はバックエンドに送信して認証を完了する
+    if (code) {
+      const completeAuth = async () => {
+        setIsLoading(true);
+        try {
+          const response = await fetch('/api/auth/tiktok/complete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ code }),
+          });
+          
+          if (!response.ok) {
+            throw new Error('認証の完了に失敗しました');
+          }
+          
+          const data = await response.json();
+          if (data.success) {
+            setConnected(true);
+            
+            // URLからクエリパラメータを削除（履歴をきれいに保つため）
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+            
+            // 接続後にAPIデータを取得
+            await fetchApiData(reportPeriod);
+          } else {
+            setError(data.error || 'TikTokとの連携に失敗しました');
+          }
+        } catch (err) {
+          console.error('認証完了エラー:', err);
+          setError(err instanceof Error ? err.message : 'TikTokとの連携に失敗しました。再度お試しください。');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      
+      completeAuth();
+    } else if (tiktokConnected === 'true') {
       setConnected(true);
       
       // URLからクエリパラメータを削除（履歴をきれいに保つため）
       const newUrl = window.location.pathname;
       window.history.replaceState({}, document.title, newUrl);
       
-      // 接続後にモックデータを取得
-      fetchMockData(reportPeriod);
+      // 接続状態を確認
+      const checkConnection = async () => {
+        try {
+          const response = await fetch('/api/auth/tiktok/status');
+          const data = await response.json();
+          
+          if (data.connected) {
+            setConnected(true);
+            fetchApiData(reportPeriod);
+          } else {
+            setConnected(false);
+            setError('TikTokとの連携が無効です。再度連携してください。');
+          }
+        } catch (err) {
+          console.error('接続状態確認エラー:', err);
+          setError('接続状態の確認に失敗しました。再度お試しください。');
+        }
+      };
+      
+      checkConnection();
+    } else {
+      // 初回アクセス時は接続状態を確認
+      const checkInitialConnection = async () => {
+        try {
+          const response = await fetch('/api/auth/tiktok/status');
+          const data = await response.json();
+          
+          if (data.connected) {
+            setConnected(true);
+            fetchApiData(reportPeriod);
+          }
+        } catch (err) {
+          console.error('初期接続状態確認エラー:', err);
+        }
+      };
+      
+      checkInitialConnection();
     }
   }, []);
 
-  // 初回ロード時とデータ更新時にモックデータを取得
+  // 期間が変更されたらデータを再取得
   useEffect(() => {
     if (connected) {
-      fetchMockData(reportPeriod);
+      fetchApiData(reportPeriod);
     }
   }, [connected, reportPeriod]);
 
@@ -132,33 +220,167 @@ export default function MyAccountPage() {
   const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newPeriod = e.target.value;
     setReportPeriod(newPeriod);
-    // 注：useEffectで自動的にfetchMockDataが呼び出されるのでここでは呼び出さない
+    // 注：useEffectで自動的にfetchApiDataが呼び出されるのでここでは呼び出さない
   };
 
   // TikTokと連携する関数
-  const handleConnect = (e: React.MouseEvent) => {
+  const handleConnect = async (e: React.MouseEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     
-    // ここでURLを構築
-    const qs = new URLSearchParams();
-    qs.append('client_key', process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'sbaweandob9d0evs2s');
-    qs.append('redirect_uri', `${baseUrl}/api/auth/tiktok/callback`);
-    qs.append('response_type', 'code');
-    qs.append('scope', ['user.info.basic', 'video.list'].join(','));
-    qs.append('state', generateRandomState());
-    const generatedAuthorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
-    
-    console.log('TikTok OAuth設定情報:');
-    console.log('- 完全なauthorizeUrl:', generatedAuthorizeUrl);
-    
-    // 認証ページへリダイレクト
-    window.location.href = generatedAuthorizeUrl;
+    try {
+      // ---- 既存のOAuth認証処理（コメントアウト） ----
+      /*
+      // ここでURLを構築
+      const qs = new URLSearchParams();
+      qs.append('client_key', process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'sbaweandob9d0evs2s');
+      qs.append('redirect_uri', `${baseUrl}/api/auth/tiktok/callback`);
+      qs.append('response_type', 'code');
+      qs.append('scope', ['user.info.basic', 'video.list'].join(','));
+      qs.append('state', generateRandomState());
+      const generatedAuthorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
+      
+      // 認証ページへリダイレクト
+      window.location.href = generatedAuthorizeUrl;
+      */
+      
+      // ---- 既存APIからデータを直接取得 ----
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        console.error('[ERROR] 認証トークンがありません');
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+      
+      console.log(`[DEBUG] 連携処理開始 - 認証トークン: ${token.substring(0, 10)}...`);
+      console.log(`[DEBUG] 統計情報取得 URL: ${API_BASE_URL}/api/tiktok/stats?period=${reportPeriod}`);
+      
+      // アカウント統計情報の取得
+      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${reportPeriod}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log(`[DEBUG] 統計情報レスポンスステータス: ${statsResponse.status} ${statsResponse.statusText}`);
+      
+      if (!statsResponse.ok) {
+        // レスポンスの詳細を取得
+        let errorDetail = '';
+        try {
+          const errorData = await statsResponse.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await statsResponse.text() || `ステータスコード: ${statsResponse.status}`;
+        }
+        console.error(`[ERROR] 統計情報取得エラー詳細: ${errorDetail}`);
+        throw new Error(`統計情報の取得に失敗しました: ${statsResponse.status} - ${errorDetail}`);
+      }
+      
+      const statsData = await statsResponse.json();
+      console.log('[DEBUG] 取得した統計データ:', statsData);
+      setStats(statsData);
+      
+      // 動画リストの取得
+      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${reportPeriod}`);
+      
+      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${reportPeriod}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,  // 認証ヘッダーを追加
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log(`[DEBUG] 動画リストレスポンスステータス: ${videosResponse.status} ${videosResponse.statusText}`);
+      
+      if (!videosResponse.ok) {
+        // レスポンスの詳細を取得
+        let errorDetail = '';
+        try {
+          const errorData = await videosResponse.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await videosResponse.text() || `ステータスコード: ${videosResponse.status}`;
+        }
+        console.error(`[ERROR] 動画リスト取得エラー詳細: ${errorDetail}`);
+        throw new Error(`動画情報の取得に失敗しました: ${videosResponse.status} - ${errorDetail}`);
+      }
+      
+      const videosData = await videosResponse.json();
+      console.log('[DEBUG] 取得した動画データ:', videosData);
+      setVideos(videosData);
+      
+      // 連携成功とマーク
+      setConnected(true);
+      console.log('[DEBUG] 連携成功');
+      
+      // エラーをクリア
+      setError(null);
+    } catch (err) {
+      console.error('[ERROR] TikTok連携エラー:', err);
+      setError(err instanceof Error ? err.message : 'TikTokとの連携に失敗しました。再度お試しください。');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // モックレポートをダウンロードする関数
-  const handleDownloadReport = () => {
-    // 実際のダウンロードの代わりにアラートを表示
-    alert(`${reportPeriod}のレポートをダウンロードします（モック）`);
+  // レポートをダウンロードする関数
+  const handleDownloadReport = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+      
+      console.log(`[DEBUG] レポート生成 URL: ${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}`);
+      
+      // PDFレポート生成APIを呼び出し
+      const response = await fetch(`${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      console.log(`[DEBUG] レポート生成レスポンスステータス: ${response.status} ${response.statusText}`);
+      
+      if (!response.ok) {
+        // レスポンスの詳細を取得
+        let errorDetail = '';
+        try {
+          const errorData = await response.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await response.text() || `ステータスコード: ${response.status}`;
+        }
+        console.error(`[ERROR] レポート生成エラー詳細: ${errorDetail}`);
+        throw new Error(`レポート生成に失敗しました: ${response.status} - ${errorDetail}`);
+      }
+      
+      // Blobとしてレスポンスを取得
+      const blob = await response.blob();
+      console.log(`[DEBUG] レポートBlobサイズ: ${blob.size} bytes`);
+      
+      // ダウンロードリンクを作成
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tiktok-report-${reportPeriod}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // クリーンアップ
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.error('[ERROR] レポートダウンロードエラー:', err);
+      setError(err instanceof Error ? err.message : 'レポートの生成に失敗しました。再度お試しください。');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 数値フォーマット関数
@@ -213,14 +435,6 @@ export default function MyAccountPage() {
   const getSortedVideos = () => {
     // ソートされた動画のリスト
     return sortVideos(videos, sortField, sortDirection);
-  };
-
-  // ngrokが起動したらURLを保存する関数
-  const saveNgrokUrl = () => {
-    if (ngrokUrl) {
-      localStorage.setItem('ngrokUrl', ngrokUrl);
-      alert('ngrok URLを保存しました。TikTok連携ボタンを押してください。');
-    }
   };
 
   /** ---------- 以降 JSX ---------- */
@@ -321,15 +535,13 @@ export default function MyAccountPage() {
           <h2 className="text-xl font-bold text-white mb-4">アカウント連携</h2>
           <p className="text-gray-400 mb-4">
             分析を開始するには、TikTokビジネスアカウントと連携してください。
-            <br />
-            <span className="text-yellow-500 text-sm">※現在はモックデータで動作します</span>
           </p>
 
           {connected ? (
             <div>
               <p className="text-green-400 font-semibold mb-2">✅ 連携済み</p>
               <button 
-                onClick={() => fetchMockData()}
+                onClick={() => fetchApiData()}
                 className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
                 disabled={isLoading}
               >
@@ -354,8 +566,6 @@ export default function MyAccountPage() {
           <h2 className="text-xl font-bold text-white mb-4">レポート生成</h2>
           <p className="text-gray-400 mb-4">
             期間を選択してアカウントパフォーマンスレポートを生成します。
-            <br />
-            <span className="text-yellow-500 text-sm">※現在はモックデータで動作します</span>
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3">
@@ -385,7 +595,7 @@ export default function MyAccountPage() {
         </div>
       </div>
 
-      {/* モック統計の詳細表示 */}
+      {/* 統計の詳細表示 */}
       {connected && stats && videos.length > 0 && (
         <div className="mt-8 bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-xl">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
@@ -511,30 +721,6 @@ export default function MyAccountPage() {
           </div>
         </div>
       )}
-
-      <div className="mb-4 mt-4">
-        <label className="block text-gray-400 text-sm mb-2">
-          ngrok URL（開発環境用）
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={ngrokUrl}
-            onChange={(e) => setNgrokUrl(e.target.value)}
-            placeholder="https://xxxx.ngrok.io"
-            className="bg-gray-800 text-white rounded p-2 border border-gray-700 flex-grow"
-          />
-          <button
-            onClick={saveNgrokUrl}
-            className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-500 transition-colors"
-          >
-            保存
-          </button>
-        </div>
-        <p className="text-xs text-gray-500 mt-1">
-          ※ Docker起動後にngrokで取得したURLを入力してください
-        </p>
-      </div>
     </div>
   );
 }

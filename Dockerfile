@@ -15,7 +15,7 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_TT_CLIENT_KEY=sbaweandob9d0evs2s
 ENV TT_CLIENT_SECRET=EKD2f21EC70u140ZAqzssu70AQY8sDLi
-ENV NEXT_PUBLIC_BASE_URL=https://068c-240f-78-a212-1-28e3-a94e-b45-e0fa.ngrok-free.app
+ENV NEXT_PUBLIC_BASE_URL=https://5396-240f-78-a212-1-504c-7fd8-891-852f.ngrok-free.app
 # Next.jsのキャッシュをクリア
 RUN rm -rf .next
 # Next.jsアプリケーションのビルド（ESLintと型チェックをスキップ）
@@ -28,7 +28,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 # 実行時にも環境変数を定義する必要がある
 ENV TT_CLIENT_SECRET=EKD2f21EC70u140ZAqzssu70AQY8sDLi
-ENV NEXT_PUBLIC_BASE_URL=https://068c-240f-78-a212-1-28e3-a94e-b45-e0fa.ngrok-free.app
+ENV NEXT_PUBLIC_BASE_URL=https://5396-240f-78-a212-1-504c-7fd8-891-852f.ngrok-free.app
 ENV TT_CLIENT_KEY=sbaweandob9d0evs2s
 
 # 必要なファイルのみコピー

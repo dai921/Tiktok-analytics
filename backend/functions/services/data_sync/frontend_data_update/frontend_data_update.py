@@ -434,13 +434,13 @@ def scheduled_job(request):
 
     try:
         # 実行可能かチェック
-        if not check_last_execution():
-            logger.info("前回の実行から36時間経過していないため、処理をスキップします")
-            return {
-                "status": "skipped",
-                "message": "前回の実行から36時間経過していないため、処理をスキップします",
-                "execution_time": datetime.now().isoformat()
-            }, 200
+        # if not check_last_execution():
+        #     logger.info("前回の実行から36時間経過していないため、処理をスキップします")
+        #     return {
+        #         "status": "skipped",
+        #         "message": "前回の実行から36時間経過していないため、処理をスキップします",
+        #         "execution_time": datetime.now().isoformat()
+        #     }, 200
             
         # データ更新の実行
         result = update_frontend_from_master()

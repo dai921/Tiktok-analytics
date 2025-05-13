@@ -5,13 +5,6 @@ export async function GET(request: Request) {
   const code = searchParams.get('code');
   const stateParam = searchParams.get('state');
   
-  // 環境変数の値をログ出力
-  console.log('環境変数の値:');
-  console.log('NEXT_PUBLIC_TT_CLIENT_KEY:', process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'undefined');
-  console.log('TT_CLIENT_SECRET:', process.env.TT_CLIENT_SECRET || 'undefined');
-  console.log('NEXT_PUBLIC_BASE_URL:', process.env.NEXT_PUBLIC_BASE_URL || 'undefined');
-  console.log('認証コード:', code || 'undefined');
-  
   if (!code) {
     return NextResponse.redirect('/my-account?error=no_code');
   }
@@ -42,13 +35,6 @@ export async function GET(request: Request) {
       }),
     });
     
-    // リクエスト内容とレスポンスをログ出力
-    console.log('routeリクエスト内容:', {
-      client_key: process.env.NEXT_PUBLIC_TT_CLIENT_KEY!,
-      client_secret: '***秘密***',
-      code,
-      redirect_uri: redirectUrl,
-    });
     
     // レスポンスのステータスをチェック
     if (!tokenResponse.ok) {

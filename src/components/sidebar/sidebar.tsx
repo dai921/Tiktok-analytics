@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Logo } from "@/components/ui/logo";
 import { useAuth } from '@/lib/auth-context';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // アイコンをインポート
 import { 
@@ -17,7 +17,8 @@ import {
   LogOut,
   FileText,
   Users,
-  ChevronDown
+  ChevronDown,
+  X
 } from 'lucide-react';
 
 type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users';
@@ -41,6 +42,22 @@ export function Sidebar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isTrendsOpen, setIsTrendsOpen] = useState(false);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  
+  // 画面幅を監視するステート
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // 画面幅の変更を検知
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth < 768); // 768px未満をモバイルとみなす
+    };
+    
+    checkScreenSize(); // 初期チェック
+    window.addEventListener('resize', checkScreenSize);
+    
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -68,95 +85,120 @@ export function Sidebar() {
   };
   
   return (
-    <aside className="w-64 h-screen bg-black border-r border-gray-800 flex flex-col">
-      <div className="p-4">
-        <Logo className="w-full max-w-[200px]" variant="sidebar" />
-      </div>
+    <>
+      {/* モバイル用メニューボタン */}
+      <button 
+        onClick={() => setIsMobileOpen(!isMobileOpen)}
+        className="md:hidden fixed top-4 left-4 z-50 bg-black p-2 rounded-md"
+      >
+        {isMobileOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
       
-      <nav className="mt-8 flex-1">
-        <SidebarItem
-          href="/dashboard"
-          icon="LayoutDashboard"
-          label="ダッシュボード"
-          active={pathname === '/dashboard'}
-        />
-        <div 
-          className="relative group"
-          onMouseEnter={() => setIsTrendsOpen(true)}
-          onMouseLeave={() => setIsTrendsOpen(false)}
-        >
+      {/* サイドバー */}
+      <aside className={cn(
+        "bg-black border-r border-gray-800 flex flex-col",
+        "fixed md:static z-40 h-screen transition-all duration-300",
+        isMobile 
+          ? isMobileOpen ? "w-64 left-0" : "w-64 -left-64" 
+          : "w-64"
+      )}>
+        <div className="p-4">
+          <Logo className="w-full max-w-[200px]" variant="sidebar" />
+        </div>
+        
+        <nav className="mt-8 flex-1">
           <SidebarItem
-            icon="LineChart"
-            label="PR動画トレンド"
-            active={pathname.startsWith('/trends')}
+            href="/dashboard"
+            icon="LayoutDashboard"
+            label="ダッシュボード"
+            active={pathname === '/dashboard'}
           />
           <div 
-            className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[160px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+            className="relative group"
+            onMouseEnter={() => setIsTrendsOpen(true)}
+            onMouseLeave={() => setIsTrendsOpen(false)}
           >
-            <Link href="/trends/product">
-              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
-                商材トレンド
-              </div>
-            </Link>
-            <Link href="/trends/genre">
-              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
-                ジャンルトレンド
-              </div>
-            </Link>
+            <SidebarItem
+              icon="LineChart"
+              label="PR動画トレンド"
+              active={pathname.startsWith('/trends')}
+            />
+            <div 
+              className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[160px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+            >
+              <Link href="/trends/product">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
+                  商材トレンド
+                </div>
+              </Link>
+              <Link href="/trends/genre">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
+                  ジャンルトレンド
+                </div>
+              </Link>
+            </div>
           </div>
-        </div>
-        <div 
-          className="relative group"
-          onMouseEnter={() => setIsWatchlistOpen(true)}
-          onMouseLeave={() => setIsWatchlistOpen(false)}
-        >
-          <SidebarItem
-            icon="Eye"
-            label="ウォッチリスト"
-            active={pathname.startsWith('/watchlist')}
-          />
           <div 
-            className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[200px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+            className="relative group"
+            onMouseEnter={() => setIsWatchlistOpen(true)}
+            onMouseLeave={() => setIsWatchlistOpen(false)}
           >
-            <Link href="/watchlist/videos">
-              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
-                動画ウォッチリスト
-              </div>
-            </Link>
-            <Link href="/watchlist/accounts">
-              <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
-                アカウントウォッチリスト
-              </div>
-            </Link>
+            <SidebarItem
+              icon="Eye"
+              label="ウォッチリスト"
+              active={pathname.startsWith('/watchlist')}
+            />
+            <div 
+              className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[200px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+            >
+              <Link href="/watchlist/videos">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
+                  動画ウォッチリスト
+                </div>
+              </Link>
+              <Link href="/watchlist/accounts">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
+                  アカウントウォッチリスト
+                </div>
+              </Link>
+            </div>
           </div>
-        </div>
-        {/* <SidebarItem
-          href="/my-account"
-          icon="Users"
-          label="自アカウント分析"
-          active={pathname.startsWith('/my-account')}
-        /> */}
-        <SidebarItem
-          href="#"
-          icon="FileText"
-          label="台本作成"
-          active={false}
-          disabled={true}
-          comingSoon={true}
-        />
-      </nav>
+          {/* <SidebarItem
+            href="/my-account"
+            icon="Users"
+            label="自アカウント分析"
+            active={pathname.startsWith('/my-account')}
+          /> */}
+          <SidebarItem
+            href="#"
+            icon="FileText"
+            label="台本作成"
+            active={false}
+            disabled={true}
+            comingSoon={true}
+          />
+        </nav>
 
-      <div className="border-t border-gray-800 pt-4 pb-4">
-        <SidebarItem
-          href="#"
-          icon="LogOut"
-          label={isLoggingOut ? "ログアウト中..." : "ログアウト"}
-          active={false}
-          onClick={handleLogout}
-          disabled={isLoggingOut}
+        <div className="border-t border-gray-800 pt-4 pb-4">
+          <SidebarItem
+            href="#"
+            icon="LogOut"
+            label={isLoggingOut ? "ログアウト中..." : "ログアウト"}
+            active={false}
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          />
+        </div>
+      </aside>
+      
+      {/* オーバーレイ（モバイル時サイドバー表示中） */}
+      {isMobileOpen && isMobile && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setIsMobileOpen(false)}
         />
-      </div>
-    </aside>
+      )}
+    </>
   );
 }
 
