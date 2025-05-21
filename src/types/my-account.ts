@@ -16,6 +16,18 @@ export interface TikTokStats {
     viewGrowth: number;
     /** エンゲージメント率（%） */
     engagementRate: number;
+    /** アカウントタイプ */
+    account_type?: string;
+    /** 主なビデオタイプ（アフィリエイトの場合） */
+    mainly_video_type?: string;
+    /** 総再生数 - フロントエンドで計算 */
+    totalPlayCount?: number;
+    /** 総コメント数 - フロントエンドで計算 */
+    commentCount?: number;
+    /** 総保存数 - フロントエンドで計算 */
+    saveCount?: number;
+    /** 動画数 - フロントエンドで計算 */
+    videosCount?: number;
   }
   
   /**

@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class TikTokUserConnection:
     def __init__(self, id=None, user_id=None, tiktok_open_id=None, 
                  tiktok_access_token=None, tiktok_refresh_token=None, 
-                 expires_at=None, created_at=None, updated_at=None):
+                 expires_at=None, created_at=None, updated_at=None, display_name=None, linked_at=None, account_type=None, mainly_video_type=None):
         self.id = id
         self.user_id = user_id
         self.tiktok_open_id = tiktok_open_id
@@ -18,6 +18,10 @@ class TikTokUserConnection:
         self.expires_at = expires_at
         self.created_at = created_at
         self.updated_at = updated_at
+        self.display_name = display_name    
+        self.linked_at = linked_at
+        self.account_type = account_type
+        self.mainly_video_type = mainly_video_type
 
 class TikTokRepository:
     def __init__(self):
@@ -75,7 +79,9 @@ class TikTokRepository:
                     refresh_token, 
                     expires_at, 
                     display_name,
-                    linked_at
+                    linked_at,
+                    account_type,
+                    mainly_video_type
                 FROM users_tiktok_accounts
                 WHERE user_number = :user_number
                 ORDER BY linked_at DESC
@@ -91,14 +97,17 @@ class TikTokRepository:
                 return None
 
             return TikTokUserConnection(
-                id=None,  # このテーブルにはidカラムがない
+                id=None,
                 user_id=user_id,
                 tiktok_open_id=row[1],  # open_id
                 tiktok_access_token=row[2],  # access_token
                 tiktok_refresh_token=row[3],  # refresh_token
                 expires_at=row[4],  # expires_at
+                display_name=row[5],  # display_name
                 created_at=row[6],  # linked_at
-                updated_at=None  # このテーブルにはupdated_atカラムがない
+                updated_at=None,
+                account_type=row[7],  # account_type
+                mainly_video_type=row[8]  # mainly_video_type
             )
         except Exception as e:
             print(f"[ERROR] get_user_connection エラー: {str(e)}")
@@ -107,6 +116,51 @@ class TikTokRepository:
             if conn:
                 conn.close()
     
+    async def disconnect_user_account(self, user_id: str, open_id: str) -> bool:
+        """ユーザーのTikTokアカウント連携を解除する"""
+        print(f"[DEBUG] disconnect_user_account 開始: user_id={user_id}, open_id={open_id}")
+        conn = None
+        try:
+            # まずuser_idからuser_numberを取得
+            user_number = await self.get_user_id_mapping(user_id)
+            if not user_number:
+                print(f"[ERROR] ユーザーID {user_id} のマッピングが見つかりません")
+                return False
+                
+            print(f"[DEBUG] ユーザーマッピング: user_id={user_id} -> user_number={user_number}")
+            
+            conn = get_db_connection()
+            
+            # users_tiktok_accountsテーブルから削除
+            query = text("""
+                DELETE FROM users_tiktok_accounts
+                WHERE user_number = :user_number AND open_id = :open_id
+            """)
+            
+            print(f"[DEBUG] SQLクエリ実行: {query.text.strip()} [params: user_number={user_number}, open_id={open_id}]")
+            result = conn.execute(query, {
+                "user_number": user_number,
+                "open_id": open_id
+            })
+            
+            conn.commit()
+            
+            # 削除された行数を確認
+            if result.rowcount > 0:
+                print(f"[DEBUG] 連携解除成功: user_number={user_number}, open_id={open_id}, 削除された行数: {result.rowcount}")
+                return True
+            else:
+                print(f"[WARNING] 連携解除対象が見つかりませんでした: user_number={user_number}, open_id={open_id}")
+                return False
+        except Exception as e:
+            print(f"[ERROR] disconnect_user_account エラー: {str(e)}")
+            if conn:
+                conn.rollback()
+            return False
+        finally:
+            if conn:
+                conn.close()
+
     async def save_user_connection(self, connection: TikTokUserConnection) -> bool:
         """ユーザーのTikTok連携情報をusers_tiktok_accountsテーブルに保存する"""
         print(f"[DEBUG] save_user_connection 開始: user_id={connection.user_id}")

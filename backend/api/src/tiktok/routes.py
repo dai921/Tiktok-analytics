@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 import random
 import json
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import requests
 from ..auth.router import get_current_user
 from ..models.tiktok import TikTokStats, TikTokVideo, TikTokUserConnection
@@ -18,6 +18,74 @@ router = APIRouter(prefix="/api/tiktok", tags=["tiktok"])
 
 # リポジトリのグローバルインスタンスを作成
 tiktok_repository = TikTokRepository()
+
+@router.get("/connection/status")
+async def get_tiktok_connection_status(user = Depends(get_current_user)):
+    """TikTokアカウントの連携状態を取得します"""
+    print(f"[DEBUG] get_tiktok_connection_status 開始")
+    
+    if not user:
+        print("[ERROR] ユーザー認証失敗")
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    
+    try:
+        print(f"[DEBUG] TikTok連携情報取得開始: user_id={user.id}")
+        # データベースからTikTokアカウント連携情報を取得
+        tiktok_connection = await tiktok_repository.get_user_connection(user.id)
+        
+        print(f"[DEBUG] TikTok連携情報取得結果: {tiktok_connection}")
+        
+        if not tiktok_connection:
+            print(f"[INFO] TikTok連携情報が見つかりません: user_id={user.id}")
+            return {"connected": False}
+        
+        # 連携済みの場合はアカウント情報を返す
+        return {
+            "connected": True,
+            "account": {
+                "id": "1",  # 固定ID（必要に応じて変更）
+                "openId": tiktok_connection.tiktok_open_id,
+                "displayName": tiktok_connection.display_name or "TikTokアカウント",
+                "linkedAt": tiktok_connection.linked_at.isoformat() if tiktok_connection.linked_at else datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        print(f"[ERROR] TikTok連携状態取得エラー: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TikTok連携状態の取得に失敗しました: {str(e)}")
+
+@router.post("/connection/disconnect")
+async def disconnect_tiktok_account(
+    data: Dict[str, Any] = Body(...),
+    user = Depends(get_current_user)
+):
+    """TikTokアカウントの連携を解除します"""
+    print(f"[DEBUG] disconnect_tiktok_account 開始")
+    
+    if not user:
+        print("[ERROR] ユーザー認証失敗")
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    
+    try:
+        print(f"[DEBUG] TikTok連携解除開始: user_id={user.id}, data={data}")
+        open_id = data.get("openId")
+        
+        if not open_id:
+            print("[ERROR] openIdが提供されていません")
+            raise HTTPException(status_code=400, detail="openIdは必須です")
+        
+        # リポジトリに連携解除メソッドが実装されていると仮定
+        # 実際の実装に合わせて修正が必要かもしれません
+        success = await tiktok_repository.disconnect_user_account(user.id, open_id)
+        
+        if not success:
+            print(f"[ERROR] 連携解除に失敗しました: user_id={user.id}, open_id={open_id}")
+            raise HTTPException(status_code=404, detail="指定されたアカウント連携が見つかりません")
+        
+        print(f"[DEBUG] TikTok連携解除成功: user_id={user.id}, open_id={open_id}")
+        return {"success": True, "message": "アカウント連携を解除しました"}
+    except Exception as e:
+        print(f"[ERROR] TikTok連携解除エラー: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TikTok連携解除に失敗しました: {str(e)}")
 
 @router.get("/stats")
 async def get_tiktok_stats(
@@ -186,7 +254,9 @@ async def get_tiktok_stats(
                 likeGrowth=int(result['like_growth']) if result['like_growth'] else 0,
                 avgViewCount=int(result['avg_view_count']) if result['avg_view_count'] else 0,
                 viewGrowth=int(result['view_growth']) if result['view_growth'] else 0,
-                engagementRate=float(engagement_rate)
+                engagementRate=float(engagement_rate),
+                account_type=tiktok_connection.account_type,
+                mainly_video_type=tiktok_connection.mainly_video_type
             )
             print(f"[DEBUG] 結果整形完了: {stats}")
         except Exception as fmt_err:
@@ -244,7 +314,7 @@ async def get_tiktok_videos(
             v.caption as title,
             v.created_at as create_time,
             MAX(latest.play_cnt) as view_count,
-            COALESCE(SUM(CAST(m.play_cnt AS SIGNED) - CAST(IFNULL(prev.play_cnt, 0) AS SIGNED)), 0) as view_growth,
+            COALESCE(CAST(MAX(latest.play_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.play_cnt, 0)) AS SIGNED), 0) as view_growth,
             MAX(latest.like_cnt) as like_count,
             MAX(latest.comment_cnt) as comment_count,
             MAX(latest.share_cnt) as share_count,

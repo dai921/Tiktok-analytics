@@ -33,7 +33,7 @@ export function Header({ showFilterClear = false }: HeaderProps) {
         <div className="flex items-center gap-3">
           <UserIcon size={20} className="text-gray-300" />
           <span className="text-base font-medium">
-            {isLoading ? '読み込み中...' : userInfo?.name || 'ゲスト'}
+            {isLoading ? '読み込み中...' : (userInfo?.name || 'ゲスト') + '様'}
           </span>
         </div>
       </div>

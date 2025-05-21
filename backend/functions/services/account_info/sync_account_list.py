@@ -127,7 +127,7 @@ def process_account_list():
 
         # スプレッドシートからデータを読み取る（アカウント作業用シート）
         print("アカウント作業用シートデータ取得開始")
-        range_name = 'アカウント作業用シート!B:I'  # B列からI列までの範囲を取得
+        range_name = 'アカウント作業用シート!B:K'  # B列からK列までの範囲を取得
         
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -151,6 +151,8 @@ def process_account_list():
                 account_type = row[5].strip() if len(row) > 5 and row[5] else None
                 crawler_account_id = row[6].strip() if len(row) > 6 and row[6] else None
                 parent_type = row[8].strip() if len(row) > 8 and row[8] else None
+                video_crawler_id = row[9].strip() if len(row) > 9 and row[9] else None
+
                 # 必須項目のチェック
                 if not account_url or not favorite_user_username:
                     print(f"警告: 必須項目が不足しているためスキップします: {row}")
@@ -174,7 +176,8 @@ def process_account_list():
                             account_type = %(account_type)s,
                             crawler_account_id = %(crawler_account_id)s,
                             updated_at = NOW(),
-                            parent_type = %(parent_type)s
+                            parent_type = %(parent_type)s,
+                            video_crawler_id = %(video_crawler_id)s
                         WHERE account_url = %(account_url)s
                     '''
                     update_params = {
@@ -182,7 +185,8 @@ def process_account_list():
                         'favorite_user_username': favorite_user_username,
                         'account_type': account_type,
                         'crawler_account_id': crawler_account_id,
-                        'parent_type': parent_type
+                        'parent_type': parent_type,
+                        'video_crawler_id': video_crawler_id
                     }
                     
                     affected_rows = execute_write_query(update_query, update_params)
@@ -193,16 +197,17 @@ def process_account_list():
                     insert_query = '''
                         INSERT INTO account_list 
                         (account_url, favorite_user_username, account_type, 
-                         crawler_account_id, created_at, updated_at, parent_type)
+                         crawler_account_id, created_at, updated_at, parent_type, video_crawler_id)
                         VALUES (%(account_url)s, %(favorite_user_username)s, %(account_type)s,
-                                %(crawler_account_id)s,  NOW(), NOW(), %(parent_type)s)
+                                %(crawler_account_id)s,  NOW(), NOW(), %(parent_type)s, %(video_crawler_id)s)
                     '''
                     insert_params = {
                         'account_url': account_url,
                         'favorite_user_username': favorite_user_username,
                         'account_type': account_type,
                         'crawler_account_id': crawler_account_id,
-                        'parent_type': parent_type
+                        'parent_type': parent_type,
+                        'video_crawler_id': video_crawler_id
                     }
                     
                     affected_rows = execute_write_query(insert_query, insert_params)

@@ -111,7 +111,7 @@ def process_crawler_accounts():
 
         # スプレッドシートからデータを読み取る（crawler_account_list）
         print("crawler_account_listシートデータ取得開始")
-        range_name = 'crawler_account_list!B:F'  # B列からF列までの範囲を取得
+        range_name = 'crawler_account_list!B:G'  # B列からF列までの範囲を取得
         
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -134,6 +134,7 @@ def process_crawler_accounts():
                 password = row[1].strip() if len(row) > 1 and row[1] else None
                 proxy = row[3].strip() if len(row) > 3 and row[3] else None
                 is_alive = row[4].strip() if len(row) > 4 and row[4] else None
+                video_crawler_id = row[5].strip() if len(row) > 5 and row[5] else None
 
                 # 必須項目のチェック
                 if not username or not password:
@@ -157,14 +158,16 @@ def process_crawler_accounts():
                         SET password = %(password)s,
                             proxy = %(proxy)s,
                             is_alive = %(is_alive)s,
-                            updated_at = NOW()
+                            updated_at = NOW(),
+                            video_crawler_id = %(video_crawler_id)s
                         WHERE username = %(username)s
                     '''
                     update_params = {
                         'username': username,
                         'password': password,
                         'proxy': proxy,
-                        'is_alive': is_alive
+                        'is_alive': is_alive,
+                        'video_crawler_id': video_crawler_id
                     }
                     
                     affected_rows = execute_write_query(update_query, update_params)
@@ -174,15 +177,16 @@ def process_crawler_accounts():
                     # 新規挿入
                     insert_query = '''
                         INSERT INTO crawler_accounts 
-                        (username, password, proxy, is_alive, created_at, updated_at)
+                        (username, password, proxy, is_alive, created_at, updated_at, video_crawler_id)
                         VALUES (%(username)s, %(password)s, %(proxy)s, 
-                                %(is_alive)s, NOW(), NOW())
+                                %(is_alive)s, NOW(), NOW(), %(video_crawler_id)s)
                     '''
                     insert_params = {
                         'username': username,
                         'password': password,
                         'proxy': proxy,
-                        'is_alive': is_alive
+                        'is_alive': is_alive,
+                        'video_crawler_id': video_crawler_id
                     }
                     
                     affected_rows = execute_write_query(insert_query, insert_params)

@@ -135,6 +135,9 @@ def update_frontend_from_master() -> Dict[str, Any]:
             vm.status != 'deleted'
             AND vm.created_at IS NOT NULL
             AND vm.front_needs_update = 1
+            AND vm.play_count is not null
+            AND vm.account_type is not null
+            AND vm.cover_image_url is not null
             AND vm.created_at >= %(min_date)s
             AND vm.created_at <= """ + max_date + """
             AND vm.id > %(last_id)s
@@ -376,53 +379,6 @@ def reset_cursor(processor_name, target_table):
     
     execute_write_query(query, (processor_name, target_table))
 
-def check_last_execution():
-    """
-    前回の実行時刻をチェックし、36時間以上経過しているか確認する
-    Returns:
-        bool: 実行可能な場合はTrue、そうでない場合はFalse
-    """
-    try:
-        query = """
-            SELECT last_run 
-            FROM scheduler_job_info 
-            WHERE job_name = 'frontend_data_update'
-        """
-        result = execute_query(query)
-        
-        if not result:
-            # 初回実行の場合、レコードを作成して実行可能とする
-            insert_query = """
-                INSERT INTO scheduler_job_info (job_name, last_run)
-                VALUES ('frontend_data_update', NOW())
-            """
-            execute_write_query(insert_query)
-            logger.info("初回実行のため、実行を許可します")
-            return True
-        
-        last_run = result[0]['last_run']
-        current_time = datetime.now()
-        time_diff = current_time - last_run
-        
-        # 36時間以上経過しているかチェック
-        if time_diff.total_seconds() >= 36 * 3600:
-            # last_runを更新
-            update_query = """
-                UPDATE scheduler_job_info 
-                SET last_run = NOW()
-                WHERE job_name = 'frontend_data_update'
-            """
-            execute_write_query(update_query)
-            logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間経過しているため、実行を許可します")
-            return True
-        else:
-            logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間しか経過していないため、実行をスキップします")
-            return False
-            
-    except Exception as e:
-        logger.error(f"実行時間チェックでエラーが発生しました: {str(e)}")
-        return True  # エラーの場合は安全のため実行を許可
-
 # Cloud Functions エントリーポイント
 @functions_framework.http
 def scheduled_job(request):
@@ -433,15 +389,6 @@ def scheduled_job(request):
     logger.info(f"定期実行開始: {start_time}")
 
     try:
-        # 実行可能かチェック
-        # if not check_last_execution():
-        #     logger.info("前回の実行から36時間経過していないため、処理をスキップします")
-        #     return {
-        #         "status": "skipped",
-        #         "message": "前回の実行から36時間経過していないため、処理をスキップします",
-        #         "execution_time": datetime.now().isoformat()
-        #     }, 200
-            
         # データ更新の実行
         result = update_frontend_from_master()
         
@@ -454,6 +401,63 @@ def scheduled_job(request):
         error_message = f"予期せぬエラーが発生: {str(e)}"
         logger.error(error_message)
         raise
+
+# Pub/Subメッセージで起動するためのエントリーポイント
+def process_pubsub_message(event, context):
+    """
+    Pub/Subメッセージで実行される関数
+    Args:
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
+    Returns:
+        tuple: (結果データ, HTTPステータスコード)
+    """
+    logger.info("==== frontend_data_update処理開始 ====")
+    
+    try:
+        # Pub/Subメッセージの処理
+        if 'data' in event:
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            message = json.loads(message_data)
+            logger.info(f"Pub/Subメッセージを受信: {message}")
+        else:
+            logger.error("データなしのメッセージを受信")
+            return {
+                'status': 'error',
+                'message': 'No data in message'
+            }, 400
+
+        # メッセージのステータスが'start'の場合、処理を開始
+        if message.get("status") == "start":
+            result = update_frontend_from_master()
+            status_code = 200 if result.get('status') == 'success' else 500
+            logger.info(f"処理完了 - ステータス: {status_code}")
+            logger.info(f"処理結果: {result}")
+            return result, status_code
+        else:
+            logger.info(f"処理対象外のメッセージです: {message}")
+            return {
+                "status": "ignored", 
+                "message": "処理対象外のメッセージです"
+            }, 200
+            
+    except ValueError as e:
+        logger.error(f"不正なリクエスト: {str(e)}")
+        return {
+            'status': 'error',
+            'message': f'Invalid request: {str(e)}'
+        }, 400
+        
+    except Exception as e:
+        logger.error(f"エラー発生: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            'status': 'error',
+            'message': str(e)
+        }, 500
+    finally:
+        logger.info("==== frontend_data_update処理終了 ====")
 
 if __name__ == "__main__":
     # ローカルテスト用

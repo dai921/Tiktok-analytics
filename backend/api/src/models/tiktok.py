@@ -11,6 +11,8 @@ class TikTokStats(BaseModel):
     avgViewCount: int = Field(..., description="平均視聴回数/動画")
     viewGrowth: int = Field(..., description="期間内の総視聴数増加")
     engagementRate: float = Field(..., description="エンゲージメント率（%）")
+    account_type: Optional[str] = Field(None, description="アカウントタイプ")
+    mainly_video_type: Optional[str] = Field(None, description="主なビデオタイプ（アフィリエイトの場合）")
 
 class TikTokVideo(BaseModel):
     """TikTok 動画情報のモデル"""

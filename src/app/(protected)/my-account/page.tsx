@@ -3,9 +3,18 @@
 import { useEffect, useState } from "react";
 import { TikTokStats, TikTokVideo } from "@/types/my-account";
 import Image from "next/image";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 // ISR・SSG を完全に無効化（常にリクエスト時に実行）
 export const dynamic = 'force-dynamic';
+
+// TikTokアカウント情報の型定義
+interface TikTokAccount {
+  id: string;
+  openId: string;
+  displayName: string;
+  linkedAt: string;
+}
 
 export default function MyAccountPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -16,6 +25,17 @@ export default function MyAccountPage() {
   const [reportPeriod, setReportPeriod] = useState('30d');
   const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('viewGrowth');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // desc: 降順, asc: 昇順
+  const [activeTab, setActiveTab] = useState<'stats' | 'videos'>('stats'); // 追加：タブUIのstate
+  
+  // アカウント情報関連の状態
+  const [accounts, setAccounts] = useState<TikTokAccount[]>([]);
+  const [activeAccount, setActiveAccount] = useState<TikTokAccount | null>(null);
+  
+  // 日付選択用の状態
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30日前
+    end: new Date() // 今日
+  });
   
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
   /** ---------- 認可 URL ---------- */
@@ -40,8 +60,98 @@ export default function MyAccountPage() {
   });
   const authorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
 
+  // 連携済みアカウント一覧を取得する関数
+  const fetchConnectedAccounts = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+      
+      // TikTok連携状態を確認
+      const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        let errorDetail = '';
+        try {
+          const errorData = await response.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await response.text() || `ステータスコード: ${response.status}`;
+        }
+        console.error(`[ERROR] TikTok連携状態取得エラー詳細: ${errorDetail}`);
+        return;
+      }
+      
+      const statusData = await response.json();
+      console.log('[INFO] 取得したTikTok連携状態:', statusData);
+      
+      if (statusData.connected && statusData.account) {
+        // アカウント情報を設定
+        const account = {
+          id: statusData.account.id || '1',
+          openId: statusData.account.openId || statusData.account.open_id || 'unknown',
+          displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
+          linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
+        };
+        
+        console.log('[INFO] アカウント情報:', account);
+        setAccounts([account]);
+        setActiveAccount(account);
+        setConnected(true);
+        
+        // アカウントの統計データと動画データを取得
+        await fetchApiData(reportPeriod, account.openId);
+      } else {
+        setConnected(false);
+      }
+    } catch (err) {
+      console.error('[ERROR] TikTok連携状態取得エラー:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // アカウントを切り替える関数
+  const handleAccountChange = async (account: TikTokAccount) => {
+    setIsLoading(true);
+    setActiveAccount(account);
+    await fetchApiData(reportPeriod, account.openId);
+    setIsLoading(false);
+  };
+
+  // TikTokと連携する関数
+  const handleConnect = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    try {
+      // セッション情報を使ってデータを取得
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+      
+      // 連携状態を設定してDBからデータを取得
+      fetchConnectedAccounts();
+      
+    } catch (err) {
+      console.error('[ERROR] 連携処理エラー:', err);
+      setError(err instanceof Error ? err.message : 'データの取得に失敗しました。');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // バックエンドAPIからデータを取得する関数
-  const fetchApiData = async (period: string = reportPeriod) => {
+  const fetchApiData = async (period: string = reportPeriod, openId?: string) => {
     setIsLoading(true);
     setError(null);
     
@@ -52,11 +162,14 @@ export default function MyAccountPage() {
         return;
       }
       
+      // openIdパラメータを追加（指定されている場合）
+      const openIdParam = openId ? `&open_id=${openId}` : '';
+      
       console.log(`[DEBUG] 認証トークン: ${token.substring(0, 10)}...（残りは安全のため省略）`);
-      console.log(`[DEBUG] API URL: ${API_BASE_URL}/api/tiktok/stats?period=${period}`);
+      console.log(`[DEBUG] API URL: ${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`);
       
       // アカウント統計情報の取得
-      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${period}`, {
+      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -79,11 +192,10 @@ export default function MyAccountPage() {
       
       const statsData = await statsResponse.json();
       console.log('[DEBUG] 取得した統計データ:', statsData);
-      setStats(statsData);
       
       // 動画リストの取得
-      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}`);
-      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}`, {
+      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}`);
+      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}`, {
         headers: {
           'Authorization': `Bearer ${token}` // 認証ヘッダーを追加
         }
@@ -106,6 +218,24 @@ export default function MyAccountPage() {
       
       const videosData = await videosResponse.json();
       console.log('[DEBUG] 取得した動画データ:', videosData);
+      
+      // 統計データを計算・拡張
+      if (statsData && videosData && videosData.length > 0) {
+        // 総再生数を計算
+        const totalPlayCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
+        // 総コメント数を計算
+        const commentCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
+        // 総シェア数を計算（保存数として代用）
+        const saveCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
+        
+        // statsDataに拡張データを追加
+        statsData.totalPlayCount = totalPlayCount;
+        statsData.commentCount = commentCount;
+        statsData.saveCount = saveCount;
+        statsData.videosCount = videosData.length;
+      }
+      
+      setStats(statsData);
       setVideos(videosData);
       
     } catch (err) {
@@ -118,50 +248,57 @@ export default function MyAccountPage() {
 
   // TikTok連携状態を確認するuseEffect
   useEffect(() => {
+    // 初期表示時にデータ取得を実行
+    const initializeData = async () => {
+      try {
+        const token = localStorage.getItem('auth_token');
+        if (!token) {
+          console.warn('[WARN] 認証トークンがありません');
+          return;
+        }
+        
+        // TikTok連携状態を確認
+        const statusResponse = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          console.log('[INFO] TikTok連携状態:', statusData);
+          
+          if (statusData.connected && statusData.account) {
+            // アカウント情報を設定
+            const account = {
+              id: statusData.account.id || '1',
+              openId: statusData.account.openId || statusData.account.open_id || 'unknown',
+              displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
+              linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
+            };
+            
+            setAccounts([account]);
+            setActiveAccount(account);
+            setConnected(true);
+            
+            // アカウントの統計データと動画データを取得
+            await fetchApiData(reportPeriod, account.openId);
+          }
+        } else {
+          console.warn('[WARN] TikTok連携状態取得エラー:', statusResponse.status);
+        }
+      } catch (err) {
+        console.error('[ERROR] 初期化エラー:', err);
+      }
+    };
+    
     // URLクエリパラメータからtiktok_connectedを確認
     const params = new URLSearchParams(window.location.search);
     const tiktokConnected = params.get('tiktok_connected');
     const code = params.get('code'); // TikTok認証後に返されるコード
     
-    // コードがある場合はバックエンドに送信して認証を完了する
+    // テスト環境ではコードは無視
     if (code) {
-      const completeAuth = async () => {
-        setIsLoading(true);
-        try {
-          const response = await fetch('/api/auth/tiktok/complete', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ code }),
-          });
-          
-          if (!response.ok) {
-            throw new Error('認証の完了に失敗しました');
-          }
-          
-          const data = await response.json();
-          if (data.success) {
-            setConnected(true);
-            
-            // URLからクエリパラメータを削除（履歴をきれいに保つため）
-            const newUrl = window.location.pathname;
-            window.history.replaceState({}, document.title, newUrl);
-            
-            // 接続後にAPIデータを取得
-            await fetchApiData(reportPeriod);
-          } else {
-            setError(data.error || 'TikTokとの連携に失敗しました');
-          }
-        } catch (err) {
-          console.error('認証完了エラー:', err);
-          setError(err instanceof Error ? err.message : 'TikTokとの連携に失敗しました。再度お試しください。');
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      
-      completeAuth();
+      console.log('[TEST] 認証コードは無視します:', code);
+      initializeData();
     } else if (tiktokConnected === 'true') {
       setConnected(true);
       
@@ -169,157 +306,94 @@ export default function MyAccountPage() {
       const newUrl = window.location.pathname;
       window.history.replaceState({}, document.title, newUrl);
       
-      // 接続状態を確認
-      const checkConnection = async () => {
-        try {
-          const response = await fetch('/api/auth/tiktok/status');
-          const data = await response.json();
-          
-          if (data.connected) {
-            setConnected(true);
-            fetchApiData(reportPeriod);
-          } else {
-            setConnected(false);
-            setError('TikTokとの連携が無効です。再度連携してください。');
-          }
-        } catch (err) {
-          console.error('接続状態確認エラー:', err);
-          setError('接続状態の確認に失敗しました。再度お試しください。');
-        }
-      };
-      
-      checkConnection();
+      initializeData();
     } else {
-      // 初回アクセス時は接続状態を確認
-      const checkInitialConnection = async () => {
-        try {
-          const response = await fetch('/api/auth/tiktok/status');
-          const data = await response.json();
-          
-          if (data.connected) {
-            setConnected(true);
-            fetchApiData(reportPeriod);
-          }
-        } catch (err) {
-          console.error('初期接続状態確認エラー:', err);
-        }
-      };
-      
-      checkInitialConnection();
+      // 初回アクセス時は初期化関数を実行
+      initializeData();
     }
   }, []);
 
-  // 期間が変更されたらデータを再取得
+  // 日付範囲が変わったときにデータを再取得
   useEffect(() => {
-    if (connected) {
-      fetchApiData(reportPeriod);
+    if (connected && dateRange.start && dateRange.end && activeAccount) {
+      // 日付範囲から期間を計算
+      const diffTime = Math.abs(dateRange.end.getTime() - dateRange.start.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      // 期間に近い事前定義された期間を使用するか、カスタム期間を使用
+      let period = 'custom';
+      if (diffDays <= 7) {
+        period = '7d';
+      } else if (diffDays <= 30) {
+        period = '30d';
+      } else if (diffDays <= 90) {
+        period = '90d';
+      }
+      
+      // カスタム期間の場合、APIにstart_dateとend_dateを渡す必要があるかもしれません
+      // 現在のAPIが期間のみをサポートしている場合は、最も近い事前定義期間を使用
+      setReportPeriod(period);
+      fetchApiData(period, activeAccount.openId);
     }
-  }, [connected, reportPeriod]);
+  }, [connected, dateRange, activeAccount]);
 
-  // レポート期間変更ハンドラー
-  const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newPeriod = e.target.value;
-    setReportPeriod(newPeriod);
-    // 注：useEffectで自動的にfetchApiDataが呼び出されるのでここでは呼び出さない
+  // 日付範囲変更ハンドラー
+  const handleDateRangeChange = (newDateRange: { start: Date; end: Date }) => {
+    setDateRange(newDateRange);
   };
 
-  // TikTokと連携する関数
-  const handleConnect = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  // 連携を解除する関数
+  const handleDisconnect = async () => {
+    if (!activeAccount) return;
     
+    if (!confirm(`本当に「${activeAccount.displayName}」アカウントとの連携を解除しますか？`)) {
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      // ---- 既存のOAuth認証処理（コメントアウト） ----
-      /*
-      // ここでURLを構築
-      const qs = new URLSearchParams();
-      qs.append('client_key', process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'sbaweandob9d0evs2s');
-      qs.append('redirect_uri', `${baseUrl}/api/auth/tiktok/callback`);
-      qs.append('response_type', 'code');
-      qs.append('scope', ['user.info.basic', 'video.list'].join(','));
-      qs.append('state', generateRandomState());
-      const generatedAuthorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
-      
-      // 認証ページへリダイレクト
-      window.location.href = generatedAuthorizeUrl;
-      */
-      
-      // ---- 既存APIからデータを直接取得 ----
       const token = localStorage.getItem('auth_token');
       if (!token) {
-        console.error('[ERROR] 認証トークンがありません');
         setError('認証情報がありません。再ログインしてください。');
         return;
       }
-      
-      console.log(`[DEBUG] 連携処理開始 - 認証トークン: ${token.substring(0, 10)}...`);
-      console.log(`[DEBUG] 統計情報取得 URL: ${API_BASE_URL}/api/tiktok/stats?period=${reportPeriod}`);
-      
-      // アカウント統計情報の取得
-      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${reportPeriod}`, {
+
+      // TikTok連携解除APIを呼び出す
+      const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/disconnect`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ openId: activeAccount.openId })
       });
-      
-      console.log(`[DEBUG] 統計情報レスポンスステータス: ${statsResponse.status} ${statsResponse.statusText}`);
-      
-      if (!statsResponse.ok) {
-        // レスポンスの詳細を取得
+
+      if (!response.ok) {
         let errorDetail = '';
         try {
-          const errorData = await statsResponse.json();
+          const errorData = await response.json();
           errorDetail = JSON.stringify(errorData);
         } catch (e) {
-          errorDetail = await statsResponse.text() || `ステータスコード: ${statsResponse.status}`;
+          errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
-        console.error(`[ERROR] 統計情報取得エラー詳細: ${errorDetail}`);
-        throw new Error(`統計情報の取得に失敗しました: ${statsResponse.status} - ${errorDetail}`);
+        throw new Error(`連携解除に失敗しました: ${response.status} - ${errorDetail}`);
+      }
+
+      // 連携済みアカウント一覧を再取得
+      await fetchConnectedAccounts();
+      
+      // アカウントが残っていなければ、連携解除状態にする
+      if (accounts.length <= 1) {
+        setConnected(false);
+        setActiveAccount(null);
+        setStats(null);
+        setVideos([]);
       }
       
-      const statsData = await statsResponse.json();
-      console.log('[DEBUG] 取得した統計データ:', statsData);
-      setStats(statsData);
-      
-      // 動画リストの取得
-      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${reportPeriod}`);
-      
-      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${reportPeriod}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,  // 認証ヘッダーを追加
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log(`[DEBUG] 動画リストレスポンスステータス: ${videosResponse.status} ${videosResponse.statusText}`);
-      
-      if (!videosResponse.ok) {
-        // レスポンスの詳細を取得
-        let errorDetail = '';
-        try {
-          const errorData = await videosResponse.json();
-          errorDetail = JSON.stringify(errorData);
-        } catch (e) {
-          errorDetail = await videosResponse.text() || `ステータスコード: ${videosResponse.status}`;
-        }
-        console.error(`[ERROR] 動画リスト取得エラー詳細: ${errorDetail}`);
-        throw new Error(`動画情報の取得に失敗しました: ${videosResponse.status} - ${errorDetail}`);
-      }
-      
-      const videosData = await videosResponse.json();
-      console.log('[DEBUG] 取得した動画データ:', videosData);
-      setVideos(videosData);
-      
-      // 連携成功とマーク
-      setConnected(true);
-      console.log('[DEBUG] 連携成功');
-      
-      // エラーをクリア
       setError(null);
     } catch (err) {
-      console.error('[ERROR] TikTok連携エラー:', err);
-      setError(err instanceof Error ? err.message : 'TikTokとの連携に失敗しました。再度お試しください。');
+      console.error('[ERROR] TikTok連携解除エラー:', err);
+      setError(err instanceof Error ? err.message : '連携解除に失敗しました。再度お試しください。');
     } finally {
       setIsLoading(false);
     }
@@ -327,6 +401,8 @@ export default function MyAccountPage() {
 
   // レポートをダウンロードする関数
   const handleDownloadReport = async () => {
+    if (!activeAccount) return;
+    
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
@@ -335,10 +411,15 @@ export default function MyAccountPage() {
         return;
       }
       
-      console.log(`[DEBUG] レポート生成 URL: ${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}`);
+      // 日付範囲をクエリパラメータとして追加
+      const startDateParam = dateRange.start.toISOString().split('T')[0];
+      const endDateParam = dateRange.end.toISOString().split('T')[0];
+      const openIdParam = `&open_id=${activeAccount.openId}`;
+      
+      console.log(`[DEBUG] レポート生成 URL: ${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}&start_date=${startDateParam}&end_date=${endDateParam}${openIdParam}`);
       
       // PDFレポート生成APIを呼び出し
-      const response = await fetch(`${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}`, {
+      const response = await fetch(`${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}&start_date=${startDateParam}&end_date=${endDateParam}${openIdParam}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -368,7 +449,7 @@ export default function MyAccountPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `tiktok-report-${reportPeriod}.pdf`;
+      a.download = `tiktok-report-${activeAccount.displayName}-${startDateParam}-to-${endDateParam}.pdf`;
       document.body.appendChild(a);
       a.click();
       
@@ -404,6 +485,13 @@ export default function MyAccountPage() {
     });
   };
 
+  // 期間表示用の日付フォーマット関数
+  const formatDateRange = () => {
+    const start = dateRange.start.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' });
+    const end = dateRange.end.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' });
+    return `${start} 〜 ${end}`;
+  };
+
   // ソート関数
   const sortVideos = (videos: TikTokVideo[], field: 'viewCount' | 'viewGrowth' | 'createTime', direction: 'asc' | 'desc') => {
     return [...videos].sort((a, b) => {
@@ -437,6 +525,11 @@ export default function MyAccountPage() {
     return sortVideos(videos, sortField, sortDirection);
   };
 
+  // タブ切り替えハンドラー
+  const handleTabChange = (tab: 'stats' | 'videos') => {
+    setActiveTab(tab);
+  };
+
   /** ---------- 以降 JSX ---------- */
   return (
     <div className="container mx-auto px-4 py-8">
@@ -452,11 +545,6 @@ export default function MyAccountPage() {
         {!connected && (
           <p className="text-gray-400 text-sm mb-4">TikTokと連携すると統計データが表示されます</p>
         )}
-        {connected && (
-          <p className="text-gray-400 text-sm mb-4">
-            期間：{reportPeriod === '7d' ? '過去7日間' : reportPeriod === '30d' ? '過去30日間' : '過去90日間'}
-          </p>
-        )}
       </div>
 
       {error && (
@@ -465,88 +553,49 @@ export default function MyAccountPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4 mb-8">
-        {/* 総フォロワー数 */}
-        <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
-          <h3 className="text-gray-400 text-sm mb-1">フォロワー数</h3>
-          {isLoading ? (
-            <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
-          ) : (
-            <>
-              <p className="text-2xl font-bold text-white">{formatNumber(stats?.followerCount)}</p>
-              {stats?.followerGrowth && stats.followerGrowth > 0 && (
-                <p className="text-sm text-green-400 mt-1">
-                  +{formatNumber(stats.followerGrowth)} <span className="text-gray-500 text-xs">期間内</span>
-                </p>
-              )}
-            </>
-          )}
-        </div>
-        
-        {/* 総いいね数 */}
-        <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
-          <h3 className="text-gray-400 text-sm mb-1">いいね数</h3>
-          {isLoading ? (
-            <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
-          ) : (
-            <>
-              <p className="text-2xl font-bold text-white">{formatNumber(stats?.likeCount)}</p>
-              {stats?.likeGrowth && stats.likeGrowth > 0 && (
-                <p className="text-sm text-green-400 mt-1">
-                  +{formatNumber(stats.likeGrowth)} <span className="text-gray-500 text-xs">期間内</span>
-                </p>
-              )}
-            </>
-          )}
-        </div>
-        
-        {/* 平均視聴回数 */}
-        <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
-          <h3 className="text-gray-400 text-sm mb-1">平均視聴回数/動画</h3>
-          {isLoading ? (
-            <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
-          ) : (
-            <>
-              <p className="text-2xl font-bold text-white">{formatNumber(stats?.avgViewCount)}</p>
-              {stats?.viewGrowth && stats.viewGrowth > 0 && (
-                <p className="text-sm text-green-400 mt-1">
-                  +{formatNumber(stats.viewGrowth)} <span className="text-gray-500 text-xs">視聴数増加</span>
-                </p>
-              )}
-            </>
-          )}
-        </div>
-        
-        {/* エンゲージメント率 */}
-        <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
-          <h3 className="text-gray-400 text-sm mb-1">エンゲージメント率</h3>
-          {isLoading ? (
-            <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
-          ) : (
-            <p className="text-2xl font-bold text-white">{formatPercent(stats?.engagementRate)}</p>
-          )}
-        </div>
-      </div>
-
-      {/* ---- 連携 & レポート ---- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ---- 連携 & レポート（上部に移動） ---- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* 連携 */}
         <div className="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800">
           <h2 className="text-xl font-bold text-white mb-4">アカウント連携</h2>
           <p className="text-gray-400 mb-4">
-            分析を開始するには、TikTokビジネスアカウントと連携してください。
+            複数アカウントを登録したい場合はブラウザで別のアカウントでログインしてから連携ボタンを押してください。
           </p>
 
           {connected ? (
-            <div>
-              <p className="text-green-400 font-semibold mb-2">✅ 連携済み</p>
-              <button 
-                onClick={() => fetchApiData()}
-                className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
-                disabled={isLoading}
-              >
-                {isLoading ? '更新中...' : 'データを更新'}
-              </button>
+            <div className="flex flex-col space-y-4">
+              <p className="text-green-400 font-semibold mb-2">
+                ✅ 連携済み
+                {activeAccount && (
+                  <span className="ml-2 text-white">
+                    （現在のアカウント: {activeAccount.displayName || '名称未設定'}）
+                    {stats?.account_type && (
+                      <span className="ml-2 px-2 py-1 bg-gray-800 rounded-md text-sm">
+                        {stats.account_type}
+                        {stats.account_type === 'アフィリエイト' && stats?.mainly_video_type && (
+                          <span className="ml-1 text-gray-400">({stats.mainly_video_type})</span>
+                        )}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleConnect}
+                  className="bg-[#FE2C55] text-white py-2 px-4 rounded-md hover:bg-[#FE2C55]/90 transition-colors"
+                  disabled={isLoading}
+                >
+                  {isLoading ? '処理中...' : '別アカウントを追加'}
+                </button>
+                <button
+                  onClick={handleDisconnect}
+                  className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
+                  disabled={isLoading || !activeAccount}
+                >
+                  {isLoading ? '処理中...' : '連携を解除'}
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row gap-3">
@@ -568,23 +617,19 @@ export default function MyAccountPage() {
             期間を選択してアカウントパフォーマンスレポートを生成します。
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <select 
-              className="bg-gray-800 text-white rounded p-2 border border-gray-700"
-              disabled={!connected || isLoading}
-              value={reportPeriod}
-              onChange={handlePeriodChange}
-            >
-              <option value="7d">過去7日間</option>
-              <option value="30d">過去30日間</option>
-              <option value="90d">過去90日間</option>
-            </select>
+          <div className="flex flex-col space-y-4">
+            <div className="w-full">
+              <DateRangePicker 
+                dateRange={dateRange}
+                onDateRangeChange={handleDateRangeChange}
+              />
+            </div>
             
             <button
-              disabled={!connected || isLoading}
+              disabled={!connected || isLoading || !activeAccount}
               onClick={handleDownloadReport}
               className={`py-2 px-4 rounded-md transition-colors ${
-                connected && !isLoading
+                connected && !isLoading && activeAccount
                   ? 'bg-[#FE2C55] text-white hover:bg-[#FE2C55]/90'
                   : 'bg-gray-700 text-gray-400 cursor-not-allowed'
               }`}
@@ -595,131 +640,275 @@ export default function MyAccountPage() {
         </div>
       </div>
 
-      {/* 統計の詳細表示 */}
-      {connected && stats && videos.length > 0 && (
-        <div className="mt-8 bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-xl">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-            <h2 className="text-xl font-bold text-white">
-              投稿パフォーマンス
-              <span className="ml-2 bg-[#FE2C55] text-white text-xs px-2 py-1 rounded-full">
-                {reportPeriod === '7d' ? '過去7日間' : reportPeriod === '30d' ? '過去30日間' : '過去90日間'}
-              </span>
-            </h2>
-            
-            <div className="text-sm text-gray-400 mt-2 sm:mt-0">
-              ソート: 
-              <button 
-                onClick={() => handleSortChange('viewGrowth')}
-                className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                  sortField === 'viewGrowth' 
-                    ? 'bg-[#FE2C55] text-white' 
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                期間内増加量
-                {sortField === 'viewGrowth' && (
-                  <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </button>
-              <button 
-                onClick={() => handleSortChange('viewCount')}
-                className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                  sortField === 'viewCount' 
-                    ? 'bg-[#FE2C55] text-white' 
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                総視聴回数
-                {sortField === 'viewCount' && (
-                  <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </button>
-              <button 
-                onClick={() => handleSortChange('createTime')}
-                className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                  sortField === 'createTime' 
-                    ? 'bg-[#FE2C55] text-white' 
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                投稿日
-                {sortField === 'createTime' && (
-                  <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </button>
-            </div>
-          </div>
-          
-          <div className="overflow-x-auto rounded-lg border border-gray-800">
-            <table className="w-full text-sm">
-              <thead className="text-xs bg-gray-900 text-gray-300">
-                <tr>
-                  <th className="px-6 py-4 text-left">投稿日</th>
-                  <th className="px-6 py-4 text-left">タイトル</th>
-                  <th className="px-6 py-4 text-right">総視聴回数</th>
-                  <th className="px-6 py-4 text-right">期間内増加量</th>
-                  <th className="px-6 py-4 text-right">いいね数</th>
-                  <th className="px-6 py-4 text-right">コメント数</th>
-                  <th className="px-6 py-4 text-right">シェア数</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {getSortedVideos().map((video, index) => {
-                  // 期間内の増加率を計算（視覚効果用）
-                  const growthRate = video.viewGrowth / video.viewCount;
-                  let growthClass = 'text-gray-400'; // デフォルト
-                  let growthIcon = '';
-                  
-                  if (growthRate > 0.5) {
-                    growthClass = 'text-green-400 font-medium';
-                    growthIcon = '🔥'; // 急上昇
-                  } else if (growthRate > 0.2) {
-                    growthClass = 'text-green-500';
-                    growthIcon = '↑'; // 上昇
-                  } else if (growthRate < 0.05) {
-                    growthClass = 'text-gray-500';
-                  }
+      {/* 期間表示 */}
+      {connected && activeAccount && (
+        <p className="text-gray-400 text-sm mb-4">
+          期間：{formatDateRange()}
+        </p>
+      )}
 
-                  // 背景色を交互に変える
-                  const rowBgClass = index % 2 === 0 ? 'bg-[#1a1a1a]' : 'bg-[#242424]';
-                  
-                  return (
-                    <tr key={video.id} className={`${rowBgClass} hover:bg-gray-800 transition-colors`}>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                        {formatDate(video.createTime)}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-white font-medium">
-                          {video.title}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap text-white">
-                        {formatNumber(video.viewCount)}
-                      </td>
-                      <td className={`px-6 py-4 text-right whitespace-nowrap ${growthClass}`}>
-                        {formatNumber(video.viewGrowth)} {growthIcon}
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
-                        {formatNumber(video.likeCount)}
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
-                        {formatNumber(video.commentCount)}
-                      </td>
-                      <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
-                        {formatNumber(video.shareCount)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* データ件数表示 */}
-          <div className="mt-4 text-sm text-gray-400">
-            合計 {videos.length} 件の投稿
+      {/* ---- タブナビゲーション ---- */}
+      {connected && activeAccount && (
+        <div className="mb-6">
+          <div className="border-b border-gray-800">
+            <nav className="flex -mb-px">
+              <button
+                onClick={() => handleTabChange('stats')}
+                className={`py-4 px-6 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'stats'
+                    ? 'border-[#FE2C55] text-[#FE2C55]'
+                    : 'border-transparent text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                アカウント統計
+              </button>
+              <button
+                onClick={() => handleTabChange('videos')}
+                className={`py-4 px-6 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'videos'
+                    ? 'border-[#FE2C55] text-[#FE2C55]'
+                    : 'border-transparent text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                投稿動画一覧
+              </button>
+            </nav>
           </div>
         </div>
+      )}
+
+      {/* ---- タブコンテンツ ---- */}
+      {connected && activeAccount && (
+        <>
+          {/* 統計タブ */}
+          {activeTab === 'stats' && (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4 mb-8">
+              {/* 総フォロワー数 */}
+              <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
+                <h3 className="text-gray-400 text-sm mb-1">フォロワー数</h3>
+                {isLoading ? (
+                  <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-white">{formatNumber(stats?.followerCount)}</p>
+                    {stats?.followerGrowth && stats.followerGrowth > 0 && (
+                      <p className="text-sm text-green-400 mt-1">
+                        +{formatNumber(stats.followerGrowth)} <span className="text-gray-500 text-xs">期間内</span>
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+              
+              {/* 投稿数 */}
+              <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
+                <h3 className="text-gray-400 text-sm mb-1">投稿数</h3>
+                {isLoading ? (
+                  <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
+                ) : (
+                  <p className="text-2xl font-bold text-white">{formatNumber(stats?.videosCount || videos.length || 0)}</p>
+                )}
+              </div>
+              
+              {/* 総再生数 */}
+              <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
+                <h3 className="text-gray-400 text-sm mb-1">総再生数</h3>
+                {isLoading ? (
+                  <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-white">{formatNumber(stats?.totalPlayCount || (stats?.avgViewCount ?? 0) * (stats?.videosCount || 1))}</p>
+                    {stats?.viewGrowth && stats.viewGrowth > 0 && (
+                      <p className="text-sm text-green-400 mt-1">
+                        +{formatNumber(stats.viewGrowth)} <span className="text-gray-500 text-xs">期間内</span>
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* 総いいね数 */}
+              <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
+                <h3 className="text-gray-400 text-sm mb-1">いいね数</h3>
+                {isLoading ? (
+                  <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-white">{formatNumber(stats?.likeCount)}</p>
+                    {stats?.likeGrowth && stats.likeGrowth > 0 && (
+                      <p className="text-sm text-green-400 mt-1">
+                        +{formatNumber(stats.likeGrowth)} <span className="text-gray-500 text-xs">期間内</span>
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+              
+              {/* 総コメント数 */}
+              <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
+                <h3 className="text-gray-400 text-sm mb-1">コメント数</h3>
+                {isLoading ? (
+                  <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
+                ) : (
+                  <p className="text-2xl font-bold text-white">{formatNumber(stats?.commentCount || 0)}</p>
+                )}
+              </div>
+              
+              {/* 総保存数 */}
+              <div className="bg-[#1a1a1a] rounded-lg p-4 border border-gray-800 shadow-md">
+                <h3 className="text-gray-400 text-sm mb-1">保存数</h3>
+                {isLoading ? (
+                  <div className="h-6 w-20 bg-gray-700 animate-pulse rounded"></div>
+                ) : (
+                  <p className="text-2xl font-bold text-white">{formatNumber(stats?.saveCount || 0)}</p>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* 投稿パフォーマンスタブ */}
+          {activeTab === 'videos' && videos.length > 0 && (
+            <div className="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-xl">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+                <h2 className="text-xl font-bold text-white">
+                  投稿パフォーマンス
+                  <span className="ml-2 bg-[#FE2C55] text-white text-xs px-2 py-1 rounded-full">
+                    {formatDateRange()}
+                  </span>
+                </h2>
+                
+                <div className="text-sm text-gray-400 mt-2 sm:mt-0">
+                  ソート: 
+                  <button 
+                    onClick={() => handleSortChange('viewGrowth')}
+                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
+                      sortField === 'viewGrowth' 
+                        ? 'bg-[#FE2C55] text-white' 
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    期間内再生増加数
+                    {sortField === 'viewGrowth' && (
+                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </button>
+                  <button 
+                    onClick={() => handleSortChange('viewCount')}
+                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
+                      sortField === 'viewCount' 
+                        ? 'bg-[#FE2C55] text-white' 
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    総再生回数
+                    {sortField === 'viewCount' && (
+                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </button>
+                  <button 
+                    onClick={() => handleSortChange('createTime')}
+                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
+                      sortField === 'createTime' 
+                        ? 'bg-[#FE2C55] text-white' 
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    投稿日
+                    {sortField === 'createTime' && (
+                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto rounded-lg border border-gray-800">
+                <table className="w-full text-sm">
+                  <thead className="text-xs bg-gray-900 text-gray-300">
+                    <tr>
+                      <th className="px-6 py-4 text-left">投稿日</th>
+                      <th className="px-6 py-4 text-left">サムネイル</th>
+                      <th className="px-6 py-4 text-left">タイトル</th>
+                      <th className="px-6 py-4 text-right">再生回数</th>
+                      <th className="px-6 py-4 text-right">期間内再生増加数</th>
+                      <th className="px-6 py-4 text-right">いいね数</th>
+                      <th className="px-6 py-4 text-right">コメント数</th>
+                      <th className="px-6 py-4 text-right">シェア数</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {getSortedVideos().map((video, index) => {
+                      // 期間内の増加率を計算（視覚効果用）
+                      const growthRate = video.viewGrowth / video.viewCount;
+                      let growthClass = 'text-gray-400'; // デフォルト
+                      let growthIcon = '';
+                      
+                      if (growthRate > 0.5) {
+                        growthClass = 'text-green-400 font-medium';
+                        growthIcon = '🔥'; // 急上昇
+                      } else if (growthRate > 0.2) {
+                        growthClass = 'text-green-500';
+                        growthIcon = '↑'; // 上昇
+                      } else if (growthRate < 0.05) {
+                        growthClass = 'text-gray-500';
+                      }
+
+                      // 背景色を交互に変える
+                      const rowBgClass = index % 2 === 0 ? 'bg-[#1a1a1a]' : 'bg-[#242424]';
+                      
+                      return (
+                        <tr key={video.id} className={`${rowBgClass} hover:bg-gray-800 transition-colors`}>
+                          <td className="px-6 py-4 whitespace-nowrap text-gray-300">
+                            {formatDate(video.createTime)}
+                          </td>
+                          <td className="px-6 py-4">
+                            {video.thumbnailUrl ? (
+                              <Image
+                                src={video.thumbnailUrl}
+                                alt={video.title}
+                                width={80}
+                                height={45}
+                                className="rounded-md object-cover"
+                              />
+                            ) : (
+                              <div className="w-20 h-12 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
+                                <span className="text-xs">No Image</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-white font-medium">
+                              {video.title}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-white">
+                            {formatNumber(video.viewCount)}
+                          </td>
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${growthClass}`}>
+                            {formatNumber(video.viewGrowth)} {growthIcon}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
+                            {formatNumber(video.likeCount)}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
+                            {formatNumber(video.commentCount)}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
+                            {formatNumber(video.shareCount)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* データ件数表示 */}
+              <div className="mt-4 text-sm text-gray-400">
+                合計 {videos.length} 件の投稿
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
