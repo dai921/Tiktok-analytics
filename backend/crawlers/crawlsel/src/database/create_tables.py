@@ -20,35 +20,21 @@ CREATE_TABLES_SQL = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
     """
-CREATE TABLE account_list (
-  id INT NOT NULL AUTO_INCREMENT,
-  account_url VARCHAR(255) DEFAULT NULL,
-  favorite_user_username VARCHAR(255) DEFAULT NULL,
-  is_new_account TINYINT(1) DEFAULT NULL,
-  last_crawled_at DATETIME DEFAULT NULL,
-  account_type VARCHAR(255) DEFAULT NULL,
-  favorite_user_is_alive TINYINT(1) NOT NULL DEFAULT 1,
-  crawler_account_id INT DEFAULT NULL,
-  crawl_priority INT NOT NULL DEFAULT 10,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY account_url (account_url),
-  KEY idx_account_url (account_url),
-  KEY idx_is_new_account (is_new_account),
-  KEY idx_username (favorite_user_username),
-  KEY idx_crawler_account (crawler_account_id),
-  KEY idx_is_alive (favorite_user_is_alive),
-  KEY idx_priority_last_crawled (crawl_priority, last_crawled_at),
-  CONSTRAINT fk_crawler_account_id
-    FOREIGN KEY (crawler_account_id)
-    REFERENCES crawler_accounts (id)
-)
-ENGINE = InnoDB
-AUTO_INCREMENT = 31396
-DEFAULT CHARSET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
-
+    CREATE TABLE IF NOT EXISTS favorite_users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        favorite_user_username VARCHAR(255) NOT NULL,
+        crawler_account_id INT,
+        favorite_user_is_alive BOOLEAN NOT NULL DEFAULT TRUE,
+        crawl_priority INT NOT NULL DEFAULT 10,
+        last_crawled_at DATETIME,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (crawler_account_id) REFERENCES crawler_accounts(id),
+        INDEX idx_username (favorite_user_username),
+        INDEX idx_crawler_account (crawler_account_id),
+        INDEX idx_is_alive (favorite_user_is_alive),
+        INDEX idx_priority_last_crawled (crawl_priority, last_crawled_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
     """
     CREATE TABLE IF NOT EXISTS video_heavy_raw_data (
@@ -79,6 +65,7 @@ COLLATE = utf8mb4_0900_ai_ci;
         crawled_at DATETIME NOT NULL,
         crawling_algorithm VARCHAR(50) NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        needs_update TINYINT NOT NULL DEFAULT 1,
         INDEX idx_video_id (video_id),
         INDEX idx_user_username (user_username),
         INDEX idx_post_time (post_time),

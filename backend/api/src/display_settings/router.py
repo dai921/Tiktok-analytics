@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Optional
 from datetime import datetime
-from src.db.database import get_db_connection
+from src.db.database import execute_query, fetch_one, execute_update
 from src.auth.router import get_current_user
 from src.auth.models import User
 from .models import ColumnSetting, DisplaySetting
@@ -14,104 +14,102 @@ async def save_display_settings(
     current_user: User = Depends(get_current_user)
 ):
     """表示設定を保存/更新する"""
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
     try:
         # 設定名を生成
         setting_name = f"{current_user.email}_setting"
         
         # 既存の設定を確認
-        cursor.execute(
-            "SELECT setting_id FROM user_display_settings WHERE email = %s",
-            (current_user.email,)
+        existing_setting = fetch_one(
+            "SELECT setting_id FROM user_display_settings WHERE email = :email",
+            {"email": current_user.email}
         )
-        existing_setting = cursor.fetchone()
         
         if existing_setting:
             # 既存の設定を更新
             setting_id = existing_setting["setting_id"]
-            cursor.execute(
+            execute_update(
                 """
                 UPDATE user_display_settings 
-                SET is_default = %s, updated_at = NOW()
-                WHERE setting_id = %s
+                SET is_default = :is_default, updated_at = NOW()
+                WHERE setting_id = :setting_id
                 """,
-                (settings.is_default, setting_id)
+                {"is_default": settings.is_default, "setting_id": setting_id}
             )
             
             # 既存のカラム設定を削除
-            cursor.execute(
-                "DELETE FROM column_settings WHERE setting_id = %s",
-                (setting_id,)
+            execute_update(
+                "DELETE FROM column_settings WHERE setting_id = :setting_id",
+                {"setting_id": setting_id}
             )
         else:
             # 新規設定を作成
-            cursor.execute(
+            result = execute_query(
                 """
                 INSERT INTO user_display_settings (email, setting_name, is_default)
-                VALUES (%s, %s, %s)
+                VALUES (:email, :setting_name, :is_default)
                 """,
-                (current_user.email, setting_name, settings.is_default)
+                {
+                    "email": current_user.email, 
+                    "setting_name": setting_name, 
+                    "is_default": settings.is_default
+                }
             )
-            setting_id = cursor.lastrowid
+            # 新しく挿入された行のIDを取得
+            # SQLAlchemyの場合は別途クエリで取得する必要がある場合も
+            last_id_result = fetch_one("SELECT LAST_INSERT_ID() as last_id")
+            setting_id = last_id_result["last_id"] if last_id_result else None
         
         # カラム設定を保存
         for column in settings.columns:
-            cursor.execute(
+            execute_update(
                 """
                 INSERT INTO column_settings 
                 (setting_id, column_name, is_visible, display_order)
-                VALUES (%s, %s, %s, %s)
+                VALUES (:setting_id, :column_name, :is_visible, :display_order)
                 """,
-                (setting_id, column.column_name, column.is_visible, column.display_order)
+                {
+                    "setting_id": setting_id,
+                    "column_name": column.column_name,
+                    "is_visible": column.is_visible,
+                    "display_order": column.display_order
+                }
             )
         
-        conn.commit()
         return {"success": True, "setting_id": setting_id}
         
     except Exception as e:
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-    finally:
-        cursor.close()
-        conn.close()
 
 @router.get("")
 async def get_display_settings(current_user: User = Depends(get_current_user)):
     """ユーザーの表示設定を取得する"""
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
     try:
         # 設定の基本情報を取得
-        cursor.execute(
+        setting = fetch_one(
             """
             SELECT setting_id, is_default 
             FROM user_display_settings 
-            WHERE email = %s
+            WHERE email = :email
             """,
-            (current_user.email,)
+            {"email": current_user.email}
         )
-        setting = cursor.fetchone()
         
         if not setting:
             return {"success": True, "settings": None}
         
         # カラム設定を取得
-        cursor.execute(
+        columns = execute_query(
             """
             SELECT column_name, is_visible, display_order
             FROM column_settings
-            WHERE setting_id = %s
+            WHERE setting_id = :setting_id
             ORDER BY display_order
             """,
-            (setting["setting_id"],)
+            {"setting_id": setting["setting_id"]}
         )
-        columns = cursor.fetchall()
         
         return {
             "success": True,
@@ -122,9 +120,11 @@ async def get_display_settings(current_user: User = Depends(get_current_user)):
             }
         }
         
-    finally:
-        cursor.close()
-        conn.close()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 @router.put("/{setting_id}/default")
 async def update_default_setting(
@@ -133,45 +133,36 @@ async def update_default_setting(
     current_user: User = Depends(get_current_user)
 ):
     """表示設定のデフォルト状態を更新する"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
     try:
         # 設定の所有者を確認
-        cursor.execute(
+        setting = fetch_one(
             """
             SELECT email FROM user_display_settings 
-            WHERE setting_id = %s
+            WHERE setting_id = :setting_id
             """,
-            (setting_id,)
+            {"setting_id": setting_id}
         )
-        setting = cursor.fetchone()
         
-        if not setting or setting[0] != current_user.email:
+        if not setting or setting["email"] != current_user.email:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="指定された設定が見つかりません"
             )
         
         # デフォルト状態を更新
-        cursor.execute(
+        execute_update(
             """
             UPDATE user_display_settings 
-            SET is_default = %s, updated_at = NOW()
-            WHERE setting_id = %s
+            SET is_default = :is_default, updated_at = NOW()
+            WHERE setting_id = :setting_id
             """,
-            (is_default, setting_id)
+            {"is_default": is_default, "setting_id": setting_id}
         )
         
-        conn.commit()
         return {"success": True}
         
     except Exception as e:
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
-        )
-    finally:
-        cursor.close()
-        conn.close() 
+        ) 

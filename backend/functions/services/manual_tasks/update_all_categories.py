@@ -114,11 +114,11 @@ def process_update_all_categories():
         
         # 処理すべき動画データの取得（バッチサイズ分）
         video_query = f"""
-            SELECT vm.id, vm.video_id, vm.username, vm.description, vm.hashtags
-            FROM video_master vm
-            INNER JOIN frontend_data fd ON vm.video_id = fd.video_id
-            WHERE vm.id > {last_cursor_id}
-            ORDER BY vm.id
+            SELECT id, url,video_id, username, description, hashtags
+            FROM video_master 
+            WHERE id > {last_cursor_id}
+            AND up_update = 1
+            ORDER BY id
             LIMIT {batch_size}
         """
         videos = execute_query(video_query)
@@ -144,7 +144,9 @@ def process_update_all_categories():
             try:
                 now_id = video['id']
                 max_id = max(max_id, now_id)
+                video_id = video['video_id']
                 
+               
                 # アカウントタイプの取得
                 username = video['username']  # video_idカラムにはusernameが入っていると仮定
                 account_type_query = """
@@ -193,6 +195,7 @@ def process_update_all_categories():
             SELECT COUNT(*) as count
             FROM video_master
             WHERE id > {max_id}
+            AND up_update = 1
         """
         remain_data = execute_query(remain_query)
         remaining_count = remain_data[0]['count'] if remain_data else 0
@@ -491,7 +494,7 @@ def local_execute():
             print(f"\n処理失敗: {result['error']}")
             
     except KeyboardInterrupt:
-        print("\n処理を中断しました")
+        print("\n処理を中断します...")
         # 中断時にカーソルをリセット
         try:
             reset_cursor()

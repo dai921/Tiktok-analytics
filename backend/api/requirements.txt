@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn==0.24.0
-mysql-connector-python==8.2.0
+# mysql-connector-python==8.2.0
 python-dotenv==1.0.0
 pydantic==2.5.1
 jinja2
@@ -10,3 +10,7 @@ libpass[bcrypt]==1.9.0
 python-multipart==0.0.7
 email-validator==2.1.0
 google-cloud-secret-manager==2.16.1
+httpx
+PyJWT
+mysqlclient==2.2.4        # C拡張なので速い
+SQLAlchemy==2.0.19        # もし未記載なら

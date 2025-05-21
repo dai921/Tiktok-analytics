@@ -1,5 +1,6 @@
 -- ユーザーテーブル
 CREATE TABLE users (
+  user_number  INT NOT NULL,
   id VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL,
   password VARCHAR(255) NOT NULL,
@@ -127,27 +128,63 @@ CREATE TABLE account_bookmarks (
   INDEX idx_email (email)
 );
 
--- TikTokトークン保存用テーブル
-CREATE TABLE tiktok_tokens (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id VARCHAR(255) NOT NULL,
-  access_token TEXT NOT NULL,
-  refresh_token TEXT NOT NULL,
-  expires_in INT NOT NULL,
-  expires_at DATETIME NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_user_id (user_id)
-);
 
--- OAuth stateパラメータ保存テーブル
-CREATE TABLE user_oauth_states (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id VARCHAR(255) NOT NULL,
-  oauth_state VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_user_id (user_id),
-  INDEX idx_oauth_state (oauth_state)
+CREATE TABLE users_tiktok_accounts (
+  user_number  INT NOT NULL,
+  open_id      VARCHAR(255)  NOT NULL,
+  access_token VARCHAR(255) NOT NULL,
+  refresh_token VARCHAR(255) NOT NULL,
+  expires_at   DATETIME NOT NULL,
+  display_name VARCHAR(255),
+  linked_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_number, open_id),
+  INDEX ix_open_id (open_id),
+  CONSTRAINT fk_ta_user
+    FOREIGN KEY (user_number) REFERENCES users(user_number)
+      ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE users_account_daily_metrics (
+  user_number INT NOT NULL,
+  open_id     VARCHAR(255)  NOT NULL,
+  collection_ date        DATE         NOT NULL,
+  followers   INT UNSIGNED,
+  likes       INT UNSIGNED,
+  videos_count INT UNSIGNED,
+  total_play_count BIGINT UNSIGNED,
+  PRIMARY KEY (open_id, collection_date),
+  CONSTRAINT fk_adm_account
+    FOREIGN KEY (user_number, open_id)
+      REFERENCES users_tiktok_accounts(user_number, open_id)
+      ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE users_videos (
+  video_id     VARCHAR(255)  PRIMARY KEY,
+  open_id      VARCHAR(255)  NOT NULL,
+  user_number  INT NOT NULL,
+  caption      VARCHAR(512),
+  thumbnail_url VARCHAR(255),
+  created_at   DATETIME,
+  INDEX ix_open_video (open_id, created_at),
+  CONSTRAINT fk_v_account
+    FOREIGN KEY (open_id) REFERENCES users_tiktok_accounts(open_id)
+      ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- 5) 動画日次スナップショット
+CREATE TABLE users_video_daily_metrics_new (
+  video_id        VARCHAR(255) NOT NULL,
+  colLection_date            DATE        NOT NULL,
+  play_cnt            INT UNSIGNED,
+  like_cnt        INT UNSIGNED,
+  comment_cnt     INT UNSIGNED,
+  share_cnt       INT UNSIGNED,
+  save_cnt        INT UNSIGNED,
+  PRIMARY KEY (video_id, date),
+  INDEX ix_vdm_date (date)
+) ENGINE=InnoDB
+PARTITION BY RANGE COLUMNS(date) (
+  PARTITION p2024 VALUES LESS THAN ('2025-01-01'),
+  PARTITION p2025 VALUES LESS THAN ('2026-01-01')
 );

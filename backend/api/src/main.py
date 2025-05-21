@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request, Depends
 from typing import Optional, Dict, List
-from src.db.database import get_db_connection, format_video
+from src.db.database import execute_query, fetch_one, execute_update, format_video
 from src.utils.logger_config import setup_logger
 from src.auth.router import router as auth_router
 from src.display_settings.router import router as display_settings_router
@@ -23,8 +23,10 @@ import re
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
+from sqlalchemy import text
 
-
+from src.auth.tiktok import router as auth_tiktok_router
+from src.tiktok.routes import router as tiktok_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -37,7 +39,8 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     title="TikTok Analytics API",
-    description="TikTok Analytics API Service",
+    description="TikTokアカウント分析のためのバックエンドAPI",
+    version="0.1.0"
 )
 app.middleware("http")(timing_middleware)
 # 環境変数からオリジンを取得してログ出力
@@ -69,6 +72,10 @@ app.include_router(product_stats_router)
 app.include_router(genre_stats_router)
 # ウォッチリストルーターの追加
 app.include_router(watchlist_router)
+
+# ルーターの登録
+app.include_router(auth_tiktok_router)
+app.include_router(tiktok_router)
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)
@@ -137,13 +144,8 @@ async def get_videos(
     created_at_type: Optional[str] = None,  # 作成日の比較演算子
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
-    conn = None
-    cursor = None
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
         # デバッグ情報
         print(f"Request params: page={page}, limit={limit}, account_name={account_name}, category={category}, ...")
 
@@ -158,20 +160,19 @@ async def get_videos(
                 save_count_increase, ten_days_save_increase
             FROM frontend_data
         """
-        params = []
+        params = {}
         where_clauses = []
 
         # フィルター処理
         if account_name:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_name LIKE %s")
-            params.append(f"%{escaped_account_name}%")
+            where_clauses.append("account_name LIKE :account_name")
+            params["account_name"] = f"%{escaped_account_name}%"
         
         # カテゴリフィルターのOR条件処理
         category_filters = []
-        category_params = []
-
+        
         # category_countパラメータがある場合は複数カテゴリ
         category_count = request.query_params.get('category_count')
         if category_count and category_count.isdigit():
@@ -180,207 +181,185 @@ async def get_videos(
                 cat_param = request.query_params.get(f'category_{i}')
                 if cat_param:
                     escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
-                    category_filters.append("category LIKE %s")
-                    category_params.append(f"%{escaped_cat}%")
+                    category_filters.append(f"category LIKE :category_{i}")
+                    params[f"category_{i}"] = f"%{escaped_cat}%"
         
         # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
         if category_filters:
             where_clauses.append(f"({' OR '.join(category_filters)})")
-            params.extend(category_params)
         # 従来の単一カテゴリ処理
         elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("category LIKE %s")
-            params.append(f"%{escaped_category}%")
+            where_clauses.append("category LIKE :category")
+            params["category"] = f"%{escaped_category}%"
         
         if hashtags:
             # exact_hashtags タイプが指定されている場合は完全一致検索
             exact_hashtags = request.query_params.get('exact_hashtags')
             if exact_hashtags == 'true':
                 # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
-                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                where_clauses.append("(hashtags = :hashtags OR hashtags LIKE :hashtags_start OR hashtags LIKE :hashtags_middle OR hashtags LIKE :hashtags_end)")
                 hashtags_exact = hashtags
-                params.extend([
-                    hashtags_exact,                 # 完全一致
-                    f"{hashtags_exact},%",         # 先頭に位置する場合
-                    f"%,{hashtags_exact},%",       # 中間に位置する場合
-                    f"%,{hashtags_exact}"          # 末尾に位置する場合
-                ])
+                params["hashtags"] = hashtags_exact
+                params["hashtags_start"] = f"{hashtags_exact},%"
+                params["hashtags_middle"] = f"%,{hashtags_exact},%"
+                params["hashtags_end"] = f"%,{hashtags_exact}"
                 print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
             else:
                 # 従来の部分一致検索
                 # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
                 escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
-                where_clauses.append("hashtags LIKE %s")
-                params.append(f"%{escaped_hashtags}%")
+                where_clauses.append("hashtags LIKE :hashtags")
+                params["hashtags"] = f"%{escaped_hashtags}%"
                 print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("music_info LIKE %s")
-            params.append(f"%{escaped_music_info}%")
+            where_clauses.append("music_info LIKE :music_info")
+            params["music_info"] = f"%{escaped_music_info}%"
             
         if min_play_count:
-            where_clauses.append("play_count >= %s")
-            params.append(min_play_count)
+            where_clauses.append("play_count >= :min_play_count")
+            params["min_play_count"] = min_play_count
             
         if min_likes_count:
-            where_clauses.append("likes_count >= %s")
-            params.append(min_likes_count)
+            where_clauses.append("likes_count >= :min_likes_count")
+            params["min_likes_count"] = min_likes_count
             
         if is_viral is not None:
             # is_viral の定義に基づいて条件を追加
             # 例: is_viral = True の場合、play_count > 10000 など
-            where_clauses.append("play_count > %s")
-            params.append(10000)  # viral動画の定義に合わせて調整
+            where_clauses.append("play_count > :viral_threshold")
+            params["viral_threshold"] = 10000  # viral動画の定義に合わせて調整
 
         if play_count is not None:
             if play_count_type == "greater":
-                where_clauses.append("play_count >= %s")
-                params.append(play_count)
+                where_clauses.append("play_count >= :play_count")
             elif play_count_type == "less":
-                where_clauses.append("play_count <= %s")
-                params.append(play_count)
+                where_clauses.append("play_count <= :play_count")
             else:
-                where_clauses.append("play_count = %s")
-                params.append(play_count)
+                where_clauses.append("play_count = :play_count")
+            params["play_count"] = play_count
 
         # 作成日のフィルタリング
         if created_at:
             if created_at_type == "after" or created_at_type == "greater":
-                where_clauses.append("created_at >= %s")
-                params.append(created_at)
+                where_clauses.append("created_at >= :created_at")
             elif created_at_type == "before" or created_at_type == "less":
-                where_clauses.append("created_at <= %s")
-                params.append(created_at)
+                where_clauses.append("created_at <= :created_at")
             else:  # exact date
                 # 日付が "YYYY-MM-DD" 形式の場合、その日の範囲を指定
-                where_clauses.append("DATE(created_at) = DATE(%s)")
-                params.append(created_at)
+                where_clauses.append("DATE(created_at) = DATE(:created_at)")
+            params["created_at"] = created_at
 
+        # いいね数のフィルタリング
         if likes_count is not None:
             if likes_count_type == "greater":
-                where_clauses.append("likes_count >= %s")
-                params.append(likes_count)
+                where_clauses.append("likes_count >= :likes_count")
             elif likes_count_type == "less":
-                where_clauses.append("likes_count <= %s")
-                params.append(likes_count)
+                where_clauses.append("likes_count <= :likes_count")
             else:
-                where_clauses.append("likes_count = %s")
-                params.append(likes_count)
+                where_clauses.append("likes_count = :likes_count")
+            params["likes_count"] = likes_count
 
+        # コメント数のフィルタリング
         if comment_count is not None:
             if comment_count_type == "greater":
-                where_clauses.append("comment_count >= %s")
-                params.append(comment_count)
+                where_clauses.append("comment_count >= :comment_count")
             elif comment_count_type == "less":
-                where_clauses.append("comment_count <= %s")
-                params.append(comment_count)
+                where_clauses.append("comment_count <= :comment_count")
             else:
-                where_clauses.append("comment_count = %s")
-                params.append(comment_count)
+                where_clauses.append("comment_count = :comment_count")
+            params["comment_count"] = comment_count
 
+        # 再生数増加のフィルタリング
         if play_count_increase is not None and play_count_increase_type:
             if play_count_increase_type == "greater":
-                where_clauses.append("play_count_increase >= %s")
-                params.append(play_count_increase)
+                where_clauses.append("play_count_increase >= :play_count_increase")
             elif play_count_increase_type == "less":
-                where_clauses.append("play_count_increase <= %s")
-                params.append(play_count_increase)
+                where_clauses.append("play_count_increase <= :play_count_increase")
             else:  # equal
-                where_clauses.append("play_count_increase = %s")
-                params.append(play_count_increase)
+                where_clauses.append("play_count_increase = :play_count_increase")
+            params["play_count_increase"] = play_count_increase
 
-        # 新しいフィルター条件の追加
+        # 10日間増加率のフィルタリング
         if ten_days_increase is not None:
             if ten_days_increase_type == "greater":
-                where_clauses.append("ten_days_increase >= %s")
-                params.append(ten_days_increase)
+                where_clauses.append("ten_days_increase >= :ten_days_increase")
             elif ten_days_increase_type == "less":
-                where_clauses.append("ten_days_increase <= %s")
-                params.append(ten_days_increase)
+                where_clauses.append("ten_days_increase <= :ten_days_increase")
             else:
-                where_clauses.append("ten_days_increase = %s")
-                params.append(ten_days_increase)
+                where_clauses.append("ten_days_increase = :ten_days_increase")
+            params["ten_days_increase"] = ten_days_increase
 
+        # いいね数増加のフィルタリング
         if likes_count_increase is not None:
             if likes_count_increase_type == "greater":
-                where_clauses.append("likes_count_increase >= %s")
-                params.append(likes_count_increase)
+                where_clauses.append("likes_count_increase >= :likes_count_increase")
             elif likes_count_increase_type == "less":
-                where_clauses.append("likes_count_increase <= %s")
-                params.append(likes_count_increase)
+                where_clauses.append("likes_count_increase <= :likes_count_increase")
             else:
-                where_clauses.append("likes_count_increase = %s")
-                params.append(likes_count_increase)
+                where_clauses.append("likes_count_increase = :likes_count_increase")
+            params["likes_count_increase"] = likes_count_increase
 
+        # 10日間いいね増加率のフィルタリング
         if ten_days_likes_increase is not None:
             if ten_days_likes_increase_type == "greater":
-                where_clauses.append("ten_days_likes_increase >= %s")
-                params.append(ten_days_likes_increase)
+                where_clauses.append("ten_days_likes_increase >= :ten_days_likes_increase")
             elif ten_days_likes_increase_type == "less":
-                where_clauses.append("ten_days_likes_increase <= %s")
-                params.append(ten_days_likes_increase)
+                where_clauses.append("ten_days_likes_increase <= :ten_days_likes_increase")
             else:
-                where_clauses.append("ten_days_likes_increase = %s")
-                params.append(ten_days_likes_increase)
+                where_clauses.append("ten_days_likes_increase = :ten_days_likes_increase")
+            params["ten_days_likes_increase"] = ten_days_likes_increase
 
+        # コメント数増加のフィルタリング
         if comment_count_increase is not None:
             if comment_count_increase_type == "greater":
-                where_clauses.append("comment_count_increase >= %s")
-                params.append(comment_count_increase)
+                where_clauses.append("comment_count_increase >= :comment_count_increase")
             elif comment_count_increase_type == "less":
-                where_clauses.append("comment_count_increase <= %s")
-                params.append(comment_count_increase)
+                where_clauses.append("comment_count_increase <= :comment_count_increase")
             else:
-                where_clauses.append("comment_count_increase = %s")
-                params.append(comment_count_increase)
+                where_clauses.append("comment_count_increase = :comment_count_increase")
+            params["comment_count_increase"] = comment_count_increase
 
+        # 10日間コメント増加率のフィルタリング
         if ten_days_comment_increase is not None:
             if ten_days_comment_increase_type == "greater":
-                where_clauses.append("ten_days_comment_increase >= %s")
-                params.append(ten_days_comment_increase)
+                where_clauses.append("ten_days_comment_increase >= :ten_days_comment_increase")
             elif ten_days_comment_increase_type == "less":
-                where_clauses.append("ten_days_comment_increase <= %s")
-                params.append(ten_days_comment_increase)
+                where_clauses.append("ten_days_comment_increase <= :ten_days_comment_increase")
             else:
-                where_clauses.append("ten_days_comment_increase = %s")
-                params.append(ten_days_comment_increase)
+                where_clauses.append("ten_days_comment_increase = :ten_days_comment_increase")
+            params["ten_days_comment_increase"] = ten_days_comment_increase
 
-        # 保存数関連のフィルター条件
+        # 保存数関連のフィルタリング
         if save_count is not None:
             if save_count_type == "greater":
-                where_clauses.append("save_count >= %s")
-                params.append(save_count)
+                where_clauses.append("save_count >= :save_count")
             elif save_count_type == "less":
-                where_clauses.append("save_count <= %s")
-                params.append(save_count)
+                where_clauses.append("save_count <= :save_count")
             else:
-                where_clauses.append("save_count = %s")
-                params.append(save_count)
+                where_clauses.append("save_count = :save_count")
+            params["save_count"] = save_count
 
         if save_count_increase is not None:
             if save_count_increase_type == "greater":
-                where_clauses.append("save_count_increase >= %s")
-                params.append(save_count_increase)
+                where_clauses.append("save_count_increase >= :save_count_increase")
             elif save_count_increase_type == "less":
-                where_clauses.append("save_count_increase <= %s")
-                params.append(save_count_increase)
+                where_clauses.append("save_count_increase <= :save_count_increase")
             else:
-                where_clauses.append("save_count_increase = %s")
-                params.append(save_count_increase)
+                where_clauses.append("save_count_increase = :save_count_increase")
+            params["save_count_increase"] = save_count_increase
 
         if ten_days_save_increase is not None:
             if ten_days_save_increase_type == "greater":
-                where_clauses.append("ten_days_save_increase >= %s")
-                params.append(ten_days_save_increase)
+                where_clauses.append("ten_days_save_increase >= :ten_days_save_increase")
             elif ten_days_save_increase_type == "less":
-                where_clauses.append("ten_days_save_increase <= %s")
-                params.append(ten_days_save_increase)
+                where_clauses.append("ten_days_save_increase <= :ten_days_save_increase")
             else:
-                where_clauses.append("ten_days_save_increase = %s")
-                params.append(ten_days_save_increase)
+                where_clauses.append("ten_days_save_increase = :ten_days_save_increase")
+            params["ten_days_save_increase"] = ten_days_save_increase
 
         # コンテンツタイプのフィルタリング
         if content_type:
@@ -388,27 +367,26 @@ async def get_videos(
             if ',' in content_type:
                 content_types = content_type.split(',')
                 content_type_clauses = []
-                for ct in content_types:
-                    content_type_clauses.append("content_type = %s")
-                    params.append(ct.strip())
+                for i, ct in enumerate(content_types):
+                    content_type_clauses.append(f"content_type = :content_type_{i}")
+                    params[f"content_type_{i}"] = ct.strip()
                 where_clauses.append(f"({' OR '.join(content_type_clauses)})")
                 print(f"複数コンテンツタイプフィルター適用: {content_types}")
             else:
-                where_clauses.append("content_type = %s")
-                params.append(content_type)
+                where_clauses.append("content_type = :content_type")
+                params["content_type"] = content_type
                 print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
-        # 商品フィルターの処理を修正
+        # 商品フィルターの処理
         if product:
             # 商品名でフィルタリング
             escaped_product = product.replace("_", r"\_").replace("%", r"\%")
             # 商品名に対する部分一致検索
-            where_clauses.append("product LIKE %s")
-            params.append(f"%{escaped_product}%")
+            where_clauses.append("product LIKE :product")
+            params["product"] = f"%{escaped_product}%"
         
-        # アカウントタイプフィルターの処理を追加（OR条件）
+        # アカウントタイプフィルターの処理（OR条件）
         account_type_filters = []
-        account_type_params = []
 
         # account_type_countパラメータがある場合は複数アカウントタイプ
         if account_type_count and account_type_count.isdigit():
@@ -417,18 +395,17 @@ async def get_videos(
                 account_param = request.query_params.get(f'account_type_{i}')
                 if account_param:
                     escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
-                    account_type_filters.append("account_type LIKE %s")
-                    account_type_params.append(f"%{escaped_account}%")
+                    account_type_filters.append(f"account_type LIKE :account_type_{i}")
+                    params[f"account_type_{i}"] = f"%{escaped_account}%"
         
         # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
         if account_type_filters:
             where_clauses.append(f"({' OR '.join(account_type_filters)})")
-            params.extend(account_type_params)
         # 単一アカウントタイプ処理
         elif account_type:
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_type LIKE %s")
-            params.append(f"%{escaped_account_type}%")
+            where_clauses.append("account_type LIKE :account_type")
+            params["account_type"] = f"%{escaped_account_type}%"
 
         # フィルター条件のデバッグログ
         if play_count is not None:
@@ -478,38 +455,38 @@ async def get_videos(
         if limit == -1:
             print("全件取得モードが指定されました - ページングを無効化")
         else:
-            query += " LIMIT %s OFFSET %s"
-            params.extend([limit, offset])
+            query += " LIMIT :limit OFFSET :offset"
+            params["limit"] = limit
+            params["offset"] = offset
 
         # デバッグ用にクエリとパラメータを出力
         print(f"Executing query: {query}")
         print(f"With parameters: {params}")
 
         # メインクエリ実行
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        rows = execute_query(query, params)
 
         # 総件数取得（フィルタパラメータを使用）
-        count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
-        cursor.execute(count_query, filter_params)
-        total = cursor.fetchone()[0]
+        count_query = f"SELECT COUNT(*) as total FROM ({base_query}) as count_query"
+        total_result = fetch_one(count_query, filter_params)
+        total = total_result["total"] if total_result else 0
 
         # 全体の最新投稿日を取得（フィルターに関係なく）
-        cursor.execute("SELECT MAX(created_at) FROM frontend_data")
-        global_latest_date = cursor.fetchone()[0]
+        latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_data")
+        global_latest_date = latest_date_result["max_date"] if latest_date_result else None
         global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
 
         # フィルター適用後の最新投稿日を取得（base_queryを使用）
-        filtered_latest_query = f"SELECT MAX(created_at) FROM ({base_query}) as latest_query"
-        cursor.execute(filtered_latest_query, filter_params)
-        filtered_latest_date = cursor.fetchone()[0]
+        filtered_latest_query = f"SELECT MAX(created_at) as max_date FROM ({base_query}) as latest_query"
+        filtered_latest_result = fetch_one(filtered_latest_query, filter_params)
+        filtered_latest_date = filtered_latest_result["max_date"] if filtered_latest_result else None
         filtered_last_updated = format_last_updated(filtered_latest_date) if filtered_latest_date else None
 
         return {
             "data": [format_video(row) for row in rows],
             "total": total,
             "currentPage": page,
-            "totalPages": (total + limit - 1) // limit,
+            "totalPages": (total + limit - 1) // limit if limit > 0 else 1,
             "success": True,
             "lastUpdated": {
                 "date": filtered_last_updated,
@@ -528,11 +505,6 @@ async def get_videos(
                 "error": str(e)
             }
         )
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/health")
 async def health_check():
@@ -541,7 +513,7 @@ async def health_check():
         
         # データベースモジュールのインポートを試行
         try:
-            from src.db.database import get_db_connection
+            from src.db.database import execute_query
             print("Database module imported successfully")
         except ImportError as e:
             print(f"Failed to import database module: {e}")
@@ -561,12 +533,8 @@ async def health_check():
         
         # データベース接続を試行
         try:
-            conn = get_db_connection()
-            print("Database connection established")
-            
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            result = cursor.fetchone()
+            # SQLAlchemyを使用してテスト
+            result = fetch_one("SELECT 1 as test")
             print(f"Test query result: {result}")
             
             return {
@@ -581,10 +549,6 @@ async def health_check():
                 status_code=500,
                 detail=f"Database connection failed: {str(e)}"
             )
-        finally:
-            if 'conn' in locals() and conn:
-                conn.close()
-                print("Database connection closed")
                 
     except Exception as e:
         print(f"Unexpected error in health check: {e}")
@@ -600,19 +564,20 @@ async def test():
 async def debug_row(row_id: str):
     """特定の行の生データとJSONパース結果を確認するためのデバッグエンドポイント"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # テーブル内の特定の行を検索
+        query = "SELECT * FROM frontend_data WHERE id = :row_id"
+        results = execute_query(query, {"row_id": row_id})
         
-        cursor.execute("SELECT * FROM frontend_data WHERE id = %s", (row_id,))
-        row = cursor.fetchone()
-        
-        if not row:
+        if not results:
             return {"error": "Row not found"}
             
-        # 生データを表示
+        # 結果の最初の行を取得
+        row = results[0]
+        
+        # データ構造を構築
         raw_data = {
-            "row_data": [str(item) for item in row],
-            "columns": [desc[0] for desc in cursor.description]
+            "row_data": {key: str(value) for key, value in row.items()},
+            "columns": list(row.keys())
         }
         
         # format_videoを試す（エラーをキャッチする）
@@ -628,57 +593,47 @@ async def debug_row(row_id: str):
         }
     except Exception as e:
         return {"error": str(e)}
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/categories")
 async def get_categories():
     """カテゴリ一覧を取得するエンドポイント"""
 
     try:
-        # ← ここで接続もカーソルも借りて、ブロックを抜けたら自動 close
-        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+        # SQLAlchemyを使用してテーブル一覧を取得
+        tables_result = execute_query("SHOW TABLES")
+        tables = [list(row.values())[0] for row in tables_result]
+        logger.info(f"データベース内のテーブル: {tables}")
 
-            # データベース構造を確認
-            cursor.execute("SHOW TABLES")
-            tables = [row[0] for row in cursor.fetchall()]
-            logger.info(f"データベース内のテーブル: {tables}")
+        # frontend_dataテーブルの構造確認
+        columns_result = execute_query("DESCRIBE frontend_data")
+        columns = [row['Field'] for row in columns_result]
+        logger.info(f"frontend_dataテーブルのカラム: {columns}")
 
-            # frontend_dataテーブルの構造確認
-            cursor.execute("DESCRIBE frontend_data")
-            columns = [row[0] for row in cursor.fetchall()]
-            logger.info(f"frontend_dataテーブルのカラム: {columns}")
+        # カテゴリ情報があるか確認
+        if "category" in columns:
+            categories_rows = execute_query(
+                """
+                SELECT DISTINCT category
+                FROM frontend_data
+                WHERE category IS NOT NULL AND category != ''
+                """
+            )
+            logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
 
-            # カテゴリ情報があるか確認
-            if "category" in columns:
-                cursor.execute(
-                    """
-                    SELECT DISTINCT category
-                    FROM frontend_data
-                    WHERE category IS NOT NULL AND category != ''
-                    """
-                )
-                categories_rows = cursor.fetchall()
-                logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
+            categories = [row['category'] for row in categories_rows if row['category']]
+            result = {
+                "success": True,
+                "categories": categories,
+                "products": [],
+                "category_products": {}
+            }
+        else:
+            result = {
+                "success": False,
+                "error": "カテゴリ情報が見つかりません",
+                "categories": []
+            }
 
-                categories = [row[0] for row in categories_rows if row[0]]
-                result = {
-                    "success": True,
-                    "categories": categories,
-                    "products": [],
-                    "category_products": {}
-                }
-            else:
-                result = {
-                    "success": False,
-                    "error": "カテゴリ情報が見つかりません",
-                    "categories": []
-                }
-
-        # with ブロックを抜けた時点で cursor / conn は閉じられている
         return result
 
     except Exception as e:
@@ -849,27 +804,20 @@ async def get_filter_options(
     filter_type: 取得する選択肢のタイプ (categories, accounts, hashtags, music, all)
     その他のパラメータ: 通常のフィルター条件
     """
-    conn = None
-    cursor = None
-    
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # フィルター条件を構築
-        params = []
+        params = {}
         where_clauses = []
         
         # 以下、通常のフィルター条件構築処理と同じ
         if account_name:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_name LIKE %s")
-            params.append(f"%{escaped_account_name}%")
+            where_clauses.append("account_name LIKE :account_name")
+            params["account_name"] = f"%{escaped_account_name}%"
         
         # カテゴリフィルターのOR条件処理
         category_filters = []
-        category_params = []
 
         # category_countパラメータがある場合は複数カテゴリ
         category_count = request.query_params.get('category_count')
@@ -879,77 +827,72 @@ async def get_filter_options(
                 cat_param = request.query_params.get(f'category_{i}')
                 if cat_param:
                     escaped_cat = cat_param.replace("_", r"\_").replace("%", r"\%")
-                    category_filters.append("category LIKE %s")
-                    category_params.append(f"%{escaped_cat}%")
+                    category_filters.append(f"category LIKE :category_{i}")
+                    params[f"category_{i}"] = f"%{escaped_cat}%"
         
         # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
         if category_filters:
             where_clauses.append(f"({' OR '.join(category_filters)})")
-            params.extend(category_params)
         # 従来の単一カテゴリ処理
         elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("category LIKE %s")
-            params.append(f"%{escaped_category}%")
+            where_clauses.append("category LIKE :category")
+            params["category"] = f"%{escaped_category}%"
         
         if hashtags:
             # exact_hashtags タイプが指定されている場合は完全一致検索
             exact_hashtags = request.query_params.get('exact_hashtags')
             if exact_hashtags == 'true':
                 # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
-                where_clauses.append("(hashtags = %s OR hashtags LIKE %s OR hashtags LIKE %s OR hashtags LIKE %s)")
+                where_clauses.append("(hashtags = :hashtags OR hashtags LIKE :hashtags_start OR hashtags LIKE :hashtags_middle OR hashtags LIKE :hashtags_end)")
                 hashtags_exact = hashtags
-                params.extend([
-                    hashtags_exact,                 # 完全一致
-                    f"{hashtags_exact},%",         # 先頭に位置する場合
-                    f"%,{hashtags_exact},%",       # 中間に位置する場合
-                    f"%,{hashtags_exact}"          # 末尾に位置する場合
-                ])
+                params["hashtags"] = hashtags_exact
+                params["hashtags_start"] = f"{hashtags_exact},%"
+                params["hashtags_middle"] = f"%,{hashtags_exact},%"
+                params["hashtags_end"] = f"%,{hashtags_exact}"
                 print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
             else:
                 # 従来の部分一致検索
                 # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
                 escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
-                where_clauses.append("hashtags LIKE %s")
-                params.append(f"%{escaped_hashtags}%")
+                where_clauses.append("hashtags LIKE :hashtags")
+                params["hashtags"] = f"%{escaped_hashtags}%"
                 print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("music_info LIKE %s")
-            params.append(f"%{escaped_music_info}%")
+            where_clauses.append("music_info LIKE :music_info")
+            params["music_info"] = f"%{escaped_music_info}%"
         
         if min_play_count:
-            where_clauses.append("play_count >= %s")
-            params.append(min_play_count)
+            where_clauses.append("play_count >= :min_play_count")
+            params["min_play_count"] = min_play_count
             
         if min_likes_count:
-            where_clauses.append("likes_count >= %s")
-            params.append(min_likes_count)
+            where_clauses.append("likes_count >= :min_likes_count")
+            params["min_likes_count"] = min_likes_count
             
         if start_date and end_date:
-            where_clauses.append("created_at BETWEEN %s AND %s")
-            params.append(start_date)
-            params.append(end_date)
+            where_clauses.append("created_at BETWEEN :start_date AND :end_date")
+            params["start_date"] = start_date
+            params["end_date"] = end_date
         elif start_date:
-            where_clauses.append("created_at >= %s")
-            params.append(start_date)
+            where_clauses.append("created_at >= :start_date")
+            params["start_date"] = start_date
         elif end_date:
-            where_clauses.append("created_at <= %s")
-            params.append(end_date)
+            where_clauses.append("created_at <= :end_date")
+            params["end_date"] = end_date
             
         if created_at:
             if created_at_type == "after" or created_at_type == "greater":
-                where_clauses.append("created_at >= %s")
-                params.append(created_at)
+                where_clauses.append("created_at >= :created_at")
             elif created_at_type == "before" or created_at_type == "less":
-                where_clauses.append("created_at <= %s")
-                params.append(created_at)
+                where_clauses.append("created_at <= :created_at")
             else:  # exact date
                 # 日付が "YYYY-MM-DD" 形式の場合、その日の範囲を指定
-                where_clauses.append("DATE(created_at) = DATE(%s)")
-                params.append(created_at)
+                where_clauses.append("DATE(created_at) = DATE(:created_at)")
+            params["created_at"] = created_at
         
         # ベースとなるWHERE句を構築
         base_where = ""
@@ -966,8 +909,8 @@ async def get_filter_options(
         if filter_type in ["categories", "all"]:
             # カテゴリ一覧を取得
             query = f"SELECT DISTINCT category FROM frontend_data{base_where}"
-            cursor.execute(query, params)
-            categories = [row[0] for row in cursor.fetchall() if row[0]]
+            categories_rows = execute_query(query, params)
+            categories = [row['category'] for row in categories_rows if row['category']]
             
             # カテゴリを分割して処理
             processed_categories = []
@@ -985,26 +928,26 @@ async def get_filter_options(
         if filter_type in ["accounts", "all"]:
             # アカウント一覧を取得
             query = f"SELECT DISTINCT account_name FROM frontend_data{base_where}"
-            cursor.execute(query, params)
-            accounts = [row[0] for row in cursor.fetchall() if row[0]]
+            accounts_rows = execute_query(query, params)
+            accounts = [row['account_name'] for row in accounts_rows if row['account_name']]
             result["accounts"] = sorted(accounts)
             
         if filter_type in ["hashtags", "all"]:
             # ハッシュタグ一覧を取得
             query = f"SELECT DISTINCT hashtags FROM frontend_data{base_where}"
-            cursor.execute(query, params)
+            hashtags_rows = execute_query(query, params)
             
             # ハッシュタグを処理
             all_hashtags = []
-            for row in cursor.fetchall():
-                if row[0]:
+            for row in hashtags_rows:
+                if row['hashtags']:
                     try:
                         # JSON形式の場合はパース
-                        hashtags_json = json.loads(row[0])
+                        hashtags_json = json.loads(row['hashtags'])
                         if isinstance(hashtags_json, list):
                             all_hashtags.extend(hashtags_json)
                         else:
-                            hashtags = row[0]
+                            hashtags = row['hashtags']
                             # ハッシュタグを分割して処理
                             tags = []
                             if " " in hashtags or "、" in hashtags or "," in hashtags:
@@ -1016,7 +959,7 @@ async def get_filter_options(
                             all_hashtags.extend(tags)
                     except json.JSONDecodeError:
                         # JSON形式でない場合
-                        hashtags = row[0]
+                        hashtags = row['hashtags']
                         # ハッシュタグを分割して処理
                         tags = []
                         if " " in hashtags or "、" in hashtags or "," in hashtags:
@@ -1034,8 +977,8 @@ async def get_filter_options(
         if filter_type in ["music", "all"]:
             # 音声タイトル一覧を取得
             query = f"SELECT DISTINCT music_info FROM frontend_data{base_where}"
-            cursor.execute(query, params)
-            music_titles = [row[0] for row in cursor.fetchall() if row[0]]
+            music_rows = execute_query(query, params)
+            music_titles = [row['music_info'] for row in music_rows if row['music_info']]
             result["music"] = sorted(music_titles)
             
         return result
@@ -1047,11 +990,6 @@ async def get_filter_options(
             "success": False,
             "error": str(e)
         }
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/trends/timeline")
 async def get_trends_timeline(
@@ -1067,9 +1005,6 @@ async def get_trends_timeline(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # パラメータ処理 - List[str]型なのでsplit不要
         genre_list = genres or []
         metric_list = metrics.split(',') if metrics else ["view_increase", "total_posts", "videos_100k_plus"]
@@ -1085,15 +1020,20 @@ async def get_trends_timeline(
         
         # クエリ最適化：必要なカラムのみ取得
         needed_columns = ["collection_date", "genre"] + metric_list
-        query = f"SELECT {', '.join(needed_columns)} FROM trend_analysis WHERE collection_date BETWEEN %s AND %s"
+        query = f"SELECT {', '.join(needed_columns)} FROM trend_analysis WHERE collection_date BETWEEN :start_date AND :end_date"
         
-        # ここで params 変数を初期化
-        params = [start_date, end_date]
+        # パラメータ辞書を初期化
+        params = {"start_date": start_date, "end_date": end_date}
         
-        # インデックスを活用するクエリ順序に変更
+        # ジャンルフィルタの追加
         if genre_list:
-            query += " AND genre IN (" + ", ".join(["%s"] * len(genre_list)) + ")"
-            params.extend(genre_list)
+            placeholders = []
+            for i, genre in enumerate(genre_list):
+                param_name = f"genre_{i}"
+                placeholders.append(f":{ param_name}")
+                params[param_name] = genre
+            
+            query += f" AND genre IN ({', '.join(placeholders)})"
             
         # 日付でソートしてからジャンルでソート（インデックスを活用）
         query += " ORDER BY collection_date ASC, genre ASC"
@@ -1108,22 +1048,21 @@ async def get_trends_timeline(
         print(f"パラメータ: {params}")
         
         # クエリ実行
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        rows = execute_query(query, params)
         
         # 結果整形 - 日付ごとにジャンル別データを整理
         timeline_data = {}
         
         for row in rows:
-            date_str = row[0].isoformat()
-            genre = row[1]
+            date_str = row["collection_date"].isoformat()
+            genre = row["genre"]
             
             if date_str not in timeline_data:
                 timeline_data[date_str] = {}
                 
             genre_data = {}
-            for i, metric in enumerate(metric_list):
-                genre_data[metric] = row[i+2]
+            for metric in metric_list:
+                genre_data[metric] = row[metric]
                 
             timeline_data[date_str][genre] = genre_data
             
@@ -1141,11 +1080,6 @@ async def get_trends_timeline(
         logger.error(f"トレンドタイムラインデータ取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/trends/summary")
 async def get_trends_summary(
@@ -1161,9 +1095,6 @@ async def get_trends_summary(
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
             
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # パラメータ処理
         genre_list = genres.split(',') if genres else []
         
@@ -1178,13 +1109,18 @@ async def get_trends_summary(
         FROM 
             trend_analysis 
         WHERE 
-            collection_date BETWEEN %s AND %s
+            collection_date BETWEEN :start_date AND :end_date
         """
-        params = [start_date, end_date]
+        params = {"start_date": start_date, "end_date": end_date}
         
         if genre_list:
-            query += " AND genre IN (" + ", ".join(["%s"] * len(genre_list)) + ")"
-            params.extend(genre_list)
+            placeholders = []
+            for i, genre in enumerate(genre_list):
+                param_name = f"genre_{i}"
+                placeholders.append(f":{ param_name}")
+                params[param_name] = genre
+                
+            query += f" AND genre IN ({', '.join(placeholders)})"
             
         query += " GROUP BY genre ORDER BY total_view_increase DESC"
         
@@ -1193,17 +1129,16 @@ async def get_trends_summary(
         print(f"パラメータ: {params}")
         
         # クエリ実行
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        rows = execute_query(query, params)
         
         # 結果整形
         summary_data = []
         for row in rows:
-            genre = row[0]
-            total_view_increase = int(row[1]) if row[1] else 0
-            total_videos_10k_plus = int(row[2]) if row[2] else 0
-            total_videos_100k_plus = int(row[3]) if row[3] else 0
-            total_posts = int(row[4]) if row[4] else 0
+            genre = row["genre"]
+            total_view_increase = int(row["total_view_increase"]) if row["total_view_increase"] else 0
+            total_videos_10k_plus = int(row["total_videos_10k_plus"]) if row["total_videos_10k_plus"] else 0
+            total_videos_100k_plus = int(row["total_videos_100k_plus"]) if row["total_videos_100k_plus"] else 0
+            total_posts = int(row["total_posts"]) if row["total_posts"] else 0
             
             # 投稿数が0の場合は割合を0とする
             ratio_10k_plus = total_videos_10k_plus / total_posts if total_posts > 0 else 0
@@ -1231,25 +1166,16 @@ async def get_trends_summary(
         logger.error(f"ジャンル別集計データ取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/trends/genres")
 async def get_trend_genres():
     """トレンド分析で利用可能なジャンル一覧を取得するAPI"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # ユニークなジャンル一覧を取得
         query = "SELECT DISTINCT category_name FROM category_master ORDER BY category_name"
-        cursor.execute(query)
-        rows = cursor.fetchall()
+        rows = execute_query(query)
         
-        genres = [row[0] for row in rows]
+        genres = [row["category_name"] for row in rows]
         
         return {
             "success": True,
@@ -1260,26 +1186,17 @@ async def get_trend_genres():
         logger.error(f"トレンドジャンル一覧取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/trends/dates")
 async def get_trend_dates():
     """トレンド分析の利用可能な集計日一覧を取得するAPI"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # 集計日の一覧を取得（最新順）
         query = "SELECT DISTINCT collection_date FROM trend_analysis ORDER BY collection_date DESC"
-        cursor.execute(query)
-        rows = cursor.fetchall()
+        rows = execute_query(query)
         
         # ISO形式の日付文字列に変換
-        dates = [row[0].isoformat() for row in rows]
+        dates = [row["collection_date"].isoformat() for row in rows]
         
         return {
             "success": True,
@@ -1290,11 +1207,6 @@ async def get_trend_dates():
         logger.error(f"トレンド集計日一覧取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.middleware("http")
 async def update_session_middleware(request: Request, call_next):
@@ -1306,21 +1218,14 @@ async def update_session_middleware(request: Request, call_next):
     
     if session_token:
         # 非同期でセッション最終利用日時を更新
-        # 実際の実装では、データベースに接続して更新処理を行う
-        conn = get_db_connection()
-        cursor = conn.cursor()
         try:
             current_time = datetime.utcnow()
-            cursor.execute(
-                "UPDATE sessions SET last_used_at = %s WHERE session_token = %s",
-                (current_time, session_token)
+            execute_update(
+                "UPDATE sessions SET last_used_at = :current_time WHERE session_token = :session_token",
+                {"current_time": current_time, "session_token": session_token}
             )
-            conn.commit()
         except Exception as e:
             logger.error(f"セッション更新エラー: {e}")
-        finally:
-            cursor.close()
-            conn.close()
     
     return response
 
@@ -1331,13 +1236,9 @@ async def get_video_play_count_history(
 ):
     logger.info(f"再生数履歴取得リクエスト受信: video_id={video_id}, days={days}")
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # テーブル存在確認
-        cursor.execute("SHOW TABLES")
-        tables = cursor.fetchall()
-        tables_list = [t[0] for t in tables]
+        tables_result = execute_query("SHOW TABLES")
+        tables_list = [list(row.values())[0] for row in tables_result]
         logger.info(f"利用可能なテーブル: {tables_list}")
         
         if 'play_count_history' not in tables_list:
@@ -1359,17 +1260,14 @@ async def get_video_play_count_history(
                 "history": []
             }
 
-        # 通常のカーソルを使用
-        cursor = conn.cursor()
-
         query = """
         SELECT 
             collection_date,
             play_count_increase
         FROM play_count_history
         WHERE 
-            video_id = %s
-            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+            video_id = :video_id
+            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
         ORDER BY collection_date ASC
         """
         
@@ -1377,8 +1275,7 @@ async def get_video_play_count_history(
         logger.info(f"実行するクエリ: {query}")
         logger.info(f"パラメータ: video_id={video_id}, days={days}")
         
-        cursor.execute(query, (video_id, days))
-        results = cursor.fetchall()
+        results = execute_query(query, {"video_id": video_id, "days": days})
         
         # 結果のデバッグログ
         logger.info(f"取得した結果: {results}")
@@ -1387,8 +1284,8 @@ async def get_video_play_count_history(
         history = []
         for result in results:
             history.append({
-                "collection_date": result[0].strftime("%Y-%m-%d"),
-                "play_count_increase": result[1] if result[1] is not None else 0
+                "collection_date": result["collection_date"].strftime("%Y-%m-%d"),
+                "play_count_increase": result["play_count_increase"] if result["play_count_increase"] is not None else 0
             })
 
         return {
@@ -1406,11 +1303,6 @@ async def get_video_play_count_history(
             "video_id": video_id,
             "history": []
         }
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/video/save-count-history/{video_id}")
 async def get_video_save_count_history(
@@ -1419,13 +1311,9 @@ async def get_video_save_count_history(
 ):
     logger.info(f"保存数履歴取得リクエスト受信: video_id={video_id}, days={days}")
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
         # テーブル存在確認
-        cursor.execute("SHOW TABLES")
-        tables = cursor.fetchall()
-        tables_list = [t[0] for t in tables]
+        tables_result = execute_query("SHOW TABLES")
+        tables_list = [list(row.values())[0] for row in tables_result]
         logger.info(f"利用可能なテーブル: {tables_list}")
         
         if 'play_count_history' not in tables_list:
@@ -1447,17 +1335,14 @@ async def get_video_save_count_history(
                 "history": []
             }
 
-        # 通常のカーソルを使用
-        cursor = conn.cursor()
-
         query = """
         SELECT 
             collection_date,
             save_count_increase
         FROM play_count_history
         WHERE 
-            video_id = %s
-            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+            video_id = :video_id
+            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
         ORDER BY collection_date ASC
         """
         
@@ -1465,8 +1350,7 @@ async def get_video_save_count_history(
         logger.info(f"実行するクエリ: {query}")
         logger.info(f"パラメータ: video_id={video_id}, days={days}")
         
-        cursor.execute(query, (video_id, days))
-        results = cursor.fetchall()
+        results = execute_query(query, {"video_id": video_id, "days": days})
         
         # 結果のデバッグログ
         logger.info(f"取得した結果: {results}")
@@ -1475,8 +1359,8 @@ async def get_video_save_count_history(
         history = []
         for result in results:
             history.append({
-                "collection_date": result[0].strftime("%Y-%m-%d"),
-                "save_count_increase": result[1] if result[1] is not None else 0
+                "collection_date": result["collection_date"].strftime("%Y-%m-%d"),
+                "save_count_increase": result["save_count_increase"] if result["save_count_increase"] is not None else 0
             })
 
         return {
@@ -1494,54 +1378,45 @@ async def get_video_save_count_history(
             "video_id": video_id,
             "history": []
         }
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 @app.get("/api/products")
 async def get_products():
     """商品マスターから商品情報とカテゴリを取得するエンドポイント"""
     try:
-        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+        # product_masterテーブルから商品情報を取得
+        rows = execute_query("""
+            SELECT 
+                product_name,
+                product_category
+            FROM 
+                product_master
+            WHERE 
+                product_name IS NOT NULL 
+                AND product_name != ''
+            ORDER BY 
+                product_category,
+                product_name
+        """)
         
-            # product_masterテーブルから商品情報を取得
-            cursor.execute("""
-                SELECT 
-                    product_name,
-                    product_category
-                FROM 
-                    product_master
-                WHERE 
-                    product_name IS NOT NULL 
-                    AND product_name != ''
-                ORDER BY 
-                    product_category,
-                    product_name
-            """)
+        # 結果を構造化
+        products = []
+        categories = {}  # カテゴリごとに商品をグループ化
+        
+        for row in rows:
+            product_name = row['product_name']
+            product_category = row['product_category'] or "その他"  # カテゴリがない場合は「その他」とする
             
-            product_rows = cursor.fetchall()
+            products.append({
+                "name": product_name,
+                "category": product_category
+            })
             
-            # 結果を構造化
-            products = []
-            categories = {}  # カテゴリごとに商品をグループ化
+            # カテゴリごとの商品リストを作成
+            if product_category not in categories:
+                categories[product_category] = []
             
-            for row in product_rows:
-                product_name = row[0]
-                product_category = row[1] or "その他"  # カテゴリがない場合は「その他」とする
-                
-                products.append({
-                    "name": product_name,
-                    "category": product_category
-                })
-                
-                # カテゴリごとの商品リストを作成
-                if product_category not in categories:
-                    categories[product_category] = []
-                
-                categories[product_category].append(product_name)
-            
+            categories[product_category].append(product_name)
+        
         return {
             "success": True,
             "data": products,
@@ -1555,28 +1430,26 @@ async def get_products():
 async def get_account_types():
     """アカウントタイプ一覧を取得するエンドポイント"""
     try:
-        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
+        # 空でないアカウントタイプのみを取得
+        rows = execute_query(
+            "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
+        )
+        account_types_raw = [row['account_type'] for row in rows]
         
-            # 空でないアカウントタイプのみを取得
-            cursor.execute(
-                "SELECT DISTINCT account_type FROM frontend_data WHERE account_type IS NOT NULL AND account_type != '' ORDER BY account_type"
-            )
-            account_types_raw = [row[0] for row in cursor.fetchall()]
-            
-            # アカウントタイプを分割して処理
-            processed_account_types = []
-            for account_type in account_types_raw:
-                if "、" in account_type or "," in account_type:
-                    parts = account_type.replace("、", ",").split(",")
-                    processed_account_types.extend([part.strip() for part in parts if part.strip()])
-                else:
-                    processed_account_types.append(account_type)
-            
-            # 重複を削除
-            unique_account_types = list(set(processed_account_types))
-            # ソートして返す
-            sorted_account_types = sorted(unique_account_types)
+        # アカウントタイプを分割して処理
+        processed_account_types = []
+        for account_type in account_types_raw:
+            if "、" in account_type or "," in account_type:
+                parts = account_type.replace("、", ",").split(",")
+                processed_account_types.extend([part.strip() for part in parts if part.strip()])
+            else:
+                processed_account_types.append(account_type)
         
+        # 重複を削除
+        unique_account_types = list(set(processed_account_types))
+        # ソートして返す
+        sorted_account_types = sorted(unique_account_types)
+    
         return {
             "success": True,
             "data": sorted_account_types

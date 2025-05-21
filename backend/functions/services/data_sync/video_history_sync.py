@@ -86,57 +86,49 @@ def sync_video_history(event, context):
         
         logger.info(f"動画履歴の同期が完了しました。収集日: {collection_date}")
 
-        # 10日間の集計を更新
+        # 10日間の集計を更新 (各動画IDごとに最新5件のデータを使用)
         update_ten_days_metrics_query = """
         UPDATE frontend_data fd
         SET 
             ten_days_increase = (
                 SELECT COALESCE(SUM(play_count_increase), 0)
-                FROM play_count_history pch
-                WHERE pch.video_id = fd.video_id
-                AND pch.collection_date IN (
-                    CURDATE(),
-                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
-                )
+                FROM (
+                    SELECT play_count_increase
+                    FROM play_count_history pch
+                    WHERE pch.video_id = fd.video_id
+                    ORDER BY collection_date DESC
+                    LIMIT 5
+                ) AS recent_data
             ),
             ten_days_likes_increase = (
                 SELECT COALESCE(SUM(likes_count_increase), 0)
-                FROM play_count_history pch
-                WHERE pch.video_id = fd.video_id
-                AND pch.collection_date IN (
-                    CURDATE(),
-                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
-                )
+                FROM (
+                    SELECT likes_count_increase
+                    FROM play_count_history pch
+                    WHERE pch.video_id = fd.video_id
+                    ORDER BY collection_date DESC
+                    LIMIT 5
+                ) AS recent_data
             ),
             ten_days_comment_increase = (
                 SELECT COALESCE(SUM(comment_count_increase), 0)
-                FROM play_count_history pch
-                WHERE pch.video_id = fd.video_id
-                AND pch.collection_date IN (
-                    CURDATE(),
-                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
-                )
+                FROM (
+                    SELECT comment_count_increase
+                    FROM play_count_history pch
+                    WHERE pch.video_id = fd.video_id
+                    ORDER BY collection_date DESC
+                    LIMIT 5
+                ) AS recent_data
             ),
             ten_days_save_increase = (
                 SELECT COALESCE(SUM(save_count_increase), 0)
-                FROM play_count_history pch
-                WHERE pch.video_id = fd.video_id
-                AND pch.collection_date IN (
-                    CURDATE(),
-                    DATE_SUB(CURDATE(), INTERVAL 2 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 4 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 6 DAY),
-                    DATE_SUB(CURDATE(), INTERVAL 8 DAY)
-                )
+                FROM (
+                    SELECT save_count_increase
+                    FROM play_count_history pch
+                    WHERE pch.video_id = fd.video_id
+                    ORDER BY collection_date DESC
+                    LIMIT 5
+                ) AS recent_data
             )
         """
         

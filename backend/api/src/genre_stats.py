@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from pydantic import BaseModel
 from src.db.database import get_db_connection
+from sqlalchemy.sql import text
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 import json
-from src.db.database import get_db_connection
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -56,17 +56,20 @@ async def get_genre_stats(
 ):
     # ----- 日付決定 ----- #
     if start_date is None or end_date is None:
-        conn = get_db_connection(); cur = conn.cursor(dictionary=True)
-        cur.execute("""
+        conn = get_db_connection()
+        query = text("""
             SELECT DISTINCT collection_date
             FROM play_count_history
             WHERE collection_date IS NOT NULL
             ORDER BY collection_date DESC
             LIMIT 7
         """)
-        dates = cur.fetchall(); cur.close(); conn.close()
-        end_date   = dates[0]["collection_date"].strftime("%Y-%m-%d") if dates else datetime.now().strftime("%Y-%m-%d")
-        start_date = dates[-1]["collection_date"].strftime("%Y-%m-%d") if dates else (datetime.now()-timedelta(days=18)).strftime("%Y-%m-%d")
+        result = conn.execute(query)
+        dates = result.fetchall()
+        conn.close()
+        
+        end_date = dates[0][0].strftime("%Y-%m-%d") if dates else datetime.now().strftime("%Y-%m-%d")
+        start_date = dates[-1][0].strftime("%Y-%m-%d") if dates else (datetime.now()-timedelta(days=18)).strftime("%Y-%m-%d")
         logger.info(f"Calculated date range: {start_date=}  {end_date=}")
 
     # 集約列→ORDER BY 用
@@ -76,15 +79,17 @@ async def get_genre_stats(
         "postCount":     "post_cnt"
     }.get(metric, "total_play_inc")
 
-    conn = cur = None
+    conn = None
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True)
         logger.info("Executing genre-stats query")
+
+        # 既存の一時テーブルを削除
+        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_gen_base"))
 
         # ---------- ここから変更 ---------- #
         # ① explode → genre×video を一次表に
-        cur.execute("""
+        conn.execute(text("""
             CREATE TEMPORARY TABLE tmp_gen_base (
                 genre              VARCHAR(255),
                 video_id           BIGINT UNSIGNED,
@@ -101,9 +106,9 @@ async def get_genre_stats(
                 INDEX idx_g      (genre),
                 INDEX idx_g_inc  (genre, play_inc DESC)
             ) ENGINE=InnoDB
-        """)
+        """))
 
-        insert_sql = """
+        insert_sql = text("""
         INSERT INTO tmp_gen_base
         SELECT
             TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre,
@@ -124,13 +129,13 @@ async def get_genre_stats(
         WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
         AND fd.category IS NOT NULL
         AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
-        AND pch.collection_date BETWEEN %s AND %s
+        AND pch.collection_date BETWEEN :start_date AND :end_date
         GROUP BY genre, fd.video_id
-        """
-        cur.execute(insert_sql, [start_date, end_date])
+        """)
+        conn.execute(insert_sql, {"start_date": start_date, "end_date": end_date})
 
         # ② genre サマリ
-        cur.execute(f"""
+        stats_sql = text(f"""
             SELECT
                 genre,
                 SUM(play_inc)           AS total_play_inc,
@@ -140,16 +145,17 @@ async def get_genre_stats(
             GROUP BY genre
             ORDER BY {sort_column} DESC
         """)
+        result = conn.execute(stats_sql)
         stats = {r["genre"]: {
             "genre"                       : r["genre"],
             "total_play_count_increase"   : r["total_play_inc"],
             "videos_over_100k"            : r["over100k_cnt"],
             "total_posts"                 : r["post_cnt"],
             "top_videos"                  : []
-        } for r in cur.fetchall()}
+        } for r in result.mappings().all()}
 
         # ③ 各 genre の TOP10
-        cur.execute("""
+        top_sql = text("""
             SELECT *
             FROM (
                 SELECT
@@ -161,7 +167,8 @@ async def get_genre_stats(
                 FROM tmp_gen_base
             ) t WHERE rn <= 10
         """)
-        for v in cur.fetchall():
+        result = conn.execute(top_sql)
+        for v in result.mappings().all():
             g = stats[v["genre"]]
             g["top_videos"].append({
                 "url"                 : v["url"],
@@ -176,17 +183,29 @@ async def get_genre_stats(
             })
         ### ここまで変更 ###
 
+        # 一時テーブルを削除
+        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_gen_base"))
+
         resp = {
             "data": list(stats.values()),
             "date_range": {"start_date": start_date, "end_date": end_date}
         }
         return JSONResponse(content=jsonable_encoder(resp))
+    except Exception as e:
+        logger.error(f"Error fetching genre stats: {str(e)}", exc_info=True)
+        # エラーが発生した場合でも一時テーブルを削除する
+        try:
+            if conn:
+                conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_gen_base"))
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if cur:  cur.close()
-        if conn: conn.close()  
+        if conn:
+            conn.close()
 
 
-    # ---------- /api/genre-trends ---------- #
+# ---------- /api/genre-trends ---------- #
 
 @router.get("/api/genre-trends")
 async def get_genre_trends(
@@ -196,24 +215,24 @@ async def get_genre_trends(
 ):
     # ----- 日付決定 ----- #
     if start_date is None or end_date is None:
-        conn = cur = None
+        conn = None
         try:
             conn = get_db_connection()
-            cur  = conn.cursor(dictionary=True)
-            cur.execute("""
+            query = text("""
                 SELECT DISTINCT collection_date
                 FROM play_count_history
                 WHERE collection_date IS NOT NULL
                 ORDER BY collection_date DESC
                 LIMIT 7
             """)
-            dates = cur.fetchall()
+            result = conn.execute(query)
+            dates = result.fetchall()
         finally:
-            if cur:  cur.close()
-            if conn: conn.close()
+            if conn:
+                conn.close()
 
-        end_date   = dates[0]["collection_date"].strftime("%Y-%m-%d") if dates else datetime.now().strftime("%Y-%m-%d")
-        start_date = dates[-1]["collection_date"].strftime("%Y-%m-%d") if dates else (datetime.now()-timedelta(days=18)).strftime("%Y-%m-%d")
+        end_date = dates[0][0].strftime("%Y-%m-%d") if dates else datetime.now().strftime("%Y-%m-%d")
+        start_date = dates[-1][0].strftime("%Y-%m-%d") if dates else (datetime.now()-timedelta(days=18)).strftime("%Y-%m-%d")
         logger.info(f"Calculated date range: {start_date=}  {end_date=}")
 
     metric_expr = {
@@ -222,10 +241,9 @@ async def get_genre_trends(
         "postCount"    : "COUNT(DISTINCT video_id)"
     }[metric]
 
-    conn = cur = None
+    conn = None
     try:
         conn = get_db_connection()
-        cur  = conn.cursor(dictionary=True)
         logger.info("Executing genre-trends query")
 
         sql = f"""
@@ -241,7 +259,7 @@ async def get_genre_trends(
                         UNION ALL SELECT 4 UNION ALL SELECT 5) n
             WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
               AND fd.category IS NOT NULL
-              AND pch.collection_date BETWEEN %s AND %s
+              AND pch.collection_date BETWEEN :start_date AND :end_date
             GROUP BY pch.collection_date, fd.video_id, genre
         ),
         top10 AS (
@@ -262,8 +280,8 @@ async def get_genre_trends(
         GROUP BY b.collection_date, b.genre
         ORDER BY b.collection_date
         """
-        cur.execute(sql, [start_date, end_date])
-        rows = cur.fetchall()
+        result = conn.execute(text(sql), {"start_date": start_date, "end_date": end_date})
+        rows = result.mappings().all()
 
         trend_data = [{
             "date":   r["date"].strftime("%Y-%m-%d"),
@@ -281,10 +299,12 @@ async def get_genre_trends(
             "date_range": {"start_date": start_date, "end_date": end_date}
         }
         return JSONResponse(content=jsonable_encoder(resp))
-
+    except Exception as e:
+        logger.error(f"Error fetching genre trends: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if cur:  cur.close()
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 
   

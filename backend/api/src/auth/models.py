@@ -15,6 +15,7 @@ class UserLogin(BaseModel):
 
 class User(UserBase):
     id: str
+    user_number: int
     email_verified: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

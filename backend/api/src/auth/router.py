@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Optional
 from datetime import datetime, timedelta
-from src.db.database import get_db_connection
+from src.db.database import execute_query, fetch_one, execute_update, get_db
 from .models import UserCreate, User, Token, Session, PasswordChange
 from .utils import (
     verify_password,
@@ -31,126 +31,106 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[User
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute(
-            "SELECT * FROM users WHERE email = %s",
-            (email,)
+    user = fetch_one(
+        "SELECT * FROM users WHERE email = :email",
+        {"email": email}
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ユーザーが見つかりません",
         )
-        user = cursor.fetchone()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="ユーザーが見つかりません",
-            )
-        return User(**user)
-    finally:
-        cursor.close()
-        conn.close()
+    return User(**user)
 
 @router.post("/register", response_model=User)
 async def register(user_in: UserCreate):
     """新規ユーザー登録"""
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    # メールアドレスの重複チェック
+    existing_user = fetch_one(
+        "SELECT id FROM users WHERE email = :email",
+        {"email": user_in.email}
+    )
     
-    try:
-        # メールアドレスの重複チェック
-        cursor.execute(
-            "SELECT id FROM users WHERE email = %s",
-            (user_in.email,)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="このメールアドレスは既に登録されています",
         )
-        if cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="このメールアドレスは既に登録されています",
-            )
-        
-        # ユーザーの作成
-        user_id = generate_uuid()
-        hashed_password = get_password_hash(user_in.password)
-        
-        cursor.execute(
-            """
-            INSERT INTO users (id, email, password, name)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (user_id, user_in.email, hashed_password, user_in.name)
-        )
-        conn.commit()
-        
-        # 作成したユーザーの取得
-        cursor.execute(
-            "SELECT * FROM users WHERE id = %s",
-            (user_id,)
-        )
-        new_user = cursor.fetchone()
-        return User(**new_user)
-        
-    finally:
-        cursor.close()
-        conn.close()
+    
+    # ユーザーの作成
+    user_id = generate_uuid()
+    hashed_password = get_password_hash(user_in.password)
+    
+    execute_update(
+        """
+        INSERT INTO users (id, email, password, name)
+        VALUES (:user_id, :email, :password, :name)
+        """,
+        {
+            "user_id": user_id,
+            "email": user_in.email,
+            "password": hashed_password,
+            "name": user_in.name
+        }
+    )
+    
+    # 作成したユーザーの取得
+    new_user = fetch_one(
+        "SELECT * FROM users WHERE id = :user_id",
+        {"user_id": user_id}
+    )
+    
+    return User(**new_user)
 
 @router.post("/token", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """ログイン処理"""
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    # ユーザーの検証
+    user = fetch_one(
+        "SELECT * FROM users WHERE email = :email",
+        {"email": form_data.username}
+    )
     
-    try:
-        # ユーザーの検証
-        cursor.execute(
-            "SELECT * FROM users WHERE email = %s",
-            (form_data.username,)
+    if not user or not verify_password(form_data.password, user["password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="メールアドレスまたはパスワードが正しくありません",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        user = cursor.fetchone()
-        
-        if not user or not verify_password(form_data.password, user["password"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="メールアドレスまたはパスワードが正しくありません",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        # セッションの作成
-        session_id, session_token, expires, last_used_at = create_session(user["id"])
-        cursor.execute(
-            """
-            INSERT INTO sessions (id, user_id, session_token, expires, last_used_at)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (session_id, user["id"], session_token, expires, last_used_at)
-        )
-        conn.commit()
-        
-        # アクセストークンの生成（is_adminを含める）
-        access_token = create_access_token(data={"sub": user["email"], "is_admin": bool(user.get("is_admin", 0))})
-        
-        return {"access_token": access_token, "token_type": "bearer", "is_admin": bool(user.get("is_admin", 0))}
-        
-    finally:
-        cursor.close()
-        conn.close()
+    
+    # セッションの作成
+    session_id, session_token, expires, last_used_at = create_session(user["id"])
+    
+    execute_update(
+        """
+        INSERT INTO sessions (id, user_id, session_token, expires, last_used_at)
+        VALUES (:session_id, :user_id, :session_token, :expires, :last_used_at)
+        """,
+        {
+            "session_id": session_id,
+            "user_id": user["id"],
+            "session_token": session_token,
+            "expires": expires,
+            "last_used_at": last_used_at
+        }
+    )
+    
+    # アクセストークンの生成（is_adminを含める）
+    access_token = create_access_token(data={"sub": user["email"], "is_admin": bool(user.get("is_admin", 0))})
+    
+    return {"access_token": access_token, "token_type": "bearer", "is_admin": bool(user.get("is_admin", 0))}
 
 @router.post("/logout")
 async def logout(current_user: User = Depends(get_current_user)):
     """ログアウト処理"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # ユーザーのセッションを削除
+    execute_update(
+        "DELETE FROM sessions WHERE user_id = :user_id",
+        {"user_id": current_user.id}
+    )
     
-    try:
-        # ユーザーのセッションを削除
-        cursor.execute(
-            "DELETE FROM sessions WHERE user_id = %s",
-            (current_user.id,)
-        )
-        conn.commit()
-        return {"message": "ログアウトしました"}
-        
-    finally:
-        cursor.close()
-        conn.close()
+    return {"message": "ログアウトしました"}
 
 @router.get("/me", response_model=User)
 async def read_users_me(current_user: User = Depends(get_current_user)):
@@ -190,58 +170,47 @@ async def change_password(
             detail="この操作を行う権限がありません",
         )
     
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    target_user_id = None
     
-    try:
-        target_user_id = None
-        
-        if password_data.email and is_admin:
-            # 管理者が他のユーザーのパスワードを変更する場合
-            cursor.execute(
-                "SELECT id FROM users WHERE email = %s",
-                (password_data.email,)
-            )
-            user_data = cursor.fetchone()
-            
-            if not user_data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="指定されたメールアドレスのユーザーが見つかりません",
-                )
-            
-            target_user_id = user_data["id"]
-            # 管理者の場合はcurrent_passwordの検証をスキップ
-        else:
-            # 一般ユーザーが自分自身のパスワードを変更する場合
-            cursor.execute(
-                "SELECT id, password FROM users WHERE id = %s",
-                (current_user.id,)
-            )
-            user_data = cursor.fetchone()
-            target_user_id = current_user.id
-            
-            # 一般ユーザーの場合のみパスワード検証
-            if not verify_password(password_data.current_password, user_data["password"]):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="現在のパスワードが正しくありません",
-                )
-        
-        # 新しいパスワードをハッシュ化して保存
-        hashed_password = get_password_hash(password_data.new_password)
-        
-        cursor.execute(
-            "UPDATE users SET password = %s WHERE id = %s",
-            (hashed_password, target_user_id)
+    if password_data.email and is_admin:
+        # 管理者が他のユーザーのパスワードを変更する場合
+        user_data = fetch_one(
+            "SELECT id FROM users WHERE email = :email",
+            {"email": password_data.email}
         )
-        conn.commit()
         
-        return {"message": "パスワードが正常に変更されました"}
+        if not user_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="指定されたメールアドレスのユーザーが見つかりません",
+            )
         
-    finally:
-        cursor.close()
-        conn.close() 
+        target_user_id = user_data["id"]
+        # 管理者の場合はcurrent_passwordの検証をスキップ
+    else:
+        # 一般ユーザーが自分自身のパスワードを変更する場合
+        user_data = fetch_one(
+            "SELECT id, password FROM users WHERE id = :user_id",
+            {"user_id": current_user.id}
+        )
+        target_user_id = current_user.id
+        
+        # 一般ユーザーの場合のみパスワード検証
+        if not verify_password(password_data.current_password, user_data["password"]):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="現在のパスワードが正しくありません",
+            )
+    
+    # 新しいパスワードをハッシュ化して保存
+    hashed_password = get_password_hash(password_data.new_password)
+    
+    execute_update(
+        "UPDATE users SET password = :password WHERE id = :user_id",
+        {"password": hashed_password, "user_id": target_user_id}
+    )
+    
+    return {"message": "パスワードが正常に変更されました"}
 
 @router.get("/tiktok/auth")
 async def tiktok_auth(request: Request):
@@ -252,7 +221,7 @@ async def tiktok_auth(request: Request):
     
     if session_cookie:
         try:
-            payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+            payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET_KEY"), algorithms=["HS256"])
             user_id = payload.get("uid")
         except:
             # 無効なセッション
@@ -260,66 +229,57 @@ async def tiktok_auth(request: Request):
     
     # ログインしていない場合はanonymousユーザーを作成
     if not user_id:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        # 匿名ユーザーを作成
+        user_id = str(uuid.uuid4())
+        temp_email = f"temp_{user_id}@example.com"
+        temp_password = secrets.token_urlsafe(16)
+        hashed_password = get_password_hash(temp_password)
         
         try:
-            # 匿名ユーザーを作成
-            user_id = str(uuid.uuid4())
-            temp_email = f"temp_{user_id}@example.com"
-            temp_password = secrets.token_urlsafe(16)
-            hashed_password = get_password_hash(temp_password)
-            
-            cursor.execute(
+            execute_update(
                 """
                 INSERT INTO users (id, email, password, name)
-                VALUES (%s, %s, %s, %s)
+                VALUES (:user_id, :email, :password, :name)
                 """,
-                (user_id, temp_email, hashed_password, "一時ユーザー")
+                {
+                    "user_id": user_id,
+                    "email": temp_email,
+                    "password": hashed_password,
+                    "name": "一時ユーザー"
+                }
             )
-            conn.commit()
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"一時ユーザーの作成に失敗しました: {str(e)}"
             )
-        finally:
-            cursor.close()
-            conn.close()
     
     # stateパラメータを生成して保存
     state = secrets.token_urlsafe(32)
-    conn = get_db_connection()
-    cursor = conn.cursor()
     
     try:
         # 古いstateを削除
-        cursor.execute(
-            "DELETE FROM user_oauth_states WHERE user_id = %s OR created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)",
-            (user_id,)
+        execute_update(
+            "DELETE FROM user_oauth_states WHERE user_id = :user_id OR created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)",
+            {"user_id": user_id}
         )
         
         # 新しいstateを保存
-        cursor.execute(
+        execute_update(
             """
             INSERT INTO user_oauth_states (user_id, oauth_state)
-            VALUES (%s, %s)
+            VALUES (:user_id, :state)
             """,
-            (user_id, state)
+            {"user_id": user_id, "state": state}
         )
-        conn.commit()
     except Exception as e:
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"OAuth状態の保存に失敗しました: {str(e)}"
         )
-    finally:
-        cursor.close()
-        conn.close()
     
     # セッションクッキーを設定
-    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
     
     # TikTokの認証URLを生成
     auth_url = (
@@ -359,7 +319,7 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         )
     
     try:
-        payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+        payload = jwt.decode(session_cookie, os.getenv("JWT_SECRET_KEY"), algorithms=["HS256"])
         user_id = payload.get("uid")
         
         if not user_id:
@@ -374,24 +334,16 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         )
     
     # stateパラメータの検証
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    state_record = fetch_one(
+        "SELECT oauth_state FROM user_oauth_states WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 1",
+        {"user_id": user_id}
+    )
     
-    try:
-        cursor.execute(
-            "SELECT oauth_state FROM user_oauth_states WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
-            (user_id,)
+    if not state_record or state_record["oauth_state"] != state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不正なstateパラメータ"
         )
-        state_record = cursor.fetchone()
-        
-        if not state_record or state_record["oauth_state"] != state:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="不正なstateパラメータ"
-            )
-    finally:
-        cursor.close()
-        conn.close()
     
     # TikTok APIとトークン交換
     try:
@@ -423,9 +375,6 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         )
     
     # トークンの暗号化と保存
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
     try:
         # トークンの暗号化
         encrypted_access_token = encrypt_data(token_data.get("access_token"))
@@ -434,7 +383,7 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         expires_at = (datetime.now() + timedelta(seconds=int(expires_in))).strftime("%Y-%m-%d %H:%M:%S")
         
         # テーブルが存在するか確認し、存在しなければ作成
-        cursor.execute("""
+        execute_update("""
             CREATE TABLE IF NOT EXISTS tiktok_tokens (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
@@ -450,36 +399,39 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
         """)
         
         # トークンを保存
-        cursor.execute("""
+        execute_update("""
             INSERT INTO tiktok_tokens (user_id, access_token, refresh_token, expires_in, expires_at)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (:user_id, :access_token, :refresh_token, :expires_in, :expires_at)
             ON DUPLICATE KEY UPDATE
                 access_token = VALUES(access_token),
                 refresh_token = VALUES(refresh_token),
                 expires_in = VALUES(expires_in),
                 expires_at = VALUES(expires_at),
                 updated_at = NOW()
-        """, (user_id, encrypted_access_token, encrypted_refresh_token, expires_in, expires_at))
+        """, {
+            "user_id": user_id,
+            "access_token": encrypted_access_token,
+            "refresh_token": encrypted_refresh_token,
+            "expires_in": expires_in,
+            "expires_at": expires_at
+        })
         
         # 使用済みstateを削除
-        cursor.execute("DELETE FROM user_oauth_states WHERE user_id = %s", (user_id,))
-        
-        conn.commit()
+        execute_update(
+            "DELETE FROM user_oauth_states WHERE user_id = :user_id",
+            {"user_id": user_id}
+        )
     except Exception as e:
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"トークンの保存に失敗しました: {str(e)}"
         )
-    finally:
-        cursor.close()
-        conn.close()
     
     # ログインセッションの発行
-    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET"), algorithm="HS256")
+    cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
     
     # フロントエンドへリダイレクト
-    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-account"})
+    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-account?tiktok_connected=true"})
     response.set_cookie(
         key="session", 
         value=cookie, 

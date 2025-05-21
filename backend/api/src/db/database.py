@@ -1,5 +1,4 @@
-import mysql.connector
-from mysql.connector import Error
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 import json
 import os
@@ -7,36 +6,69 @@ from datetime import date, datetime
 from src.utils.logger_config import setup_logger
 import logging
 from src.config import get_db_config  # 新しい設定モジュールをインポート
-from mysql.connector.pooling import MySQLConnectionPool   # ★追加
 
 print("database.py is being loaded")
 logger = setup_logger()
 # ★これを get_db_connection() の "上" に追加
-# --------------------------------------------------
-# 💡 起動時にプールを 1 個だけ作る
-_db_pool = MySQLConnectionPool(
-    pool_name="mypool",
-    pool_size=32,
-    **get_db_config()          # host / user / password / database / port or unix_socket
+cfg = get_db_config()                # host / user / password / database / port
+MYSQL_HOST = cfg.get("host", "127.0.0.1")          # ← Auth Proxy なので localhost
+MYSQL_PORT = cfg.get("port", 3306)
+MYSQL_USER = cfg["user"]
+MYSQL_PASS = cfg["password"]
+MYSQL_DATABASE = cfg["database"]
+
+engine = create_engine(
+    f"mysql+mysqldb://{MYSQL_USER}:{MYSQL_PASS}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}",
+    pool_size=60,      # 1 Pod 上限
+    max_overflow=0,    # 超えたら待機
+    pool_timeout=30,
+    pool_pre_ping=True
 )
-logger.info("MySQL pool initialised size=10")
+logger.info("MySQL engine initialised pool_size=60")
 
 def get_db_connection():
     """プールから 1 つ借りるだけ（毎回 0.5ms 程度）"""
-    return _db_pool.get_connection()
+    return engine.connect()
 
+def execute_query(query, params=None):
+    """SQLクエリを実行して結果を辞書のリストとして返す"""
+    with engine.connect() as conn:
+        # SQLAlchemyのtext()でクエリをラップ
+        sql = text(query)
+        result = conn.execute(sql, params or {})
+        columns = result.keys()
+        return [dict(zip(columns, row)) for row in result.fetchall()]
+
+def fetch_one(query, params=None):
+    """SQLクエリを実行して1行の結果を辞書として返す"""
+    with engine.connect() as conn:
+        # SQLAlchemyのtext()でクエリをラップ
+        sql = text(query)
+        result = conn.execute(sql, params or {})
+        row = result.fetchone()
+        if row:
+            return dict(zip(result.keys(), row))
+        return None
+
+def execute_update(query, params=None):
+    """更新クエリを実行する"""
+    with engine.connect() as conn:
+        # SQLAlchemyのtext()でクエリをラップ
+        sql = text(query)
+        conn.execute(sql, params or {})
+        conn.commit()
 
 def format_video(row):
     try:
         # 日付処理
-        created_at = row[2]  # created_atのインデックス
+        created_at = row['created_at']  # created_atキー
         if isinstance(created_at, date):
             created_at_str = created_at.isoformat()
         else:
             created_at_str = str(created_at)
 
         # サムネイル処理
-        thumbnail = row[1]  # thumbnail_urlのインデックス
+        thumbnail = row['thumbnail_url']  # thumbnail_urlキー
         if thumbnail and isinstance(thumbnail, str) and thumbnail.startswith('gs://'):
             bucket_name = thumbnail.split('/')[2]
             object_path = '/'.join(thumbnail.split('/')[3:])
@@ -44,7 +76,7 @@ def format_video(row):
 
         # ハッシュタグ処理
         hashtags = []
-        hashtags_raw = row[16]  # hashtagsのインデックス
+        hashtags_raw = row['hashtags']  # hashtagsキー
         if hashtags_raw:
             try:
                 if isinstance(hashtags_raw, str):
@@ -57,7 +89,7 @@ def format_video(row):
 
         # 音楽情報処理
         music_info = {}
-        music_raw = row[17]  # music_infoのインデックス
+        music_raw = row['music_info']  # music_infoキー
         if music_raw:
             try:
                 if isinstance(music_raw, str):
@@ -68,34 +100,34 @@ def format_video(row):
             except json.JSONDecodeError:
                 music_info = {"title": str(music_raw)}
 
-        # 保存数データを取得（インデックスが追加された順序に基づいて）
-        save_count = int(row[21]) if len(row) > 21 and row[21] is not None else 0
-        save_count_increase = int(row[22]) if len(row) > 22 and row[22] is not None else 0
-        ten_days_save_increase = int(row[23]) if len(row) > 23 and row[23] is not None else 0
+        # 保存数データを取得（キー名に基づいてアクセス）
+        save_count = int(row['save_count']) if 'save_count' in row and row['save_count'] is not None else 0
+        save_count_increase = int(row['save_count_increase']) if 'save_count_increase' in row and row['save_count_increase'] is not None else 0
+        ten_days_save_increase = int(row['ten_days_save_increase']) if 'ten_days_save_increase' in row and row['ten_days_save_increase'] is not None else 0
 
         return {
-            "url": row[0],
+            "url": row['url'],
             "thumbnail_url": thumbnail,
             "created_at": created_at_str,
-            "play_count": int(row[3]) if row[3] else 0,
-            "play_count_increase": int(row[4]) if row[4] else 0,
-            "ten_days_increase": int(row[5]) if row[5] else 0,
-            "account_name": row[6],
-            "display_name": row[7],
-            "content_type": row[8],
-            "likes_count": int(row[9]) if row[9] else 0,
-            "comment_count": int(row[10]) if row[10] else 0,
-            "likes_count_increase": int(row[11]) if row[11] else 0,
-            "ten_days_likes_increase": int(row[12]) if row[12] else 0,
-            "comment_count_increase": int(row[13]) if row[13] else 0,
-            "ten_days_comment_increase": int(row[14]) if row[14] else 0,
-            "account_type": row[15] if row[15] else None,
+            "play_count": int(row['play_count']) if row['play_count'] else 0,
+            "play_count_increase": int(row['play_count_increase']) if row['play_count_increase'] else 0,
+            "ten_days_increase": int(row['ten_days_increase']) if row['ten_days_increase'] else 0,
+            "account_name": row['account_name'],
+            "display_name": row['display_name'],
+            "content_type": row['content_type'],
+            "likes_count": int(row['likes_count']) if row['likes_count'] else 0,
+            "comment_count": int(row['comment_count']) if row['comment_count'] else 0,
+            "likes_count_increase": int(row['likes_count_increase']) if row['likes_count_increase'] else 0,
+            "ten_days_likes_increase": int(row['ten_days_likes_increase']) if row['ten_days_likes_increase'] else 0,
+            "comment_count_increase": int(row['comment_count_increase']) if row['comment_count_increase'] else 0,
+            "ten_days_comment_increase": int(row['ten_days_comment_increase']) if row['ten_days_comment_increase'] else 0,
+            "account_type": row['account_type'] if row['account_type'] else None,
             "hashtags": hashtags,
             "music_info": music_info,
             "audioInfo": music_info,  # 互換性のために残す
-            "caption": row[18] if row[18] else None,
-            "category": row[19] if row[19] else None,
-            "product": row[20] if row[20] else None,
+            "caption": row['caption'] if row['caption'] else None,
+            "category": row['category'] if row['category'] else None,
+            "product": row['product'] if row['product'] else None,
             "save_count": save_count,
             "save_count_increase": save_count_increase,
             "ten_days_save_increase": ten_days_save_increase
@@ -104,7 +136,7 @@ def format_video(row):
         logger.error(f"Error formatting video: {e}")
         logger.error(f"Row data: {row}")
         return {
-            "url": row[0] if len(row) > 0 else "",
+            "url": row['url'] if 'url' in row else "",
             "thumbnail_url": "",
             "created_at": "",
             "error": str(e)

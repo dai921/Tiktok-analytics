@@ -274,6 +274,35 @@ def extract_hashtags(title: str) -> str:
     # カンマ区切りの文字列として結合
     return ','.join(hashtags)
 
+def extract_username_from_url(video_url: str) -> Optional[str]:
+    """
+    TikTok動画URLからユーザー名を抽出する
+    
+    Args:
+        video_url (str): TikTok動画URL (例: https://www.tiktok.com/@username/video/1234567890)
+    
+    Returns:
+        Optional[str]: 抽出されたユーザー名、または抽出できない場合はNone
+    """
+    try:
+        # URLが有効かチェック
+        if not video_url or 'tiktok.com' not in video_url:
+            return None
+            
+        # URLをパース
+        parsed_url = urlparse(video_url)
+        path = parsed_url.path
+        
+        # パスを分割して@usernameを検索
+        path_parts = path.split('/')
+        for part in path_parts:
+            if part and part.startswith('@'):
+                return part[1:]  # @を除いたユーザー名を返す
+                
+        return None
+    except Exception as e:
+        logger.error(f"URLからユーザー名抽出エラー: {str(e)}, URL: {video_url}")
+        return None
 
 def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, int]]:
     """
@@ -289,11 +318,8 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
         # 更新対象の総数を取得
         total_count_query = """
             SELECT COUNT(*) as total
-            FROM video_light_raw_data vl
-            JOIN video_heavy_raw_data vh ON vh.video_id = vl.video_id
-            WHERE vl.needs_update = 1
-            AND vl.play_count is not null
-            AND vh.audio_url is not null
+            FROM video_heavy_raw_data 
+            WHERE new_update = 1
         """
         total_result = execute_query(total_count_query)
         total_count = total_result[0]['total']
@@ -324,12 +350,9 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
         # 残り件数を計算
         remaining_count_query = """
             SELECT COUNT(*) as remaining
-            FROM video_light_raw_data vl
-            JOIN video_heavy_raw_data vh ON vh.video_id = vl.video_id
-            WHERE vl.id > %s
-            AND vl.needs_update = 1
-            AND vl.play_count is not null
-            AND vh.audio_url is not null
+            FROM video_heavy_raw_data
+            WHERE id > %s
+            AND new_update = 1
         """
         remaining_result = execute_query(remaining_count_query, (last_cursor_id,))
         remaining_count = remaining_result[0]['remaining']
@@ -337,26 +360,22 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
         # バッチデータの取得
         query = """
             SELECT
-                vl.id,
-                vl.video_id,
-                vl.video_url,
-                vl.video_thumbnail_url,
-                vl.user_username,
-                vl.play_count,
-                vl.video_alt_info_text,
-                vh.user_nickname,
-                vh.post_time,
-                vh.like_count,
-                vh.comment_count,
-                vh.collect_count,
-                vh.audio_title
-            FROM video_light_raw_data AS vl
-            JOIN video_heavy_raw_data AS vh ON vh.video_id = vl.video_id
-            WHERE vl.id > %s
-            AND vl.needs_update = 1
-            AND vl.play_count is not null
-            AND vh.audio_url is not null
-            ORDER BY vl.id
+                id,
+                video_id,
+                video_url,
+                video_thumbnail_url,
+                user_username,
+                video_title,
+                user_nickname,
+                post_time,
+                like_count,
+                comment_count,
+                collect_count,
+                audio_title
+            FROM video_heavy_raw_data
+            WHERE id > %s
+            AND new_update = 1
+            ORDER BY id
             LIMIT %s
         """
         
@@ -400,11 +419,22 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
     """
     try:
         video_id = video_data['video_id']
+        
+        # user_usernameがNullまたは空の場合、URLからユーザー名を抽出
+        username = video_data.get('user_username')
+        if not username:
+            video_url = video_data.get('video_url', '')
+            extracted_username = extract_username_from_url(video_url)
+            if extracted_username:
+                username = extracted_username
+                logger.info(f"URLからユーザー名を抽出しました: {username}, video_id: {video_id}")
+            else:
+                logger.warning(f"ユーザー名が取得できません。video_id: {video_id}")
+                username = None  # または適切なデフォルト値を設定
 
         # 前回のデータを取得（MySQL用のクエリ）
         prev_data_query = """
             SELECT 
-                play_count,
                 likes_count,
                 comment_count,
                 save_count
@@ -417,25 +447,21 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         prev_data = prev_data_results[0] if prev_data_results else None
 
         # 増加量の計算
-        current_play_count = video_data['play_count']
         current_likes_count = video_data['like_count']
         current_comment_count = video_data['comment_count']
         current_save_count = video_data['collect_count']
 
         if prev_data:
             # 前回のデータが存在する場合は差分を計算
-            prev_play_count = prev_data['play_count'] if prev_data['play_count'] is not None else 0
             prev_likes_count = prev_data['likes_count'] if prev_data['likes_count'] is not None else 0
             prev_comment_count = prev_data['comment_count'] if prev_data['comment_count'] is not None else 0
             prev_save_count = prev_data['save_count'] if prev_data['save_count'] is not None else 0
 
-            play_count_increase = max(0, current_play_count - prev_play_count)
             likes_count_increase = current_likes_count - prev_likes_count
             comment_count_increase = current_comment_count - prev_comment_count
             save_count_increase = current_save_count - prev_save_count
         else:
             # 新規動画の場合は現在の値をそのまま増加量とする
-            play_count_increase = current_play_count
             likes_count_increase = current_likes_count
             comment_count_increase = current_comment_count
             save_count_increase = current_save_count
@@ -449,7 +475,6 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
 
         # 保存されたサムネイルURLまたは元のURLを使用
         thumbnail_url = thumbnail_result['url'] if thumbnail_result['status'] == 'success' else None
-        username = video_data['user_username']
 
         # アカウントタイプの取得
         account_type_query = """
@@ -461,7 +486,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         account_type_results = execute_query(account_type_query, (username,))
         account_type = account_type_results[0]['account_type'] if account_type_results else None
         # タイトル分析
-        video_title = normalize_video_title(video_data['video_alt_info_text'])
+        video_title = normalize_video_title(video_data['video_title'])
         title_analysis = analyze_title(video_title, account_type)
         
         # コンテンツタイプの判定
@@ -471,7 +496,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         cleaned_nickname = clean_nickname(video_data['user_nickname'])
 
         # ハッシュタグの抽出
-        hashtags = extract_hashtags(video_data['video_alt_info_text'])
+        hashtags = extract_hashtags(video_data['video_title'])
 
         # 同期データの作成
         insert_params = {
@@ -487,12 +512,10 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'content_type': content_type,
             'created_at': video_data['post_time'],
             'account_type': account_type,
-            'playCountIncrease': play_count_increase,
             'likesCountIncrease': likes_count_increase,
             'commentCountIncrease': comment_count_increase,
             'saveCountIncrease': save_count_increase,
             'music_title': video_data['audio_title'],
-            'play_count': video_data['play_count'],
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
             'save_count': video_data['collect_count'],
@@ -503,16 +526,16 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         INSERT INTO video_master (
             video_id, url, username, display_name, cover_image_url,
             description, hashtags, category, product, content_type,
-            account_type, created_at, playCountIncrease, likesCountIncrease,
+            account_type, created_at, likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
-            play_count, likes_count, comment_count, save_count, front_needs_update
+            likes_count, comment_count, save_count, front_needs_update
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
             %(category)s, %(product)s, %(content_type)s,
-            %(account_type)s, %(created_at)s, %(playCountIncrease)s, %(likesCountIncrease)s,
+            %(account_type)s, %(created_at)s,  %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
-            %(music_title)s, %(play_count)s, %(likes_count)s,
+            %(music_title)s, %(likes_count)s,
             %(comment_count)s, %(save_count)s, %(front_needs_update)s
         )
         ON DUPLICATE KEY UPDATE
@@ -525,12 +548,10 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             content_type = VALUES(content_type),
             created_at = VALUES(created_at),
             account_type = VALUES(account_type),
-            playCountIncrease = VALUES(playCountIncrease),
             likesCountIncrease = VALUES(likesCountIncrease),
             commentCountIncrease = VALUES(commentCountIncrease),
             saveCountIncrease = VALUES(saveCountIncrease),
             music_title = VALUES(music_title),
-            play_count = VALUES(play_count),
             likes_count = VALUES(likes_count),
             comment_count = VALUES(comment_count),
             save_count = VALUES(save_count),

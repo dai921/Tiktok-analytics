@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 import functions_framework
 from google.cloud import storage
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from urllib.parse import urlparse
 import logging
@@ -286,7 +286,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         video_id = video_data['video_id']
 
         # play_countとaudio_titleの値チェック
-        if video_data.get('play_count') is None or video_data.get('audio_title') is None:
+        if video_data.get('audio_title') is None:
             logger.warning(f"必須データが不足しています。video_id: {video_id}")
             return {
                 'status': 'error',
@@ -296,7 +296,6 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # 前回のデータを取得（MySQL用のクエリ）
         prev_data_query = """
             SELECT 
-                play_count,
                 likes_count,
                 comment_count,
                 save_count
@@ -310,25 +309,21 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         prev_data = prev_data_results[0] if prev_data_results else None
 
         # 増加量の計算
-        current_play_count = video_data['play_count']
         current_likes_count = video_data['like_count']
         current_comment_count = video_data['comment_count']
         current_save_count = video_data['save_count']
 
         if prev_data:
             # 前回のデータが存在する場合は差分を計算
-            prev_play_count = prev_data['play_count'] if prev_data['play_count'] is not None else 0
             prev_likes_count = prev_data['likes_count'] if prev_data['likes_count'] is not None else 0
             prev_comment_count = prev_data['comment_count'] if prev_data['comment_count'] is not None else 0
             prev_save_count = prev_data['save_count'] if prev_data['save_count'] is not None else 0
 
-            play_count_increase = max(0, current_play_count - prev_play_count)
             likes_count_increase = current_likes_count - prev_likes_count
             comment_count_increase = current_comment_count - prev_comment_count
             save_count_increase = current_save_count - prev_save_count
         else:
             # 新規動画の場合は現在の値をそのまま増加量とする
-            play_count_increase = current_play_count
             likes_count_increase = current_likes_count
             comment_count_increase = current_comment_count
             save_count_increase = current_save_count
@@ -366,6 +361,17 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # ハッシュタグの抽出
         hashtags = extract_hashtags(video_data['video_title'])
 
+        # post_timeを受け取った形式によって処理を変える
+        if isinstance(video_data['post_time'], str):
+            # 文字列形式の場合はdatetimeに変換
+            post_time = datetime.fromisoformat(video_data['post_time'].replace('Z', '+00:00'))
+        else:
+            # すでにdatetime形式の場合はそのまま使用
+            post_time = video_data['post_time']
+
+        # 9時間加算してJST時間に
+        jst_time = post_time + timedelta(hours=9)
+
         # 同期データの作成
         insert_params = {
             'video_id': video_id,
@@ -378,14 +384,12 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'category': title_analysis['category'],
             'product': title_analysis['product_name'],
             'content_type': content_type,
-            'created_at': video_data['post_time'],
+            'created_at': jst_time,
             'account_type': account_type,
-            'playCountIncrease': play_count_increase,
             'likesCountIncrease': likes_count_increase,
             'commentCountIncrease': comment_count_increase,
             'saveCountIncrease': save_count_increase,
             'music_title': video_data['audio_title'],
-            'play_count': video_data['play_count'],
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
             'save_count': video_data['save_count'],
@@ -396,27 +400,25 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         INSERT INTO video_master (
             video_id, url, username, display_name, cover_image_url,
             description, hashtags, category, product, content_type,
-            account_type, created_at, playCountIncrease, likesCountIncrease,
+            account_type, created_at,  likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
-            play_count, likes_count, comment_count, save_count, front_needs_update
+            likes_count, comment_count, save_count, front_needs_update
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
             %(category)s, %(product)s, %(content_type)s,
-            %(account_type)s, %(created_at)s, %(playCountIncrease)s, %(likesCountIncrease)s,
+            %(account_type)s, %(created_at)s,  %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
-            %(music_title)s, %(play_count)s, %(likes_count)s,
+            %(music_title)s, %(likes_count)s,
             %(comment_count)s, %(save_count)s, %(front_needs_update)s
         )
         ON DUPLICATE KEY UPDATE
             category = VALUES(category),
             product = VALUES(product),
             account_type = VALUES(account_type),
-            playCountIncrease = VALUES(playCountIncrease),
             likesCountIncrease = VALUES(likesCountIncrease),
             commentCountIncrease = VALUES(commentCountIncrease),
             saveCountIncrease = VALUES(saveCountIncrease),
-            play_count = VALUES(play_count),
             likes_count = VALUES(likes_count),
             comment_count = VALUES(comment_count),
             save_count = VALUES(save_count),
@@ -431,6 +433,62 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
 
     except Exception as e:
         logger.error(f"同期処理エラー: {str(e)}")
+        return {'status': 'error', 'message': str(e)}
+
+def sync_play_count(video_data: Dict) -> Dict[str, str]:
+    """
+    play_countのみを処理し、video_masterテーブルに同期する
+    video_idが存在しない場合は新規レコードを作成する
+    """
+    try:
+        video_id = video_data['video_id']
+        logger.info(f"play_count処理を始めます。video_id: {video_id}")
+        
+        # 前回のデータを取得
+        prev_data_query = """
+            SELECT play_count
+            FROM video_master
+            WHERE video_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        prev_data_params = (video_id,)
+        prev_data_results = execute_query(prev_data_query, prev_data_params)
+        prev_data = prev_data_results[0] if prev_data_results else None
+
+        # 増加量の計算
+        current_play_count = video_data['play_count']
+        
+        if prev_data and prev_data['play_count'] is not None:
+            # 前回のデータが存在する場合は差分を計算
+            prev_play_count = prev_data['play_count']
+            play_count_increase = max(0, current_play_count - prev_play_count)
+        else:
+            # 新規動画の場合は現在の値をそのまま増加量とする
+            play_count_increase = current_play_count
+
+        # INSERT ... ON DUPLICATE KEY UPDATE を使用して、
+        # 存在しない場合は挿入、存在する場合は更新
+        upsert_query = """
+        INSERT INTO video_master (
+            url, video_id, username, play_count, playCountIncrease, front_needs_update
+        ) VALUES (
+            %s, %s, %s, %s, %s, 1
+        )
+        ON DUPLICATE KEY UPDATE
+            play_count = VALUES(play_count),
+            playCountIncrease = VALUES(playCountIncrease),
+            front_needs_update = 1
+        """
+        execute_write_query(upsert_query, (video_data['video_url'], video_id, video_data['user_username'], current_play_count, play_count_increase))
+        
+        return {
+            'status': 'success',
+            'message': f'Successfully updated play_count for video {video_id}'
+        }
+
+    except Exception as e:
+        logger.error(f"play_count同期処理エラー: {str(e)}")
         return {'status': 'error', 'message': str(e)}
 
 def sync_video_master(event, context):
@@ -457,8 +515,13 @@ def sync_video_master(event, context):
                 'message': 'No data in message'
             }, 400
 
-        # 同期処理の実行
-        result = sync_video_data(video_data)
+        # play_countの有無で処理を分岐
+        if 'play_count' in video_data and 'video_id' in video_data:
+            # play_countのみの処理
+            result = sync_play_count(video_data)
+        else:
+            # 通常の同期処理
+            result = sync_video_data(video_data)
         
         # 結果をログ出力
         status_code = 200 if result.get('status') == 'success' else 500

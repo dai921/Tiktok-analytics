@@ -3,8 +3,10 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # システムの依存関係をインストール
-RUN apt-get update && apt-get install -y \
-    default-mysql-client \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    pkg-config \
+    build-essential \ 
     default-libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
 

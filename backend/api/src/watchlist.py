@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from src.db.database import get_db_connection
+from sqlalchemy.sql import text
 from src.auth.router import get_current_user
 from src.auth.models import User
 import logging
@@ -47,54 +48,60 @@ async def add_video_to_watchlist(
 ):
     """ビデオをウォッチリストに追加する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # 同じビデオが既に登録されているか確認
-        cursor.execute(
-            "SELECT * FROM video_watchlists WHERE email = %s AND video_id = %s",
-            (current_user.email, video_item.video_id)
+        query = text(
+            "SELECT * FROM video_watchlists WHERE email = :email AND video_id = :video_id"
         )
-        existing = cursor.fetchone()
+        result = conn.execute(query, {"email": current_user.email, "video_id": video_item.video_id})
+        existing = result.mappings().first()
         
         if existing:
             # 既存の登録を更新
-            cursor.execute(
+            update_query = text(
                 """
                 UPDATE video_watchlists 
-                SET watchlist_name = %s, updated_at = NOW()
-                WHERE watchlist_id = %s
-                """,
-                (video_item.watchlist_name, existing["watchlist_id"])
+                SET watchlist_name = :watchlist_name, updated_at = NOW()
+                WHERE watchlist_id = :watchlist_id
+                """
             )
+            conn.execute(update_query, {
+                "watchlist_name": video_item.watchlist_name, 
+                "watchlist_id": existing["watchlist_id"]
+            })
             watchlist_id = existing["watchlist_id"]
         else:
             # 新規登録
-            cursor.execute(
+            insert_query = text(
                 """
                 INSERT INTO video_watchlists (email, video_id, watchlist_name)
-                VALUES (%s, %s, %s)
-                """,
-                (current_user.email, video_item.video_id, video_item.watchlist_name)
+                VALUES (:email, :video_id, :watchlist_name)
+                """
             )
-            watchlist_id = cursor.lastrowid
+            result = conn.execute(insert_query, {
+                "email": current_user.email, 
+                "video_id": video_item.video_id, 
+                "watchlist_name": video_item.watchlist_name
+            })
+            watchlist_id = result.lastrowid
         
         conn.commit()
         
         # 登録された情報を取得
-        cursor.execute(
-            "SELECT * FROM video_watchlists WHERE watchlist_id = %s",
-            (watchlist_id,)
+        select_query = text(
+            "SELECT * FROM video_watchlists WHERE watchlist_id = :watchlist_id"
         )
-        result = cursor.fetchone()
+        result = conn.execute(select_query, {"watchlist_id": watchlist_id})
+        result_row = result.mappings().first()
         
         return {
-            "watchlist_id": result["watchlist_id"],
-            "email": result["email"],
-            "video_id": result["video_id"],
-            "watchlist_name": result["watchlist_name"],
-            "created_at": result["created_at"].isoformat(),
-            "updated_at": result["updated_at"].isoformat()
+            "watchlist_id": result_row["watchlist_id"],
+            "email": result_row["email"],
+            "video_id": result_row["video_id"],
+            "watchlist_name": result_row["watchlist_name"],
+            "created_at": result_row["created_at"].isoformat(),
+            "updated_at": result_row["updated_at"].isoformat()
         }
         
     except Exception as e:
@@ -105,7 +112,6 @@ async def add_video_to_watchlist(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.delete("/videos/{video_id}")
@@ -115,25 +121,24 @@ async def remove_video_from_watchlist(
 ):
     """ビデオをウォッチリストから削除する"""
     conn = get_db_connection()
-    cursor = conn.cursor()
     
     try:
         # ビデオが存在するか確認
-        cursor.execute(
-            "SELECT * FROM video_watchlists WHERE email = %s AND video_id = %s",
-            (current_user.email, video_id)
+        check_query = text(
+            "SELECT * FROM video_watchlists WHERE email = :email AND video_id = :video_id"
         )
-        if not cursor.fetchone():
+        result = conn.execute(check_query, {"email": current_user.email, "video_id": video_id})
+        if not result.first():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="指定されたビデオはウォッチリストに存在しません"
             )
         
         # ウォッチリストから削除
-        cursor.execute(
-            "DELETE FROM video_watchlists WHERE email = %s AND video_id = %s",
-            (current_user.email, video_id)
+        delete_query = text(
+            "DELETE FROM video_watchlists WHERE email = :email AND video_id = :video_id"
         )
+        conn.execute(delete_query, {"email": current_user.email, "video_id": video_id})
         
         conn.commit()
         return {"success": True, "message": "ビデオがウォッチリストから削除されました"}
@@ -148,7 +153,6 @@ async def remove_video_from_watchlist(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/videos", response_model=List[VideoWatchlistResponse])
@@ -157,14 +161,13 @@ async def get_video_watchlist(
 ):
     """ユーザーのビデオウォッチリストを取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
-        cursor.execute(
-            "SELECT * FROM video_watchlists WHERE email = %s ORDER BY updated_at DESC",
-            (current_user.email,)
+        query = text(
+            "SELECT * FROM video_watchlists WHERE email = :email ORDER BY updated_at DESC"
         )
-        results = cursor.fetchall()
+        result = conn.execute(query, {"email": current_user.email})
+        results = result.mappings().all()
         
         watchlist = []
         for item in results:
@@ -186,7 +189,6 @@ async def get_video_watchlist(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/videos/details")
@@ -197,22 +199,21 @@ async def get_video_watchlist_with_details(
 ):
     """ユーザーのビデオウォッチリストを詳細情報付きで取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # デフォルトの期間を設定（指定がない場合は直近7回分のデータ）
         if not start_date or not end_date:
             # 収集日の一覧を取得
-            query = """
+            dates_query = text("""
             SELECT DISTINCT collection_date
             FROM play_count_history
             WHERE collection_date IS NOT NULL
             ORDER BY collection_date DESC
             LIMIT 7
-            """
+            """)
             
-            cursor.execute(query)
-            dates = cursor.fetchall()
+            result = conn.execute(dates_query)
+            dates = result.mappings().all()
             
             if dates:
                 # 7回分のデータ期間を設定
@@ -230,7 +231,7 @@ async def get_video_watchlist_with_details(
             logger.info(f"使用する日付範囲: 開始={start_date}, 終了={end_date}")
             
         # ウォッチリストとビデオデータを結合して取得
-        query = """
+        query = text("""
         SELECT 
             vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, 
@@ -243,26 +244,26 @@ async def get_video_watchlist_with_details(
         FROM video_watchlists vw
         LEFT JOIN frontend_data fd ON vw.video_id = fd.video_id
         LEFT JOIN play_count_history pch ON vw.video_id = pch.video_id
-        WHERE vw.email = %s
-        """
+        WHERE vw.email = :email
+        """)
         
-        params = [current_user.email]
+        params = {"email": current_user.email}
         
         # 日付範囲が指定されている場合、条件に追加
         if start_date and end_date:
-            query += " AND pch.collection_date BETWEEN %s AND %s"
-            params.extend([start_date, end_date])
+            query = text(query.text + " AND pch.collection_date BETWEEN :start_date AND :end_date")
+            params.update({"start_date": start_date, "end_date": end_date})
             
-        query += """
+        query = text(query.text + """
         GROUP BY 
             vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at, fd.play_count, fd.account_name, fd.display_name, 
             fd.content_type, fd.likes_count, fd.comment_count, fd.save_count, fd.hashtags, fd.caption
         ORDER BY vw.updated_at DESC
-        """
+        """)
         
-        cursor.execute(query, params)
-        results = cursor.fetchall()
+        result = conn.execute(query, params)
+        results = result.mappings().all()
         
         watchlist_with_details = []
         for item in results:
@@ -344,7 +345,6 @@ async def get_video_watchlist_with_details(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/videos/trends")
@@ -355,22 +355,21 @@ async def get_video_watchlist_trends(
 ):
     """ユーザーのウォッチリスト動画のトレンドデータを取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # デフォルトの期間を設定（指定がない場合は直近7回分のデータ）
         if not start_date or not end_date:
             # 収集日の一覧を取得
-            query = """
+            dates_query = text("""
             SELECT DISTINCT collection_date
             FROM play_count_history
             WHERE collection_date IS NOT NULL
             ORDER BY collection_date DESC
             LIMIT 7
-            """
+            """)
             
-            cursor.execute(query)
-            dates = cursor.fetchall()
+            result = conn.execute(dates_query)
+            dates = result.mappings().all()
             
             if dates:
                 # 利用可能なデータ期間を設定
@@ -386,14 +385,14 @@ async def get_video_watchlist_trends(
                     start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
         
         # ウォッチリストの動画IDを取得
-        watchlist_query = """
+        watchlist_query = text("""
         SELECT video_id 
         FROM video_watchlists 
-        WHERE email = %s
-        """
+        WHERE email = :email
+        """)
         
-        cursor.execute(watchlist_query, (current_user.email,))
-        watchlist_videos = cursor.fetchall()
+        result = conn.execute(watchlist_query, {"email": current_user.email})
+        watchlist_videos = result.mappings().all()
         
         if not watchlist_videos:
             return {
@@ -408,11 +407,8 @@ async def get_video_watchlist_trends(
         # ウォッチリスト動画のIDリスト
         video_ids = [v["video_id"] for v in watchlist_videos]
         
-        # プレースホルダーを生成
-        placeholders = ', '.join(['%s'] * len(video_ids))
-        
         # 各動画のトレンドデータを取得
-        trend_query = f"""
+        trend_query = text(f"""
         SELECT 
             h.video_id,
             h.collection_date,
@@ -426,17 +422,17 @@ async def get_video_watchlist_trends(
         LEFT JOIN 
             frontend_data v ON h.video_id = v.video_id
         WHERE 
-            h.video_id IN ({placeholders})
-            AND h.collection_date BETWEEN %s AND %s
+            h.video_id IN :video_ids
+            AND h.collection_date BETWEEN :start_date AND :end_date
         GROUP BY 
             h.video_id, h.collection_date, v.account_name
         ORDER BY 
             h.video_id, h.collection_date
-        """
+        """)
         
-        params = video_ids + [start_date, end_date]
-        cursor.execute(trend_query, params)
-        trend_results = cursor.fetchall()
+        params = {"video_ids": tuple(video_ids), "start_date": start_date, "end_date": end_date}
+        result = conn.execute(trend_query, params)
+        trend_results = result.mappings().all()
         
         # 結果を整形
         trend_data = {}
@@ -480,7 +476,6 @@ async def get_video_watchlist_trends(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 # アカウントブックマーク関連のAPI
@@ -491,54 +486,63 @@ async def add_account_to_bookmarks(
 ):
     """アカウントをブックマークに追加する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # 同じアカウントが既に登録されているか確認
-        cursor.execute(
-            "SELECT * FROM account_bookmarks WHERE email = %s AND account_name = %s",
-            (current_user.email, account_item.account_name)
+        check_query = text(
+            "SELECT * FROM account_bookmarks WHERE email = :email AND account_name = :account_name"
         )
-        existing = cursor.fetchone()
+        result = conn.execute(check_query, {
+            "email": current_user.email, 
+            "account_name": account_item.account_name
+        })
+        existing = result.mappings().first()
         
         if existing:
             # 既存の登録を更新
-            cursor.execute(
+            update_query = text(
                 """
                 UPDATE account_bookmarks 
-                SET bookmark_name = %s, updated_at = NOW()
-                WHERE bookmark_id = %s
-                """,
-                (account_item.bookmark_name, existing["bookmark_id"])
+                SET bookmark_name = :bookmark_name, updated_at = NOW()
+                WHERE bookmark_id = :bookmark_id
+                """
             )
+            conn.execute(update_query, {
+                "bookmark_name": account_item.bookmark_name, 
+                "bookmark_id": existing["bookmark_id"]
+            })
             bookmark_id = existing["bookmark_id"]
         else:
             # 新規登録
-            cursor.execute(
+            insert_query = text(
                 """
                 INSERT INTO account_bookmarks (email, account_name, bookmark_name)
-                VALUES (%s, %s, %s)
-                """,
-                (current_user.email, account_item.account_name, account_item.bookmark_name)
+                VALUES (:email, :account_name, :bookmark_name)
+                """
             )
-            bookmark_id = cursor.lastrowid
+            result = conn.execute(insert_query, {
+                "email": current_user.email, 
+                "account_name": account_item.account_name, 
+                "bookmark_name": account_item.bookmark_name
+            })
+            bookmark_id = result.lastrowid
         
         conn.commit()
         
         # 登録された情報を取得
-        cursor.execute(
-            "SELECT * FROM account_bookmarks WHERE bookmark_id = %s",
-            (bookmark_id,)
+        select_query = text(
+            "SELECT * FROM account_bookmarks WHERE bookmark_id = :bookmark_id"
         )
-        result = cursor.fetchone()
+        result = conn.execute(select_query, {"bookmark_id": bookmark_id})
+        result_row = result.mappings().first()
         
         return {
-            "bookmark_id": result["bookmark_id"],
-            "email": result["email"],
-            "account_name": result["account_name"],
-            "bookmark_name": result["bookmark_name"],
-            "created_at": result["created_at"].isoformat(),
-            "updated_at": result["updated_at"].isoformat()
+            "bookmark_id": result_row["bookmark_id"],
+            "email": result_row["email"],
+            "account_name": result_row["account_name"],
+            "bookmark_name": result_row["bookmark_name"],
+            "created_at": result_row["created_at"].isoformat(),
+            "updated_at": result_row["updated_at"].isoformat()
         }
         
     except Exception as e:
@@ -549,7 +553,6 @@ async def add_account_to_bookmarks(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.delete("/accounts/{account_name}")
@@ -559,25 +562,24 @@ async def remove_account_from_bookmarks(
 ):
     """アカウントをブックマークから削除する"""
     conn = get_db_connection()
-    cursor = conn.cursor()
     
     try:
         # アカウントが存在するか確認
-        cursor.execute(
-            "SELECT * FROM account_bookmarks WHERE email = %s AND account_name = %s",
-            (current_user.email, account_name)
+        check_query = text(
+            "SELECT * FROM account_bookmarks WHERE email = :email AND account_name = :account_name"
         )
-        if not cursor.fetchone():
+        result = conn.execute(check_query, {"email": current_user.email, "account_name": account_name})
+        if not result.first():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="指定されたアカウントはブックマークに存在しません"
             )
         
         # ブックマークから削除
-        cursor.execute(
-            "DELETE FROM account_bookmarks WHERE email = %s AND account_name = %s",
-            (current_user.email, account_name)
+        delete_query = text(
+            "DELETE FROM account_bookmarks WHERE email = :email AND account_name = :account_name"
         )
+        conn.execute(delete_query, {"email": current_user.email, "account_name": account_name})
         
         conn.commit()
         return {"success": True, "message": "アカウントがブックマークから削除されました"}
@@ -592,7 +594,6 @@ async def remove_account_from_bookmarks(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/accounts", response_model=List[AccountBookmarkResponse])
@@ -601,14 +602,13 @@ async def get_account_bookmarks(
 ):
     """ユーザーのアカウントブックマークを取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
-        cursor.execute(
-            "SELECT * FROM account_bookmarks WHERE email = %s ORDER BY updated_at DESC",
-            (current_user.email,)
+        query = text(
+            "SELECT * FROM account_bookmarks WHERE email = :email ORDER BY updated_at DESC"
         )
-        results = cursor.fetchall()
+        result = conn.execute(query, {"email": current_user.email})
+        results = result.mappings().all()
         
         bookmarks = []
         for item in results:
@@ -630,7 +630,6 @@ async def get_account_bookmarks(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/accounts/details")
@@ -641,22 +640,21 @@ async def get_account_bookmarks_with_details(
 ):
     """ユーザーのアカウントブックマークをアカウント詳細情報付きで取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # デフォルトの期間を設定（指定がない場合は直近7回分のデータ）
         if not start_date or not end_date:
             # 収集日の一覧を取得
-            query = """
+            dates_query = text("""
             SELECT DISTINCT collection_date
             FROM play_count_history
             WHERE collection_date IS NOT NULL
             ORDER BY collection_date DESC
             LIMIT 7
-            """
+            """)
             
-            cursor.execute(query)
-            dates = cursor.fetchall()
+            result = conn.execute(dates_query)
+            dates = result.mappings().all()
             
             if dates:
                 # 7回分のデータ期間を設定
@@ -674,7 +672,7 @@ async def get_account_bookmarks_with_details(
             logger.info(f"使用する日付範囲: 開始={start_date}, 終了={end_date}")
         
         # アカウントブックマークとアカウント集計データを結合して取得
-        query = """
+        query = text("""
         SELECT 
             ab.bookmark_id, ab.email, ab.account_name, ab.bookmark_name, ab.created_at, ab.updated_at,
             COUNT(DISTINCT fd.video_id) AS total_videos,
@@ -689,23 +687,23 @@ async def get_account_bookmarks_with_details(
         LEFT JOIN frontend_data fd ON ab.account_name = fd.account_name
         LEFT JOIN play_count_history pch ON fd.video_id = pch.video_id
         LEFT JOIN account_list al ON ab.account_name = al.favorite_user_username
-        WHERE ab.email = %s
-        """
+        WHERE ab.email = :email
+        """)
         
-        params = [current_user.email]
+        params = {"email": current_user.email}
         
         # 日付範囲が指定されている場合、条件に追加
         if start_date and end_date:
-            query += " AND pch.collection_date BETWEEN %s AND %s"
-            params.extend([start_date, end_date])
+            query = text(query.text + " AND pch.collection_date BETWEEN :start_date AND :end_date")
+            params.update({"start_date": start_date, "end_date": end_date})
         
-        query += """
+        query = text(query.text + """
         GROUP BY ab.bookmark_id, ab.email, ab.account_name, ab.bookmark_name, ab.created_at, ab.updated_at
         ORDER BY ab.updated_at DESC
-        """
+        """)
         
-        cursor.execute(query, params)
-        results = cursor.fetchall()
+        result = conn.execute(query, params)
+        results = result.mappings().all()
         
         bookmarks_with_details = []
         for item in results:
@@ -747,7 +745,6 @@ async def get_account_bookmarks_with_details(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/accounts/trends")
@@ -758,22 +755,21 @@ async def get_account_trends(
 ):
     """ユーザーのアカウントブックマークのトレンドデータを取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # デフォルトの期間を設定（指定がない場合は直近7回分のデータ）
         if not start_date or not end_date:
             # 収集日の一覧を取得
-            query = """
+            dates_query = text("""
             SELECT DISTINCT collection_date
             FROM play_count_history
             WHERE collection_date IS NOT NULL
             ORDER BY collection_date DESC
             LIMIT 7
-            """
+            """)
             
-            cursor.execute(query)
-            dates = cursor.fetchall()
+            result = conn.execute(dates_query)
+            dates = result.mappings().all()
             
             if dates:
                 # 利用可能なデータ期間を設定
@@ -789,14 +785,14 @@ async def get_account_trends(
                     start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
         
         # ブックマークされているアカウント名を取得
-        bookmark_query = """
+        bookmark_query = text("""
         SELECT account_name 
         FROM account_bookmarks 
-        WHERE email = %s
-        """
+        WHERE email = :email
+        """)
         
-        cursor.execute(bookmark_query, (current_user.email,))
-        bookmarked_accounts = cursor.fetchall()
+        result = conn.execute(bookmark_query, {"email": current_user.email})
+        bookmarked_accounts = result.mappings().all()
         
         if not bookmarked_accounts:
             return {
@@ -811,11 +807,8 @@ async def get_account_trends(
         # ブックマークされているアカウント名のリスト
         account_names = [account["account_name"] for account in bookmarked_accounts]
         
-        # プレースホルダーを生成
-        placeholders = ', '.join(['%s'] * len(account_names))
-        
         # 各アカウントのトレンドデータを取得
-        trend_query = f"""
+        trend_query = text("""
         SELECT 
             fd.account_name,
             fd.display_name,
@@ -829,17 +822,21 @@ async def get_account_trends(
         LEFT JOIN 
             play_count_history pch ON fd.video_id = pch.video_id
         WHERE 
-            fd.account_name IN ({placeholders})
-            AND pch.collection_date BETWEEN %s AND %s
+            fd.account_name IN :account_names
+            AND pch.collection_date BETWEEN :start_date AND :end_date
         GROUP BY 
             fd.account_name, fd.display_name, pch.collection_date
         ORDER BY 
             fd.account_name, pch.collection_date
-        """
+        """)
         
-        params = account_names + [start_date, end_date]
-        cursor.execute(trend_query, params)
-        trend_results = cursor.fetchall()
+        params = {
+            "account_names": tuple(account_names), 
+            "start_date": start_date, 
+            "end_date": end_date
+        }
+        result = conn.execute(trend_query, params)
+        trend_results = result.mappings().all()
         
         # 結果を整形
         trend_data = {}
@@ -883,7 +880,6 @@ async def get_account_trends(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close()
 
 @router.get("/accounts/videos")
@@ -896,7 +892,6 @@ async def get_account_videos(
 ):
     """指定されたアカウントの動画一覧を取得する"""
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
     
     try:
         # デフォルトの期間を設定（指定がない場合は直近30日分のデータ）
@@ -915,7 +910,7 @@ async def get_account_videos(
             sort_by = "play_count_increase"  # デフォルト値
         
         # アカウントの動画一覧を取得
-        query = """
+        query = text("""
         SELECT 
             fd.video_id, fd.thumbnail_url, fd.url,
             fd.play_count, fd.likes_count, fd.comment_count, fd.save_count,
@@ -929,27 +924,27 @@ async def get_account_videos(
         LEFT JOIN 
             play_count_history pch ON fd.video_id = pch.video_id
         WHERE 
-            fd.account_name = %s
-        """
+            fd.account_name = :account_name
+        """)
         
-        params = [account_name]
+        params = {"account_name": account_name}
         
         # 日付範囲が指定されている場合、条件に追加
         if start_date and end_date:
-            query += " AND pch.collection_date BETWEEN %s AND %s"
-            params.extend([start_date, end_date])
+            query = text(query.text + " AND pch.collection_date BETWEEN :start_date AND :end_date")
+            params.update({"start_date": start_date, "end_date": end_date})
         
-        query += f"""
+        query = text(query.text + f"""
         GROUP BY 
             fd.video_id, fd.thumbnail_url, fd.url, fd.play_count, fd.likes_count, fd.comment_count, fd.save_count,
             fd.created_at, fd.account_name, fd.display_name
         ORDER BY 
             {sort_by} DESC
         LIMIT 10
-        """
+        """)
         
-        cursor.execute(query, params)
-        results = cursor.fetchall()
+        result = conn.execute(query, params)
+        results = result.mappings().all()
         
         videos = []
         for item in results:
@@ -996,5 +991,4 @@ async def get_account_videos(
             detail=str(e)
         )
     finally:
-        cursor.close()
         conn.close() 

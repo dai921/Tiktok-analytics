@@ -66,19 +66,21 @@ def enable_frequent_schedule():
         # スケジュールが存在しない場合は作成
         parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
         
+        # PubSubターゲットに変更
         job = {
             "name": job_name,
             "description": "Frontend update frequent schedule (10min)",
             "schedule": "*/10 * * * *",
             "time_zone": "Asia/Tokyo",
-            "http_target": {
-                "uri": f"https://{LOCATION}-{PROJECT_ID}.cloudfunctions.net/frontend-update",
-                "http_method": scheduler_v1.HttpMethod.POST,
-                "oidc_token": {
-                    "service_account_email": "cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com",
-                    "audience": f"https://{LOCATION}-{PROJECT_ID}.cloudfunctions.net/frontend-update"
-                }
-            },
+            # HTTPターゲットの代わりにPubSubターゲットを使用
+            "pubsub_target": {
+                "topic_name": f"projects/{PROJECT_ID}/topics/frontend-data-update-trigger",
+                "data": base64.b64encode(json.dumps({
+                    "status": "start",
+                    "message": "frontend_data_updateの実行を開始します",
+                    "timestamp": datetime.now().isoformat()
+                }).encode()).decode()
+            }
         }
         
         SCHEDULER_CLIENT.create_job(parent=parent, job=job)
