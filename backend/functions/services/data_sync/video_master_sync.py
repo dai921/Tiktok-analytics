@@ -416,6 +416,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             category = VALUES(category),
             product = VALUES(product),
             account_type = VALUES(account_type),
+            created_at = VALUES(created_at),
             likesCountIncrease = VALUES(likesCountIncrease),
             commentCountIncrease = VALUES(commentCountIncrease),
             saveCountIncrease = VALUES(saveCountIncrease),
@@ -471,14 +472,13 @@ def sync_play_count(video_data: Dict) -> Dict[str, str]:
         # 存在しない場合は挿入、存在する場合は更新
         upsert_query = """
         INSERT INTO video_master (
-            url, video_id, username, play_count, playCountIncrease, front_needs_update
+            url, video_id, username, play_count, playCountIncrease
         ) VALUES (
-            %s, %s, %s, %s, %s, 1
+            %s, %s, %s, %s, %s
         )
         ON DUPLICATE KEY UPDATE
             play_count = VALUES(play_count),
-            playCountIncrease = VALUES(playCountIncrease),
-            front_needs_update = 1
+            playCountIncrease = VALUES(playCountIncrease)
         """
         execute_write_query(upsert_query, (video_data['video_url'], video_id, video_data['user_username'], current_play_count, play_count_increase))
         

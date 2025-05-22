@@ -400,8 +400,8 @@ export const FilterPopup = ({
     if (!anchor) return { top: 0, left: 0 };
   
     const { bottom, left } = anchor.getBoundingClientRect();
-    const xoffset = 250;
-    const yoffset = 60;                         // 下方向に 8px 余白
+    const xoffset = 0;
+    const yoffset = 0;                         // 下方向に 8px 余白
     return {
       top:  bottom + window.scrollY - yoffset, // ← window.scrollY を必ず加算
       left: left   + window.scrollX - xoffset           // ← 横スクロール対策
