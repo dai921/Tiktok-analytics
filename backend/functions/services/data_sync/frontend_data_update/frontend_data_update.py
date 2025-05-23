@@ -136,8 +136,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             AND vm.created_at IS NOT NULL
             AND vm.front_needs_update = 1
             AND vm.play_count is not null
+            AND vm.play_needs_update = 1
             AND vm.account_type is not null
             AND vm.cover_image_url is not null
+            AND vm.is_delay = 0
             AND vm.created_at >= %(min_date)s
             AND vm.created_at <= """ + max_date + """
             AND vm.id > %(last_id)s

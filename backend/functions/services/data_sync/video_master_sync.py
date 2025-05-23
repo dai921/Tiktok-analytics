@@ -298,7 +298,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             SELECT 
                 likes_count,
                 comment_count,
-                save_count
+                save_count,
+                curentFetchDate
             FROM video_master
             WHERE video_id = %s
             ORDER BY created_at DESC
@@ -307,6 +308,20 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         prev_data_params = (video_id,)
         prev_data_results = execute_query(prev_data_query, prev_data_params)
         prev_data = prev_data_results[0] if prev_data_results else None
+
+        # 現在の時刻を設定
+        currentFetchDate = datetime.now()
+
+        # 前回の取得日時と遅延フラグの設定
+        if prev_data and prev_data.get('curentFetchDate'):
+            prevFetchDate = prev_data['curentFetchDate']
+            # 日付の差を計算（日数）
+            date_diff = (currentFetchDate - prevFetchDate).days
+            # 4日以上離れていたらis_delayフラグを1に設定
+            is_delay = 1 if date_diff >= 4 else 0
+        else:
+            prevFetchDate = None
+            is_delay = 0
 
         # 増加量の計算
         current_likes_count = video_data['like_count']
@@ -393,24 +408,29 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
             'save_count': video_data['save_count'],
-            'front_needs_update': 1
+            'front_needs_update': 1,
+            'prevFetchDate': prevFetchDate,
+            'curentFetchDate': currentFetchDate,
+            'is_delay': is_delay
         }
   
         insert_query = """
         INSERT INTO video_master (
             video_id, url, username, display_name, cover_image_url,
             description, hashtags, category, product, content_type,
-            account_type, created_at,  likesCountIncrease,
+            account_type, created_at, likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
-            likes_count, comment_count, save_count, front_needs_update
+            likes_count, comment_count, save_count, front_needs_update,
+            prevFetchDate, curentFetchDate, is_delay
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
             %(category)s, %(product)s, %(content_type)s,
-            %(account_type)s, %(created_at)s,  %(likesCountIncrease)s,
+            %(account_type)s, %(created_at)s, %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
             %(music_title)s, %(likes_count)s,
-            %(comment_count)s, %(save_count)s, %(front_needs_update)s
+            %(comment_count)s, %(save_count)s, %(front_needs_update)s,
+            %(prevFetchDate)s, %(curentFetchDate)s, %(is_delay)s
         )
         ON DUPLICATE KEY UPDATE
             category = VALUES(category),
@@ -423,7 +443,10 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             likes_count = VALUES(likes_count),
             comment_count = VALUES(comment_count),
             save_count = VALUES(save_count),
-            front_needs_update = VALUES(front_needs_update)
+            front_needs_update = VALUES(front_needs_update),
+            prevFetchDate = VALUES(prevFetchDate),
+            curentFetchDate = VALUES(curentFetchDate),
+            is_delay = VALUES(is_delay)
         """
         execute_write_query(insert_query, insert_params)
 
@@ -450,8 +473,6 @@ def sync_play_count(video_data: Dict) -> Dict[str, str]:
             SELECT play_count
             FROM video_master
             WHERE video_id = %s
-            ORDER BY created_at DESC
-            LIMIT 1
             """
         prev_data_params = (video_id,)
         prev_data_results = execute_query(prev_data_query, prev_data_params)
@@ -472,13 +493,14 @@ def sync_play_count(video_data: Dict) -> Dict[str, str]:
         # 存在しない場合は挿入、存在する場合は更新
         upsert_query = """
         INSERT INTO video_master (
-            url, video_id, username, play_count, playCountIncrease
+            url, video_id, username, play_count, playCountIncrease,play_needs_update
         ) VALUES (
-            %s, %s, %s, %s, %s
+            %s, %s, %s, %s, %s, 1
         )
         ON DUPLICATE KEY UPDATE
             play_count = VALUES(play_count),
-            playCountIncrease = VALUES(playCountIncrease)
+            playCountIncrease = VALUES(playCountIncrease),
+            play_needs_update = 1
         """
         execute_write_query(upsert_query, (video_data['video_url'], video_id, video_data['user_username'], current_play_count, play_count_increase))
         

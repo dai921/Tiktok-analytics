@@ -90,46 +90,58 @@ def sync_video_history(event, context):
         update_ten_days_metrics_query = """
         UPDATE frontend_data fd
         SET 
-            ten_days_increase = (
-                SELECT COALESCE(SUM(play_count_increase), 0)
-                FROM (
-                    SELECT play_count_increase
-                    FROM play_count_history pch
-                    WHERE pch.video_id = fd.video_id
-                    ORDER BY collection_date DESC
-                    LIMIT 5
-                ) AS recent_data
-            ),
-            ten_days_likes_increase = (
-                SELECT COALESCE(SUM(likes_count_increase), 0)
-                FROM (
-                    SELECT likes_count_increase
-                    FROM play_count_history pch
-                    WHERE pch.video_id = fd.video_id
-                    ORDER BY collection_date DESC
-                    LIMIT 5
-                ) AS recent_data
-            ),
-            ten_days_comment_increase = (
-                SELECT COALESCE(SUM(comment_count_increase), 0)
-                FROM (
-                    SELECT comment_count_increase
-                    FROM play_count_history pch
-                    WHERE pch.video_id = fd.video_id
-                    ORDER BY collection_date DESC
-                    LIMIT 5
-                ) AS recent_data
-            ),
-            ten_days_save_increase = (
-                SELECT COALESCE(SUM(save_count_increase), 0)
-                FROM (
-                    SELECT save_count_increase
-                    FROM play_count_history pch
-                    WHERE pch.video_id = fd.video_id
-                    ORDER BY collection_date DESC
-                    LIMIT 5
-                ) AS recent_data
-            )
+            ten_days_increase = CASE 
+                WHEN fd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fd.play_count
+                ELSE LEAST(fd.play_count, (
+                    SELECT COALESCE(SUM(play_count_increase), 0)
+                    FROM (
+                        SELECT play_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fd.video_id
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_likes_increase = CASE 
+                WHEN fd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fd.likes_count
+                ELSE LEAST(fd.likes_count, (
+                    SELECT COALESCE(SUM(likes_count_increase), 0)
+                    FROM (
+                        SELECT likes_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fd.video_id
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_comment_increase = CASE 
+                WHEN fd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fd.comment_count
+                ELSE LEAST(fd.comment_count, (
+                    SELECT COALESCE(SUM(comment_count_increase), 0)
+                    FROM (
+                        SELECT comment_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fd.video_id
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_save_increase = CASE 
+                WHEN fd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fd.save_count
+                ELSE LEAST(fd.save_count, (
+                    SELECT COALESCE(SUM(save_count_increase), 0)
+                    FROM (
+                        SELECT save_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fd.video_id
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END
         """
         
         # 10日間の集計クエリを実行
