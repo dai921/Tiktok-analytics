@@ -72,9 +72,13 @@ def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
 async def get_product_stats(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    genres: Optional[str] = None,  # ジャンルフィルタのパラメータ
-    metric: Optional[str] = "viewsIncrease"  # 指標パラメータを追加（デフォルトは再生増加数）
+    genres: Optional[str] = None,
+    metric: Optional[str] = "viewsIncrease"
 ):
+    # リクエストパラメータのログ出力を追加
+    logger.info(f"product-stats API called with params: start_date={start_date}, end_date={end_date}, genres={genres}, metric={metric}")
+    print(f"product-stats API called with params: start_date={start_date}, end_date={end_date}, genres={genres}, metric={metric}")
+    
     # genresパラメータがある場合、カンマ区切りの文字列をリストに変換
     genre_list = genres.split(',') if genres else []
     
@@ -129,7 +133,39 @@ async def get_product_stats(
             genre_filter_sql = f"AND pm.product_category IN ({placeholders})"
             genre_params = {f"genre_{i}": genre for i, genre in enumerate(genre_list)}
 
-        # ★変更: ここからクエリを全部書き換え
+        # ★ここに sort_column の定義を移動（ログ出力より前に定義）
+        sort_column = {
+            "viewsIncrease": "total_play_inc",
+            "over100kViews": "over100k_cnt",
+            "postCount": "post_cnt"
+        }.get(metric, "total_play_inc")  # デフォルトは再生数
+        
+        # ログを追加（変数定義後）
+        print(f"Executing product stats query with metric: {metric}, sort column: {sort_column}")
+        logger.info(f"Executing product stats query with metric: {metric}, sort column: {sort_column}")
+
+        # 1) 空の tmp_base を作成（インデックス定義が生きる）
+        conn.execute(text("""
+            CREATE TEMPORARY TABLE tmp_base (
+                video_id           BIGINT UNSIGNED,
+                product            VARCHAR(255),
+                product_category   VARCHAR(255),
+                url                TEXT,
+                thumbnail_url      TEXT,
+                created_at         DATETIME,
+                play_count         INT,
+                ten_days_increase  INT,
+                account_name       VARCHAR(255),
+                display_name       VARCHAR(255),
+                play_inc           INT,
+                like_inc           INT,
+                PRIMARY KEY (video_id),
+                INDEX idx_prod (product),            -- ★インデックス
+                INDEX idx_prod_inc  (product, play_inc DESC)   -- ★←これを追加
+            ) ENGINE=InnoDB
+        """))
+
+        # 2) base_select の結果を流し込む
         base_select = f"""
             SELECT
                 fd.video_id,
@@ -159,47 +195,24 @@ async def get_product_stats(
                 fd.account_name, fd.display_name
         """
         params = {"start_date": start_date, "end_date": end_date, **genre_params}
-        # --------------------------------------------
-        # 既存の一時テーブルが存在する場合は削除
-        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_base"))
-        
-        # 1) 空の tmp_base を作成（インデックス定義が生きる）
-        conn.execute(text("""
-            CREATE TEMPORARY TABLE tmp_base (
-                video_id           BIGINT UNSIGNED,
-                product            VARCHAR(255),
-                product_category   VARCHAR(255),
-                url                TEXT,
-                thumbnail_url      TEXT,
-                created_at         DATETIME,
-                play_count         INT,
-                ten_days_increase  INT,
-                account_name       VARCHAR(255),
-                display_name       VARCHAR(255),
-                play_inc           INT,
-                like_inc           INT,
-                PRIMARY KEY (video_id),
-                INDEX idx_prod (product),            -- ★インデックス
-                INDEX idx_prod_inc  (product, play_inc DESC)   -- ★←これを追加
-            ) ENGINE=InnoDB
-        """))
 
         # 2) base_select の結果を流し込む
         insert_sql = f"INSERT INTO tmp_base {base_select}"
         conn.execute(text(insert_sql), params)
 
-        stats_sql = text("""
+        # 3) 選択されたメトリックでソートしたランキングを取得
+        stats_sql = text(f"""
         SELECT
             product,
             MAX(product_category)                    AS product_category,
             SUM(play_inc)                            AS total_play_inc,
             SUM(play_inc >= 100000)                  AS over100k_cnt,
-            COUNT(*)                                 AS post_cnt
+            SUM(created_at BETWEEN :start_date AND :end_date) AS post_cnt
         FROM tmp_base
         GROUP BY product
-        ORDER BY total_play_inc DESC;
+        ORDER BY {sort_column} DESC;  -- 選択されたメトリックでソート
         """)
-        result = conn.execute(stats_sql)
+        result = conn.execute(stats_sql, {"start_date": start_date, "end_date": end_date})
         stats = {r["product"]: {
             "product": r["product"],
             "product_category": r["product_category"],
@@ -224,21 +237,26 @@ async def get_product_stats(
         result = conn.execute(top_sql)
 
         for v in result.mappings().all():
-            prod = stats[v["product"]]
-            prod["top_videos"].append({
-                "url": v["url"],
-                "thumbnail_url": convert_gs_to_https(v["thumbnail_url"]),
-                "play_count_increase": v["play_inc"],
-                "likes_count_increase": v["like_inc"],
-                "created_at": v["created_at"],
-                "play_count": v["play_count"],
-                "ten_days_increase": v["ten_days_increase"],
-                "account_name": v["account_name"],
-                "display_name": v["display_name"]
-            })
+            if v["product"] in stats:  # 念のためキーチェック
+                prod = stats[v["product"]]
+                prod["top_videos"].append({
+                    "url": v["url"],
+                    "thumbnail_url": convert_gs_to_https(v["thumbnail_url"]),
+                    "play_count_increase": v["play_inc"],
+                    "likes_count_increase": v["like_inc"],
+                    "created_at": v["created_at"],
+                    "play_count": v["play_count"],
+                    "ten_days_increase": v["ten_days_increase"],
+                    "account_name": v["account_name"],
+                    "display_name": v["display_name"]
+                })
     
         # 使用済みの一時テーブルを削除
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_base"))
+        
+        # ログ追加
+        logger.info(f"Product stats query returned {len(stats)} products")
+        print(f"Product stats query returned {len(stats)} products")
         
         formatted_response = {
             "data": list(stats.values()),
@@ -268,9 +286,13 @@ async def get_product_stats(
 async def get_product_trends(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    genres: Optional[str] = None,  # ジャンルフィルタ用のパラメータ
-    metric: Optional[str] = "viewsIncrease"  # 指標パラメータを追加（デフォルトは再生増加数）
+    genres: Optional[str] = None,
+    metric: Optional[str] = "viewsIncrease"
 ):
+    # リクエストパラメータのログ出力
+    logger.info(f"product-trends API called with params: start_date={start_date}, end_date={end_date}, genres={genres}, metric={metric}")
+    print(f"product-trends API called with params: start_date={start_date}, end_date={end_date}, genres={genres}, metric={metric}")
+    
     # genres パラメータがある場合、カンマ区切りの文字列をリストに変換
     genre_list = genres.split(',') if genres else []
     
@@ -323,14 +345,15 @@ async def get_product_trends(
     params = {"start_date": start_date, "end_date": end_date, **genre_params}
 
     # ----- メトリック列 -----
+    # 選択されたメトリックに基づいてランキングを生成するSQL式
     metric_expr = {
         "viewsIncrease":      "SUM(play_inc)",
         "over100kViews":      "SUM(play_inc >= 100000)",
-        "postCount":          "COUNT(DISTINCT video_id)"
+        "postCount":          "SUM(created_at BETWEEN :start_date AND :end_date)"
     }[metric]
-
+    
     # ===============================
-    # メインの SQL ―― これ 1 本だけ
+    # メインの SQL
     # ===============================
     sql = f"""
     WITH base AS (
@@ -339,9 +362,10 @@ async def get_product_trends(
             pm.product_category,
             pch.collection_date,
             fd.video_id,
-            SUM(pch.play_count_increase)  AS play_inc
+            fd.created_at,
+            SUM(pch.play_count_increase) AS play_inc
         FROM play_count_history pch
-        JOIN frontend_data fd  ON fd.video_id = pch.video_id
+        JOIN frontend_data fd ON fd.video_id = pch.video_id
         LEFT JOIN product_master pm ON pm.product_name = fd.product
         WHERE pch.collection_date BETWEEN :start_date AND :end_date
           AND fd.product IS NOT NULL
@@ -350,15 +374,16 @@ async def get_product_trends(
         fd.video_id,
         fd.product,
         pm.product_category,
-        pch.collection_date
+        pch.collection_date,
+        fd.created_at
     ),
-    product_tot AS (                               -- ★期間トータル
+    product_tot AS (
         SELECT
             product,
-            {metric_expr} AS metric_value
+            {metric_expr} AS metric_value  # 選択されたメトリックでランキング
         FROM base
         GROUP BY product
-        ORDER BY metric_value DESC
+        ORDER BY metric_value DESC  # この値で降順ソート
         LIMIT 10
     )
     SELECT
@@ -367,12 +392,17 @@ async def get_product_trends(
         MAX(b.product_category)     AS product_category,
         SUM(b.play_inc)             AS viewsIncrease,
         SUM(b.play_inc >= 100000)   AS over100kViews,
-        COUNT(DISTINCT b.video_id)  AS postCount
+        COUNT(DISTINCT CASE 
+            WHEN b.created_at BETWEEN DATE_SUB(b.collection_date, INTERVAL 1 DAY) AND b.collection_date 
+            THEN b.video_id 
+            ELSE NULL 
+        END) AS postCount
     FROM base b
-    JOIN product_tot pt ON pt.product = b.product  -- ★TOP10 だけに限定
+    JOIN product_tot pt ON pt.product = b.product  # 選択されたメトリックでTOP10に選ばれた商品のみに限定
     GROUP BY b.collection_date, b.product
     ORDER BY b.collection_date;
     """
+    
     conn = get_db_connection()
     try:
         result = conn.execute(text(sql), params)
@@ -385,18 +415,37 @@ async def get_product_trends(
                 "date": r["date"].strftime("%Y-%m-%d"),
                 "product": r["product"],
                 "product_category": r["product_category"],
-                "metrics": {
+                "value": int(r[{
+                    "viewsIncrease": "viewsIncrease",
+                    "over100kViews": "over100kViews",
+                    "postCount": "postCount"
+                }[metric]]),  # 選択されたメトリックの値のみ返す
+                "metrics": {  # 互換性のために残す
                     "viewsIncrease": int(r["viewsIncrease"]),
                     "over100kViews": int(r["over100kViews"]),
-                    "postCount":     int(r["postCount"])
+                    "postCount": int(r["postCount"])
                 }
             })
 
         resp = {
             "data": trend_data,
-            "products": list({r["product"] for r in rows}),   # ユニーク
+            "products": list({r["product"] for r in rows}),  # 選択されたメトリックのトップ商品
             "date_range": {"start_date": start_date, "end_date": end_date}
         }
+
+        # 結果処理時にログを追加
+        logger.info(f"Query returned {len(rows)} rows of data")
+        print(f"Query returned {len(rows)} rows of data")
+        
+        # レスポンス返却前にログ
+        logger.info(f"Returning {len(trend_data)} data points for {len(resp['products'])} products")
+        print(f"Returning {len(trend_data)} data points for {len(resp['products'])} products")
         return JSONResponse(content=jsonable_encoder(resp))
+    except Exception as e:
+        logger.error(f"Error in product-trends API: {str(e)}", exc_info=True)
+        print(f"Error in product-trends API: {str(e)}")
+        raise
     finally:
         conn.close()
+        logger.info("product-trends database connection closed")
+        print("product-trends database connection closed")

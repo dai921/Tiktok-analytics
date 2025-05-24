@@ -17,7 +17,7 @@ initialize_config()
 
 def update_needs_flags(event, context):
     """
-    PubSubトリガーで実行される関数。以下の処理を行う：
+    PubSubトリガーで実行される関数。以下の処理を行う
     1. video_light_raw_dataのneeds_updateフラグを更新
     2. frontend_dataの増加数カウンタをリセット
     3. video_masterのfront_needs_updateフラグをリセット

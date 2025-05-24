@@ -228,49 +228,36 @@ export default function ProductPage() {
     if (activeTab === 'graph' && (!graphDataLoaded || userSelectedDate)) {
       const loadTrendData = async () => {
         try {
+          console.log("トレンドデータ読込開始...");
           setIsLoadingTrends(true);
           setTrendError(null);
           
-          // キャッシュ内にすでにデータがあるか確認
-          if (cachedTrendData[metric]?.length > 0 && userSelectedDate) {
-            console.log("キャッシュからトレンドデータを使用:", metric);
-            setTrendData(cachedTrendData[metric]);
-            setIsLoadingTrends(false);
-            return;
-          }
+          // 指標変更時は常にAPIから再取得（キャッシュは使わない）
+          // キャッシュチェックのコードを削除または条件を変更
           
           const result = await fetchProductTrends(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
             selectedGenres,
-            metric // 現在選択中の指標を送信
+            metric
           ) as ProductTrendResponse;
+          
+          console.log("API応答受信:", { 
+            dataPoints: result.data.length, 
+            products: result.products.length,
+            firstDate: result.data[0]?.date,
+            lastDate: result.data[result.data.length-1]?.date 
+          });
           
           setTrendData(result.data);
           
-          // 結果をキャッシュに保存
-          setCachedTrendData(prev => ({
-            ...prev,
-            [metric]: result.data
-          }));
-          
-          // APIから返された指標別トップ商品の設定
-          if (result.topProductsByMetric) {
-            setTopProductsByMetric({
-              viewsIncrease: result.topProductsByMetric.viewsIncrease || [],
-              over100kViews: result.topProductsByMetric.over100kViews || [],
-              postCount: result.topProductsByMetric.postCount || []
-            });
-          }
-          
-          // APIから返されたすべての商品の中からカテゴリが空白でない商品をフィルタ
+          // フィルタリングと設定
           const filteredProducts = result.products.filter((product: string) => {
-            // 商品情報をproductStatsから取得してカテゴリがあるか確認
             const productInfo = productStats.find(stat => stat.product === product);
             return productInfo && productInfo.product_category && productInfo.product_category.trim() !== '';
           });
           
-          // すべての商品リストを保存
+          console.log(`フィルタ後の商品数: ${filteredProducts.length}件`);
           setTopProducts(filteredProducts);
           
           if (!userSelectedDate && result.dateRange) {
@@ -281,7 +268,7 @@ export default function ProductPage() {
           }
           setGraphDataLoaded(true);
         } catch (err) {
-          console.error("トレンドデータの取得に失敗しました:", err);
+          console.error("トレンドデータ取得エラー:", err);
           setTrendError('トレンドデータの取得に失敗しました');
         } finally {
           setIsLoadingTrends(false);
@@ -289,8 +276,16 @@ export default function ProductPage() {
       };
 
       loadTrendData();
+    } else {
+      console.log("トレンドデータ読込スキップ:", { 
+        activeTab, 
+        graphDataLoaded, 
+        userSelectedDate, 
+        metric,
+        cachedDataExists: cachedTrendData[metric]?.length > 0
+      });
     }
-  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, selectedGenres, productStats, metric, cachedTrendData]);
+  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, selectedGenres, productStats, metric]);
 
   // 現在の指標に基づいて表示すべき商品リストを取得する関数
   const getCurrentTopProducts = () => {
@@ -402,19 +397,21 @@ export default function ProductPage() {
 
   // 指標変更ハンドラを修正
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const oldMetric = metric;
     const newMetric = e.target.value as MetricKey;
+    console.log(`指標変更: ${oldMetric} → ${newMetric}`);
     setMetric(newMetric);
     
-    // 指標変更時にデータを再取得
-    if (cachedProductStats[newMetric]?.length === 0) {
-      // ランキングデータがキャッシュにない場合は再読み込み
-      setDataLoaded(false);
+    // 指標変更時は常に再読込（キャッシュを使わない）
+    console.log(`${newMetric}のデータを再読み込み`);
+    setDataLoaded(false); // ランキングデータを再読込
+    
+    if (activeTab === 'graph') {
+      console.log(`${newMetric}のグラフデータも再読み込み`);
+      setGraphDataLoaded(false); // グラフデータも再読込
     }
     
-    if (activeTab === 'graph' && cachedTrendData[newMetric]?.length === 0) {
-      // トレンドデータがキャッシュにない場合はグラフデータの再読み込み
-      setGraphDataLoaded(false);
-    }
+    // キャッシュは保持するが、使用しない
   };
 
   // グラフ表示用データの前処理関数を更新
@@ -431,9 +428,13 @@ export default function ProductPage() {
       topProducts.forEach(product => {
         // その日付のその商品のデータを検索
         const productData = trendData.find(item => item.date === date && item.product === product);
-        // データがあれば現在選択されている指標の値を設定、なければ0を設定
+        
+        // ここを修正：
+        // データがあれば value を使用（新しいAPI形式）、
+        // なければ metrics から現在の指標を取得（後方互換性のため）、
+        // どちらもなければ 0 を設定
         dataPoint[product] = productData 
-          ? productData.metrics[metric] 
+          ? (productData.value !== undefined ? productData.value : productData.metrics[metric])
           : 0;
       });
       

@@ -545,20 +545,23 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         </div>
 
-        {/* ▼▼▼ ここが今回のポイント：relative 親の中で absolute 表示 ▼▼▼ */}
-        <FilterPopup
-          isOpen={isFilterPopupOpen}
-          onClose={() => setFilterPopupOpenState(false)}
-          anchorRef={filterButtonRef}
-          onFilterChange={handleBulkFilterChange}
-          currentFilters={columnFilters}
-          categories={categoryList}
-          accounts={accountList}
-          hashtags={hashtagList}
-          products={[]}
-          isLoading={isLoadingFilterOptions}
-          onClearAll={handleClearFilterInputs}
-        />
+        {/* ▼▼▼ ここが今回のポイント：Portalを使用してDOM階層の上位に表示 ▼▼▼ */}
+        {isFilterPopupOpen && createPortal(
+          <FilterPopup
+            isOpen={isFilterPopupOpen}
+            onClose={() => setFilterPopupOpenState(false)}
+            anchorRef={filterButtonRef}
+            onFilterChange={handleBulkFilterChange}
+            currentFilters={columnFilters}
+            categories={categoryList}
+            accounts={accountList}
+            hashtags={hashtagList}
+            products={[]}
+            isLoading={isLoadingFilterOptions}
+            onClearAll={handleClearFilterInputs}
+          />,
+          document.body
+        )}
 
         <ColumnSettings
           isOpen={isColumnSettingsOpen}
