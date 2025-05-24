@@ -137,6 +137,8 @@ CREATE TABLE users_tiktok_accounts (
   expires_at   DATETIME NOT NULL,
   display_name VARCHAR(255),
   linked_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  account_type VARCHAR(255) DEFAULT NULL,
+  mainly_video_type VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (user_number, open_id),
   INDEX ix_open_id (open_id),
   CONSTRAINT fk_ta_user
