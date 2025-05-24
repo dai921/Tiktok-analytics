@@ -99,6 +99,7 @@ CREATE TABLE video_master (
   folder_path VARCHAR(255) DEFAULT NULL,
   image_count INT DEFAULT 0,
   front_needs_update TINYINT DEFAULT 0,
+  play_needs_update TINYINT DEFAULT 0,
   is_new_video INTEGER DEFAULT 1,
   is_delay TINYINT DEFAULT 0,
   PRIMARY KEY (id),
@@ -229,8 +230,11 @@ CREATE TABLE play_count_history (
     comment_count INT UNSIGNED DEFAULT NULL,
     save_count INT UNSIGNED DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    post_time DATE DEFAULT NULL,
     PRIMARY KEY (id, collection_date),
     INDEX idx_video_date (video_id, collection_date),
+    INDEX idx_post_time (post_time),
+    INDEX idx_pch_collection_post(collection_date, post_time, video_id),
     UNIQUE INDEX unique_video_date (video_id, collection_date)
 )
 ENGINE = InnoDB

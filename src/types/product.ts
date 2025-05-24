@@ -25,6 +25,7 @@ export interface ProductTrendData {
   date: string;
   product: string;
   product_category?: string;
+  value: number;
   metrics: {
     viewsIncrease: number;
     over100kViews: number;

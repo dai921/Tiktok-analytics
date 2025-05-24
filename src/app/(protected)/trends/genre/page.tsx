@@ -370,9 +370,12 @@ export default function GenrePage() {
       topGenres.forEach(genre => {
         // その日付のそのジャンルのデータを検索
         const genreData = trendData.find(item => item.date === date && item.genre === genre);
-        // データがあれば現在選択中の指標の値を設定、なければ0を設定
+        
+        // ここを修正：
+        // データがあれば value を使用（新しいAPI形式）、
+        // なければ metrics から現在の指標を取得（後方互換性のため）
         dataPoint[genre] = genreData 
-          ? genreData.metrics[metric] 
+          ? (genreData.value !== undefined ? genreData.value : genreData.metrics[metric])
           : 0;
       });
       

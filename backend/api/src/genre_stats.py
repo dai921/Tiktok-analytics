@@ -54,6 +54,10 @@ async def get_genre_stats(
     end_date:   Optional[str] = None,
     metric:     str = "viewsIncrease"
 ):
+    # リクエストパラメータのログ出力を追加
+    logger.info(f"genre-stats API called with params: start_date={start_date}, end_date={end_date}, metric={metric}")
+    print(f"genre-stats API called with params: start_date={start_date}, end_date={end_date}, metric={metric}")
+    
     # ----- 日付決定 ----- #
     if start_date is None or end_date is None:
         conn = get_db_connection()
@@ -79,15 +83,17 @@ async def get_genre_stats(
         "postCount":     "post_cnt"
     }.get(metric, "total_play_inc")
 
+    params = {"start_date": start_date, "end_date": end_date}
+    
     conn = None
     try:
         conn = get_db_connection()
-        logger.info("Executing genre-stats query")
+        logger.info(f"Executing genre-stats query with metric: {metric}, sort_column: {sort_column}")
+        print(f"Executing genre-stats query with metric: {metric}, sort_column: {sort_column}")
 
         # 既存の一時テーブルを削除
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_gen_base"))
 
-        # ---------- ここから変更 ---------- #
         # ① explode → genre×video を一次表に
         conn.execute(text("""
             CREATE TEMPORARY TABLE tmp_gen_base (
@@ -132,20 +138,20 @@ async def get_genre_stats(
         AND pch.collection_date BETWEEN :start_date AND :end_date
         GROUP BY genre, fd.video_id
         """)
-        conn.execute(insert_sql, {"start_date": start_date, "end_date": end_date})
+        conn.execute(insert_sql, params)
 
-        # ② genre サマリ
+        # ② genre サマリ - product_stats.pyと同じパターンに
         stats_sql = text(f"""
-            SELECT
-                genre,
-                SUM(play_inc)           AS total_play_inc,
-                SUM(play_inc>=100000)   AS over100k_cnt,
-                COUNT(*)                AS post_cnt
-            FROM tmp_gen_base
-            GROUP BY genre
-            ORDER BY {sort_column} DESC
+        SELECT
+            genre,
+            SUM(play_inc)                            AS total_play_inc,
+            SUM(play_inc >= 100000)                  AS over100k_cnt,
+            SUM(created_at BETWEEN :start_date AND :end_date) AS post_cnt
+        FROM tmp_gen_base
+        GROUP BY genre
+        ORDER BY {sort_column} DESC
         """)
-        result = conn.execute(stats_sql)
+        result = conn.execute(stats_sql, params)
         stats = {r["genre"]: {
             "genre"                       : r["genre"],
             "total_play_count_increase"   : r["total_play_inc"],
@@ -181,11 +187,15 @@ async def get_genre_stats(
                 "account_name"        : v["account_name"],
                 "display_name"        : v["display_name"]
             })
-        ### ここまで変更 ###
 
         # 一時テーブルを削除
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_gen_base"))
 
+        # ログを追加
+        logger.info(f"Genre stats query returned {len(stats)} genres")
+        print(f"Genre stats query returned {len(stats)} genres")
+        
+        # レスポンス返却
         resp = {
             "data": list(stats.values()),
             "date_range": {"start_date": start_date, "end_date": end_date}
@@ -213,6 +223,10 @@ async def get_genre_trends(
     end_date:   Optional[str] = None,
     metric:     str = "viewsIncrease"
 ):
+    # リクエストパラメータのログ出力を追加
+    logger.info(f"genre-trends API called with params: start_date={start_date}, end_date={end_date}, metric={metric}")
+    print(f"genre-trends API called with params: start_date={start_date}, end_date={end_date}, metric={metric}")
+    
     # ----- 日付決定 ----- #
     if start_date is None or end_date is None:
         conn = None
@@ -238,13 +252,15 @@ async def get_genre_trends(
     metric_expr = {
         "viewsIncrease": "SUM(play_inc)",
         "over100kViews": "SUM(play_inc >= 100000)",
-        "postCount"    : "COUNT(DISTINCT video_id)"
+        # 投稿数の計算ロジックをproductと合わせる
+        "postCount": "COUNT(DISTINCT CASE WHEN b.created_at BETWEEN :start_date AND :end_date THEN video_id ELSE NULL END)"
     }[metric]
 
     conn = None
     try:
         conn = get_db_connection()
-        logger.info("Executing genre-trends query")
+        logger.info(f"Executing genre-trends query with metric: {metric}")
+        print(f"Executing genre-trends query with metric: {metric}")
 
         sql = f"""
         WITH base AS (
@@ -252,6 +268,7 @@ async def get_genre_trends(
                 pch.collection_date,
                 TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre,
                 fd.video_id,
+                fd.created_at,  # created_atを追加
                 SUM(pch.play_count_increase) AS play_inc
             FROM play_count_history pch
             JOIN frontend_data fd ON fd.video_id = pch.video_id
@@ -260,13 +277,13 @@ async def get_genre_trends(
             WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
               AND fd.category IS NOT NULL
               AND pch.collection_date BETWEEN :start_date AND :end_date
-            GROUP BY pch.collection_date, fd.video_id, genre
+            GROUP BY pch.collection_date, fd.video_id, genre, fd.created_at
         ),
         top10 AS (
-            SELECT genre, {metric_expr} AS metric_value
-            FROM base
+            SELECT genre, {metric_expr} AS metric_value  # メトリック別に計算
+            FROM base b
             GROUP BY genre
-            ORDER BY metric_value DESC
+            ORDER BY metric_value DESC  # メトリック値で降順ソート
             LIMIT 10
         )
         SELECT
@@ -274,22 +291,36 @@ async def get_genre_trends(
             b.genre,
             SUM(b.play_inc)                   AS viewsIncrease,
             SUM(b.play_inc >= 100000)         AS over100kViews,
-            COUNT(DISTINCT b.video_id)        AS postCount
+            COUNT(DISTINCT CASE 
+                WHEN b.created_at BETWEEN DATE_SUB(b.collection_date, INTERVAL 1 DAY) AND b.collection_date 
+                THEN b.video_id 
+                ELSE NULL 
+            END) AS postCount
         FROM base b
-        JOIN top10 t ON t.genre = b.genre
+        JOIN top10 t ON t.genre = b.genre  # メトリックTOP10に限定
         GROUP BY b.collection_date, b.genre
         ORDER BY b.collection_date
         """
         result = conn.execute(text(sql), {"start_date": start_date, "end_date": end_date})
         rows = result.mappings().all()
 
+        # 結果処理時にログ追加
+        logger.info(f"Genre trends query returned {len(rows)} rows of data")
+        print(f"Genre trends query returned {len(rows)} rows of data")
+
         trend_data = [{
             "date":   r["date"].strftime("%Y-%m-%d"),
             "genre":  r["genre"],
+            # valueフィールドを追加
+            "value": int(r[{
+                "viewsIncrease": "viewsIncrease",
+                "over100kViews": "over100kViews",
+                "postCount": "postCount"
+            }[metric]]),
             "metrics": {
                 "viewsIncrease": int(r["viewsIncrease"]),
                 "over100kViews": int(r["over100kViews"]),
-                "postCount"    : int(r["postCount"])
+                "postCount":     int(r["postCount"])
             }
         } for r in rows]
 
@@ -298,6 +329,10 @@ async def get_genre_trends(
             "genres": list({r["genre"] for r in rows}),
             "date_range": {"start_date": start_date, "end_date": end_date}
         }
+        
+        # レスポンス返却前にログ
+        logger.info(f"Returning {len(trend_data)} data points for {len(resp['genres'])} genres")
+        print(f"Returning {len(trend_data)} data points for {len(resp['genres'])} genres")
         return JSONResponse(content=jsonable_encoder(resp))
     except Exception as e:
         logger.error(f"Error fetching genre trends: {str(e)}", exc_info=True)

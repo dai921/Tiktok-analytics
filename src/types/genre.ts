@@ -23,6 +23,7 @@ export interface VideoStats {
   export interface GenreTrendData {
     date: string;
     genre: string;
+    value: number;
     metrics: {
       viewsIncrease: number;
       over100kViews: number;
