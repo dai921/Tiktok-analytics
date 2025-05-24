@@ -189,30 +189,24 @@ export default function GenrePage() {
     if (activeTab === 'graph' && (!graphDataLoaded || userSelectedDate)) {
       const loadTrendData = async () => {
         try {
+          console.log("トレンドデータ読込開始...");
           setIsLoadingTrends(true);
           setTrendError(null);
-          
-          // キャッシュ内にすでにデータがあるか確認
-          if (cachedTrendData[metric]?.length > 0 && userSelectedDate) {
-            console.log("キャッシュからトレンドデータを使用:", metric);
-            setTrendData(cachedTrendData[metric]);
-            setIsLoadingTrends(false);
-            return;
-          }
           
           const result = await fetchGenreTrends(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
-            metric // 現在選択中の指標を送信
+            metric
           ) as GenreTrendResponse;
           
-          setTrendData(result.data);
+          console.log("API応答受信:", { 
+            dataPoints: result.data.length, 
+            genres: result.genres.length,
+            firstDate: result.data[0]?.date,
+            lastDate: result.data[result.data.length-1]?.date 
+          });
           
-          // 結果をキャッシュに保存
-          setCachedTrendData(prev => ({
-            ...prev,
-            [metric]: result.data
-          }));
+          setTrendData(result.data);
           
           // APIから返された指標別トップジャンルの設定
           if (result.topGenresByMetric) {
@@ -221,13 +215,17 @@ export default function GenrePage() {
               over100kViews: result.topGenresByMetric.over100kViews || [],
               postCount: result.topGenresByMetric.postCount || []
             });
+          } else {
+            // APIがtopGenresByMetricを返さない場合はジャンル一覧を設定
+            setTopGenresByMetric(prev => ({
+              ...prev,
+              [metric]: result.genres.filter((genre: string) => genre && genre.trim() !== '')
+            }));
           }
           
           // APIから返されたすべてのジャンル一覧を保存
           const filteredGenres = result.genres.filter((genre: string) => {
-            // ジャンル情報をgenreStatsから取得してカテゴリがあるか確認
-            const genreInfo = genreStats.find(stat => stat.genre === genre);
-            return genreInfo && genre && genre.trim() !== '';
+            return genre && genre.trim() !== '';
           });
           
           setTopGenres(filteredGenres);
@@ -241,7 +239,6 @@ export default function GenrePage() {
           setGraphDataLoaded(true);
         } catch (err) {
           console.error("トレンドデータの取得に失敗しました:", err);
-          // エラーオブジェクトからメッセージを抽出
           const errorMessage = err instanceof Error 
             ? `トレンドデータの取得に失敗しました: ${err.message}` 
             : 'トレンドデータの取得に失敗しました';
@@ -252,8 +249,16 @@ export default function GenrePage() {
       };
 
       loadTrendData();
+    } else {
+      console.log("トレンドデータ読込スキップ:", { 
+        activeTab, 
+        graphDataLoaded, 
+        userSelectedDate, 
+        metric,
+        cachedDataExists: cachedTrendData[metric]?.length > 0
+      });
     }
-  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, genreStats, metric, cachedTrendData]);
+  }, [activeTab, graphDataLoaded, userSelectedDate, dateRange, genreStats, metric]);
 
   // 現在の指標に基づいて表示すべきジャンルリストを取得する関数
   const getCurrentTopGenres = () => {
@@ -341,18 +346,18 @@ export default function GenrePage() {
 
   // 指標変更ハンドラを修正
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const oldMetric = metric;
     const newMetric = e.target.value as MetricKey;
+    console.log(`指標変更: ${oldMetric} → ${newMetric}`);
     setMetric(newMetric);
     
-    // 指標変更時にデータを再取得
-    if (cachedGenreStats[newMetric]?.length === 0) {
-      // ランキングデータがキャッシュにない場合は再読み込み
-      setDataLoaded(false);
-    }
+    // 指標変更時は常に再読込（キャッシュを使わない）
+    console.log(`${newMetric}のデータを再読み込み`);
+    setDataLoaded(false); // ランキングデータを再読込
     
-    if (activeTab === 'graph' && cachedTrendData[newMetric]?.length === 0) {
-      // トレンドデータがキャッシュにない場合はグラフデータの再読み込み
-      setGraphDataLoaded(false);
+    if (activeTab === 'graph') {
+      console.log(`${newMetric}のグラフデータも再読み込み`);
+      setGraphDataLoaded(false); // グラフデータも再読込
     }
   };
 
