@@ -78,6 +78,13 @@ def update_needs_flags(event, context):
         SET front_needs_update = 0
         WHERE front_needs_update = 1;
         """
+         # 3.5 video_masterのplay_needs_updateを全て0にする
+        logger.info("3.5 video_masterのplay_needs_updateフラグの更新を開始")
+        reset_play_needs_update_query = """
+        UPDATE video_master
+        SET play_needs_update = 0
+        WHERE play_needs_update = 1;
+        """
         
 
         master_affected_rows = execute_write_query(reset_master_flag_query)

@@ -35,10 +35,7 @@ spec:
             value: tiktok_data
           - name: ALLOWED_ORIGINS
             value: >-
-              https://frontend-service-22573532446.asia-northeast1.run.app,
-              https://crinsight.jp,
-              https://buzzmiru.com,
-              https://www.buzzmiru.com
+              https://app.buzzmiru.com
         resources:
           limits:
             cpu: "1"
