@@ -140,7 +140,7 @@ async def get_genre_stats(
         """)
         conn.execute(insert_sql, params)
 
-        # ② genre サマリ - product_stats.pyと同じパターンに
+        # ② genre サマリ - 12件取得するように修正（その他と空文字を考慮）
         stats_sql = text(f"""
         SELECT
             genre,
@@ -150,15 +150,31 @@ async def get_genre_stats(
         FROM tmp_gen_base
         GROUP BY genre
         ORDER BY {sort_column} DESC
+        LIMIT 12
         """)
         result = conn.execute(stats_sql, params)
+        all_results = result.mappings().all()
+
+        # 「その他」と空文字の処理も調整
+        has_other_in_top10 = any(r["genre"] == "その他" for r in all_results[:10])
+        has_empty_in_top10 = any(r["genre"] == "" for r in all_results[:10])
+
+        # 条件に応じて表示件数を変える
+        if has_other_in_top10 and has_empty_in_top10:
+            limited_results = all_results  # 12件すべて使用
+        elif has_other_in_top10 or has_empty_in_top10:
+            limited_results = all_results[:11]  # 11件使用
+        else:
+            limited_results = all_results[:10]  # 10件使用
+
+        # 辞書に変換
         stats = {r["genre"]: {
             "genre"                       : r["genre"],
             "total_play_count_increase"   : r["total_play_inc"],
             "videos_over_100k"            : r["over100k_cnt"],
             "total_posts"                 : r["post_cnt"],
             "top_videos"                  : []
-        } for r in result.mappings().all()}
+        } for r in limited_results}
 
         # ③ 各 genre の TOP10
         top_sql = text("""
@@ -175,18 +191,20 @@ async def get_genre_stats(
         """)
         result = conn.execute(top_sql)
         for v in result.mappings().all():
-            g = stats[v["genre"]]
-            g["top_videos"].append({
-                "url"                 : v["url"],
-                "thumbnail_url"       : convert_gs_to_https(v["thumbnail_url"]),
-                "play_count_increase" : v["play_inc"],
-                "likes_count_increase": v["like_inc"],
-                "created_at"          : v["created_at"],
-                "play_count"          : v["play_count"],
-                "ten_days_increase"   : v["ten_days_increase"],
-                "account_name"        : v["account_name"],
-                "display_name"        : v["display_name"]
-            })
+            genre = v["genre"]
+            if genre in stats:
+                g = stats[genre]
+                g["top_videos"].append({
+                    "url"                 : v["url"],
+                    "thumbnail_url"       : convert_gs_to_https(v["thumbnail_url"]),
+                    "play_count_increase" : v["play_inc"],
+                    "likes_count_increase": v["like_inc"],
+                    "created_at"          : v["created_at"],
+                    "play_count"          : v["play_count"],
+                    "ten_days_increase"   : v["ten_days_increase"],
+                    "account_name"        : v["account_name"],
+                    "display_name"        : v["display_name"]
+                })
 
         # 一時テーブルを削除
         conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_gen_base"))
@@ -268,7 +286,7 @@ async def get_genre_trends(
                 pch.collection_date,
                 TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS genre,
                 fd.video_id,
-                fd.created_at,  # created_atを追加
+                fd.created_at,
                 SUM(pch.play_count_increase) AS play_inc
             FROM play_count_history pch
             JOIN frontend_data fd ON fd.video_id = pch.video_id
@@ -276,15 +294,16 @@ async def get_genre_trends(
                         UNION ALL SELECT 4 UNION ALL SELECT 5) n
             WHERE n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
               AND fd.category IS NOT NULL
+              AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
               AND pch.collection_date BETWEEN :start_date AND :end_date
             GROUP BY pch.collection_date, fd.video_id, genre, fd.created_at
         ),
         top10 AS (
-            SELECT genre, {metric_expr} AS metric_value  # メトリック別に計算
+            SELECT genre, {metric_expr} AS metric_value
             FROM base b
             GROUP BY genre
-            ORDER BY metric_value DESC  # メトリック値で降順ソート
-            LIMIT 10
+            ORDER BY metric_value DESC
+            LIMIT 12  # 12件に増やす
         )
         SELECT
             b.collection_date                  AS date,
@@ -303,10 +322,24 @@ async def get_genre_trends(
         """
         result = conn.execute(text(sql), {"start_date": start_date, "end_date": end_date})
         rows = result.mappings().all()
+        # ジャンルのリストを取得
+        all_genres = list({r["genre"] for r in rows})
 
-        # 結果処理時にログ追加
-        logger.info(f"Genre trends query returned {len(rows)} rows of data")
-        print(f"Genre trends query returned {len(rows)} rows of data")
+        # 「その他」や空文字列が含まれているか確認
+        excluded_genres = ["その他", ""]
+        has_excluded = any(genre in excluded_genres for genre in all_genres)
+
+        if has_excluded:
+            # 「その他」と空文字列を除外したデータを使用
+            filtered_rows = [r for r in rows if r["genre"] not in excluded_genres and r["genre"].strip() != ""]
+            # 最大10件まで使用
+            filtered_genres = list({r["genre"] for r in filtered_rows})[:10]
+            trend_data = [r for r in filtered_rows if r["genre"] in filtered_genres]
+        else:
+            # 除外対象がない場合は最初の10ジャンルのみ使用
+            top10_genres = list({r["genre"] for r in rows})[:10]
+            trend_data = [r for r in rows if r["genre"] in top10_genres]
+
 
         trend_data = [{
             "date":   r["date"].strftime("%Y-%m-%d"),
@@ -322,11 +355,11 @@ async def get_genre_trends(
                 "over100kViews": int(r["over100kViews"]),
                 "postCount":     int(r["postCount"])
             }
-        } for r in rows]
+        } for r in trend_data]
 
         resp = {
             "data": trend_data,
-            "genres": list({r["genre"] for r in rows}),
+            "genres": list({r["genre"] for r in trend_data}),
             "date_range": {"start_date": start_date, "end_date": end_date}
         }
         

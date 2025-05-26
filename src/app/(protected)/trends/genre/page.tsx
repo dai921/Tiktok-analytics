@@ -472,8 +472,9 @@ export default function GenrePage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
+                        {/* その他以外のジャンルを最大10件表示 */}
                         {genreStats
-                          .filter(stat => stat.genre && stat.genre.trim() !== '')
+                          .filter(stat => stat.genre && stat.genre.trim() !== '' && stat.genre !== 'その他')
                           .slice(0, 10)
                           .map((stat, index) => {
                             const metricValue = {
@@ -493,9 +494,7 @@ export default function GenrePage() {
                                 )}
                                 onClick={() => setSelectedGenre(stat.genre)}
                               >
-                                <TableCell className={cn(
-                                  "py-3",
-                                )}>
+                                <TableCell className="py-3">
                                   {index + 1}
                                 </TableCell>
                                 <TableCell className="py-3">
@@ -508,6 +507,52 @@ export default function GenrePage() {
                               </TableRow>
                             );
                           })}
+                        
+                        {/* その他カテゴリが存在する場合、参考記録として表示 */}
+                        {genreStats.find(stat => stat.genre === 'その他') && (
+                          <>
+                            {/* 区切り線 */}
+                            <TableRow>
+                              <TableCell colSpan={3} className="py-2">
+                                <div className="border-t border-dashed border-gray-200 my-1"></div>
+                              </TableCell>
+                            </TableRow>
+                            
+                            {/* 参考記録として「その他」を表示 */}
+                            {(() => {
+                              const otherStat = genreStats.find(stat => stat.genre === 'その他')!;
+                              const metricValue = {
+                                viewsIncrease: Number(otherStat.total_play_count_increase) || 0,
+                                over100kViews: Number(otherStat.videos_over_100k) || 0,
+                                postCount: Number(otherStat.total_posts) || 0
+                              }[metric];
+                              
+                              const isSelected = selectedGenre === otherStat.genre;
+                              
+                              return (
+                                <TableRow 
+                                  key="other-reference"
+                                  className={cn(
+                                    "cursor-pointer transition-colors",
+                                    isSelected ? "bg-[#25F4EE]/5 hover:bg-[#25F4EE]/10" : "hover:bg-[#25F4EE]/5"
+                                  )}
+                                  onClick={() => setSelectedGenre(otherStat.genre)}
+                                >
+                                  <TableCell className="py-3">
+                                    <span className="text-xs"></span>
+                                  </TableCell>
+                                  <TableCell className="py-3">
+                                    <GenreBadge 
+                                      genre={otherStat.genre} 
+                                      categoryForColor={otherStat.genre}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-3 text-right">{formatNumber(metricValue)}</TableCell>
+                                </TableRow>
+                              );
+                            })()}
+                          </>
+                        )}
                       </TableBody>
                     </Table>
                   </CardContent>
