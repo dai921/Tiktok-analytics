@@ -329,19 +329,6 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         prev_data_results = execute_query(prev_data_query, prev_data_params)
         prev_data = prev_data_results[0] if prev_data_results else None
 
-        # 現在の時刻を設定
-        currentFetchDate = datetime.now()
-
-        # 前回の取得日時と遅延フラグの設定
-        if prev_data and prev_data.get('currentFetchDate'):
-            prevFetchDate = prev_data['currentFetchDate']
-            # 日付の差を計算（日数）
-            date_diff = (currentFetchDate - prevFetchDate).days
-            # 4日以上離れていたらis_delayフラグを1に設定
-            is_delay = 1 if date_diff >= 4 else 0
-        else:
-            prevFetchDate = None
-            is_delay = 0
 
         # 増加量の計算
         current_likes_count = video_data['like_count']
@@ -428,10 +415,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
             'save_count': video_data['save_count'],
-            'front_needs_update': 1,
-            'prevFetchDate': prevFetchDate,
-            'currentFetchDate': currentFetchDate,
-            'is_delay': is_delay
+            'front_needs_update': 1
         }
   
         insert_query = """
@@ -440,8 +424,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             description, hashtags, category, product, content_type,
             account_type, created_at, likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
-            likes_count, comment_count, save_count, front_needs_update,
-            prevFetchDate, currentFetchDate, is_delay
+            likes_count, comment_count, save_count, front_needs_update
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
@@ -449,8 +432,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             %(account_type)s, %(created_at)s, %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
             %(music_title)s, %(likes_count)s,
-            %(comment_count)s, %(save_count)s, %(front_needs_update)s,
-            %(prevFetchDate)s, %(currentFetchDate)s, %(is_delay)s
+            %(comment_count)s, %(save_count)s, %(front_needs_update)s
         )
         ON DUPLICATE KEY UPDATE
             category = VALUES(category),
@@ -463,10 +445,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             likes_count = VALUES(likes_count),
             comment_count = VALUES(comment_count),
             save_count = VALUES(save_count),
-            front_needs_update = VALUES(front_needs_update),
-            prevFetchDate = VALUES(prevFetchDate),
-            currentFetchDate = VALUES(currentFetchDate),
-            is_delay = VALUES(is_delay)
+            front_needs_update = VALUES(front_needs_update)
         """
         execute_write_query(insert_query, insert_params)
 

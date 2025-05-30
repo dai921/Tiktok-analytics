@@ -170,15 +170,15 @@ async def get_product_stats(
         base_select = f"""
             SELECT
                 fd.video_id,
-                MAX(fd.product) AS product,
-                MAX(pm.product_category) AS product_category,
-                MAX(fd.url) AS url,
-                MAX(fd.thumbnail_url) AS thumbnail_url,
-                MAX(fd.created_at) AS created_at,
-                MAX(fd.play_count) AS play_count,
-                MAX(fd.ten_days_increase) AS ten_days_increase,
-                MAX(fd.account_name) AS account_name,
-                MAX(fd.display_name) AS display_name,
+                ANY_VALUE(fd.product) AS product,
+                ANY_VALUE(pm.product_category) AS product_category,
+                ANY_VALUE(fd.url) AS url,
+                ANY_VALUE(fd.thumbnail_url) AS thumbnail_url,
+                ANY_VALUE(fd.created_at) AS created_at,
+                ANY_VALUE(fd.play_count) AS play_count,
+                ANY_VALUE(fd.ten_days_increase) AS ten_days_increase,
+                ANY_VALUE(fd.account_name) AS account_name,
+                ANY_VALUE(fd.display_name) AS display_name,
                 SUM(pch.play_count_increase)  AS play_inc,
                 SUM(pch.likes_count_increase) AS like_inc
             FROM play_count_history pch

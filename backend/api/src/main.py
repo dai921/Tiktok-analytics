@@ -1172,7 +1172,7 @@ async def get_trend_genres():
     """トレンド分析で利用可能なジャンル一覧を取得するAPI"""
     try:
         # ユニークなジャンル一覧を取得
-        query = "SELECT DISTINCT category_name FROM category_master ORDER BY category_name"
+        query = "SELECT category_name FROM category_master ORDER BY category_name"
         rows = execute_query(query)
         
         genres = [row["category_name"] for row in rows]

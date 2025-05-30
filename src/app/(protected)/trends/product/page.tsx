@@ -123,7 +123,10 @@ export default function ProductPage() {
     postCount: []
   });
 
-  // ジャンルデータを取得するuseEffectを追加
+  // まず、ジャンルデータ読み込み完了フラグを追加
+  const [genresLoaded, setGenresLoaded] = useState(false);
+
+  // ジャンル取得のuseEffect
   useEffect(() => {
     const loadGenres = async () => {
       try {
@@ -131,7 +134,6 @@ export default function ProductPage() {
         const genresResponse = await fetchTrendGenres();
         
         if (genresResponse.success) {
-          // ジャンルをOption形式に変換
           const genreOptions = genresResponse.data.map(genre => ({
             value: genre,
             label: genre
@@ -139,12 +141,12 @@ export default function ProductPage() {
           
           setAvailableGenres(genreOptions);
           
-          // デフォルトですべてのジャンルを選択
-          if (genreOptions.length > 0) {
-            const initialSelected = genreOptions.map(option => option.value);
-            setSelectedGenres(initialSelected);
-            setTempSelectedGenres(initialSelected);
-          }
+          // ジャンルを設定
+          const initialSelected = genreOptions.map(option => option.value);
+          setSelectedGenres(initialSelected);
+          
+          // ジャンル読み込み完了フラグを設定
+          setGenresLoaded(true);
         } else {
           setError('ジャンルデータの取得に失敗しました');
         }
@@ -159,27 +161,21 @@ export default function ProductPage() {
     loadGenres();
   }, []);
 
+  // 商品統計取得のuseEffect - genresLoadedに依存させる
   useEffect(() => {
-    if (!dataLoaded || userSelectedDate) {
+    // ジャンルがロードされたとき、またはユーザーが日付を選択したとき
+    if ((genresLoaded && !dataLoaded) || userSelectedDate) {
       const loadProductStats = async () => {
         try {
           console.log("API呼び出し開始:", { userSelectedDate, dataLoaded, metric });
           setIsLoading(true);
           setError(null);
           
-          // キャッシュ内にすでにデータがあるか確認
-          if (cachedProductStats[metric]?.length > 0 && userSelectedDate) {
-            console.log("キャッシュからデータを使用:", metric);
-            setProductStats(cachedProductStats[metric]);
-            setIsLoading(false);
-            return;
-          }
-          
           const result = await fetchProductStats(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
             selectedGenres,
-            metric // 現在選択中の指標を送信
+            metric
           );
           
           console.log("APIレスポンス:", result);
@@ -221,7 +217,7 @@ export default function ProductPage() {
     } else {
       console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded, metric });
     }
-  }, [userSelectedDate, dataLoaded, dateRange, selectedGenres, metric, cachedProductStats]);
+  }, [genresLoaded, userSelectedDate, dataLoaded, dateRange, selectedGenres, metric, cachedProductStats]);
 
   // トレンドグラフ用のデータを取得するuseEffect
   useEffect(() => {
