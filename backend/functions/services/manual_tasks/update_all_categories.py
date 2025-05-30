@@ -382,24 +382,15 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         Dict[str, str]: カテゴリと商品名の辞書
     """
     try:
-        # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
+        # アフィリエイトアカウント以外の場合は、空の結果を返す
         if not account_type or account_type.lower() != 'アフィリエイト':
             return {
                 'category': '',
                 'product_name': ''
             }
 
-        # カテゴリキーワードの取得
-        category_query = """
-            SELECT 
-                ck.keyword,
-                cm.category_name,
-                cm.category_id
-            FROM category_keywords ck
-            JOIN category_master cm ON ck.category_id = cm.category_id
-        """
-        keywords_data = execute_query(category_query)
-
+        title_lower = title.lower() if title else ''
+        
         # 商品キーワードの取得
         product_query = """
             SELECT 
@@ -411,25 +402,18 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         """
         product_data = execute_query(product_query)
 
-        title_lower = title.lower() if title else ''
-        
-        # カテゴリの判定
-        categories = set()
-        for keyword_data in keywords_data:
-            keyword = keyword_data['keyword'].lower()
-            if keyword in title_lower:
-                categories.add((
-                    keyword_data['category_name'],
-                    keyword_data['category_id']
-                ))
-
-        # 商品名の判定
+        # 先に商品名の判定
         product_name = ''
+        product_category = ''
+        
         for product_info in product_data:
             keyword = product_info['keyword'].lower()
             if keyword in title_lower:
-                if product_info['product_category'] == '複数':
-                    # product_categoryが「複数」の場合、別名テーブルを検索
+                product_name = product_info['product_name']
+                product_category = product_info['product_category']
+                
+                # product_categoryが「複数」の場合、別名テーブルを検索
+                if product_category == '複数':
                     alias_query = """
                         SELECT 
                             pa.alias_name,
@@ -439,8 +423,9 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                         JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
                         WHERE pa.product_name = %s
                     """
-                    alias_data = execute_query(alias_query, (product_info['product_name'],))
+                    alias_data = execute_query(alias_query, (product_name,))
                     
+                    # 別名キーワードでマッチするか確認
                     alias_match = False
                     priority_alias = None
                     
@@ -452,12 +437,53 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                         elif alias_info['alias_priority'] == 1:
                             priority_alias = alias_info['alias_name']
                     
-                    if not alias_match:
-                        product_name = priority_alias if priority_alias else product_info['product_name']
-                else:
-                    product_name = product_info['product_name']
-                break
+                    # キーワードマッチしなかった場合はPriority=1の別名を使用
+                    if not alias_match and priority_alias:
+                        product_name = priority_alias
+                    
+                    # 更新した商品名に対応するカテゴリを取得
+                    updated_category_query = """
+                        SELECT product_category
+                        FROM product_master
+                        WHERE product_name = %s
+                    """
+                    updated_category_result = execute_query(updated_category_query, (product_name,))
+                    
+                    # 新しいカテゴリがあれば更新
+                    if updated_category_result and updated_category_result[0]['product_category'] != '複数':
+                        product_category = updated_category_result[0]['product_category']
+                
+                break  # 最初にマッチした商品で処理を終了
 
+        # 商品が見つかり、product_categoryが「複数」でない場合はそれをカテゴリとして使用
+        if product_name and product_category and product_category != '複数':
+            return {
+                'category': product_category,
+                'product_name': product_name
+            }
+        
+        # 商品が見つからなかった、またはproduct_categoryが「複数」の場合は従来のカテゴリ判定を行う
+        category_query = """
+            SELECT 
+                ck.keyword,
+                cm.category_name,
+                cm.category_id
+            FROM category_keywords ck
+            JOIN category_master cm ON ck.category_id = cm.category_id
+        """
+        keywords_data = execute_query(category_query)
+
+        # カテゴリの判定
+        categories = set()
+        for keyword_data in keywords_data:
+            keyword = keyword_data['keyword'].lower()
+            if keyword in title_lower:
+                categories.add((
+                    keyword_data['category_name'],
+                    keyword_data['category_id']
+                ))
+
+        # カテゴリ名をカンマ区切りで結合（空の場合は「その他」）
         category_names = ','.join(sorted(set(cat[0] for cat in categories))) if categories else 'その他'
 
         return {

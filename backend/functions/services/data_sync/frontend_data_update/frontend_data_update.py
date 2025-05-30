@@ -73,7 +73,13 @@ def update_frontend_from_master() -> Dict[str, Any]:
             # 作成日が2日以内のものでplayCountIncreaseとplay_countが一致していないものはplayCountIncrease=play_countにする
             print("バッチ1: 作成日が2日以内で再生数と増加数が一致していない動画の処理を開始")
             sync_start_time = datetime.now()
-            
+
+            # 日付条件の具体的な値をログ出力するための確認クエリを追加
+            date_check_query = "SELECT DATE_SUB(CURDATE(), INTERVAL 2 DAY) as target_date"
+            date_result = execute_query(date_check_query)
+            target_date = date_result[0]['target_date'] if date_result else None
+            print(f"処理対象日付の条件: created_at >= {target_date} (現在の日付から2日前)")
+
             sync_query = """
             UPDATE video_master
             SET playCountIncrease = play_count

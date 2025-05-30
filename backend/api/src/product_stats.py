@@ -150,8 +150,8 @@ async def get_product_stats(
                 video_id           BIGINT UNSIGNED,
                 product            VARCHAR(255),
                 product_category   VARCHAR(255),
-                url                TEXT,
-                thumbnail_url      TEXT,
+                url                VARCHAR(255),
+                thumbnail_url      VARCHAR(255),
                 created_at         DATETIME,
                 play_count         INT,
                 ten_days_increase  INT,
@@ -161,7 +161,8 @@ async def get_product_stats(
                 like_inc           INT,
                 PRIMARY KEY (video_id),
                 INDEX idx_prod (product),            -- ★インデックス
-                INDEX idx_prod_inc  (product, play_inc DESC)   -- ★←これを追加
+                INDEX idx_prod_inc  (product, play_inc DESC),   -- ★←これを追加
+                INDEX idx_video_groupby (video_id, product, created_at)  -- ★GROUP BY用インデックス追加
             ) ENGINE=InnoDB
         """))
 
@@ -169,15 +170,15 @@ async def get_product_stats(
         base_select = f"""
             SELECT
                 fd.video_id,
-                fd.product,
-                pm.product_category,
-                fd.url,
-                fd.thumbnail_url,
-                fd.created_at,
-                fd.play_count,
-                fd.ten_days_increase,
-                fd.account_name,
-                fd.display_name,
+                MAX(fd.product) AS product,
+                MAX(pm.product_category) AS product_category,
+                MAX(fd.url) AS url,
+                MAX(fd.thumbnail_url) AS thumbnail_url,
+                MAX(fd.created_at) AS created_at,
+                MAX(fd.play_count) AS play_count,
+                MAX(fd.ten_days_increase) AS ten_days_increase,
+                MAX(fd.account_name) AS account_name,
+                MAX(fd.display_name) AS display_name,
                 SUM(pch.play_count_increase)  AS play_inc,
                 SUM(pch.likes_count_increase) AS like_inc
             FROM play_count_history pch
@@ -187,12 +188,7 @@ async def get_product_stats(
               AND fd.product IS NOT NULL
               {genre_filter_sql}
             GROUP BY
-                fd.video_id,
-                fd.product, pm.product_category,
-                fd.url, fd.thumbnail_url,
-                fd.created_at, fd.play_count,
-                fd.ten_days_increase,
-                fd.account_name, fd.display_name
+                fd.video_id
         """
         params = {"start_date": start_date, "end_date": end_date, **genre_params}
 

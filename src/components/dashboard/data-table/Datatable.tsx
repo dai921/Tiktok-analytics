@@ -395,7 +395,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         
         {/* テーブルの内容 */}
         <div className="relative">
-          <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+          <div className="bg-white rounded-lg shadow-sm">
             {isLoading && (
               <div className="absolute inset-0 bg-white/50 z-[9999] flex items-center justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500" />
