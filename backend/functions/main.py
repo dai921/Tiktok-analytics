@@ -8,6 +8,7 @@ from services.data_sync.category_analytics_aggregator import process_category_st
 from services.data_sync.frontend_data_update.frontend_data_update import process_pubsub_message as frontend_update_job
 from services.data_sync.update_needs_flags import update_needs_flags as update_needs_flags_function
 from services.data_sync.summary_table_sync import update_product_daily_summary as summary_table_sync_function
+from services.data_sync.top100_videos_sync import update_product_top100_videos as top100_videos_sync_function
 
 # カテゴリー関連
 from services.category.sync_category_spreadsheet import scheduled_job as sync_category_job
@@ -27,6 +28,7 @@ from services.manual_tasks.manual_sync_master import sync_video_master as manual
 from services.manual_tasks.update_all_categories import update_all_categories as update_all_categories_function
 from services.manual_tasks.manual_sync_video_play_count import manual_sync_video_play_count as manual_sync_video_play_count_function
 from services.manual_tasks.manual_summary_sync import backfill_product_daily_summary as manual_summary_sync_function
+from services.manual_tasks.manual_top100_sync import collect_historical_top100_videos as manual_top100_sync_function
 # 環境変数の読み込み
 load_dotenv()
 
@@ -47,8 +49,11 @@ def sync_category_spreadsheet(request):
 def sync_account_list(request):
     return sync_account(request)
 
-def sync_summary(request):
-    return summary_table_sync_function(request)
+def sync_summary(event,context):
+    return summary_table_sync_function(event,context)
+
+def sync_top100(event,context):
+    return top100_videos_sync_function(event,context)
 
 def sync_crawler_accounts(request):    
     return sync_crawler(request)
@@ -87,3 +92,6 @@ def manual_sync_video_play_count(request):
 
 def manual_sync_summary(request):
     return manual_summary_sync_function(request)
+
+def manual_top100_sync(request):
+    return manual_top100_sync_function(request)
