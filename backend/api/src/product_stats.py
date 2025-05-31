@@ -17,7 +17,7 @@ import os
 from textwrap import indent
 
 # --- デバッグフラグ（環境変数 ENABLE_SQL_DEBUG=1 で有効） ---
-DEBUG_SQL = False
+DEBUG_SQL = True
 
 def debug_explain(conn, sql: str, params: dict):
     """EXPLAIN ANALYZE の結果をログに吐く（デバッグ時のみ）"""
@@ -126,13 +126,18 @@ async def get_product_stats(
         print("Executing product stats query")
         
         # ★変更: ジャンル IN 句を簡単に組み立てるだけ
-        genre_filter_sql = ""
-        genre_params = {}
+        genre_conditions = []
+        params = {"start_date": start_date, "end_date": end_date}
         if genre_list:
-            placeholders = ", ".join([f":genre_{i}" for i in range(len(genre_list))])
-            genre_filter_sql = f"AND pm.product_category IN ({placeholders})"
-            genre_params = {f"genre_{i}": genre for i, genre in enumerate(genre_list)}
-
+            genre_placeholders = []
+            for i, genre in enumerate(genre_list):
+                placeholder = f"genre_{i}"
+                genre_placeholders.append(f":{placeholder}")
+                params[placeholder] = genre
+            genre_filter = f"AND pc.product_category IN ({', '.join(genre_placeholders)})"
+        else:
+            genre_filter = ""
+            
         # ★ここに sort_column の定義を移動（ログ出力より前に定義）
         sort_column = {
             "viewsIncrease": "total_play_inc",
@@ -144,112 +149,174 @@ async def get_product_stats(
         print(f"Executing product stats query with metric: {metric}, sort column: {sort_column}")
         logger.info(f"Executing product stats query with metric: {metric}, sort column: {sort_column}")
 
-        # 1) 空の tmp_base を作成（インデックス定義が生きる）
-        conn.execute(text("""
-            CREATE TEMPORARY TABLE tmp_base (
-                video_id           BIGINT UNSIGNED,
-                product            VARCHAR(255),
-                product_category   VARCHAR(255),
-                url                VARCHAR(255),
-                thumbnail_url      VARCHAR(255),
-                created_at         DATETIME,
-                play_count         INT,
-                ten_days_increase  INT,
-                account_name       VARCHAR(255),
-                display_name       VARCHAR(255),
-                play_inc           INT,
-                like_inc           INT,
-                PRIMARY KEY (video_id),
-                INDEX idx_prod (product),            -- ★インデックス
-                INDEX idx_prod_inc  (product, play_inc DESC),   -- ★←これを追加
-                INDEX idx_video_groupby (video_id, product, created_at)  -- ★GROUP BY用インデックス追加
-            ) ENGINE=InnoDB
-        """))
-
-        # 2) base_select の結果を流し込む
-        base_select = f"""
+        # クエリ実行前に EXPLAIN ANALYZE を実行
+        debug_explain(conn, f"""
+        WITH product_categories AS (
+            SELECT product_name, product_category
+            FROM product_master
+            WHERE product_category IN ({', '.join(genre_placeholders)})
+        ),
+        filtered_history AS (
+            SELECT video_id, play_count_increase, likes_count_increase, collection_date
+            FROM play_count_history
+            WHERE collection_date BETWEEN :start_date AND :end_date
+              AND play_count_increase > 0
+        ),
+        product_stats AS (
             SELECT
-                fd.video_id,
-                ANY_VALUE(fd.product) AS product,
-                ANY_VALUE(pm.product_category) AS product_category,
-                ANY_VALUE(fd.url) AS url,
-                ANY_VALUE(fd.thumbnail_url) AS thumbnail_url,
-                ANY_VALUE(fd.created_at) AS created_at,
-                ANY_VALUE(fd.play_count) AS play_count,
-                ANY_VALUE(fd.ten_days_increase) AS ten_days_increase,
-                ANY_VALUE(fd.account_name) AS account_name,
-                ANY_VALUE(fd.display_name) AS display_name,
-                SUM(pch.play_count_increase)  AS play_inc,
-                SUM(pch.likes_count_increase) AS like_inc
+                fd.product,
+                pc.product_category,
+                SUM(fh.play_count_increase) AS total_play_inc,
+                SUM(CASE WHEN fh.play_count_increase >= 100000 THEN 1 ELSE 0 END) AS over100k_cnt,
+                SUM(CASE WHEN fd.created_at BETWEEN :start_date AND :end_date THEN 1 ELSE 0 END) AS post_cnt
+            FROM filtered_history fh
+            INNER JOIN frontend_data fd ON fd.video_id = fh.video_id
+            LEFT JOIN product_categories pc ON pc.product_name = fd.product
+            WHERE fh.collection_date BETWEEN :start_date AND :end_date
+              AND fd.product IS NOT NULL
+            GROUP BY fd.product
+        ),
+        ranked_videos AS (
+            SELECT
+                fd.product,
+                fd.url,
+                fd.thumbnail_url,
+                pch.play_count_increase AS play_inc,
+                pch.likes_count_increase AS like_inc,
+                fd.created_at,
+                fd.play_count,
+                fd.ten_days_increase,
+                fd.account_name,
+                fd.display_name,
+                ROW_NUMBER() OVER (PARTITION BY fd.product ORDER BY pch.play_count_increase DESC) AS video_rank
             FROM play_count_history pch
-            JOIN frontend_data fd ON fd.video_id = pch.video_id
-            LEFT JOIN product_master pm ON pm.product_name = fd.product
+            INNER JOIN frontend_data fd ON fd.video_id = pch.video_id
+            LEFT JOIN product_categories pc ON pc.product_name = fd.product
             WHERE pch.collection_date BETWEEN :start_date AND :end_date
               AND fd.product IS NOT NULL
-              {genre_filter_sql}
-            GROUP BY
-                fd.video_id
-        """
-        params = {"start_date": start_date, "end_date": end_date, **genre_params}
+              {genre_filter}
+              AND pch.play_count_increase > 0  -- 🔥 増加のない動画を除外
+        )
+        SELECT 
+            ps.*,
+            rv.url,
+            rv.thumbnail_url,
+            rv.play_inc,
+            rv.like_inc,
+            rv.created_at AS video_created_at,
+            rv.play_count,
+            rv.ten_days_increase,
+            rv.account_name,
+            rv.display_name,
+            rv.video_rank
+        FROM product_stats ps
+        LEFT JOIN ranked_videos rv ON ps.product = rv.product AND rv.video_rank <= 10
+        ORDER BY ps.{sort_column} DESC, ps.product, rv.video_rank
+        """, params)
 
-        # 2) base_select の結果を流し込む
-        insert_sql = f"INSERT INTO tmp_base {base_select}"
-        conn.execute(text(insert_sql), params)
+        # 🔥 最適化1: 単一クエリで統計とトップ動画を同時取得
+        with_genre_filter = ""
+        if genre_list:
+            placeholders = ", ".join([f":{f'genre_{i}'}" for i, _ in enumerate(genre_list)])
+            with_genre_filter = f"WHERE product_category IN ({placeholders})"
 
-        # 3) 選択されたメトリックでソートしたランキングを取得
-        stats_sql = text(f"""
-        SELECT
-            product,
-            MAX(product_category)                    AS product_category,
-            SUM(play_inc)                            AS total_play_inc,
-            SUM(play_inc >= 100000)                  AS over100k_cnt,
-            SUM(created_at BETWEEN :start_date AND :end_date) AS post_cnt
-        FROM tmp_base
-        GROUP BY product
-        ORDER BY {sort_column} DESC;  -- 選択されたメトリックでソート
+        optimized_query = text(f"""
+        WITH product_categories AS (
+            SELECT product_name, product_category
+            FROM product_master
+            {with_genre_filter}
+        ),
+        filtered_history AS (
+            SELECT video_id, play_count_increase, likes_count_increase, collection_date
+            FROM play_count_history
+            WHERE collection_date BETWEEN :start_date AND :end_date
+              AND play_count_increase > 0
+        ),
+        product_stats AS (
+            SELECT
+                fd.product,
+                pc.product_category,
+                SUM(fh.play_count_increase) AS total_play_inc,
+                SUM(CASE WHEN fh.play_count_increase >= 100000 THEN 1 ELSE 0 END) AS over100k_cnt,
+                SUM(CASE WHEN fd.created_at BETWEEN :start_date AND :end_date THEN 1 ELSE 0 END) AS post_cnt
+            FROM filtered_history fh
+            INNER JOIN frontend_data fd ON fd.video_id = fh.video_id
+            LEFT JOIN product_categories pc ON pc.product_name = fd.product
+            WHERE fh.collection_date BETWEEN :start_date AND :end_date
+              AND fd.product IS NOT NULL
+            GROUP BY fd.product
+        ),
+        ranked_videos AS (
+            SELECT
+                fd.product,
+                fd.url,
+                fd.thumbnail_url,
+                pch.play_count_increase AS play_inc,
+                pch.likes_count_increase AS like_inc,
+                fd.created_at,
+                fd.play_count,
+                fd.ten_days_increase,
+                fd.account_name,
+                fd.display_name,
+                ROW_NUMBER() OVER (PARTITION BY fd.product ORDER BY pch.play_count_increase DESC) AS video_rank
+            FROM play_count_history pch
+            INNER JOIN frontend_data fd ON fd.video_id = pch.video_id
+            LEFT JOIN product_categories pc ON pc.product_name = fd.product
+            WHERE pch.collection_date BETWEEN :start_date AND :end_date
+              AND fd.product IS NOT NULL
+              {genre_filter}
+              AND pch.play_count_increase > 0
+        )
+        SELECT 
+            ps.*,
+            rv.url,
+            rv.thumbnail_url,
+            rv.play_inc,
+            rv.like_inc,
+            rv.created_at AS video_created_at,
+            rv.play_count,
+            rv.ten_days_increase,
+            rv.account_name,
+            rv.display_name,
+            rv.video_rank
+        FROM product_stats ps
+        LEFT JOIN ranked_videos rv ON ps.product = rv.product AND rv.video_rank <= 10
+        ORDER BY ps.{sort_column} DESC, ps.product, rv.video_rank
         """)
-        result = conn.execute(stats_sql, {"start_date": start_date, "end_date": end_date})
-        stats = {r["product"]: {
-            "product": r["product"],
-            "product_category": r["product_category"],
-            "total_play_count_increase": r["total_play_inc"],
-            "videos_over_100k": r["over100k_cnt"],
-            "total_posts": r["post_cnt"],
-            "top_videos": []
-        } for r in result.mappings().all()}
-        
-        top_sql = text("""
-            SELECT *
-            FROM (
-                SELECT
-                    product, url, thumbnail_url,
-                    play_inc, like_inc,
-                    created_at, play_count, ten_days_increase,
-                    account_name, display_name,
-                    ROW_NUMBER() OVER (PARTITION BY product ORDER BY play_inc DESC) AS rn
-                FROM tmp_base
-            ) t WHERE rn <= 10;
-            """)
-        result = conn.execute(top_sql)
 
-        for v in result.mappings().all():
-            if v["product"] in stats:  # 念のためキーチェック
-                prod = stats[v["product"]]
-                prod["top_videos"].append({
-                    "url": v["url"],
-                    "thumbnail_url": convert_gs_to_https(v["thumbnail_url"]),
-                    "play_count_increase": v["play_inc"],
-                    "likes_count_increase": v["like_inc"],
-                    "created_at": v["created_at"],
-                    "play_count": v["play_count"],
-                    "ten_days_increase": v["ten_days_increase"],
-                    "account_name": v["account_name"],
-                    "display_name": v["display_name"]
-                })
-    
-        # 使用済みの一時テーブルを削除
-        conn.execute(text("DROP TEMPORARY TABLE IF EXISTS tmp_base"))
-        
+        # 通常のクエリ実行
+        result = conn.execute(optimized_query, params)
+        rows = result.fetchall()
+
+        # 🔥 最適化2: 結果の効率的な構築
+        stats = {}
+        for row in rows:
+            product = row.product
+            
+            # 商品統計の初期化（初回のみ）
+            if product not in stats:
+                stats[product] = {
+                    "product": product,
+                    "product_category": row.product_category,
+                    "total_play_count_increase": row.total_play_inc,
+                    "videos_over_100k": row.over100k_cnt,
+                    "total_posts": row.post_cnt,
+                    "top_videos": []
+                }
+            
+            # トップ動画の追加（存在する場合のみ）
+            if row.url and row.video_rank:  # NULLチェック
+                stats[product]["top_videos"].append({
+                    "url": row.url,
+                    "thumbnail_url": convert_gs_to_https(row.thumbnail_url),
+                    "play_count_increase": row.play_inc,
+                    "likes_count_increase": row.like_inc,
+                    "created_at": row.video_created_at,
+                    "play_count": row.play_count,
+                    "ten_days_increase": row.ten_days_increase,
+                    "account_name": row.account_name,
+                    "display_name": row.display_name
+                })        
         # ログ追加
         logger.info(f"Product stats query returned {len(stats)} products")
         print(f"Product stats query returned {len(stats)} products")
