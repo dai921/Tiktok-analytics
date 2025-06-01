@@ -141,7 +141,11 @@ def process_specific_dates(date_strings, start_date=None, end_date=None):
             pm.product_category,
             COALESCE(SUM(pch.play_count_increase), 0) as plays_increase,
             COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k,
-            COUNT(DISTINCT pch.video_id) as post_count
+            COUNT(DISTINCT CASE 
+                WHEN fd.created_at BETWEEN DATE_SUB(%s, INTERVAL 1 DAY) AND %s 
+                THEN fd.video_id 
+                ELSE NULL 
+            END) as post_count
         FROM 
             play_count_history pch
         JOIN 
@@ -160,7 +164,7 @@ def process_specific_dates(date_strings, start_date=None, end_date=None):
         """
         
         # クエリを実行
-        execute_write_query(product_summary_query, (collection_date, collection_date))
+        execute_write_query(product_summary_query, (collection_date, collection_date, collection_date, collection_date))
         logger.info(f"日付 {collection_date} の商品日次集計が完了しました")
         processed_dates.append(collection_date)
     

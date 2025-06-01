@@ -45,7 +45,7 @@ def update_product_daily_summary(event, context):
             collection_date = (datetime.now(jst) + timedelta(hours=9) - timedelta(days=2)).strftime('%Y-%m-%d')
             logger.info(f"データなしのトリガー実行。収集日を{collection_date}に設定します")
         
-        # 商品ごとの集計クエリ
+        # 商品ごとの集計クエリ - 修正版
         product_summary_query = """
         INSERT INTO product_daily_summary 
         (fetch_date, product, product_category, plays_increase, over_100k, post_count)
@@ -53,16 +53,22 @@ def update_product_daily_summary(event, context):
             %s as fetch_date,
             pm.product_name as product,
             pm.product_category,
-            COALESCE(SUM(fd.play_count_increase), 0) as plays_increase,
-            COUNT(CASE WHEN fd.play_count_increase >= 100000 THEN 1 END) as over_100k,
-            COUNT(fd.id) as post_count
+            COALESCE(SUM(pch.play_count_increase), 0) as plays_increase,
+            COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k,
+            COUNT(DISTINCT CASE 
+                WHEN fd.created_at BETWEEN DATE_SUB(%s, INTERVAL 1 DAY) AND %s 
+                THEN fd.video_id 
+                ELSE NULL 
+            END) as post_count
         FROM 
-            frontend_data fd
+            play_count_history pch
+        JOIN 
+            frontend_data fd ON pch.video_id = fd.video_id
         JOIN 
             product_master pm ON fd.product = pm.product_name
         WHERE 
-            fd.created_at <= %s
-            AND fd.play_count_increase IS NOT NULL
+            pch.collection_date = %s
+            AND pch.play_count_increase IS NOT NULL
         GROUP BY 
             pm.product_name, pm.product_category
         ON DUPLICATE KEY UPDATE
@@ -72,7 +78,7 @@ def update_product_daily_summary(event, context):
         """
         
         # クエリを実行
-        execute_write_query(product_summary_query, (collection_date, collection_date))
+        execute_write_query(product_summary_query, (collection_date, collection_date, collection_date, collection_date))
         
         logger.info(f"商品日次集計が完了しました。収集日: {collection_date}")
         
