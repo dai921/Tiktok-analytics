@@ -82,9 +82,12 @@ def update_product_daily_summary(event, context):
         
         logger.info(f"商品日次集計が完了しました。収集日: {collection_date}")
         
+        # 動画ジャンル集計も実行
+        update_genre_daily_summary(collection_date)
+        
         return {
             "status": "success",
-            "message": "商品日次集計が完了しました",
+            "message": "商品・ジャンル日次集計が完了しました",
             "collection_date": collection_date,
             "execution_time": datetime.now().isoformat()
         }
@@ -98,3 +101,63 @@ def update_product_daily_summary(event, context):
     
     finally:
         logger.info("==== 商品日次集計処理の終了 ====")
+
+def update_genre_daily_summary(collection_date):
+    """
+    genre_daily_summaryテーブルを更新する
+    
+    Args:
+        collection_date (str): 収集日 (YYYY-MM-DD形式)
+    """
+    logger.info("==== 動画ジャンル日次集計処理の開始 ====")
+    
+    try:
+        # ジャンルごとの集計クエリ
+        genre_summary_query = """
+        INSERT INTO genre_daily_summary 
+        (fetch_date, video_genre, plays_increase, over_100k, post_count)
+        SELECT 
+            %s as fetch_date,
+            TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(fd.category, ',', n.n), ',', -1)) AS video_genre,
+            COALESCE(SUM(pch.play_count_increase), 0) as plays_increase,
+            COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k,
+            COUNT(DISTINCT CASE 
+                WHEN fd.created_at BETWEEN DATE_SUB(%s, INTERVAL 1 DAY) AND %s 
+                THEN fd.video_id 
+                ELSE NULL 
+            END) as post_count
+        FROM 
+            play_count_history pch
+        JOIN 
+            frontend_data fd ON pch.video_id = fd.video_id
+        CROSS JOIN 
+            (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5) n
+        WHERE 
+            pch.collection_date = %s
+            AND pch.play_count_increase IS NOT NULL
+            AND fd.category IS NOT NULL
+            AND fd.category != ''
+            AND n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
+            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
+        GROUP BY 
+            video_genre
+        ON DUPLICATE KEY UPDATE
+            plays_increase = VALUES(plays_increase),
+            over_100k = VALUES(over_100k),
+            post_count = VALUES(post_count)
+        """
+        
+        # クエリを実行
+        execute_write_query(genre_summary_query, (collection_date, collection_date, collection_date, collection_date))
+        
+        logger.info(f"動画ジャンル日次集計が完了しました。収集日: {collection_date}")
+        
+    except Exception as e:
+        error_message = f"動画ジャンル日次集計処理中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise e
+    
+    finally:
+        logger.info("==== 動画ジャンル日次集計処理の終了 ====")
