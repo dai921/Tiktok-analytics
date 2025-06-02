@@ -161,7 +161,7 @@ export default function ProductPage() {
     loadGenres();
   }, []);
 
-  // 商品統計取得のuseEffect - genresLoadedに依存させる
+  // 商品統計取得のuseEffect
   useEffect(() => {
     // ジャンルがロードされたとき、またはユーザーが日付を選択したとき
     if ((genresLoaded && !dataLoaded) || userSelectedDate) {
@@ -205,6 +205,11 @@ export default function ProductPage() {
           }
           
           setDataLoaded(true);
+          
+          // 追加: userSelectedDateをリセット
+          if (userSelectedDate) {
+            setUserSelectedDate(false);
+          }
         } catch (err) {
           console.error("API呼び出しエラー:", err);
           setError('商品統計情報の取得に失敗しました');
@@ -217,7 +222,7 @@ export default function ProductPage() {
     } else {
       console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded, metric });
     }
-  }, [genresLoaded, userSelectedDate, dataLoaded, dateRange, selectedGenres, metric, cachedProductStats]);
+  }, [genresLoaded, dataLoaded, selectedGenres, metric, cachedProductStats]);
 
   // トレンドグラフ用のデータを取得するuseEffect
   useEffect(() => {
