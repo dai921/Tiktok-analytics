@@ -1,5 +1,6 @@
 import os
 import json
+# import logging を残しておいても問題ないですが、使わないのでコメントアウトも可能
 import logging
 from datetime import datetime, timedelta
 import functions_framework
@@ -9,9 +10,9 @@ from core.db_utils import get_connection, execute_query, execute_write_query, Da
 from core.config import initialize_config, get_environment, get_db_config
 from core.pubsub_utils import publish_message
 
-# ログ設定
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ログ設定部分はコメントアウト
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 # 設定の初期化
 initialize_config()
@@ -21,7 +22,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
     video_masterからfrontend_dataを更新（カーソルベースのバッチ処理）
     """
     try:
-        logger.info("video_masterからfrontend_dataの更新を開始")
+        print("video_masterからfrontend_dataの更新を開始")
         
         # カーソル情報の取得または初期化
         cursor_info = get_or_initialize_cursor("frontend_data_update", "frontend_data")
@@ -31,12 +32,12 @@ def update_frontend_from_master() -> Dict[str, Any]:
         batch_size = cursor_info["batch_size"]
         batch_number = cursor_info["batch_number"]
         
-        logger.info(f"バッチ処理情報: processor={processor_name}, target={target_table}, " 
+        print(f"バッチ処理情報: processor={processor_name}, target={target_table}, " 
                    f"last_id={last_cursor_id}, batch_size={batch_size}, batch_number={batch_number}")
         
         # バッチ番号が1（最初のバッチ）の場合、2週間以前のplayCountIncreaseを0にリセット
         if batch_number == 1:
-            logger.info("バッチ1: 2週間以前のplayCountIncreaseのリセット処理を開始")
+            print("バッチ1: 2週間以前のplayCountIncreaseのリセット処理を開始")
             reset_start_time = datetime.now()
             
             reset_query = """
@@ -50,10 +51,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             affected_rows = execute_write_query(reset_query)
             
             reset_execution_time = (datetime.now() - reset_start_time).total_seconds()
-            logger.info(f"playCountIncreaseリセット完了: {affected_rows}件更新、実行時間: {reset_execution_time}秒")
+            print(f"playCountIncreaseリセット完了: {affected_rows}件更新、実行時間: {reset_execution_time}秒")
             
             # 2日前以前でplayCountIncreaseとplay_countが一致している動画のplayCountIncreaseをnullに設定
-            logger.info("バッチ1: 2日前以前で再生数と増加数が一致する動画の処理を開始")
+            print("バッチ1: 2日前以前で再生数と増加数が一致する動画の処理を開始")
             null_reset_start_time = datetime.now()
             
             null_reset_query = """
@@ -67,12 +68,18 @@ def update_frontend_from_master() -> Dict[str, Any]:
             null_affected_rows = execute_write_query(null_reset_query)
             
             null_reset_execution_time = (datetime.now() - null_reset_start_time).total_seconds()
-            logger.info(f"playCountIncrease NULL設定完了: {null_affected_rows}件更新、実行時間: {null_reset_execution_time}秒")
+            print(f"playCountIncrease NULL設定完了: {null_affected_rows}件更新、実行時間: {null_reset_execution_time}秒")
             
             # 作成日が2日以内のものでplayCountIncreaseとplay_countが一致していないものはplayCountIncrease=play_countにする
-            logger.info("バッチ1: 作成日が2日以内で再生数と増加数が一致していない動画の処理を開始")
+            print("バッチ1: 作成日が2日以内で再生数と増加数が一致していない動画の処理を開始")
             sync_start_time = datetime.now()
-            
+
+            # 日付条件の具体的な値をログ出力するための確認クエリを追加
+            date_check_query = "SELECT DATE_SUB(CURDATE(), INTERVAL 2 DAY) as target_date"
+            date_result = execute_query(date_check_query)
+            target_date = date_result[0]['target_date'] if date_result else None
+            print(f"処理対象日付の条件: created_at >= {target_date} (現在の日付から2日前)")
+
             sync_query = """
             UPDATE video_master
             SET playCountIncrease = play_count
@@ -83,7 +90,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             sync_affected_rows = execute_write_query(sync_query)
             
             sync_execution_time = (datetime.now() - sync_start_time).total_seconds()
-            logger.info(f"playCountIncrease同期完了: {sync_affected_rows}件更新、実行時間: {sync_execution_time}秒")
+            print(f"playCountIncrease同期完了: {sync_affected_rows}件更新、実行時間: {sync_execution_time}秒")
         
         # 基本クエリでデータ確認
         debug_query = """
@@ -93,9 +100,9 @@ def update_frontend_from_master() -> Dict[str, Any]:
         """
         
         debug_data = execute_query(debug_query)
-        logger.info(f"デバッグ: video_masterテーブルからのサンプルデータ ({len(debug_data)}件)")
+        print(f"デバッグ: video_masterテーブルからのサンプルデータ ({len(debug_data)}件)")
         for row in debug_data:
-            logger.info(f"サンプル: id={row['id']}, created_at={row['created_at']} ({type(row['created_at']).__name__}), status={row['status']}")
+            print(f"サンプル: id={row['id']}, created_at={row['created_at']} ({type(row['created_at']).__name__}), status={row['status']}")
         
         # パラメータ化されたクエリに変更
         min_date = '2023-12-01'
@@ -154,8 +161,8 @@ def update_frontend_from_master() -> Dict[str, Any]:
             'batch_size': batch_size
         }
         
-        logger.info(f"実行するバッチクエリ: {select_query}")
-        logger.info(f"クエリパラメータ: {params}")
+        print(f"実行するバッチクエリ: {select_query}")
+        print(f"クエリパラメータ: {params}")
         
         batch_rows = execute_query(select_query, params)
         
@@ -186,10 +193,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
         
         # 取得したデータの検証
         batch_size = len(batch_rows)
-        logger.info(f"バッチ#{batch_number}: 取得したレコード数: {batch_size}, 残り: {remaining_count}")
+        print(f"バッチ#{batch_number}: 取得したレコード数: {batch_size}, 残り: {remaining_count}")
         
         if not batch_rows:
-            logger.info("処理すべきデータがありません。バッチ処理を完了します。")
+            print("処理すべきデータがありません。バッチ処理を完了します。")
             
             # カーソルをリセット（次回は最初から）
             reset_cursor(processor_name, target_table)
@@ -279,14 +286,14 @@ def update_frontend_from_master() -> Dict[str, Any]:
                 updated_count += 1
                 
             except DatabaseError as e:
-                logger.error(f"レコード更新エラー (id: {row['id']}): {str(e)}")
+                print(f"レコード更新エラー (id: {row['id']}): {str(e)}")
                 continue
         
         # カーソル情報の更新
         update_cursor(processor_name, target_table, max_id, batch_number + 1)
         
         batch_execution_time = (datetime.now() - batch_start_time).total_seconds()
-        logger.info(f"バッチ#{batch_number}完了: {updated_count}/{batch_size}件更新、実行時間: {batch_execution_time}秒")
+        print(f"バッチ#{batch_number}完了: {updated_count}/{batch_size}件更新、実行時間: {batch_execution_time}秒")
         
         # 処理完了していない場合、Pub/Subに継続メッセージを送信
         if remaining_count > 0:
@@ -306,7 +313,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
             })
             
             # カテゴリー統計集計用のトリガーメッセージを送信
-            logger.info("カテゴリー統計集計のトリガーメッセージを送信します")
+            print("カテゴリー統計集計のトリガーメッセージを送信します")
             publish_message("needs-update-flag", {
                 "status": "completed",
                 "message": "カテゴリー統計集計を開始します",
@@ -327,7 +334,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        logger.error(f"更新処理中にエラーが発生: {str(e)}")
+        print(f"更新処理中にエラーが発生: {str(e)}")
         return {
             "status": "error",
             "error": str(e),
@@ -388,20 +395,20 @@ def scheduled_job(request):
     定期実行用のCloud Function
     """
     start_time = datetime.now()
-    logger.info(f"定期実行開始: {start_time}")
+    print(f"定期実行開始: {start_time}")
 
     try:
         # データ更新の実行
         result = update_frontend_from_master()
         
         execution_time = (datetime.now() - start_time).total_seconds()
-        logger.info(f"定期実行完了: 実行時間 {execution_time}秒, 結果: {result}")
+        print(f"定期実行完了: 実行時間 {execution_time}秒, 結果: {result}")
         
         return result
 
     except Exception as e:
         error_message = f"予期せぬエラーが発生: {str(e)}"
-        logger.error(error_message)
+        print(error_message)
         raise
 
 # Pub/Subメッセージで起動するためのエントリーポイント
@@ -414,16 +421,16 @@ def process_pubsub_message(event, context):
     Returns:
         tuple: (結果データ, HTTPステータスコード)
     """
-    logger.info("==== frontend_data_update処理開始 ====")
+    print("==== frontend_data_update処理開始 ====")
     
     try:
         # Pub/Subメッセージの処理
         if 'data' in event:
             message_data = base64.b64decode(event['data']).decode('utf-8')
             message = json.loads(message_data)
-            logger.info(f"Pub/Subメッセージを受信: {message}")
+            print(f"Pub/Subメッセージを受信: {message}")
         else:
-            logger.error("データなしのメッセージを受信")
+            print("データなしのメッセージを受信")
             return {
                 'status': 'error',
                 'message': 'No data in message'
@@ -433,33 +440,33 @@ def process_pubsub_message(event, context):
         if message.get("status") == "start":
             result = update_frontend_from_master()
             status_code = 200 if result.get('status') == 'success' else 500
-            logger.info(f"処理完了 - ステータス: {status_code}")
-            logger.info(f"処理結果: {result}")
+            print(f"処理完了 - ステータス: {status_code}")
+            print(f"処理結果: {result}")
             return result, status_code
         else:
-            logger.info(f"処理対象外のメッセージです: {message}")
+            print(f"処理対象外のメッセージです: {message}")
             return {
                 "status": "ignored", 
                 "message": "処理対象外のメッセージです"
             }, 200
             
     except ValueError as e:
-        logger.error(f"不正なリクエスト: {str(e)}")
+        print(f"不正なリクエスト: {str(e)}")
         return {
             'status': 'error',
             'message': f'Invalid request: {str(e)}'
         }, 400
         
     except Exception as e:
-        logger.error(f"エラー発生: {type(e).__name__}: {str(e)}")
+        print(f"エラー発生: {type(e).__name__}: {str(e)}")
         import traceback
-        logger.error(traceback.format_exc())
+        print(traceback.format_exc())
         return {
             'status': 'error',
             'message': str(e)
         }, 500
     finally:
-        logger.info("==== frontend_data_update処理終了 ====")
+        print("==== frontend_data_update処理終了 ====")
 
 if __name__ == "__main__":
     # ローカルテスト用

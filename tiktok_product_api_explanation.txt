@@ -1,0 +1,51 @@
+# TikTok アナリティクス API 解説
+
+## product-stats 関数 (`get_product_stats`)
+
+この関数は製品ごとの統計データを提供します。
+
+### 主な処理:
+- 一時テーブル `tmp_base` を作成し、指定期間内の動画データを格納
+- 製品ごとに以下の統計情報を集計:
+  - 再生数増加の合計
+  - 10万回以上再生された動画数
+  - 投稿数
+- 各製品のトップ10動画の詳細情報を取得
+
+### パラメータ:
+- `start_date`/`end_date`: 分析期間
+- `genres`: フィルタリングするカテゴリー
+- `metric`: ソート基準（再生数増加/10万再生以上動画数/投稿数）
+
+## product-trends 関数 (`get_product_trends`)
+
+この関数は時間経過に伴う製品のトレンドデータを提供します。
+
+### 主な処理:
+- 選択されたメトリックに基づいてトップ10製品を選定
+- 日付ごと・製品ごとのトレンドデータを集計
+- 時系列で各製品の指標変化を追跡
+
+## 重要なデータベースカラム
+
+### frontend_data テーブル:
+- `video_id`: 動画の一意識別子
+- `url`: 動画URL
+- `play_count`: 総再生数
+- `play_count_increase`: 再生数増加
+- `ten_days_increase`: 10日間の再生数増加
+- `created_at`: 動画作成日
+- `product`: 製品名
+
+### play_count_history テーブル:
+- `video_id`: 動画ID
+- `collection_date`: データ収集日
+- `play_count_increase`: 収集日の再生数増加
+- `likes_count_increase`: いいね数増加
+- `comment_count_increase`: コメント数増加
+
+### product_master テーブル:
+- `product_name`: 製品名
+- `product_category`: 製品のカテゴリー（ジャンル）
+
+これらのカラムを組み合わせて、TikTokでの製品パフォーマンスを様々な角度から分析できるようになっています。 

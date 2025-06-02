@@ -43,7 +43,7 @@ cd tiktok-analytics
 ```
 2. **ローカルMySQLデータベースの設定**
 
-MySQLサーバーをインストールし、`tiktok_database`データベースを作成。
+MySQLサーバーをインストールし、`tiktok_data`データベースを作成。
 dump\tiktok_data_20250508_0906.sql.gzを解凍する
 
 

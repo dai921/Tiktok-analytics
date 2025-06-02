@@ -131,10 +131,20 @@ export function MultiSelect({
           </CommandGroup>
         </Command>
         <div className="flex items-center justify-between p-2 border-t">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground min-w-[100px]">
             {selected.length} / {options.length} 選択中
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 ml-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onChange(options.map(option => option.value))
+              }}
+              disabled={selected.length === options.length}
+            >
+              すべて選択
+            </Button>
             <Button
               variant="outline"
               size="sm"

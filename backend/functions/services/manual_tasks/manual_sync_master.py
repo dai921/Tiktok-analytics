@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Any
 import functions_framework
 from google.cloud import storage
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 from urllib.parse import urlparse
 import logging
@@ -41,25 +41,15 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         Dict[str, str]: カテゴリと商品名の辞書
     """
     try:
-        # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
-        if not account_type or account_type.lower() != 'affi':
+        # アフィリエイトアカウント以外の場合は、空の結果を返す
+        if not account_type or account_type.lower() != 'アフィリエイト':
             return {
-                'category': account_type or '',  # Noneまたは空の場合は空文字を返す
+                'category': '',
                 'product_name': ''
             }
 
-        # 以下、既存のアフィリエイトアカウント用の処理
-        # カテゴリキーワードの取得
-        category_query = """
-            SELECT 
-                ck.keyword,
-                cm.category_name,
-                cm.category_id
-            FROM category_keywords ck
-            JOIN category_master cm ON ck.category_id = cm.category_id
-        """
-        keywords_data = execute_query(category_query)
-
+        video_title_lower = title.lower() if title else ''
+        
         # 商品キーワードの取得
         product_query = """
             SELECT 
@@ -71,26 +61,18 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         """
         product_data = execute_query(product_query)
 
-        video_title_lower = title.lower() if title else ''
-        
-        # カテゴリの判定
-        categories = set()
-        for keyword_data in keywords_data:
-            keyword = keyword_data['keyword'].lower()
-            if keyword in video_title_lower:
-                categories.add((
-                    keyword_data['category_name'],
-                    keyword_data['category_id']
-                ))
-
-        # 商品名の判定
+        # 先に商品名の判定
         product_name = ''
+        product_category = ''
+        
         for product_info in product_data:
             keyword = product_info['keyword'].lower()
             if keyword in video_title_lower:
-                # 商品がマッチした場合、そのproduct_categoryを確認
-                if product_info['product_category'] == '複数':
-                    # product_categoryが「複数」の場合、別名テーブルを検索
+                product_name = product_info['product_name']
+                product_category = product_info['product_category']
+                
+                # product_categoryが「複数」の場合、別名テーブルを検索
+                if product_category == '複数':
                     alias_query = """
                         SELECT 
                             pa.alias_name,
@@ -100,7 +82,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                         JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
                         WHERE pa.product_name = %s
                     """
-                    alias_data = execute_query(alias_query, (product_info['product_name'],))
+                    alias_data = execute_query(alias_query, (product_name,))
                     
                     # 別名キーワードでマッチするか確認
                     alias_match = False
@@ -116,12 +98,50 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                             priority_alias = alias_info['alias_name']
                     
                     # キーワードマッチしなかった場合はPriority=1の別名を使用
-                    if not alias_match:
-                        product_name = priority_alias if priority_alias else product_info['product_name']
-                else:
-                    # product_categoryが「複数」でない場合は、そのまま商品名を使用
-                    product_name = product_info['product_name']
+                    if not alias_match and priority_alias:
+                        product_name = priority_alias
+                    
+                    # 更新した商品名に対応するカテゴリを取得
+                    updated_category_query = """
+                        SELECT product_category
+                        FROM product_master
+                        WHERE product_name = %s
+                    """
+                    updated_category_result = execute_query(updated_category_query, (product_name,))
+                    
+                    # 新しいカテゴリがあれば更新
+                    if updated_category_result and updated_category_result[0]['product_category'] != '複数':
+                        product_category = updated_category_result[0]['product_category']
+                
                 break  # 最初にマッチした商品で処理を終了
+
+        # 商品が見つかり、product_categoryが「複数」でない場合はそれをカテゴリとして使用
+        if product_name and product_category and product_category != '複数':
+            return {
+                'category': product_category,
+                'product_name': product_name
+            }
+        
+        # 商品が見つからなかった、またはproduct_categoryが「複数」の場合は従来のカテゴリ判定を行う
+        category_query = """
+            SELECT 
+                ck.keyword,
+                cm.category_name,
+                cm.category_id
+            FROM category_keywords ck
+            JOIN category_master cm ON ck.category_id = cm.category_id
+        """
+        keywords_data = execute_query(category_query)
+
+        # カテゴリの判定
+        categories = set()
+        for keyword_data in keywords_data:
+            keyword = keyword_data['keyword'].lower()
+            if keyword in video_title_lower:
+                categories.add((
+                    keyword_data['category_name'],
+                    keyword_data['category_id']
+                ))
 
         # カテゴリ名をカンマ区切りで結合（空の場合は「その他」）
         category_names = ','.join(sorted(set(cat[0] for cat in categories))) if categories else 'その他'
@@ -134,7 +154,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
     except Exception as e:
         logging.error(f"タイトル解析エラー: {str(e)}, title: {title}")
         return {
-            'category': account_type or '',  # エラー時も同様
+            'category': account_type or '',
             'product_name': ''
         }
 
@@ -319,7 +339,7 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
         total_count_query = """
             SELECT COUNT(*) as total
             FROM video_heavy_raw_data 
-            WHERE new_update = 1
+            WHERE manual_update = 1
         """
         total_result = execute_query(total_count_query)
         total_count = total_result[0]['total']
@@ -352,7 +372,7 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
             SELECT COUNT(*) as remaining
             FROM video_heavy_raw_data
             WHERE id > %s
-            AND new_update = 1
+            AND manual_update = 1
         """
         remaining_result = execute_query(remaining_count_query, (last_cursor_id,))
         remaining_count = remaining_result[0]['remaining']
@@ -365,7 +385,7 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
                 video_url,
                 video_thumbnail_url,
                 user_username,
-                video_title,
+                video_title_light,
                 user_nickname,
                 post_time,
                 like_count,
@@ -374,7 +394,7 @@ def get_video_data_batch(batch_size: int = 700) -> Tuple[List[Dict], Dict[str, i
                 audio_title
             FROM video_heavy_raw_data
             WHERE id > %s
-            AND new_update = 1
+            AND manual_update = 1
             ORDER BY id
             LIMIT %s
         """
@@ -437,7 +457,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             SELECT 
                 likes_count,
                 comment_count,
-                save_count
+                save_count,
+                currentFetchDate
             FROM video_master
             WHERE video_id = %s
             ORDER BY created_at DESC
@@ -486,7 +507,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         account_type_results = execute_query(account_type_query, (username,))
         account_type = account_type_results[0]['account_type'] if account_type_results else None
         # タイトル分析
-        video_title = normalize_video_title(video_data['video_title'])
+        video_title = normalize_video_title(video_data['video_title_light'])
         title_analysis = analyze_title(video_title, account_type)
         
         # コンテンツタイプの判定
@@ -496,7 +517,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         cleaned_nickname = clean_nickname(video_data['user_nickname'])
 
         # ハッシュタグの抽出
-        hashtags = extract_hashtags(video_data['video_title'])
+        hashtags = extract_hashtags(video_data['video_title_light'])
+
 
         # 同期データの作成
         insert_params = {

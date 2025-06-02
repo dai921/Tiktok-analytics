@@ -43,25 +43,15 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         Dict[str, str]: カテゴリと商品名の辞書
     """
     try:
-        # アフィリエイトアカウント以外の場合は、account_typeをカテゴリとして返す
+        # アフィリエイトアカウント以外の場合は、空の結果を返す
         if not account_type or account_type.lower() != 'アフィリエイト':
             return {
-                'category':'',  # Noneまたは空の場合は空文字を返す
+                'category':'',
                 'product_name': ''
             }
 
-        # 以下、既存のアフィリエイトアカウント用の処理
-        # カテゴリキーワードの取得
-        category_query = """
-            SELECT 
-                ck.keyword,
-                cm.category_name,
-                cm.category_id
-            FROM category_keywords ck
-            JOIN category_master cm ON ck.category_id = cm.category_id
-        """
-        keywords_data = execute_query(category_query)
-
+        video_title_lower = title.lower() if title else ''
+        
         # 商品キーワードの取得
         product_query = """
             SELECT 
@@ -73,26 +63,18 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         """
         product_data = execute_query(product_query)
 
-        video_title_lower = title.lower() if title else ''
-        
-        # カテゴリの判定
-        categories = set()
-        for keyword_data in keywords_data:
-            keyword = keyword_data['keyword'].lower()
-            if keyword in video_title_lower:
-                categories.add((
-                    keyword_data['category_name'],
-                    keyword_data['category_id']
-                ))
-
-        # 商品名の判定
+        # 先に商品名の判定
         product_name = ''
+        product_category = ''
+        
         for product_info in product_data:
             keyword = product_info['keyword'].lower()
             if keyword in video_title_lower:
-                # 商品がマッチした場合、そのproduct_categoryを確認
-                if product_info['product_category'] == '複数':
-                    # product_categoryが「複数」の場合、別名テーブルを検索
+                product_name = product_info['product_name']
+                product_category = product_info['product_category']
+                
+                # product_categoryが「複数」の場合、別名テーブルを検索
+                if product_category == '複数':
                     alias_query = """
                         SELECT 
                             pa.alias_name,
@@ -102,7 +84,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                         JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
                         WHERE pa.product_name = %s
                     """
-                    alias_data = execute_query(alias_query, (product_info['product_name'],))
+                    alias_data = execute_query(alias_query, (product_name,))
                     
                     # 別名キーワードでマッチするか確認
                     alias_match = False
@@ -118,12 +100,50 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                             priority_alias = alias_info['alias_name']
                     
                     # キーワードマッチしなかった場合はPriority=1の別名を使用
-                    if not alias_match:
-                        product_name = priority_alias if priority_alias else product_info['product_name']
-                else:
-                    # product_categoryが「複数」でない場合は、そのまま商品名を使用
-                    product_name = product_info['product_name']
+                    if not alias_match and priority_alias:
+                        product_name = priority_alias
+                    
+                    # 更新した商品名に対応するカテゴリを取得
+                    updated_category_query = """
+                        SELECT product_category
+                        FROM product_master
+                        WHERE product_name = %s
+                    """
+                    updated_category_result = execute_query(updated_category_query, (product_name,))
+                    
+                    # 新しいカテゴリがあれば更新
+                    if updated_category_result and updated_category_result[0]['product_category'] != '複数':
+                        product_category = updated_category_result[0]['product_category']
+                
                 break  # 最初にマッチした商品で処理を終了
+
+        # 商品が見つかり、product_categoryが「複数」でない場合はそれをカテゴリとして使用
+        if product_name and product_category:
+            return {
+                'category': product_category,
+                'product_name': product_name
+            }
+        
+        # 商品が見つからなかった、またはproduct_categoryが「複数」の場合は従来のカテゴリ判定を行う
+        category_query = """
+            SELECT 
+                ck.keyword,
+                cm.category_name,
+                cm.category_id
+            FROM category_keywords ck
+            JOIN category_master cm ON ck.category_id = cm.category_id
+        """
+        keywords_data = execute_query(category_query)
+
+        # カテゴリの判定
+        categories = set()
+        for keyword_data in keywords_data:
+            keyword = keyword_data['keyword'].lower()
+            if keyword in video_title_lower:
+                categories.add((
+                    keyword_data['category_name'],
+                    keyword_data['category_id']
+                ))
 
         # カテゴリ名をカンマ区切りで結合（空の場合は「その他」）
         category_names = ','.join(sorted(set(cat[0] for cat in categories))) if categories else 'その他'
@@ -136,7 +156,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
     except Exception as e:
         logging.error(f"タイトル解析エラー: {str(e)}, title: {title}")
         return {
-            'category': account_type or '',  # エラー時も同様
+            'category': account_type or '',
             'product_name': ''
         }
 
@@ -299,7 +319,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
                 likes_count,
                 comment_count,
                 save_count,
-                curentFetchDate
+                currentFetchDate
             FROM video_master
             WHERE video_id = %s
             ORDER BY created_at DESC
@@ -309,19 +329,6 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         prev_data_results = execute_query(prev_data_query, prev_data_params)
         prev_data = prev_data_results[0] if prev_data_results else None
 
-        # 現在の時刻を設定
-        currentFetchDate = datetime.now()
-
-        # 前回の取得日時と遅延フラグの設定
-        if prev_data and prev_data.get('curentFetchDate'):
-            prevFetchDate = prev_data['curentFetchDate']
-            # 日付の差を計算（日数）
-            date_diff = (currentFetchDate - prevFetchDate).days
-            # 4日以上離れていたらis_delayフラグを1に設定
-            is_delay = 1 if date_diff >= 4 else 0
-        else:
-            prevFetchDate = None
-            is_delay = 0
 
         # 増加量の計算
         current_likes_count = video_data['like_count']
@@ -408,10 +415,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
             'save_count': video_data['save_count'],
-            'front_needs_update': 1,
-            'prevFetchDate': prevFetchDate,
-            'curentFetchDate': currentFetchDate,
-            'is_delay': is_delay
+            'front_needs_update': 1
         }
   
         insert_query = """
@@ -420,8 +424,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             description, hashtags, category, product, content_type,
             account_type, created_at, likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
-            likes_count, comment_count, save_count, front_needs_update,
-            prevFetchDate, curentFetchDate, is_delay
+            likes_count, comment_count, save_count, front_needs_update
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
@@ -429,8 +432,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             %(account_type)s, %(created_at)s, %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
             %(music_title)s, %(likes_count)s,
-            %(comment_count)s, %(save_count)s, %(front_needs_update)s,
-            %(prevFetchDate)s, %(curentFetchDate)s, %(is_delay)s
+            %(comment_count)s, %(save_count)s, %(front_needs_update)s
         )
         ON DUPLICATE KEY UPDATE
             category = VALUES(category),
@@ -443,10 +445,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             likes_count = VALUES(likes_count),
             comment_count = VALUES(comment_count),
             save_count = VALUES(save_count),
-            front_needs_update = VALUES(front_needs_update),
-            prevFetchDate = VALUES(prevFetchDate),
-            curentFetchDate = VALUES(curentFetchDate),
-            is_delay = VALUES(is_delay)
+            front_needs_update = VALUES(front_needs_update)
         """
         execute_write_query(insert_query, insert_params)
 

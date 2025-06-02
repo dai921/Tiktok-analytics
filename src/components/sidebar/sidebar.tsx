@@ -89,7 +89,7 @@ export function Sidebar() {
       {/* モバイル用メニューボタン */}
       <button 
         onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="md:hidden fixed top-4 left-4 z-50 bg-black p-2 rounded-md"
+        className="md:hidden fixed top-4 left-4 z-50 bg-white text-black p-2 rounded-md shadow-lg hover:bg-gray-100 transition-colors"
       >
         {isMobileOpen ? <X size={24} /> : <Menu size={24} />}
       </button>

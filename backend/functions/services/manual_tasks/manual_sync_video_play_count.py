@@ -67,11 +67,13 @@ def manual_sync_video_play_count(request):
             r.video_id, 
             r.video_url,
             r.user_username,
-            r.play_count
+            r.play_count,
+            r.manual_update
         FROM 
             video_play_count_raw_data r
         WHERE 
             r.id > %s
+            AND r.manual_update = 1
         ORDER BY 
             r.id
         LIMIT %s
@@ -114,7 +116,8 @@ def manual_sync_video_play_count(request):
                     'video_id': video_id,
                     'video_url': row['video_url'],
                     'user_username': row['user_username'],
-                    'play_count': row['play_count']
+                    'play_count': row['play_count'],
+                    'manual_update': row['manual_update']
                 }
         
         logger.info(f"処理対象の動画数: {len(latest_data)}")
@@ -151,6 +154,7 @@ def manual_sync_video_play_count(request):
         SELECT COUNT(*) as remaining_count
         FROM video_play_count_raw_data
         WHERE  id > %s
+        AND manual_update = 1
         """
         
         remaining_data = execute_query(remaining_query, (max_id,))
@@ -234,14 +238,14 @@ def sync_play_count(video_data: Dict[str, Any]) -> Dict[str, Any]:
         # 存在しない場合は挿入、存在する場合は更新
         upsert_query = """
         INSERT INTO video_master (
-            url, video_id, username,play_count, playCountIncrease, front_needs_update, created_at
+            url, video_id, username,play_count, playCountIncrease, play_needs_update
         ) VALUES (
-            %s, %s, %s, %s, %s, 1, NOW()
+            %s, %s, %s, %s, %s, 1
         )
         ON DUPLICATE KEY UPDATE
             play_count = VALUES(play_count),
             playCountIncrease = VALUES(playCountIncrease),
-            front_needs_update = 1
+            play_needs_update = 1
         """
         execute_write_query(upsert_query, (video_data['video_url'], video_id, video_data['user_username'], current_play_count, play_count_increase))
         

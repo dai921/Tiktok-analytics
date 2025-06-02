@@ -6,9 +6,9 @@ from core.db_utils import execute_query, execute_write_query
 from core.config import initialize_config
 from core.pubsub_utils import publish_message
 
-# ログ設定
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ログ設定は不要になるので削除または無効化できます
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 # 設定の初期化
 initialize_config()
@@ -34,7 +34,7 @@ def check_execution_time() -> bool:
                 VALUES ('frontend_data_update', NOW())
             """
             execute_write_query(insert_query)
-            logger.info("初回実行のため、実行を許可します")
+            print("初回実行のため、実行を許可します")
             return True
         
         last_run = result[0]['last_run']
@@ -50,14 +50,14 @@ def check_execution_time() -> bool:
                 WHERE job_name = 'frontend_data_update'
             """
             execute_write_query(update_query)
-            logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間経過しているため、実行を許可します")
+            print(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間経過しているため、実行を許可します")
             return True
         else:
-            logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間しか経過していないため、実行をスキップします")
+            print(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間しか経過していないため、実行をスキップします")
             return False
             
     except Exception as e:
-        logger.error(f"実行時間チェックでエラーが発生しました: {str(e)}")
+        print(f"実行時間チェックでエラーが発生しました: {str(e)}")
         return False  # エラーの場合は安全のため実行を拒否
 
 @functions_framework.http
@@ -66,7 +66,7 @@ def trigger_frontend_data_update(request):
     36時間チェックを行い、条件を満たした場合にPub/Subでfrontend_data_updateを起動する
     """
     start_time = datetime.now()
-    logger.info(f"Frontend Data Update トリガー処理開始: {start_time}")
+    print(f"Frontend Data Update トリガー処理開始: {start_time}")
 
     try:
         # 実行可能かチェック
@@ -92,7 +92,7 @@ def trigger_frontend_data_update(request):
             
     except Exception as e:
         error_message = f"トリガー処理中に予期せぬエラーが発生: {str(e)}"
-        logger.error(error_message)
+        print(error_message)
         return {
             "status": "error",
             "message": error_message,
