@@ -109,101 +109,137 @@ def process_crawler_accounts():
         service = build('sheets', 'v4', credentials=credentials)
         print("Sheetsサービス構築完了")
 
-        # スプレッドシートからデータを読み取る（crawler_account_list）
-        print("crawler_account_listシートデータ取得開始")
-        range_name = 'crawler_account_list!B:G'  # B列からF列までの範囲を取得
-        
-        result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
-            range=range_name
-        ).execute()
-        values = result.get('values', [])
+        total_inserted = 0
+        total_updated = 0
 
-        if not values:
-            print("データが見つかりませんでした")
-            return 'No data found', 200
+        # 1. crawler_account_listシートからcrawler_accountsテーブルへの同期
+        print("=== crawler_account_list → crawler_accounts 同期開始 ===")
+        inserted, updated = sync_sheet_to_table(
+            service, SPREADSHEET_ID, 
+            'crawler_account_list!B:G', 
+            'crawler_accounts'
+        )
+        total_inserted += inserted
+        total_updated += updated
+        print(f"crawler_accounts同期完了: {inserted}件挿入, {updated}件更新")
 
-        inserted_count = 0
-        updated_count = 0
-        
-        # ヘッダー行をスキップして処理
-        for row in values[1:]:
-            try:
-                # 必要なデータの取得（存在チェック付き）
-                username = row[0].strip() if len(row) > 0 and row[0] else None
-                password = row[1].strip() if len(row) > 1 and row[1] else None
-                proxy = row[3].strip() if len(row) > 3 and row[3] else None
-                is_alive = row[4].strip() if len(row) > 4 and row[4] else None
-                video_crawler_id = row[5].strip() if len(row) > 5 and row[5] else None
+        # 2. play_count_crawler_listシートからvideo_crawler_accountsテーブルへの同期
+        print("=== play_count_crawler_list → video_crawler_accounts 同期開始 ===")
+        inserted, updated = sync_sheet_to_table(
+            service, SPREADSHEET_ID, 
+            'play_count_crawler_list!B:G', 
+            'play_count_crawler_accounts'
+        )
+        total_inserted += inserted
+        total_updated += updated
+        print(f"video_crawler_accounts同期完了: {inserted}件挿入, {updated}件更新")
 
-                # 必須項目のチェック
-                if not username or not password:
-                    print(f"警告: 必須項目が不足しているためスキップします: {row}")
-                    continue
-
-
-                # 既存レコードのチェック
-                check_query = '''
-                    SELECT id FROM crawler_accounts
-                    WHERE username = %(username)s
-                '''
-                check_params = {'username': username}
-                
-                existing_record = execute_query(check_query, check_params)
-
-                if existing_record:
-                    # 更新
-                    update_query = '''
-                        UPDATE crawler_accounts 
-                        SET password = %(password)s,
-                            proxy = %(proxy)s,
-                            is_alive = %(is_alive)s,
-                            updated_at = NOW(),
-                            video_crawler_id = %(video_crawler_id)s
-                        WHERE username = %(username)s
-                    '''
-                    update_params = {
-                        'username': username,
-                        'password': password,
-                        'proxy': proxy,
-                        'is_alive': is_alive,
-                        'video_crawler_id': video_crawler_id
-                    }
-                    
-                    affected_rows = execute_write_query(update_query, update_params)
-                    if affected_rows > 0:
-                        updated_count += 1
-                else:
-                    # 新規挿入
-                    insert_query = '''
-                        INSERT INTO crawler_accounts 
-                        (username, password, proxy, is_alive, created_at, updated_at, video_crawler_id)
-                        VALUES (%(username)s, %(password)s, %(proxy)s, 
-                                %(is_alive)s, NOW(), NOW(), %(video_crawler_id)s)
-                    '''
-                    insert_params = {
-                        'username': username,
-                        'password': password,
-                        'proxy': proxy,
-                        'is_alive': is_alive,
-                        'video_crawler_id': video_crawler_id
-                    }
-                    
-                    affected_rows = execute_write_query(insert_query, insert_params)
-                    if affected_rows > 0:
-                        inserted_count += 1
-
-            except Exception as row_error:
-                print(f"行の処理中にエラーが発生: {str(row_error)}")
-                continue
-
-        return f'Successfully processed crawler accounts: {inserted_count} inserted, {updated_count} updated', 200
+        return f'Successfully processed all crawler accounts: {total_inserted} inserted, {total_updated} updated', 200
 
     except Exception as e:
         print(f"==== クローラーアカウントリスト同期処理致命的エラー: {str(e)} ====")
         import traceback
         print(f"詳細エラートレース: {traceback.format_exc()}")
         return str(e), 500
+
+def sync_sheet_to_table(service, spreadsheet_id, range_name, table_name):
+    """
+    指定されたスプレッドシートの範囲からテーブルにデータを同期する
+    
+    Args:
+        service: Google Sheets APIサービスオブジェクト
+        spreadsheet_id: スプレッドシートID
+        range_name: 読み取り範囲（例: 'crawler_account_list!B:G'）
+        table_name: 同期先テーブル名
+    
+    Returns:
+        tuple: (挿入件数, 更新件数)
+    """
+    print(f"{range_name}シートデータ取得開始")
+    
+    result = service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=range_name
+    ).execute()
+    values = result.get('values', [])
+
+    if not values:
+        print("データが見つかりませんでした")
+        return 0, 0
+
+    inserted_count = 0
+    updated_count = 0
+    
+    # ヘッダー行をスキップして処理
+    for row in values[1:]:
+        try:
+            # 必要なデータの取得（存在チェック付き）
+            username = row[0].strip() if len(row) > 0 and row[0] else None
+            password = row[1].strip() if len(row) > 1 and row[1] else None
+            id = row[2].strip() if len(row) > 2 and row[2] else None
+            proxy = row[3].strip() if len(row) > 3 and row[3] else None
+            is_alive = row[4].strip() if len(row) > 4 and row[4] else None
+
+            # 必須項目のチェック
+            if not username or not password:
+                print(f"警告: 必須項目が不足しているためスキップします: {row}")
+                continue
+
+            # 既存レコードのチェック
+            check_query = f'''
+                SELECT id FROM {table_name}
+                WHERE id = %(id)s
+            '''
+            check_params = {'id': int(id)}
+            
+            existing_record = execute_query(check_query, check_params)
+
+            if existing_record:
+                # 更新
+                update_query = f'''
+                    UPDATE {table_name} 
+                    SET password = %(password)s,
+                        proxy = %(proxy)s,
+                        is_alive = %(is_alive)s,
+                        updated_at = NOW()
+                    WHERE id = %(id)s
+                '''
+                update_params = {
+                    'id': int(id),
+                    'username': username,
+                    'password': password,
+                    'proxy': proxy,
+                    'is_alive': is_alive
+                }
+                
+                affected_rows = execute_write_query(update_query, update_params)
+                if affected_rows > 0:
+                    updated_count += 1
+            else:
+                # 新規挿入
+                insert_query = f'''
+                    INSERT INTO {table_name} 
+                    (id, username, password, proxy, is_alive, created_at, updated_at)
+                    VALUES (%(id)s, %(username)s, %(password)s, %(proxy)s, 
+                            %(is_alive)s, NOW(), NOW())
+                '''
+                insert_params = {
+                    'id': int(id),
+                    'username': username,
+                    'password': password,
+                    'proxy': proxy,
+                    'is_alive': is_alive
+                }
+                
+                affected_rows = execute_write_query(insert_query, insert_params)
+                if affected_rows > 0:
+                    inserted_count += 1
+
+        except Exception as row_error:
+            print(f"行の処理中にエラーが発生: {str(row_error)}")
+            continue
+
+    return inserted_count, updated_count
 
 if __name__ == "__main__":
     # ローカルテスト用

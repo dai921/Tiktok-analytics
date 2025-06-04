@@ -27,6 +27,7 @@ from sqlalchemy import text
 
 from src.auth.tiktok import router as auth_tiktok_router
 from src.tiktok.routes import router as tiktok_router
+from src.transcription import router as transcription_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -76,6 +77,7 @@ app.include_router(watchlist_router)
 # ルーターの登録
 app.include_router(auth_tiktok_router)
 app.include_router(tiktok_router)
+app.include_router(transcription_router)
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)
