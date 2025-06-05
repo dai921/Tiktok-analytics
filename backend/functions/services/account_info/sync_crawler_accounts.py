@@ -198,7 +198,9 @@ def sync_sheet_to_table(service, spreadsheet_id, range_name, table_name):
                 # 更新
                 update_query = f'''
                     UPDATE {table_name} 
-                    SET password = %(password)s,
+                    SET 
+                        username = %(username)s,
+                        password = %(password)s,
                         proxy = %(proxy)s,
                         is_alive = %(is_alive)s,
                         updated_at = NOW()

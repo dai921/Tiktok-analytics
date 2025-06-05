@@ -53,7 +53,7 @@ async def generate_transcription_with_gemini(video_id: str, url: str) -> str:
             raise Exception("Gemini APIキーが設定されていません")
         
         # Gemini-Proモデルを設定
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # プロンプト作成
         prompt = f"""

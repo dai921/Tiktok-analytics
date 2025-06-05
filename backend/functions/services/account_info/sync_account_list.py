@@ -151,7 +151,7 @@ def process_account_list():
                 account_type = row[5].strip() if len(row) > 5 and row[5] else None
                 crawler_account_id = row[6].strip() if len(row) > 6 and row[6] else None
                 parent_type = row[8].strip() if len(row) > 8 and row[8] else None
-                video_crawler_id = row[9].strip() if len(row) > 9 and row[9] else None
+                play_count_crawler_id = row[9].strip() if len(row) > 9 and row[9] else None
 
                 # 必須項目のチェック
                 if not account_url or not favorite_user_username:
@@ -177,7 +177,7 @@ def process_account_list():
                             crawler_account_id = %(crawler_account_id)s,
                             updated_at = NOW(),
                             parent_type = %(parent_type)s,
-                            video_crawler_id = %(video_crawler_id)s
+                            play_count_crawler_id = %(play_count_crawler_id)s
                         WHERE account_url = %(account_url)s
                     '''
                     update_params = {
@@ -186,7 +186,7 @@ def process_account_list():
                         'account_type': account_type,
                         'crawler_account_id': crawler_account_id,
                         'parent_type': parent_type,
-                        'video_crawler_id': video_crawler_id
+                        'play_count_crawler_id': play_count_crawler_id
                     }
                     
                     affected_rows = execute_write_query(update_query, update_params)
@@ -197,9 +197,9 @@ def process_account_list():
                     insert_query = '''
                         INSERT INTO account_list 
                         (account_url, favorite_user_username, account_type, 
-                         crawler_account_id, created_at, updated_at, parent_type, video_crawler_id)
+                         crawler_account_id, created_at, updated_at, parent_type, play_count_crawler_id)
                         VALUES (%(account_url)s, %(favorite_user_username)s, %(account_type)s,
-                                %(crawler_account_id)s,  NOW(), NOW(), %(parent_type)s, %(video_crawler_id)s)
+                                %(crawler_account_id)s,  NOW(), NOW(), %(parent_type)s, %(play_count_crawler_id)s)
                     '''
                     insert_params = {
                         'account_url': account_url,
@@ -207,7 +207,7 @@ def process_account_list():
                         'account_type': account_type,
                         'crawler_account_id': crawler_account_id,
                         'parent_type': parent_type,
-                        'video_crawler_id': video_crawler_id
+                        'play_count_crawler_id': play_count_crawler_id
                     }
                     
                     affected_rows = execute_write_query(insert_query, insert_params)
