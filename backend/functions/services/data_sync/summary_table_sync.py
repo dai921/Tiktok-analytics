@@ -6,6 +6,7 @@ import functions_framework
 import base64
 from core.db_utils import execute_query, execute_write_query
 from core.config import initialize_config
+from core.pubsub_utils import publish_message
 from pytz import timezone
 
 # ログ設定
@@ -84,6 +85,16 @@ def update_product_daily_summary(event, context):
         
         # 動画ジャンル集計も実行
         update_genre_daily_summary(collection_date)
+        
+        # 次の処理（top100_videos_sync）にメッセージを送信
+        logger.info("TOP100動画更新処理のトリガーメッセージを送信します")
+        publish_message("top100-videos-sync", {
+            "status": "success",
+            "collection_date": collection_date,
+            "execution_time": datetime.now().isoformat(),
+            "previous_step": "summary_table_sync",
+            "message": "商品・ジャンル日次集計が完了しました。TOP100動画更新処理を開始します。"
+        })
         
         return {
             "status": "success",

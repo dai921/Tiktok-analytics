@@ -6,6 +6,7 @@ import functions_framework
 import base64
 from core.db_utils import execute_query, execute_write_query
 from core.config import initialize_config
+from core.pubsub_utils import publish_message
 from pytz import timezone
 
 # ログ設定
@@ -148,6 +149,16 @@ def sync_video_history(event, context):
         execute_write_query(update_ten_days_metrics_query)
         
         logger.info("10日間の指標の更新が完了しました")
+
+        # 次の処理（summary_table_sync）にメッセージを送信
+        logger.info("商品日次集計処理のトリガーメッセージを送信します")
+        publish_message("summary-table-sync", {
+            "status": "success",
+            "collection_date": collection_date,
+            "execution_time": datetime.now().isoformat(),
+            "previous_step": "video_history_sync",
+            "message": "動画履歴同期が完了しました。商品日次集計処理を開始します。"
+        })
 
         return {
             "status": "success",
