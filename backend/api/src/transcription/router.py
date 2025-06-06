@@ -30,8 +30,15 @@ if GEMINI_API_KEY:
 else:
     logger.warning("GEMINI_API_KEY環境変数が設定されていません。文字起こし機能が動作しません。")
 
-# 動画保存サービスの初期化
-video_storage_service = VideoStorageService()
+# 動画保存サービス（遅延初期化）
+video_storage_service = None
+
+def get_video_storage_service():
+    """動画保存サービスを取得（遅延初期化）"""
+    global video_storage_service
+    if video_storage_service is None:
+        video_storage_service = VideoStorageService()
+    return video_storage_service
 
 # TikTok URLからvideo_idを抽出する関数
 def extract_video_id_from_url(url: str) -> Optional[str]:
@@ -159,7 +166,8 @@ async def transcribe_video(request: TranscriptionRequest):
             
             # 1. 動画をダウンロードしてCloud Storageに保存
             logger.info(f"動画をCloud Storageに保存中: video_id={video_id}")
-            storage_url = await video_storage_service.download_and_store_video(url, video_id)
+            storage_service = get_video_storage_service()
+            storage_url = await storage_service.download_and_store_video(url, video_id)
             logger.info(f"動画保存完了: {storage_url}")
             
             # 2. Geminiを使用して文字起こしを生成

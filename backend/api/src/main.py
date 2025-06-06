@@ -27,7 +27,7 @@ from sqlalchemy import text
 
 from src.auth.tiktok import router as auth_tiktok_router
 from src.tiktok.routes import router as tiktok_router
-from src.transcription import router as transcription_router
+from src.transcription.router import router as transcription_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")

@@ -627,8 +627,9 @@ export default function ProductPage() {
                                           videoData={{
                                             views: Number(video.play_count) ?? 0,
                                             viewsIncrease: Number(video.play_count_increase) ?? 0,
-                                            ten_days_increase: 0,
+                                            ten_days_increase: Number(video.ten_days_increase) ?? 0,
                                             createdAt: video.created_at,
+                                            accountName: video.account_name,
                                           }}
                                         />
                                       </div>

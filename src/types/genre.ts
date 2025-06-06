@@ -9,6 +9,7 @@ export interface VideoStats {
     account_name: string;
     display_name: string;
     created_at: string;
+    ten_days_increase: number;
   }
   
   export interface GenreStats {

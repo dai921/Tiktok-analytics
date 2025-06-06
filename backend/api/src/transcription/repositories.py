@@ -3,6 +3,7 @@ import tempfile
 import traceback
 import yt_dlp
 from google.cloud import storage
+from google.auth.exceptions import DefaultCredentialsError
 from src.utils.logger_config import setup_logger
 from src.db.database import execute_update
 
@@ -12,12 +13,33 @@ class CloudStorageManager:
     def __init__(self):
         self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
         self.bucket_name = os.getenv("CLOUD_STORAGE_BUCKET", "tiktok-videos-storage")
-        self.client = storage.Client(project=self.project_id)
-        self.bucket = self.client.bucket(self.bucket_name)
+        self.client = None
+        self.bucket = None
+        self._initialized = False
+    
+    def _initialize(self):
+        """遅延初期化でCloud Storage クライアントを設定"""
+        if self._initialized:
+            return
+        
+        try:
+            self.client = storage.Client(project=self.project_id)
+            self.bucket = self.client.bucket(self.bucket_name)
+            self._initialized = True
+            logger.info("Cloud Storage クライアントを初期化しました")
+        except DefaultCredentialsError:
+            logger.warning("Google Cloud認証情報が見つかりません。Cloud Storage機能は無効化されます。")
+            raise Exception("Google Cloud認証情報が設定されていません")
+        except Exception as e:
+            logger.error(f"Cloud Storage初期化エラー: {str(e)}")
+            raise Exception(f"Cloud Storage の初期化に失敗しました: {str(e)}")
     
     def upload_video(self, video_path: str, video_id: str) -> str:
         """動画をCloud Storageにアップロードし、URLを返す"""
         try:
+            # 遅延初期化
+            self._initialize()
+            
             # ファイル名にvideo_idを含める
             file_extension = os.path.splitext(video_path)[1]
             blob_name = f"videos/{video_id}{file_extension}"
@@ -86,8 +108,15 @@ class TikTokVideoDownloader:
 
 class VideoStorageService:
     def __init__(self):
-        self.storage_manager = CloudStorageManager()
+        # 遅延初期化のため、インスタンス作成時は何もしない
+        self.storage_manager = None
         self.video_downloader = TikTokVideoDownloader()
+    
+    def _get_storage_manager(self):
+        """Cloud Storage マネージャーを遅延初期化で取得"""
+        if self.storage_manager is None:
+            self.storage_manager = CloudStorageManager()
+        return self.storage_manager
     
     async def download_and_store_video(self, url: str, video_id: str) -> str:
         """動画をダウンロードしてCloud Storageに保存し、URLを返す"""
@@ -97,7 +126,8 @@ class VideoStorageService:
             video_path = self.video_downloader.download_video(url, video_id)
             
             # 2. Cloud Storageにアップロード
-            storage_url = self.storage_manager.upload_video(video_path, video_id)
+            storage_manager = self._get_storage_manager()
+            storage_url = storage_manager.upload_video(video_path, video_id)
             
             logger.info(f"動画保存完了: {storage_url}")
             return storage_url
