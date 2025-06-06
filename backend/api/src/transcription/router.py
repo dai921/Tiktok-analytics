@@ -8,6 +8,7 @@ from src.db.database import execute_query, fetch_one, execute_update
 from src.utils.logger_config import setup_logger
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from .repositories import VideoStorageService
 
 # ロガーのセットアップ
 logger = setup_logger()
@@ -29,6 +30,9 @@ if GEMINI_API_KEY:
 else:
     logger.warning("GEMINI_API_KEY環境変数が設定されていません。文字起こし機能が動作しません。")
 
+# 動画保存サービスの初期化
+video_storage_service = VideoStorageService()
+
 # TikTok URLからvideo_idを抽出する関数
 def extract_video_id_from_url(url: str) -> Optional[str]:
     """TikTok動画URLからvideo_idを抽出する"""
@@ -46,7 +50,7 @@ def extract_video_id_from_url(url: str) -> Optional[str]:
     return None
 
 # Geminiを使用して文字起こしを生成する関数
-async def generate_transcription_with_gemini(video_id: str, url: str) -> str:
+async def generate_transcription_with_gemini(video_id: str, storage_url: str) -> str:
     """GeminiモデルでTikTok動画の文字起こしを生成する"""
     try:
         if not GEMINI_API_KEY:
@@ -85,10 +89,10 @@ async def generate_transcription_with_gemini(video_id: str, url: str) -> str:
         
         transcription = response.text.strip()
         
-        # 生成された文字起こしをデータベースに保存
+        # 生成された文字起こしとファイルパスをデータベースに保存
         execute_update(
-            "INSERT INTO video_transcription (video_id, transcription) VALUES (:video_id, :transcription)",
-            {"video_id": video_id, "transcription": transcription}
+            "INSERT INTO video_transcription (video_id, file_path, transcription) VALUES (:video_id, :file_path, :transcription)",
+            {"video_id": video_id, "file_path": storage_url, "transcription": transcription}
         )
         
         return transcription
@@ -136,7 +140,7 @@ async def transcribe_video(request: TranscriptionRequest):
             }
         
         # ②video_transcriptionテーブルを検索
-        transcription_query = "SELECT transcription FROM video_transcription WHERE video_id = :video_id"
+        transcription_query = "SELECT transcription, file_path FROM video_transcription WHERE video_id = :video_id"
         transcription_result = fetch_one(transcription_query, {"video_id": video_id})
         
         if transcription_result:
@@ -146,17 +150,27 @@ async def transcribe_video(request: TranscriptionRequest):
                 "success": True,
                 "video_id": video_id,
                 "transcription": transcription_result["transcription"],
+                "storage_url": transcription_result["file_path"],
                 "source": "database"
             }
         else:
-            # 文字起こしデータがない場合はGeminiを呼び出す
+            # 文字起こしデータがない場合
+            logger.info(f"新規文字起こし処理を開始: video_id={video_id}")
+            
+            # 1. 動画をダウンロードしてCloud Storageに保存
+            logger.info(f"動画をCloud Storageに保存中: video_id={video_id}")
+            storage_url = await video_storage_service.download_and_store_video(url, video_id)
+            logger.info(f"動画保存完了: {storage_url}")
+            
+            # 2. Geminiを使用して文字起こしを生成
             logger.info(f"Geminiを使用して文字起こしを生成します: video_id={video_id}")
-            transcription = await generate_transcription_with_gemini(video_id, url)
+            transcription = await generate_transcription_with_gemini(video_id, storage_url)
             
             return {
                 "success": True,
                 "video_id": video_id,
                 "transcription": transcription,
+                "storage_url": storage_url,
                 "source": "generated"
             }
             

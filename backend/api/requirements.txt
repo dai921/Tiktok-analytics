@@ -14,3 +14,5 @@ httpx
 PyJWT
 mysqlclient==2.2.4        # C拡張なので速い
 SQLAlchemy==2.0.19        # もし未記載なら
+google-cloud-storage
+yt-dlp
