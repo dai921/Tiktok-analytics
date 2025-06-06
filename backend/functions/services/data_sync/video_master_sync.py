@@ -304,6 +304,9 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
     try:
         # データの取り出し
         video_id = video_data['video_id']
+        
+        # ①対象のvideo_idのログ
+        print(f"[LOG] 処理対象のvideo_id: {video_id}")
 
         # play_countとaudio_titleの値チェック
         if video_data.get('audio_title') is None:
@@ -351,6 +354,10 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             save_count_increase = current_save_count
 
         # サムネイル画像の取得と保存
+        # ③加工前のサムネURLのログ
+        original_thumbnail_url = video_data['video_thumbnail_url']
+        print(f"[LOG] 加工前のサムネURL: {original_thumbnail_url}")
+        
         thumbnail_result = download_and_save_thumbnail(
             video_id=video_id,
             video_url=video_data['video_url'],
@@ -359,6 +366,10 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
 
         # 保存されたサムネイルURLまたは元のURLを使用
         thumbnail_url = thumbnail_result['url'] if thumbnail_result['status'] == 'success' else None
+        
+        # ③加工後のサムネURLのログ
+        print(f"[LOG] 加工後のサムネURL: {thumbnail_url}")
+        
         username = video_data['user_username']
 
         # アカウントタイプの取得
@@ -370,8 +381,17 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         """
         account_type_results = execute_query(account_type_query, (username,))
         account_type = account_type_results[0]['account_type'] if account_type_results else None
+        
         # タイトル分析
+        # ②加工前のvideo_titleのログ
+        original_video_title = video_data['video_title']
+        print(f"[LOG] 加工前のvideo_title: {original_video_title}")
+        
         video_title = normalize_video_title(video_data['video_title'])
+        
+        # ②加工後のvideo_titleのログ
+        print(f"[LOG] 加工後のvideo_title: {video_title}")
+        
         title_analysis = analyze_title(video_title, account_type)
         
         # コンテンツタイプの判定
