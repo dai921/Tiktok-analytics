@@ -455,6 +455,10 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             %(comment_count)s, %(save_count)s, %(front_needs_update)s
         )
         ON DUPLICATE KEY UPDATE
+            display_name = VALUES(display_name),
+            cover_image_url = VALUES(cover_image_url),
+            description = VALUES(description),
+            hashtags = VALUES(hashtags),
             category = VALUES(category),
             product = VALUES(product),
             account_type = VALUES(account_type),
