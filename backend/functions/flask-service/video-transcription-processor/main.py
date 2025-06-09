@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.db_utils import execute_query, execute_write_query
+from db_utils import execute_query, execute_write_query
 
 def execute_update(query: str, params: dict):
     """UPDATE/INSERT文を実行（既存database.pyの互換関数）"""

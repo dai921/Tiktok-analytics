@@ -7,17 +7,14 @@ import datetime
 import re
 import json
 import requests
+import random
 from typing import Optional
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from google.cloud import storage
 from google.auth.exceptions import DefaultCredentialsError
 import functions_framework
 from flask import Request
 
-# Cloud Function用のロガー設定（既存のlogger_configは使用不可のため）
+# Cloud Function用のロガー設定
 import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,7 +23,7 @@ logger = logging.getLogger(__name__)
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.db_utils import execute_query, execute_write_query
+from db_utils import execute_query, execute_write_query
 
 def execute_update(query: str, params: dict):
     """UPDATE/INSERT文を実行（既存database.pyの互換関数）"""
@@ -71,7 +68,6 @@ class CloudStorageManager:
         self.client = None
         self.bucket = None
         self._initialized = False
-        self._bucket_made_public = False  # バケット公開設定フラグ
     
     def _initialize(self):
         """遅延初期化でCloud Storage クライアントを設定"""
@@ -81,7 +77,6 @@ class CloudStorageManager:
         try:
             self.client = storage.Client(project=self.project_id)
             self.bucket = self.client.bucket(self.bucket_name)
-            
             self._initialized = True
             logger.info("Cloud Storage クライアントを初期化しました")
         except DefaultCredentialsError:
@@ -94,17 +89,14 @@ class CloudStorageManager:
     def upload_video(self, video_path: str, video_id: str) -> str:
         """動画をCloud Storageにアップロードし、URLを返す"""
         try:
-            # 遅延初期化（バケット公開設定も含む）
             self._initialize()
             
-            # ファイル名にvideo_idを含める
             file_extension = os.path.splitext(video_path)[1]
             blob_name = f"videos/{video_id}{file_extension}"
             
             blob = self.bucket.blob(blob_name)
             blob.upload_from_filename(video_path)
             
-            # 公開URLを生成（バケットが公開なので自動的に公開URL）
             storage_url = blob.public_url
             
             logger.info(f"動画をCloud Storageにアップロードしました: {storage_url}")
@@ -117,28 +109,44 @@ class CloudStorageManager:
 
 class TikTokVideoDownloader:
     def __init__(self):
-        self.driver = None
-        self.proxy = self._get_proxy()  # プロキシを初期化時に取得
+        self.proxy = self._get_proxy()
+        
+        # ランダムUser-Agentリスト
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.69 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.69 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15'
+        ]
         
         self.ydl_base_opts = {
-            'format': 'best[ext=mp4]',
+            'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
             'socket_timeout': 60,
+            'retries': 3,
+            'fragment_retries': 3,
             'http_headers': {
-                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.69 Safari/537.36'
+                'User-Agent': random.choice(self.user_agents),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Upgrade-Insecure-Requests': '1'
             }
         }
         
-        # プロキシが取得できた場合は設定
+        # プロキシ設定
         if self.proxy:
             self.ydl_base_opts['proxy'] = self.proxy
             logger.info(f"yt-dlpプロキシを設定: {self.proxy}")
     
     def _get_proxy(self) -> Optional[str]:
-        """プロキシを取得（データベース優先、フォールバック：環境変数）"""
+        """プロキシを取得（データベース優先）"""
         try:
-            # 1. データベースからプロキシを取得
             db_proxy = VideoTranscriptionRepository.get_active_proxy()
             if db_proxy:
                 return db_proxy
@@ -150,112 +158,59 @@ class TikTokVideoDownloader:
             logger.warning(f"プロキシ取得エラー: {str(e)}")
             return None
     
-    def _setup_selenium_driver(self):
-        """Selenium WebDriverを設定"""
-        if self.driver is not None:
-            return
-        
-        try:
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--disable-extensions')
-            chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.69 Safari/537.36')
-            
-            # プロキシ設定（データベースまたは環境変数から取得）
-            if self.proxy:
-                chrome_options.add_argument(f'--proxy-server={self.proxy}')
-                logger.info(f"Seleniumプロキシを設定: {self.proxy}")
-            
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            
-            logger.info("Selenium WebDriverを初期化しました")
-            
-        except Exception as e:
-            logger.error(f"Selenium WebDriver初期化エラー: {str(e)}")
-            raise Exception(f"WebDriverの初期化に失敗しました: {str(e)}")
-    
-    def _access_tiktok_page(self, url: str):
-        """SeleniumでTikTokページにアクセス"""
-        try:
-            logger.info(f"TikTokページにアクセス中: {url}")
-            self.driver.get(url)
-            
-            # ページロード待機
-            time.sleep(5)
-            logger.info("ページロード完了")
-            
-            # 追加待機（動画の読み込み待ち）
-            time.sleep(10)
-            
-            # 現在時刻をログに記録
-            now_jst = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9)))
-            logger.info(f"yt-dlp実行直前: {now_jst.strftime('%Y-%m-%d %H:%M:%S')} (JST)")
-            
-        except Exception as e:
-            logger.error(f"TikTokページアクセスエラー: {str(e)}")
-            raise Exception(f"ページアクセスに失敗しました: {str(e)}")
-    
     def download_video(self, url: str, video_id: str) -> str:
-        """TikTok動画をSelenium + yt-dlpでダウンロードし、ファイルパスを返す"""
-        video_path = None
-        
+        """yt-dlpのみで動画をダウンロード"""
         try:
-            # 1. Selenium WebDriverを設定
-            self._setup_selenium_driver()
-            
-            # 2. TikTokページにアクセス
-            self._access_tiktok_page(url)
-            
-            # 3. 一時ディレクトリを作成
             temp_dir = tempfile.mkdtemp()
             logger.info(f"一時ディレクトリを作成: {temp_dir}")
             
-            # 4. yt-dlpの設定を準備
+            # yt-dlpオプションを準備
             ydl_opts = self.ydl_base_opts.copy()
             safe_filename = f"{video_id}.%(ext)s"
             ydl_opts['outtmpl'] = os.path.join(temp_dir, safe_filename)
             
-            # 5. yt-dlpで動画ダウンロード
+            # User-Agentをランダム化
+            ydl_opts['http_headers']['User-Agent'] = random.choice(self.user_agents)
+            
             logger.info(f"yt-dlpでダウンロード開始: {url}")
+            logger.info(f"使用プロキシ: {self.proxy or 'なし'}")
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # 動画情報を取得
-                info = ydl.extract_info(url, download=False)
+                # 動画情報を事前取得
+                try:
+                    info = ydl.extract_info(url, download=False)
+                    title = info.get('title', 'N/A')
+                    duration = info.get('duration', 'N/A')
+                    logger.info(f"動画情報取得成功: title={title}, duration={duration}秒")
+                except Exception as e:
+                    logger.error(f"動画情報取得失敗: {str(e)}")
+                    raise Exception(f"動画にアクセスできません: {str(e)}")
                 
-                # 実際にダウンロード実行
+                # 実際のダウンロード
                 ydl.download([url])
                 
-                # ダウンロードされたファイルのパスを取得
+                # ダウンロードされたファイルを確認
                 ext = info.get('ext', 'mp4')
                 video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
                 
                 if not os.path.exists(video_path):
-                    raise Exception(f"動画ファイルが見つかりません: {video_path}")
+                    # 拡張子が異なる可能性があるため、ディレクトリ内を検索
+                    files = os.listdir(temp_dir)
+                    if files:
+                        actual_file = files[0]
+                        video_path = os.path.join(temp_dir, actual_file)
+                        logger.info(f"実際のファイル名: {actual_file}")
+                    else:
+                        raise Exception(f"動画ファイルが見つかりません: {temp_dir}")
                 
-                logger.info(f"動画ダウンロード完了: {video_path}")
+                file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
+                logger.info(f"動画ダウンロード完了: {video_path} ({file_size:.2f}MB)")
                 return video_path
                 
         except Exception as e:
             logger.error(f"動画ダウンロードエラー: {str(e)}")
             logger.error(traceback.format_exc())
             raise Exception(f"動画のダウンロードに失敗しました: {str(e)}")
-    
-    def cleanup(self):
-        """リソースのクリーンアップ"""
-        if self.driver:
-            try:
-                self.driver.quit()
-                self.driver = None
-                logger.info("Selenium WebDriverを終了しました")
-            except Exception as e:
-                logger.warning(f"WebDriver終了時にエラー: {str(e)}")
-    
-    def __del__(self):
-        """デストラクタでクリーンアップ"""
-        self.cleanup()
 
 class VideoTranscriptionRepository:
     """動画文字起こし関連のデータベース操作"""
@@ -308,25 +263,6 @@ class VideoTranscriptionRepository:
             logger.info("利用可能なプロキシがデータベースに見つかりません")
             return None
 
-class TikTokUrlExtractor:
-    """TikTok URL解析クラス"""
-    
-    @staticmethod
-    def extract_video_id_from_url(url: str) -> Optional[str]:
-        """TikTok動画URLからvideo_idを抽出する"""
-        patterns = [
-            r'tiktok\.com/@[\w.]+/video/(\d+)',  # 標準的なTikTok URL
-            r'vm\.tiktok\.com/(\w+)',           # 短縮URL
-            r'vt\.tiktok\.com/(\w+)'            # 別の短縮URL形式
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-        
-        return None
-
 def call_transcription_function(video_id: str, storage_url: str):
     """文字起こしCloud Functionを呼び出し"""
     try:
@@ -359,7 +295,6 @@ def call_transcription_function(video_id: str, storage_url: str):
 
 class VideoStorageService:
     def __init__(self):
-        # 遅延初期化のため、インスタンス作成時は何もしない
         self.storage_manager = None
         self.video_downloader = None
     
@@ -376,12 +311,11 @@ class VideoStorageService:
         return self.video_downloader
     
     def download_and_store_video(self, url: str, video_id: str) -> str:
-        """動画をダウンロードしてCloud Storageに保存し、テーブルにファイルパスを格納"""
+        """動画をダウンロードしてCloud Storageに保存"""
         video_path = None
-        video_downloader = None
         
         try:
-            # 1. 動画をダウンロード（Selenium + yt-dlp）
+            # 1. 動画をダウンロード（yt-dlpのみ）
             video_downloader = self._get_video_downloader()
             video_path = video_downloader.download_video(url, video_id)
             
@@ -399,13 +333,9 @@ class VideoStorageService:
             logger.error(f"動画保存処理エラー: {str(e)}")
             raise
         finally:
-            # 1. 一時ファイルを削除（リトライ方式）
+            # 一時ファイルを削除
             if video_path and os.path.exists(video_path):
                 self._cleanup_temp_file(video_path)
-            
-            # 2. Seleniumリソースをクリーンアップ
-            if video_downloader:
-                video_downloader.cleanup()
     
     def _cleanup_temp_file(self, video_path: str):
         """一時ファイルをリトライ方式で削除"""
@@ -423,14 +353,14 @@ class VideoStorageService:
                 
             except Exception as cleanup_error:
                 logger.warning(f"一時ファイル削除リトライ {attempt + 1}/5: {video_path} - {cleanup_error}")
-                if attempt < 4:  # 最後のリトライでない場合は待機
+                if attempt < 4:
                     time.sleep(1)
                 else:
                     logger.error(f"一時ファイル削除に失敗しました: {video_path}")
 
 @functions_framework.http
 def download_tiktok_video(request: Request):
-    """TikTok動画ダウンロードのメイン処理"""
+    """TikTok動画ダウンロードのメイン処理（yt-dlpのみ）"""
     try:
         # リクエストデータの取得
         request_json = request.get_json(silent=True)
@@ -449,7 +379,7 @@ def download_tiktok_video(request: Request):
                 "error": "urlとvideo_idは必須です"
             }, 400
         
-        logger.info(f"動画ダウンロード開始: video_id={video_id}, url={url}")
+        logger.info(f"動画ダウンロード開始（yt-dlpのみ）: video_id={video_id}, url={url}")
         
         # カルーセル（画像）チェック
         if "photo" in url:
@@ -476,7 +406,7 @@ def download_tiktok_video(request: Request):
         if transcription_result:
             response["transcription_task_id"] = transcription_result.get("task_id")
         
-        logger.info(f"動画ダウンロード完了: video_id={video_id}")
+        logger.info(f"動画ダウンロード完了（yt-dlpのみ）: video_id={video_id}")
         return response, 200
         
     except Exception as e:

@@ -5,3 +5,6 @@ selenium
 webdriver-manager
 yt-dlp
 requests
+pymysql
+python-dotenv
+google-cloud-secret-manager
