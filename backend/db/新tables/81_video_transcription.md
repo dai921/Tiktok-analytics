@@ -16,3 +16,4 @@ Tiktok動画の文字起こしデータを管理するテーブルです。
 |--------------|-------|------|------|
 | PRIMARY | id | 主キー | 関連付けの一意識別子 |
 | UNIQUE | video_id | ユニーク | video_idは一個 |
+| idx_file_path | file_path | INDEX | URLでの検索も高速化 |

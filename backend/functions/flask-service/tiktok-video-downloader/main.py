@@ -14,6 +14,7 @@ from google.auth.exceptions import DefaultCredentialsError
 import functions_framework
 from flask import Request
 
+
 # Cloud Function用のロガー設定
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -126,6 +127,15 @@ class TikTokVideoDownloader:
             'socket_timeout': 60,
             'retries': 3,
             'fragment_retries': 3,
+            'noprogress': True,
+            'no_color': True,
+            'ignoreerrors': True,
+            'writeautomaticsub': False,
+            'writesubtitles': False,
+            'logger': logging.getLogger('yt-dlp').setLevel(logging.CRITICAL),
+            'logtostderr': False,
+            # エンコーディング設定
+            'encoding': 'utf-8',
             'http_headers': {
                 'User-Agent': random.choice(self.user_agents),
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

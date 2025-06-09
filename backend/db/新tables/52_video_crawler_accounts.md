@@ -1,4 +1,4 @@
-# crawler_accounts
+#play_count_crawler_accounts
 
 ## 概要
 スクレイピング時に使用するアカウント情報を管理するテーブル。
