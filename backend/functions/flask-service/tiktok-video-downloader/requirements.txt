@@ -1,0 +1,7 @@
+functions-framework
+google-cloud-storage
+google-cloud-logging
+selenium
+webdriver-manager
+yt-dlp
+requests

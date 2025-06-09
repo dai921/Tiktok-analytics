@@ -17,3 +17,6 @@ SQLAlchemy==2.0.19        # もし未記載なら
 google-cloud-storage
 yt-dlp
 google-generativeai
+selenium==4.18.1
+webdriver-manager==4.0.1
+selenium-stealth
