@@ -111,24 +111,40 @@ const TranscriptionPage = () => {
             <div className="mt-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">
                 文字起こし結果
-                {result.source === 'database' && (
-                  <span className="ml-2 text-sm text-gray-500">(既存データ)</span>
-                )}
-                {result.source === 'generated' && (
-                  <span className="ml-2 text-sm text-gray-500">(新規生成)</span>
-                )}
               </h2>
               
-              <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+              {/* 文字起こし文章 */}
+              <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-4">
                 <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
                   {result.transcription}
                 </pre>
               </div>
 
-              {result.video_id && (
-                <p className="mt-2 text-xs text-gray-500">
-                  Video ID: {result.video_id}
-                </p>
+              {/* TikTok埋め込み動画 */}
+              {url && (
+                <div className="mb-4">
+                  <h3 className="text-md font-medium text-gray-700 mb-2">動画</h3>
+                  <div className="flex justify-center bg-gray-100 border border-gray-200 rounded-md p-4">
+                    <blockquote 
+                      className="tiktok-embed" 
+                      cite={url} 
+                      data-video-id={result.video_id} 
+                      style={{ maxWidth: '605px', minWidth: '325px' }}
+                    >
+                      <section>
+                        <a 
+                          target="_blank" 
+                          title="TikTok" 
+                          href={url}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          TikTokで動画を見る
+                        </a>
+                      </section>
+                    </blockquote>
+                    <script async src="https://www.tiktok.com/embed.js"></script>
+                  </div>
+                </div>
               )}
             </div>
           )}
