@@ -10,6 +10,7 @@ import requests
 import random
 from typing import Optional
 from google.cloud import storage
+from google.cloud import pubsub_v1
 from google.auth.exceptions import DefaultCredentialsError
 import functions_framework
 from flask import Request
@@ -239,11 +240,24 @@ class VideoTranscriptionRepository:
     
     @staticmethod
     def save_video_file_path(video_id: str, file_path: str):
-        """動画ファイルパスをテーブルに保存"""
-        execute_update(
-            "INSERT INTO video_transcription (video_id, file_path, transcription) VALUES (:video_id, :file_path, '')",
-            {"video_id": video_id, "file_path": file_path}
-        )
+        """動画ファイルパスをテーブルに保存（既存の場合は更新）"""
+        # まず既存のレコードをチェック
+        existing = VideoTranscriptionRepository.find_transcription_by_video_id(video_id)
+        
+        if existing:
+            # 既存の場合はfile_pathのみ更新
+            execute_update(
+                "UPDATE video_transcription SET file_path = :file_path WHERE video_id = :video_id",
+                {"video_id": video_id, "file_path": file_path}
+            )
+            logger.info(f"既存のレコードを更新: video_id={video_id}")
+        else:
+            # 新規の場合はINSERT
+            execute_update(
+                "INSERT INTO video_transcription (video_id, file_path, transcription) VALUES (:video_id, :file_path, '')",
+                {"video_id": video_id, "file_path": file_path}
+            )
+            logger.info(f"新規レコードを挿入: video_id={video_id}")
 
     @staticmethod
     def get_video_file_path(video_id: str) -> Optional[str]:
@@ -273,34 +287,40 @@ class VideoTranscriptionRepository:
             logger.info("利用可能なプロキシがデータベースに見つかりません")
             return None
 
-def call_transcription_function(video_id: str, storage_url: str):
-    """文字起こしCloud Functionを呼び出し"""
+def publish_transcription_task(video_id: str, storage_url: str):
+    """文字起こしタスクをPub/Subに送信"""
     try:
-        transcription_function_url = os.getenv("TRANSCRIPTION_FUNCTION_URL")
-        if not transcription_function_url:
-            logger.warning("TRANSCRIPTION_FUNCTION_URL環境変数が設定されていません")
+        project_id = os.getenv("PROJECT_ID")
+        topic_name = os.getenv("TRANSCRIPTION_PUBSUB_TOPIC", "transcription-tasks")
+        
+        if not project_id:
+            logger.error("PROJECT_ID環境変数が設定されていません")
             return None
         
-        payload = {
+        # Pub/Subクライアントを初期化
+        publisher = pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(project_id, topic_name)
+        
+        # メッセージペイロード
+        message_data = {
             "video_id": video_id,
-            "storage_url": storage_url
+            "storage_url": storage_url,
+            "timestamp": datetime.datetime.utcnow().isoformat()
         }
         
-        response = requests.post(
-            transcription_function_url,
-            json=payload,
-            timeout=30
-        )
+        # メッセージを送信
+        message_bytes = json.dumps(message_data).encode('utf-8')
+        future = publisher.publish(topic_path, message_bytes)
         
-        if response.status_code == 200:
-            logger.info(f"文字起こしFunction呼び出し成功: video_id={video_id}")
-            return response.json()
-        else:
-            logger.error(f"文字起こしFunction呼び出し失敗: {response.status_code}")
-            return None
-            
+        # 送信完了を待機
+        message_id = future.result()
+        
+        logger.info(f"文字起こしタスクをPub/Subに送信: video_id={video_id}, message_id={message_id}")
+        return {"message_id": message_id, "topic": topic_name}
+        
     except Exception as e:
-        logger.error(f"文字起こしFunction呼び出しエラー: {str(e)}")
+        logger.error(f"Pub/Sub送信エラー: {str(e)}")
+        logger.error(traceback.format_exc())
         return None
 
 class VideoStorageService:
@@ -402,20 +422,21 @@ def download_tiktok_video(request: Request):
         # 1. 動画保存処理
         storage_service = VideoStorageService()
         storage_url = storage_service.download_and_store_video(url, video_id)
-        
-        # 2. 文字起こしFunction呼び出し
-        transcription_result = call_transcription_function(video_id, storage_url)
-        
+
+        # 2. 文字起こしタスクをPub/Subに送信
+        transcription_result = publish_transcription_task(video_id, storage_url)
+
         # 3. レスポンス作成
         response = {
             "success": True,
             "video_id": video_id,
             "storage_url": storage_url
         }
-        
+
         if transcription_result:
-            response["transcription_task_id"] = transcription_result.get("task_id")
-        
+            response["transcription_message_id"] = transcription_result.get("message_id")
+            response["transcription_topic"] = transcription_result.get("topic")
+
         logger.info(f"動画ダウンロード完了（yt-dlpのみ）: video_id={video_id}")
         return response, 200
         

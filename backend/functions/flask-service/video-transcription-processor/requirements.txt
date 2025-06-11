@@ -6,3 +6,5 @@ pymysql
 requests
 python-dotenv
 google-cloud-secret-manager
+google-cloud-pubsub
+google-generativeai

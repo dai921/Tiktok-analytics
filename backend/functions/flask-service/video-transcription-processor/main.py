@@ -7,8 +7,9 @@ from typing import Optional
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from google.cloud import storage
-import functions_framework
-from flask import Request
+import base64
+import json
+import asyncio
 
 # Cloud Function用のロガー設定（既存のlogger_configは使用不可のため）
 import logging
@@ -181,11 +182,10 @@ class GeminiTranscriptionService:
             """
             
             response = model.generate_content(
-                prompt,
-                {
-                    "mime_type": "video/mp4",
-                    "data": video_data
-                }
+                [  # ←リスト１個だけ渡す
+                    prompt,
+                    { "mime_type": "video/mp4", "data": video_data }
+                ]
             )
             
             # より安全な文字列クリーニング処理
@@ -224,62 +224,72 @@ class GeminiTranscriptionService:
         logger.info(f"文字起こしテキストをクリーニングしました（{len(raw_text)}文字 → {len(cleaned)}文字）")
         return cleaned
 
-@functions_framework.http
-async def process_video_transcription(request: Request):
-    """動画文字起こし処理のメイン処理"""
-    video_path = None
+def transcribe_video(event, context):
+    """
+    動画文字起こし処理（Pub/Subトリガー）
+    Args:
+        event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
+        context (google.cloud.functions.Context): メタデータを含むコンテキスト
+    """
+    logger.info("==== transcribe_video関数の実行開始 ====")
     
     try:
-        # リクエストデータの取得
-        request_json = request.get_json(silent=True)
-        if not request_json:
-            return {
-                "success": False,
-                "error": "リクエストボディが無効です"
-            }, 400
+        # Pub/Subメッセージの処理
+        if 'data' in event:
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            message_json = json.loads(message_data)
+            logger.info(f"Pub/Subメッセージを受信: {message_json}")
+        else:
+            logger.error("データなしのメッセージを受信")
+            return
         
-        video_id = request_json.get("video_id")
-        storage_url = request_json.get("storage_url")
+        video_id = message_json.get("video_id")
+        storage_url = message_json.get("storage_url")
+        timestamp = message_json.get("timestamp")
         
         if not video_id or not storage_url:
-            return {
-                "success": False,
-                "error": "video_idとstorage_urlは必須です"
-            }, 400
+            logger.error(f"必須パラメータが不足: video_id={video_id}, storage_url={storage_url}")
+            return
         
         logger.info(f"文字起こし処理開始: video_id={video_id}, storage_url={storage_url}")
         
         # 1. Cloud Storageから動画をダウンロード
         storage_manager = CloudStorageManager()
-        video_path = storage_manager.download_video(storage_url)
+        video_path = None
         
-        # 2. Geminiで文字起こし生成
-        transcription_service = GeminiTranscriptionService()
-        transcription = await transcription_service.generate_transcription(video_id, video_path)
+        try:
+            video_path = storage_manager.download_video(storage_url)
+            
+            # 2. Geminiで文字起こし実行
+            transcription_service = GeminiTranscriptionService()
+            transcription = asyncio.run(transcription_service.generate_transcription(video_id, video_path))
+            
+            logger.info(f"文字起こし処理完了: video_id={video_id}, 文字数={len(transcription)}")
+            
+        except Exception as e:
+            logger.error(f"文字起こし処理中にエラー: {str(e)}")
+            # 永続的なエラーの場合はメッセージを破棄
+            if "GEMINI_API_KEY" in str(e) or "invalid" in str(e).lower():
+                logger.error("永続的なエラーのためメッセージを破棄")
+                return
+            else:
+                # 一時的なエラーの場合は再試行のため例外を再発生
+                raise e
         
-        # 3. レスポンス作成
-        response = {
-            "success": True,
-            "video_id": video_id,
-            "transcription": transcription
-        }
-        
-        logger.info(f"文字起こし処理完了: video_id={video_id}")
-        return response, 200
+        finally:
+            # 一時ファイルのクリーンアップ
+            if video_path and os.path.exists(video_path):
+                try:
+                    os.remove(video_path)
+                    logger.info(f"一時ファイル削除: {video_path}")
+                except Exception as cleanup_error:
+                    logger.warning(f"一時ファイル削除エラー: {cleanup_error}")
         
     except Exception as e:
         logger.error(f"文字起こし処理エラー: {str(e)}")
         logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": f"文字起こし処理中にエラーが発生しました: {str(e)}"
-        }, 500
-        
+        # Pub/Subの場合、例外を発生させるとメッセージが再配信される
+        raise e
+    
     finally:
-        # クリーンアップ
-        if video_path and os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-                logger.info(f"一時ファイル削除: {video_path}")
-            except Exception as cleanup_error:
-                logger.warning(f"一時ファイル削除エラー: {cleanup_error}") 
+        logger.info("==== transcribe_video関数の実行終了 ====") 

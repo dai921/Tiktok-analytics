@@ -26,11 +26,10 @@ const TranscriptionPage = () => {
       setResult(data)
 
       if (!data.success && data.error) {
-        setError(data.error)
+        setError('エラーが発生しました。管理者にご連絡ください。')
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '文字起こし処理に失敗しました'
-      setError(errorMessage)
+      setError('文字起こし処理に失敗しました。管理者にご連絡ください。')
     } finally {
       setIsLoading(false)
     }
@@ -142,7 +141,6 @@ const TranscriptionPage = () => {
               <li>• TikTok動画のURLを貼り付けてください</li>
               <li>• カルーセル（画像スライドショー）形式は対応していません</li>
               <li>• 処理には時間がかかる場合があります</li>
-              <li>• 既に文字起こし済みの動画は保存されたデータを表示します</li>
             </ul>
           </div>
         </div>
