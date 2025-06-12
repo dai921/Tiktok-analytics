@@ -46,12 +46,12 @@ const nextConfig = {
   // Cloud Runでの実行のためにスタンドアロンモードを有効化
   output: 'standalone',
   
-  // 動的レンダリングを強制
-  experimental: {
-    // 動的なページのみを生成
-    workerThreads: false,
-    cpus: 1
-  }
+  // // 動的レンダリングを強制
+  // experimental: {
+  //   // 動的なページのみを生成
+  //   workerThreads: false,
+  //   cpus: 1
+  // }
 }
 
 console.log("Next.js config:", JSON.stringify(nextConfig, null, 2));

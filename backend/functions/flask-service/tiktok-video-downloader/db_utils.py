@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Callable
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
 import functools
-from core.config import get_db_config, ConfigError
+from config import get_db_config, ConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,12 @@ def get_connection():
     connection = None
     try:
         config = get_db_config()
-
+        print("===== DB接続設定の詳細 =====")
+        print(f"DB設定キー: {list(config.keys())}")
+        
+        # ホスト設定の詳細を表示
+        print(f"ホスト設定: host={config.get('host', 'なし')}")
+        print(f"全DB設定（パスワード除く）: {{{', '.join([f'{k}: {v}' for k, v in config.items() if k != 'password'])}}}")
         
         # インスタンス接続名を取得
         instance_connection_name = os.environ.get('INSTANCE_CONNECTION_NAME')

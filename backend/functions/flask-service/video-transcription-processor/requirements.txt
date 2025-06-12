@@ -1,0 +1,10 @@
+functions-framework
+google-cloud-storage
+google-cloud-logging
+google-generativeai
+pymysql
+requests
+python-dotenv
+google-cloud-secret-manager
+google-cloud-pubsub
+google-generativeai

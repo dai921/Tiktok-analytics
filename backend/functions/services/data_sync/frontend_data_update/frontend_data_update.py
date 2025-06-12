@@ -207,6 +207,13 @@ def update_frontend_from_master() -> Dict[str, Any]:
                 "message": "全バッチの処理が完了しました",
                 "timestamp": datetime.now().isoformat()
             })
+                        # カテゴリー統計集計用のトリガーメッセージを送信
+            print("カテゴリー統計集計のトリガーメッセージを送信します")
+            publish_message("needs-update-flag", {
+                "status": "completed",
+                "message": "カテゴリー統計集計を開始します",
+                "timestamp": datetime.now().isoformat()
+            })
             
             return {
                 "status": "success",

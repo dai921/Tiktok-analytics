@@ -127,7 +127,7 @@ def process_account_list():
 
         # スプレッドシートからデータを読み取る（アカウント作業用シート）
         print("アカウント作業用シートデータ取得開始")
-        range_name = 'アカウント作業用シート!B:K'  # B列からK列までの範囲を取得
+        range_name = '10万以下シート!B:K'  # B列からK列までの範囲を取得
         
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -161,7 +161,7 @@ def process_account_list():
 
                 # 既存レコードのチェック
                 check_query = '''
-                    SELECT id FROM account_list
+                    SELECT id FROM test_account_list
                     WHERE account_url = %(account_url)s
                 '''
                 check_params = {'account_url': account_url}
@@ -171,7 +171,7 @@ def process_account_list():
                 if existing_record:
                     # 更新
                     update_query = '''
-                        UPDATE account_list 
+                        UPDATE test_account_list 
                         SET favorite_user_username = %(favorite_user_username)s,
                             account_type = %(account_type)s,
                             crawler_account_id = %(crawler_account_id)s,
@@ -195,7 +195,7 @@ def process_account_list():
                 else:
                     # 新規挿入
                     insert_query = '''
-                        INSERT INTO account_list 
+                        INSERT INTO test_account_list 
                         (account_url, favorite_user_username, account_type, 
                          crawler_account_id, created_at, updated_at, parent_type, play_count_crawler_id)
                         VALUES (%(account_url)s, %(favorite_user_username)s, %(account_type)s,
@@ -236,7 +236,7 @@ def check_last_execution():
         query = """
             SELECT last_run 
             FROM scheduler_job_info 
-            WHERE job_name = 'sync_account_list'
+            WHERE job_name = 'sync_test_list'
         """
         result = execute_query(query)
         
@@ -244,7 +244,7 @@ def check_last_execution():
             # 初回実行の場合、レコードを作成して実行可能とする
             insert_query = """
                 INSERT INTO scheduler_job_info (job_name, last_run)
-                VALUES ('sync_account_list', NOW())
+                VALUES ('sync_test_list', NOW())
             """
             execute_write_query(insert_query)
             logger.info("初回実行のため、実行を許可します")
@@ -260,7 +260,7 @@ def check_last_execution():
             update_query = """
                 UPDATE scheduler_job_info 
                 SET last_run = NOW()
-                WHERE job_name = 'sync_account_list'
+                WHERE job_name = 'sync_test_list'
             """
             execute_write_query(update_query)
             logger.info(f"前回の実行から{time_diff.total_seconds() / 3600:.1f}時間経過しているため、実行を許可します")

@@ -18,10 +18,11 @@ import {
   FileText,
   Users,
   ChevronDown,
-  X
+  X,
+  Mic
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic';
 
 type SidebarItemProps = {
   href?: string;
@@ -170,6 +171,12 @@ export function Sidebar() {
             active={pathname.startsWith('/my-account')}
           /> */}
           <SidebarItem
+            href="/transcription"
+            icon="Mic"
+            label="動画文字起こし"
+            active={pathname.startsWith('/transcription')}
+          />
+          <SidebarItem
             href="#"
             icon="FileText"
             label="台本作成"
@@ -267,6 +274,8 @@ function renderIcon(iconName: IconName) {
       return <FileText size={20} />;
     case 'Users':
       return <Users size={20} />;
+    case 'Mic':
+      return <Mic size={20} />;
     default:
       return null;
   }

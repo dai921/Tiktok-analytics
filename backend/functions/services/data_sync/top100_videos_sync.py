@@ -32,8 +32,9 @@ def update_product_top100_videos(event, context):
             message_data = json.loads(pubsub_message)
             logger.info(f"Pub/Subメッセージを受信: {message_data}")
             
-            # 商品日次集計からの完了メッセージを確認
-            if message_data.get("status") != "success":
+            # summary_table_syncからの完了メッセージを確認
+            if (message_data.get("status") != "success" or 
+                message_data.get("previous_step") != "summary_table_sync"):
                 logger.info(f"summary_table_syncが成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 
@@ -42,7 +43,7 @@ def update_product_top100_videos(event, context):
         else:
             # データがない場合は現在日付の前日を使用
             jst = timezone('Asia/Tokyo')
-            collection_date = (datetime.now(jst) - timedelta(days=1)).strftime('%Y-%m-%d')
+            collection_date = (datetime.now(jst) + timedelta(hours=9) - timedelta(days=2)).strftime('%Y-%m-%d')
             logger.info(f"データなしのトリガー実行。収集日を{collection_date}に設定します")
         
         # 商品別TOP100動画を更新

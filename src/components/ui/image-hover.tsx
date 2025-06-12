@@ -15,6 +15,7 @@ import {
   checkVideoInWatchlist,
   checkAccountInBookmarks
 } from '@/lib/api/watchlist'
+import { fetchTranscription, type TranscriptionResponse } from '@/lib/api/transcription'
 
 interface ImageHoverProps {
   src: string
@@ -47,8 +48,10 @@ export function ImageHover({
   const [isAccountInBookmarks, setIsAccountInBookmarks] = useState(false)
   const [isLoading, setIsLoading] = useState({
     videoSave: false,
-    accountSave: false
+    accountSave: false,
+    transcription: false
   })
+  const [transcriptionResult, setTranscriptionResult] = useState<TranscriptionResponse | null>(null)
   
   const { toast } = useToast()
   const { user } = useAuth()
@@ -200,19 +203,50 @@ export function ImageHover({
     }
   }
 
+  // 文字起こし実行
+  const handleTranscription = async () => {
+    if (!user) {
+      return
+    }
+
+    // URLにphotoが含まれている場合はカルーセルとして扱う
+    if (videoUrl.includes('/photo/')) {
+      setTranscriptionResult({
+        success: false,
+        error: 'カルーセル（画像スライドショー）投稿は文字起こしできません'
+      })
+      return
+    }
+
+    setIsLoading(prev => ({ ...prev, transcription: true }))
+    try {
+      const result = await fetchTranscription(videoUrl)
+      
+      if (result.success && result.transcription) {
+        setTranscriptionResult(result)
+      } else if (result.error) {
+        setTranscriptionResult({
+          success: false,
+          error: result.error
+        })
+      }
+    } catch (error) {
+      // エラーは無視してローディングを終了するだけ
+    } finally {
+      setIsLoading(prev => ({ ...prev, transcription: false }))
+    }
+  }
+
   const formatNumber = (num: number): string => {
     return new Intl.NumberFormat('ja-JP').format(num)
   }
 
   const formatGrowth = (growth?: number): string => {
-    if (growth === undefined) return "0.0%";
+    if (growth === undefined) return "0";
     
-    // 増加数を総再生数で割って％に変換
-    const normalizedGrowth = videoData.views > 0 ? (growth / videoData.views) * 100 : 0;
-    
-    return normalizedGrowth > 0 
-      ? `+${normalizedGrowth.toFixed(1)}%` 
-      : `${normalizedGrowth.toFixed(1)}%`;
+    return growth > 0 
+      ? `+${formatNumber(growth)}` 
+      : formatNumber(growth);
   }
 
   const formatDate = (dateString: string): string => {
@@ -328,6 +362,44 @@ export function ImageHover({
                       >
                         {videoUrl}
                       </a>
+                    </div>
+
+                    {/* 文字起こしボタンと結果 */}
+                    <div className="order-2.6">
+                      <h4 className="text-sm text-gray-600 mb-1">文字起こし</h4>
+                      
+                      {/* 文字起こし結果表示 */}
+                      {transcriptionResult ? (
+                        <div className="bg-white p-4 rounded-lg border">
+                          {transcriptionResult.success && transcriptionResult.transcription ? (
+                            <div className="bg-gray-50 p-3 rounded border">
+                              <pre className="whitespace-pre-wrap text-sm text-gray-800">
+                                {transcriptionResult.transcription}
+                              </pre>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-red-600">
+                              {transcriptionResult.error || '文字起こしに失敗しました'}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        /* 文字起こし実行ボタン */
+                        <button
+                          onClick={handleTranscription}
+                          disabled={isLoading.transcription}
+                          className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg transition-colors bg-cyan-500 hover:bg-cyan-600 text-white disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                        >
+                          {isLoading.transcription ? (
+                            <>
+                              <span className="animate-spin">⏳</span>
+                              <span>文字起こし中...</span>
+                            </>
+                          ) : (
+                            <span>文字起こし実行</span>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
 
