@@ -16,6 +16,7 @@ from typing import Optional
 import re
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import requests
 
 logger = setup_logger()
 
@@ -111,3 +112,63 @@ class TikTokUrlExtractor:
                 return match.group(1)
         
         return None
+    
+    @staticmethod
+    def expand_short_url(url: str, timeout: int = 10) -> Optional[str]:
+        """短縮URLを実際のURLに展開する"""
+        try:
+            # 短縮URLかどうかをチェック
+            if not any(domain in url for domain in ['vm.tiktok.com', 'vt.tiktok.com']):
+                # 短縮URLでない場合はそのまま返す
+                return url
+            
+            logger.info(f"短縮URL展開開始: {url}")
+            
+            # リダイレクトを追跡してHEADリクエストで最終URLを取得
+            response = requests.head(
+                url, 
+                timeout=timeout,
+                allow_redirects=True,
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.7151.69 Safari/537.36'
+                }
+            )
+            
+            expanded_url = response.url
+            logger.info(f"短縮URL展開結果: {url} -> {expanded_url}")
+            return expanded_url
+            
+        except requests.RequestException as e:
+            logger.error(f"短縮URL展開エラー: {url} - {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"短縮URL展開中の予期しないエラー: {url} - {str(e)}")
+            return None
+    
+    @staticmethod
+    def is_carousel_or_photo_url(url: str) -> bool:
+        """URLがカルーセル（画像スライドショー）やフォト形式かを判定する
+        
+        Args:
+            url: チェックするURL（短縮URLの場合は自動的に展開される）
+            
+        Returns:
+            True: カルーセル/フォト形式, False: 動画形式またはエラー
+        """
+        try:
+            # 短縮URLの場合は展開
+            expanded_url = TikTokUrlExtractor.expand_short_url(url)
+            if not expanded_url:
+                logger.warning(f"URL展開に失敗: {url}")
+                return False
+            
+            # 展開後のURLでカルーセル/フォトチェック
+            is_photo = "photo" in expanded_url.lower()
+            if is_photo:
+                logger.info(f"カルーセル/フォト形式を検出: {expanded_url}")
+            
+            return is_photo
+            
+        except Exception as e:
+            logger.error(f"カルーセル判定エラー: {url} - {str(e)}")
+            return False

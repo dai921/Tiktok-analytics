@@ -65,6 +65,7 @@ export const config = {
     '/dashboard/:path*',
     '/trends/:path*',
     '/summary/:path*',
+    '/transcription/:path*',
     '/login',
     '/register',
     '/admin/:path*',

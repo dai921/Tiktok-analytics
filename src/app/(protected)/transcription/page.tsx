@@ -8,6 +8,7 @@ const TranscriptionPage = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<TranscriptionResponse | null>(null)
   const [error, setError] = useState('')
+  const [debugInfo, setDebugInfo] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,17 +21,44 @@ const TranscriptionPage = () => {
     setIsLoading(true)
     setError('')
     setResult(null)
+    setDebugInfo('')
 
+    console.log('=== 文字起こし処理開始 ===')
+    console.log('URL:', url)
+    console.log('API_URL:', process.env.NEXT_PUBLIC_API_URL)
+    
+    const startTime = Date.now()
+    
     try {
+      console.log('fetchTranscription呼び出し開始')
+      
       const data = await fetchTranscription(url)
+      
+      const endTime = Date.now()
+      const duration = endTime - startTime
+      console.log(`fetchTranscription完了: ${duration}ms`)
+      console.log('レスポンスデータ:', data)
+      
+      setDebugInfo(`APIレスポンス取得完了 (${duration}ms)`)
       setResult(data)
 
       if (!data.success && data.error) {
-        setError('エラーが発生しました。管理者にご連絡ください。')
+        console.log('APIエラー:', data.error)
+        setError(`APIエラー: ${data.error}`)
       }
     } catch (err) {
-      setError('文字起こし処理に失敗しました。管理者にご連絡ください。')
+      const endTime = Date.now()
+      const duration = endTime - startTime
+      console.error('=== fetchTranscription例外 ===')
+      console.error('エラー:', err)
+      console.error('処理時間:', duration + 'ms')
+      console.error('エラー型:', typeof err)
+      console.error('エラーメッセージ:', err instanceof Error ? err.message : String(err))
+      
+      setDebugInfo(`例外発生 (${duration}ms): ${err instanceof Error ? err.message : String(err)}`)
+      setError(`例外エラー: ${err instanceof Error ? err.message : '不明なエラーが発生しました'}`)
     } finally {
+      console.log('=== 文字起こし処理終了 ===')
       setIsLoading(false)
     }
   }
@@ -96,6 +124,11 @@ const TranscriptionPage = () => {
                   文字起こしを実行中です...
                 </p>
               </div>
+              {debugInfo && (
+                <p className="text-blue-600 text-sm mt-2">
+                  {debugInfo}
+                </p>
+              )}
             </div>
           )}
 
@@ -104,6 +137,11 @@ const TranscriptionPage = () => {
               <p className="text-red-800">
                 <span className="font-medium">エラー:</span> {error}
               </p>
+              {debugInfo && (
+                <p className="text-red-600 text-sm mt-2">
+                  デバッグ情報: {debugInfo}
+                </p>
+              )}
             </div>
           )}
 

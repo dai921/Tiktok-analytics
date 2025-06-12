@@ -25,10 +25,11 @@ initialize_config()
 
 def categorize_video_type(video_url: str) -> str:
     """動画URLからコンテンツタイプを判定する"""
-    if 'video' in video_url.lower():
-        return 'video'
-    elif 'photo' in video_url.lower():
+
+    if 'photo' in video_url.lower():
         return 'carousel'
+    elif 'video' in video_url.lower():
+        return 'video'
     return 'unknown'
 
 def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, str]:

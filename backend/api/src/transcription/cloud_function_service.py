@@ -32,7 +32,7 @@ class CloudFunctionService:
             response = requests.post(
                 self.download_function_url,
                 json=payload,
-                timeout=60
+                timeout=240
             )
             
             if response.status_code == 200:

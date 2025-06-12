@@ -35,8 +35,8 @@ async def start_transcription(request: TranscriptionRequest):
         url = request.url
         logger.info(f"文字起こしリクエスト: URL={url}")
         
-        # カルーセル（画像スライドショー）のチェック
-        if "photo" in url:
+        # カルーセル（画像スライドショー）のチェック - 短縮URLにも対応
+        if TikTokUrlExtractor.is_carousel_or_photo_url(url):
             logger.warning(f"カルーセル（画像）形式の投稿: {url}")
             return JobResponse(
                 success=False,
@@ -59,18 +59,6 @@ async def start_transcription(request: TranscriptionRequest):
             )
         
         logger.info(f"抽出されたvideo_id: {video_id}")
-        
-        # ①frontend_dataテーブルを検索し、video_idが存在するか確認
-        video_result = VideoTranscriptionRepository.find_video_by_id(video_id)
-        if not video_result:
-            logger.warning(f"指定されたvideo_id {video_id} が見つかりません")
-            return JobResponse(
-                success=False,
-                job_id="",
-                video_id=video_id,
-                status=JobStatus.FAILED,
-                error="指定された動画が見つかりません。ダッシュボードに存在するTikTok動画URLを入力してください。"
-            )
         
         # ②既存の文字起こしデータをチェック
         transcription_result = VideoTranscriptionRepository.find_transcription_by_video_id(video_id)
@@ -176,12 +164,31 @@ async def transcribe_video_legacy(request: TranscriptionRequest):
                 "source": "database"
             }
         else:
-            # 処理中の場合
+            # 新規処理の場合：結果が出るまで待機
+            # ポーリングでCloud Function完了を待つ
+            import asyncio
+            max_wait_time = 300  # 180秒から300秒（5分）に延長
+            poll_interval = 10   # 10秒間隔
+            waited_time = 0
+            
+            while waited_time < max_wait_time:
+                await asyncio.sleep(poll_interval)
+                waited_time += poll_interval
+                
+                # 結果を確認
+                result = await get_transcription_result(job_response.video_id)
+                if result.success and result.transcription:
+                    return {
+                        "success": True,
+                        "video_id": job_response.video_id,
+                        "transcription": result.transcription,
+                        "source": "generated"
+                    }
+            
+            # タイムアウトの場合
             return {
-                "success": True,
-                "video_id": job_response.video_id,
-                "status": job_response.status.value,
-                "message": "処理を開始しました。/result/{video_id}で結果を確認してください。"
+                "success": False,
+                "error": "文字起こし処理がタイムアウトしました。しばらく後に再度お試しください。"
             }
     else:
         return {
