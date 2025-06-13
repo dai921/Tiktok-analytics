@@ -104,7 +104,7 @@ def score_product(transcription, product_names, keywords_list, mapped_product, c
     norm_trans = normalize(transcription)
     norm_mapped = normalize(mapped_product) if mapped_product else ""
     best_score = 0
-    best_product = "NF"
+    best_product = ""
     log_details = []
     for pname, keywords, cat_kw in zip(product_names, keywords_list, category_keywords):
         if not pname:
@@ -208,8 +208,8 @@ def score_product(transcription, product_names, keywords_list, mapped_product, c
             best_score = score
             best_product = pname
     if best_score < 1:
-        logger.info("スコア計算詳細: " + " | ".join(log_details) + " => 判定: NF")
-        return "NF"
+        logger.info("スコア計算詳細: " + " | ".join(log_details) + " => 判定: 空文字列")
+        return ""
     logger.info("スコア計算詳細: " + " | ".join(log_details) + f" => 判定: {best_product} (スコア: {best_score})")
     return best_product
 
@@ -218,9 +218,21 @@ def update_product_in_db(video_id: str, product: str) -> None:
     video_masterテーブルのproductカラムをUPDATEする
     """
     try:
+        # 現在の値を取得
+        current_query = "SELECT product FROM video_master WHERE video_id = %s"
+        current_result = execute_query(current_query, {"video_id": video_id})
+        current_product = current_result[0]['product'] if current_result else None
+        
+        # 更新を実行
         query = "UPDATE video_master SET product = %s WHERE video_id = %s"
         params = {"product": product, "video_id": video_id}
         affected = execute_write_query(query, params)
+        
+        # 変更前後の値を表示
+        print(f"video_id: {video_id}")
+        print(f"変更前のproduct: {current_product}")
+        print(f"変更後のproduct: {product}")
+        
         logger.info(f"DB更新: video_id={video_id}, product={product}, 更新件数={affected}")
     except DatabaseError as e:
         logger.error(f"DB更新失敗: {e}")
