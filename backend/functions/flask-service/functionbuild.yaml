@@ -23,7 +23,7 @@ steps:
       - '--region=asia-northeast1'
       - '--source=tiktok-video-downloader'
       - '--entry-point=download_tiktok_video'
-      - '--trigger-http'
+      - '--trigger-topic=video-download-tasks'
       - '--allow-unauthenticated'
       - '--memory=2048MB'
       - '--timeout=540s'
