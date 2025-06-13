@@ -10,6 +10,7 @@ from google.cloud import storage
 import base64
 import json
 import asyncio
+import google.cloud.pubsub_v1
 
 # Cloud Function用のロガー設定（既存のlogger_configは使用不可のため）
 import logging
@@ -245,29 +246,47 @@ def transcribe_video(event, context):
         
         video_id = message_json.get("video_id")
         storage_url = message_json.get("storage_url")
+        message_type = message_json.get("type")
         timestamp = message_json.get("timestamp")
         
         if not video_id or not storage_url:
             logger.error(f"必須パラメータが不足: video_id={video_id}, storage_url={storage_url}")
             return
         
-        logger.info(f"文字起こし処理開始: video_id={video_id}, storage_url={storage_url}")
+        logger.info(f"処理開始: video_id={video_id}, storage_url={storage_url}, type={message_type}")
         
-        # 1. Cloud Storageから動画をダウンロード
+        # 共通処理: 動画ダウンロード + 文字起こし + DB保存
         storage_manager = CloudStorageManager()
         video_path = None
+        transcription = None
         
         try:
+            # 1. Cloud Storageから動画をダウンロード
             video_path = storage_manager.download_video(storage_url)
             
-            # 2. Geminiで文字起こし実行
+            # 2. Geminiで文字起こし実行 + DB保存
             transcription_service = GeminiTranscriptionService()
             transcription = asyncio.run(transcription_service.generate_transcription(video_id, video_path))
             
             logger.info(f"文字起こし処理完了: video_id={video_id}, 文字数={len(transcription)}")
             
+            # 3. typeに応じた追加処理
+            if message_type == "transcription":
+                # 文字起こしのみの場合は処理完了
+                logger.info(f"文字起こし処理完了: video_id={video_id}")
+                
+            elif message_type == "product_analysis":
+                # 商材判定の場合は追加処理を実行（asyncio.runを使用）
+                logger.info(f"商材判定の追加処理を開始: video_id={video_id}")
+                asyncio.run(perform_product_analysis(video_id, transcription, video_path))
+                logger.info(f"商材判定処理完了: video_id={video_id}")
+                
+            else:
+                logger.warning(f"不明なメッセージタイプ: {message_type}")
+                return
+            
         except Exception as e:
-            logger.error(f"文字起こし処理中にエラー: {str(e)}")
+            logger.error(f"処理中にエラー: {str(e)}")
             # 永続的なエラーの場合はメッセージを破棄
             if "GEMINI_API_KEY" in str(e) or "invalid" in str(e).lower():
                 logger.error("永続的なエラーのためメッセージを破棄")
@@ -286,10 +305,99 @@ def transcribe_video(event, context):
                     logger.warning(f"一時ファイル削除エラー: {cleanup_error}")
         
     except Exception as e:
-        logger.error(f"文字起こし処理エラー: {str(e)}")
+        logger.error(f"処理エラー: {str(e)}")
         logger.error(traceback.format_exc())
         # Pub/Subの場合、例外を発生させるとメッセージが再配信される
         raise e
     
     finally:
-        logger.info("==== transcribe_video関数の実行終了 ====") 
+        logger.info("==== transcribe_video関数の実行終了 ====")
+
+async def perform_product_analysis(video_id: str, transcription: str, video_path: str):
+    """商材判定の追加処理"""
+    try:
+        logger.info(f"商材判定処理開始: video_id={video_id}")
+        
+        # 仮の実装例
+        product_analysis_result = await analyze_product_content(video_path)
+        publish_product_analysis_result(video_id, product_analysis_result, transcription)
+        
+        logger.info(f"商材判定完了: video_id={video_id}, 結果={product_analysis_result}")
+        
+    except Exception as e:
+        logger.error(f"商材判定処理エラー: {str(e)}")
+        raise e
+
+async def analyze_product_content(video_path: str) -> dict:
+    """商材コンテンツの分析（Gemini APIを利用）"""
+    # Gemini APIの初期化
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        logger.error("GEMINI_API_KEYが設定されていません")
+        return {
+            "is_product": False,
+            "confidence": 0.0,
+            "keywords": [],
+            "analysis": "APIキー未設定"
+        }
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.0-flash')
+
+    prompt = (
+        "この動画で紹介されている製品やサービスの名称を、商品名のみ一語で正確に回答してください。"
+        "特定できない場合は『不明』とだけ記載してください。"
+    )
+
+    if video_path and os.path.exists(video_path):
+        with open(video_path, "rb") as f:
+            video_bytes = f.read()
+        response = model.generate_content([
+            prompt,
+            {"mime_type": "video/mp4", "data": video_bytes}
+        ])
+    else:
+        logger.info("動画ファイルが存在しないためGemini呼び出しをスキップ")
+        return {
+            "is_product": False,
+            "confidence": 0.0,
+            "keywords": [],
+            "analysis": "動画ファイルなし"
+        }
+
+    # Geminiの返答を解析
+    product_name = ""
+    if response is not None:
+        if hasattr(response, "candidates") and not response.candidates:
+            logger.info("Gemini応答: candidatesが空のためNFを返却")
+            product_name = "NF"
+        elif hasattr(response, "text"):
+            product_name = response.text.strip()
+            logger.info(f"Gemini応答: {product_name}")
+        else:
+            logger.info("Gemini応答: 返答なし")
+            product_name = ""
+    else:
+        product_name = ""
+
+    # 結果をdictで返す
+    return {
+        "is_product": product_name not in ["", "不明", "NF"],
+        "confidence": 1.0 if product_name not in ["", "不明", "NF"] else 0.0,
+        "keywords": [],
+        "analysis": product_name
+    }
+
+def publish_product_analysis_result(video_id: str, analysis_result: dict, transcription: str):
+    # Pub/Sub送信
+    try:
+        publisher = google.cloud.pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(os.getenv("PROJECT_ID"), os.getenv("PRODUCT_SCORING_TOPIC", "product-scoring"))
+        message = {
+            "video_id": video_id,
+            "product_name": analysis_result.get("analysis", ""),
+            "transcription": transcription
+        }
+        future = publisher.publish(topic_path, json.dumps(message).encode("utf-8"))
+        logger.info(f"Pub/Sub送信: {message} → {topic_path}")
+    except Exception as e:
+        logger.error(f"Pub/Sub送信エラー: {e}") 

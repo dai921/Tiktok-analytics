@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { fetchTranscription, type TranscriptionResponse } from '@/lib/api/transcription'
+import { Check, Copy } from 'lucide-react'
 
 const TranscriptionPage = () => {
   const [url, setUrl] = useState('')
@@ -9,6 +10,7 @@ const TranscriptionPage = () => {
   const [result, setResult] = useState<TranscriptionResponse | null>(null)
   const [error, setError] = useState('')
   const [debugInfo, setDebugInfo] = useState('')
+  const [isCopied, setIsCopied] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -67,6 +69,18 @@ const TranscriptionPage = () => {
     setUrl('')
     setResult(null)
     setError('')
+  }
+
+  const handleCopy = async () => {
+    if (result?.transcription) {
+      try {
+        await navigator.clipboard.writeText(result.transcription)
+        setIsCopied(true)
+        setTimeout(() => setIsCopied(false), 2000)
+      } catch (err) {
+        console.error('コピーに失敗しました:', err)
+      }
+    }
   }
 
   return (
@@ -147,9 +161,27 @@ const TranscriptionPage = () => {
 
           {result && result.success && result.transcription && (
             <div className="mt-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">
-                文字起こし結果
-              </h2>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  文字起こし結果
+                </h2>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check className="w-4 h-4 text-green-600" />
+                      <span>コピー完了</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>コピー</span>
+                    </>
+                  )}
+                </button>
+              </div>
               
               {/* 文字起こし文章 */}
               <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-4">

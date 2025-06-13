@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import Image from 'next/image'
 import { Portal } from '@radix-ui/react-portal'
-import { X, Bookmark, UserPlus, Check, AlertCircle } from 'lucide-react'
+import { X, Bookmark, UserPlus, Check, AlertCircle, Copy } from 'lucide-react'
 import { PlayCountHistoryGraph } from './play-count-history-graph'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/lib/auth-context'
@@ -52,6 +52,7 @@ export function ImageHover({
     transcription: false
   })
   const [transcriptionResult, setTranscriptionResult] = useState<TranscriptionResponse | null>(null)
+  const [isCopied, setIsCopied] = useState(false)
   
   const { toast } = useToast()
   const { user } = useAuth()
@@ -237,6 +238,19 @@ export function ImageHover({
     }
   }
 
+  // 文字起こしコピー
+  const handleCopy = async () => {
+    if (transcriptionResult?.transcription) {
+      try {
+        await navigator.clipboard.writeText(transcriptionResult.transcription)
+        setIsCopied(true)
+        setTimeout(() => setIsCopied(false), 2000)
+      } catch (err) {
+        // 必要ならトースト等でエラー通知
+      }
+    }
+  }
+
   const formatNumber = (num: number): string => {
     return new Intl.NumberFormat('ja-JP').format(num)
   }
@@ -372,11 +386,32 @@ export function ImageHover({
                       {transcriptionResult ? (
                         <div className="bg-white p-4 rounded-lg border">
                           {transcriptionResult.success && transcriptionResult.transcription ? (
-                            <div className="bg-gray-50 p-3 rounded border">
-                              <pre className="whitespace-pre-wrap text-sm text-gray-800">
-                                {transcriptionResult.transcription}
-                              </pre>
-                            </div>
+                            <>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="font-semibold text-gray-800">文字起こし結果</span>
+                                <button
+                                  onClick={handleCopy}
+                                  className="flex items-center gap-2 px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  {isCopied ? (
+                                    <>
+                                      <Check className="w-4 h-4 text-green-600" />
+                                      <span>コピー完了</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-4 h-4" />
+                                      <span>コピー</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                              <div className="bg-gray-50 p-3 rounded border">
+                                <pre className="whitespace-pre-wrap text-sm text-gray-800">
+                                  {transcriptionResult.transcription}
+                                </pre>
+                              </div>
+                            </>
                           ) : (
                             <div className="text-sm text-red-600">
                               {transcriptionResult.error || '文字起こしに失敗しました'}

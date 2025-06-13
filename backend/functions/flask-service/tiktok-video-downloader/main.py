@@ -8,6 +8,7 @@ import re
 import json
 import requests
 import random
+import base64
 from typing import Optional
 from google.cloud import storage
 from google.cloud import pubsub_v1
@@ -183,40 +184,49 @@ class TikTokVideoDownloader:
             # User-Agentをランダム化
             ydl_opts['http_headers']['User-Agent'] = random.choice(self.user_agents)
             
+            # エンコーディング設定を明示的に指定
+            ydl_opts['encoding'] = 'utf-8'
+            
             logger.info(f"yt-dlpでダウンロード開始: {url}")
             logger.info(f"使用プロキシ: {self.proxy or 'なし'}")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # 動画情報を事前取得
                 try:
+                    # 動画情報を事前取得
                     info = ydl.extract_info(url, download=False)
+                    if info is None:
+                        raise Exception("動画情報の取得に失敗しました")
+                    
                     title = info.get('title', 'N/A')
                     duration = info.get('duration', 'N/A')
                     logger.info(f"動画情報取得成功: title={title}, duration={duration}秒")
+                    
+                    # 実際のダウンロード
+                    ydl.download([url])
+                    
+                    # ダウンロードされたファイルを確認
+                    ext = info.get('ext', 'mp4')
+                    video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
+                    
+                    if not os.path.exists(video_path):
+                        files = os.listdir(temp_dir)
+                        if files:
+                            actual_file = files[0]
+                            video_path = os.path.join(temp_dir, actual_file)
+                            logger.info(f"実際のファイル名: {actual_file}")
+                        else:
+                            raise Exception(f"動画ファイルが見つかりません: {temp_dir}")
+                    
+                    file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
+                    logger.info(f"動画ダウンロード完了: {video_path} ({file_size:.2f}MB)")
+                    return video_path
+                    
+                except yt_dlp.utils.DownloadError as e:
+                    logger.error(f"yt-dlpダウンロードエラー: {str(e)}")
+                    raise Exception(f"動画のダウンロードに失敗しました: {str(e)}")
                 except Exception as e:
-                    logger.error(f"動画情報取得失敗: {str(e)}")
+                    logger.error(f"動画情報取得エラー: {str(e)}")
                     raise Exception(f"動画にアクセスできません: {str(e)}")
-                
-                # 実際のダウンロード
-                ydl.download([url])
-                
-                # ダウンロードされたファイルを確認
-                ext = info.get('ext', 'mp4')
-                video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
-                
-                if not os.path.exists(video_path):
-                    # 拡張子が異なる可能性があるため、ディレクトリ内を検索
-                    files = os.listdir(temp_dir)
-                    if files:
-                        actual_file = files[0]
-                        video_path = os.path.join(temp_dir, actual_file)
-                        logger.info(f"実際のファイル名: {actual_file}")
-                    else:
-                        raise Exception(f"動画ファイルが見つかりません: {temp_dir}")
-                
-                file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
-                logger.info(f"動画ダウンロード完了: {video_path} ({file_size:.2f}MB)")
-                return video_path
                 
         except Exception as e:
             logger.error(f"動画ダウンロードエラー: {str(e)}")
@@ -267,14 +277,6 @@ class VideoTranscriptionRepository:
         return result['file_path'] if result else None
     
     @staticmethod
-    def update_transcription(video_id: str, transcription: str):
-        """文字起こし結果を更新"""
-        execute_update(
-            "UPDATE video_transcription SET transcription = :transcription WHERE video_id = :video_id",
-            {"video_id": video_id, "transcription": transcription}
-        )
-    
-    @staticmethod
     def get_active_proxy() -> Optional[str]:
         """is_alive=1のプロキシをid順で一番上のものを取得"""
         query = "SELECT proxy FROM video_download_proxies WHERE is_alive = 1 ORDER BY id LIMIT 1"
@@ -287,8 +289,8 @@ class VideoTranscriptionRepository:
             logger.info("利用可能なプロキシがデータベースに見つかりません")
             return None
 
-def publish_transcription_task(video_id: str, storage_url: str):
-    """文字起こしタスクをPub/Subに送信"""
+def publish_transcription_task(video_id: str, storage_url: str, message_type: str):
+    """文字起こしタスクをPub/Subに送信（typeも含める）"""
     try:
         project_id = os.getenv("PROJECT_ID")
         topic_name = os.getenv("TRANSCRIPTION_PUBSUB_TOPIC", "transcription-tasks")
@@ -301,10 +303,11 @@ def publish_transcription_task(video_id: str, storage_url: str):
         publisher = pubsub_v1.PublisherClient()
         topic_path = publisher.topic_path(project_id, topic_name)
         
-        # メッセージペイロード
+        # メッセージペイロード（typeも含める）
         message_data = {
             "video_id": video_id,
             "storage_url": storage_url,
+            "type": message_type,  # typeフィールドを追加
             "timestamp": datetime.datetime.utcnow().isoformat()
         }
         
@@ -315,7 +318,7 @@ def publish_transcription_task(video_id: str, storage_url: str):
         # 送信完了を待機
         message_id = future.result()
         
-        logger.info(f"文字起こしタスクをPub/Subに送信: video_id={video_id}, message_id={message_id}")
+        logger.info(f"文字起こしタスクをPub/Subに送信: video_id={video_id}, type={message_type}, message_id={message_id}")
         return {"message_id": message_id, "topic": topic_name}
         
     except Exception as e:
@@ -388,62 +391,64 @@ class VideoStorageService:
                 else:
                     logger.error(f"一時ファイル削除に失敗しました: {video_path}")
 
-@functions_framework.http
-def download_tiktok_video(request: Request):
-    """TikTok動画ダウンロードのメイン処理（yt-dlpのみ）"""
+def download_tiktok_video(event, context):
+    """TikTok動画ダウンロードのメイン処理（Pub/Subトリガー）"""
+    logger.info("==== download_tiktok_video関数の実行開始 ====")
+    
     try:
-        # リクエストデータの取得
-        request_json = request.get_json(silent=True)
-        if not request_json:
-            return {
-                "success": False,
-                "error": "リクエストボディが無効です"
-            }, 400
+        # Pub/Subメッセージの処理
+        if 'data' in event:
+            message_data = base64.b64decode(event['data']).decode('utf-8')
+            request_data = json.loads(message_data)
+            logger.info(f"Pub/Subメッセージを受信: {request_data}")
+        else:
+            logger.error("データなしのメッセージを受信")
+            return {"success": False, "error": "データなしのメッセージを受信"}
         
-        url = request_json.get("url")
-        video_id = request_json.get("video_id")
+        url = request_data.get("url")
+        video_id = request_data.get("video_id")
+        message_type = request_data.get("type") 
         
         if not url or not video_id:
-            return {
-                "success": False,
-                "error": "urlとvideo_idは必須です"
-            }, 400
+            error_msg = "urlとvideo_idは必須です"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
         
-        logger.info(f"動画ダウンロード開始（yt-dlpのみ）: video_id={video_id}, url={url}")
+        logger.info(f"動画ダウンロード開始: video_id={video_id}, url={url}, type={message_type}")
         
         # カルーセル（画像）チェック
         if "photo" in url:
-            logger.warning(f"カルーセル（画像）形式の投稿: {url}")
-            return {
-                "success": False,
-                "error": "カルーセル（画像スライドショー）形式の投稿は処理できません"
-            }, 400
+            error_msg = "カルーセル（画像スライドショー）形式の投稿は処理できません"
+            logger.warning(f"{error_msg}: {url}")
+            return {"success": False, "error": error_msg}
         
         # 1. 動画保存処理
         storage_service = VideoStorageService()
         storage_url = storage_service.download_and_store_video(url, video_id)
 
-        # 2. 文字起こしタスクをPub/Subに送信
-        transcription_result = publish_transcription_task(video_id, storage_url)
+        # 2. 文字起こしタスクをPub/Subに送信（typeも含める）
+        transcription_result = publish_transcription_task(video_id, storage_url, message_type)
 
         # 3. レスポンス作成
         response = {
             "success": True,
             "video_id": video_id,
-            "storage_url": storage_url
+            "storage_url": storage_url,
+            "type": message_type
         }
 
         if transcription_result:
             response["transcription_message_id"] = transcription_result.get("message_id")
             response["transcription_topic"] = transcription_result.get("topic")
 
-        logger.info(f"動画ダウンロード完了（yt-dlpのみ）: video_id={video_id}")
-        return response, 200
+        logger.info(f"動画ダウンロード完了: video_id={video_id}, type={message_type}")
+        return response
         
     except Exception as e:
         logger.error(f"動画ダウンロード処理エラー: {str(e)}")
         logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": f"動画ダウンロード処理中にエラーが発生しました: {str(e)}"
-        }, 500 
+        # Pub/Subの場合、例外を発生させるとメッセージが再配信される
+        raise e
+    
+    finally:
+        logger.info("==== download_tiktok_video関数の実行終了 ====") 

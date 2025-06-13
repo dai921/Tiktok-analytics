@@ -11,6 +11,7 @@ from core.config import initialize_config
 import json
 from dotenv import load_dotenv
 import base64
+from google.cloud import pubsub_v1
 
 load_dotenv()
 # ロギング設定
@@ -25,7 +26,6 @@ initialize_config()
 
 def categorize_video_type(video_url: str) -> str:
     """動画URLからコンテンツタイプを判定する"""
-
     if 'photo' in video_url.lower():
         return 'carousel'
     elif 'video' in video_url.lower():
@@ -473,6 +473,33 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             front_needs_update = VALUES(front_needs_update)
         """
         execute_write_query(insert_query, insert_params)
+
+        # アフィリエイトアカウントで商品名が空またはNoneの場合、Pub/Subメッセージを送信
+        if (account_type and 
+            account_type.lower() == 'アフィリエイト' and 
+            (title_analysis['product_name'] is None or title_analysis['product_name'].strip() == '')):
+            try:
+                publisher = pubsub_v1.PublisherClient()
+                topic_path = publisher.topic_path(project_id, 'video-download-tasks')
+                
+                # メッセージデータの作成
+                message_data = {
+                    'video_id': video_id,
+                    'url': video_data['video_url'],
+                    'type': 'product_analysis'
+                }
+                
+                # メッセージの送信
+                future = publisher.publish(
+                    topic_path,
+                    json.dumps(message_data).encode('utf-8')
+                )
+                future.result()  # 送信完了を待機
+                
+                logger.info(f"Product analysis task published for video {video_id}")
+            except Exception as e:
+                logger.error(f"Failed to publish product analysis task: {str(e)}")
+                # メッセージ送信の失敗は全体の処理を失敗させない
 
         return {
             'status': 'success',

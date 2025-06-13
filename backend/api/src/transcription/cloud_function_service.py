@@ -1,6 +1,9 @@
 import os
 import requests
 from src.utils.logger_config import setup_logger
+import datetime
+import json
+from google.cloud import pubsub_v1
 
 logger = setup_logger()
 
@@ -17,36 +20,29 @@ class CloudFunctionService:
             logger.warning("TRANSCRIPTION_FUNCTION_URL環境変数が設定されていません")
     
     async def start_transcription_job(self, video_id: str, url: str) -> bool:
-        """Cloud Functionを呼び出して文字起こしジョブを開始"""
+        """文字起こし用の動画ダウンロードジョブを開始"""
         try:
-            if not self.download_function_url:
-                raise Exception("動画ダウンロードFunction URLが設定されていません")
-            
-            # 動画ダウンロードFunction呼び出し
-            payload = {
+            # Pub/Subでメッセージを送信
+            message_data = {
                 "url": url,
-                "video_id": video_id
+                "video_id": video_id,
+                "type": "transcription",  # 文字起こし用であることを明示
             }
             
-            logger.info(f"動画ダウンロードFunctionを呼び出し: video_id={video_id}")
-            response = requests.post(
-                self.download_function_url,
-                json=payload,
-                timeout=240
+            # Pub/Subトピックに送信
+            publisher = pubsub_v1.PublisherClient()
+            topic_path = publisher.topic_path(
+                os.getenv("PROJECT_ID"), 
+                os.getenv("VIDEO_DOWNLOADER_PUBSUB_TOPIC", "video-download-tasks")
             )
             
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("success"):
-                    logger.info(f"動画ダウンロードFunction呼び出し成功: video_id={video_id}")
-                    return True
-                else:
-                    logger.error(f"動画ダウンロード失敗: {result.get('error', '不明なエラー')}")
-                    return False
-            else:
-                logger.error(f"動画ダウンロードFunction呼び出し失敗: {response.status_code}")
-                return False
-                
+            message_bytes = json.dumps(message_data).encode('utf-8')
+            future = publisher.publish(topic_path, message_bytes)
+            message_id = future.result()
+            
+            logger.info(f"文字起こし用動画ダウンロードタスクを送信: video_id={video_id}, message_id={message_id}")
+            return True
+            
         except Exception as e:
-            logger.error(f"Cloud Function呼び出しエラー: {str(e)}")
+            logger.error(f"Cloud Function Pub/Sub送信エラー: {str(e)}")
             return False 

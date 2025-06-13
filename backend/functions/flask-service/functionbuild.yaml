@@ -23,7 +23,7 @@ steps:
       - '--region=asia-northeast1'
       - '--source=tiktok-video-downloader'
       - '--entry-point=download_tiktok_video'
-      - '--trigger-http'
+      - '--trigger-topic=video-download-tasks'
       - '--allow-unauthenticated'
       - '--memory=2048MB'
       - '--timeout=540s'
@@ -50,6 +50,27 @@ steps:
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,CLOUD_STORAGE_BUCKET=tiktok-videos-storage,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # product-scoring
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-product-scoring'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'product-scoring'
+      - '--gen2'
+      - '--runtime=python311'
+      - '--region=asia-northeast1'
+      - '--source=product-scoring'
+      - '--entry-point=refine_product_scoring'
+      - '--trigger-topic=product-scoring'
+      - '--allow-unauthenticated'
+      - '--memory=2048MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
 
 options:
   logging: CLOUD_LOGGING_ONLY

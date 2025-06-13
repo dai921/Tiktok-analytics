@@ -15,8 +15,4 @@ PyJWT
 mysqlclient==2.2.4        # C拡張なので速い
 SQLAlchemy==2.0.19        # もし未記載なら
 google-cloud-storage
-yt-dlp
-google-generativeai
-selenium==4.18.1
-webdriver-manager==4.0.1
-selenium-stealth
+google-cloud-pubsub 
