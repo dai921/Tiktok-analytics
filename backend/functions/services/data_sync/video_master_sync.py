@@ -25,7 +25,6 @@ initialize_config()
 
 def categorize_video_type(video_url: str) -> str:
     """動画URLからコンテンツタイプを判定する"""
-
     if 'photo' in video_url.lower():
         return 'carousel'
     elif 'video' in video_url.lower():

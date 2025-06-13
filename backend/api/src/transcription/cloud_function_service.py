@@ -27,7 +27,6 @@ class CloudFunctionService:
                 "url": url,
                 "video_id": video_id,
                 "type": "transcription",  # 文字起こし用であることを明示
-                "timestamp": datetime.utcnow().isoformat()
             }
             
             # Pub/Subトピックに送信

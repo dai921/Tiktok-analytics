@@ -184,40 +184,49 @@ class TikTokVideoDownloader:
             # User-Agentをランダム化
             ydl_opts['http_headers']['User-Agent'] = random.choice(self.user_agents)
             
+            # エンコーディング設定を明示的に指定
+            ydl_opts['encoding'] = 'utf-8'
+            
             logger.info(f"yt-dlpでダウンロード開始: {url}")
             logger.info(f"使用プロキシ: {self.proxy or 'なし'}")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # 動画情報を事前取得
                 try:
+                    # 動画情報を事前取得
                     info = ydl.extract_info(url, download=False)
+                    if info is None:
+                        raise Exception("動画情報の取得に失敗しました")
+                    
                     title = info.get('title', 'N/A')
                     duration = info.get('duration', 'N/A')
                     logger.info(f"動画情報取得成功: title={title}, duration={duration}秒")
+                    
+                    # 実際のダウンロード
+                    ydl.download([url])
+                    
+                    # ダウンロードされたファイルを確認
+                    ext = info.get('ext', 'mp4')
+                    video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
+                    
+                    if not os.path.exists(video_path):
+                        files = os.listdir(temp_dir)
+                        if files:
+                            actual_file = files[0]
+                            video_path = os.path.join(temp_dir, actual_file)
+                            logger.info(f"実際のファイル名: {actual_file}")
+                        else:
+                            raise Exception(f"動画ファイルが見つかりません: {temp_dir}")
+                    
+                    file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
+                    logger.info(f"動画ダウンロード完了: {video_path} ({file_size:.2f}MB)")
+                    return video_path
+                    
+                except yt_dlp.utils.DownloadError as e:
+                    logger.error(f"yt-dlpダウンロードエラー: {str(e)}")
+                    raise Exception(f"動画のダウンロードに失敗しました: {str(e)}")
                 except Exception as e:
-                    logger.error(f"動画情報取得失敗: {str(e)}")
+                    logger.error(f"動画情報取得エラー: {str(e)}")
                     raise Exception(f"動画にアクセスできません: {str(e)}")
-                
-                # 実際のダウンロード
-                ydl.download([url])
-                
-                # ダウンロードされたファイルを確認
-                ext = info.get('ext', 'mp4')
-                video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
-                
-                if not os.path.exists(video_path):
-                    # 拡張子が異なる可能性があるため、ディレクトリ内を検索
-                    files = os.listdir(temp_dir)
-                    if files:
-                        actual_file = files[0]
-                        video_path = os.path.join(temp_dir, actual_file)
-                        logger.info(f"実際のファイル名: {actual_file}")
-                    else:
-                        raise Exception(f"動画ファイルが見つかりません: {temp_dir}")
-                
-                file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
-                logger.info(f"動画ダウンロード完了: {video_path} ({file_size:.2f}MB)")
-                return video_path
                 
         except Exception as e:
             logger.error(f"動画ダウンロードエラー: {str(e)}")

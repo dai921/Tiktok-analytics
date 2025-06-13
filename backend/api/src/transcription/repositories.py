@@ -1,21 +1,14 @@
 import os
 import tempfile
 import traceback
-import yt_dlp
 import time
 import datetime
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from google.cloud import storage
 from google.auth.exceptions import DefaultCredentialsError
 from src.utils.logger_config import setup_logger
 from src.db.database import execute_update, fetch_one
 from typing import Optional
 import re
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import requests
 
 logger = setup_logger()
