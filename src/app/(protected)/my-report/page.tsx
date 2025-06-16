@@ -886,26 +886,30 @@ export default function MyAccountPage() {
                           <td className="px-6 py-4 text-right whitespace-nowrap text-white">
                             {formatNumber(video.viewCount)}
                           </td>
-                          <td className={`px-6 py-4 text-right whitespace-nowrap ${growthClass}`}>
-                            {formatNumber(video.viewGrowth)} {growthIcon}
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.viewGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.viewGrowth)}
+                            {video.viewGrowth >= 1 && ' ↑'}
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.likeCount)}
                           </td>
-                          <td className="px-6 py-4 text-right whitespace-nowrap text-green-500">
-                            {formatNumber(video.likeGrowth)} {growthIcon}
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.likeGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.likeGrowth)}
+                            {video.likeGrowth >= 1 && ' ↑'}
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.commentCount)}
                           </td>
-                          <td className="px-6 py-4 text-right whitespace-nowrap text-green-500">
-                            {formatNumber(video.commentGrowth)} {growthIcon}
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.commentGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.commentGrowth)}
+                            {video.commentGrowth >= 1 && ' ↑'}
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.shareCount)}
                           </td>
-                          <td className="px-6 py-4 text-right whitespace-nowrap text-green-500">
-                            {formatNumber(video.shareGrowth)} {growthIcon}
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.shareGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.shareGrowth)}
+                            {video.shareGrowth >= 1 && ' ↑'}
                           </td>
                         </tr>
                       );
