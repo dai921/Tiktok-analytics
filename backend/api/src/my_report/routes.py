@@ -6,7 +6,7 @@ import json
 from typing import List, Optional, Dict, Any
 import requests
 from ..auth.router import get_current_user
-from ..models.tiktok import TikTokStats, TikTokVideo, TikTokUserConnection
+from .models import TikTokStats, TikTokVideo, TikTokUserConnection
 import os
 from fastapi.responses import StreamingResponse
 from io import BytesIO

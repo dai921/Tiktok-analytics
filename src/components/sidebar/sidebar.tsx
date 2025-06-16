@@ -165,10 +165,10 @@ export function Sidebar() {
             </div>
           </div>
           {/* <SidebarItem
-            href="/my-account"
+            href="/my-report"
             icon="Users"
             label="自アカウント分析"
-            active={pathname.startsWith('/my-account')}
+            active={pathname.startsWith('/my-report')}
           /> */}
           <SidebarItem
             href="/transcription"

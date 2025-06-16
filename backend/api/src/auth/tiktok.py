@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import secrets
 
-from ..models.tiktok import TikTokUserConnection
+from ..my_report.models import TikTokUserConnection
 from .router import get_current_user
 
 router = APIRouter(prefix="/auth/tiktok", tags=["auth"])
@@ -92,10 +92,10 @@ async def tiktok_auth_callback(
     # エラーチェック
     if error or not code:
         error_msg = error_description or "認証が拒否されました"
-        return RedirectResponse(url=f"{BASE_URL}/my-account?error={error_msg}")
+        return RedirectResponse(url=f"{BASE_URL}/my-report?error={error_msg}")
     
     # 成功した場合はフロントエンドにリダイレクト（コードを含める）
-    return RedirectResponse(url=f"{BASE_URL}/my-account?code={code}&tiktok_connected=true")
+    return RedirectResponse(url=f"{BASE_URL}/my-report?code={code}&tiktok_connected=true")
 
 @router.post("/disconnect")
 async def disconnect_tiktok(user = Depends(get_current_user)):

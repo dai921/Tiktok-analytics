@@ -787,7 +787,7 @@ export default function MyAccountPage() {
                         : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                     }`}
                   >
-                    期間内再生増加数
+                    再生増加数
                     {sortField === 'viewGrowth' && (
                       <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
                     )}
@@ -829,7 +829,7 @@ export default function MyAccountPage() {
                       <th className="px-6 py-4 text-left">サムネイル</th>
                       <th className="px-6 py-4 text-left">タイトル</th>
                       <th className="px-6 py-4 text-right">再生回数</th>
-                      <th className="px-6 py-4 text-right">期間内再生増加数</th>
+                      <th className="px-6 py-4 text-right">再生増加数</th>
                       <th className="px-6 py-4 text-right">いいね数</th>
                       <th className="px-6 py-4 text-right">コメント数</th>
                       <th className="px-6 py-4 text-right">シェア数</th>
@@ -837,20 +837,9 @@ export default function MyAccountPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {getSortedVideos().map((video, index) => {
-                      // 期間内の増加率を計算（視覚効果用）
-                      const growthRate = video.viewGrowth / video.viewCount;
-                      let growthClass = 'text-gray-400'; // デフォルト
-                      let growthIcon = '';
-                      
-                      if (growthRate > 0.5) {
-                        growthClass = 'text-green-400 font-medium';
-                        growthIcon = '🔥'; // 急上昇
-                      } else if (growthRate > 0.2) {
-                        growthClass = 'text-green-500';
-                        growthIcon = '↑'; // 上昇
-                      } else if (growthRate < 0.05) {
-                        growthClass = 'text-gray-500';
-                      }
+                      // 伸び率による視覚効果は一律で緑色の矢印に統一
+                      const growthClass = 'text-green-500';
+                      const growthIcon = '↑';
 
                       // 背景色を交互に変える
                       const rowBgClass = index % 2 === 0 ? 'bg-[#1a1a1a]' : 'bg-[#242424]';
