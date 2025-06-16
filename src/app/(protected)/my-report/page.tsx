@@ -500,6 +500,21 @@ export default function MyAccountPage() {
     return `${start} 〜 ${end}`;
   };
 
+  // 1. ソート対象の拡張とプルダウン化
+  const sortOptions = [
+    { value: 'viewGrowth', label: '再生増加数' },
+    { value: 'viewCount', label: '総再生回数' },
+    { value: 'likeGrowth', label: 'いいね増加数' },
+    { value: 'commentGrowth', label: 'コメント増加数' },
+    { value: 'shareGrowth', label: 'シェア増加数' },
+    { value: 'createTime', label: '投稿日' },
+  ];
+
+  const handleSortSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSortField(e.target.value as typeof sortField);
+    setSortDirection('desc'); // プルダウン選択時は降順にリセット
+  };
+
   // ソート関数
   const sortVideos = (videos: TikTokVideo[], field: 'viewCount' | 'viewGrowth' | 'createTime', direction: 'asc' | 'desc') => {
     return [...videos].sort((a, b) => {
@@ -513,18 +528,6 @@ export default function MyAccountPage() {
           : new Date(a.createTime).getTime() - new Date(b.createTime).getTime();
       }
     });
-  };
-
-  // ソート切り替えハンドラー
-  const handleSortChange = (field: 'viewCount' | 'viewGrowth' | 'createTime') => {
-    if (field === sortField) {
-      // 同じフィールドをクリックした場合、ソート方向を切り替え
-      setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
-    } else {
-      // 違うフィールドをクリックした場合、そのフィールドで降順にソート
-      setSortField(field);
-      setSortDirection('desc');
-    }
   };
 
   // 選択された期間に応じてソートされた動画を取得
@@ -784,66 +787,42 @@ export default function MyAccountPage() {
                     {formatDateRange()}
                   </span>
                 </h2>
-                
-                <div className="text-sm text-gray-400 mt-2 sm:mt-0">
+                <div className="text-sm text-gray-400 mt-2 sm:mt-0 flex items-center">
                   ソート: 
-                  <button 
-                    onClick={() => handleSortChange('viewGrowth')}
-                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                      sortField === 'viewGrowth' 
-                        ? 'bg-[#FE2C55] text-white' 
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
+                  <select
+                    value={sortField}
+                    onChange={handleSortSelect}
+                    className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
                   >
-                    再生増加数
-                    {sortField === 'viewGrowth' && (
-                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => handleSortChange('viewCount')}
-                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                      sortField === 'viewCount' 
-                        ? 'bg-[#FE2C55] text-white' 
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
+                    {sortOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
+                    className="ml-2 px-2 py-1 rounded-md bg-gray-700 text-white text-xs border border-gray-600"
+                    title="ソート方向切替"
                   >
-                    総再生回数
-                    {sortField === 'viewCount' && (
-                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => handleSortChange('createTime')}
-                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                      sortField === 'createTime' 
-                        ? 'bg-[#FE2C55] text-white' 
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
-                  >
-                    投稿日
-                    {sortField === 'createTime' && (
-                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                    )}
+                    {sortDirection === 'desc' ? '↓' : '↑'}
                   </button>
                 </div>
               </div>
               
               <div className="overflow-x-auto rounded-lg border border-gray-800">
-                <table className="w-full text-sm">
-                  <thead className="text-xs bg-gray-900 text-gray-300">
+                <table className="w-full min-w-[900px] text-sm">
+                  <thead className="text-[11px] bg-gray-900 text-gray-300">
                     <tr>
-                      <th className="px-6 py-4 text-left">投稿日</th>
-                      <th className="px-6 py-4 text-left">サムネイル</th>
-                      <th className="px-6 py-4 text-left">タイトル</th>
-                      <th className="px-6 py-4 text-right">再生回数</th>
-                      <th className="px-6 py-4 text-right">再生増加数</th>
-                      <th className="px-6 py-4 text-right">いいね数</th>
-                      <th className="px-6 py-4 text-right">いいね増加数</th>
-                      <th className="px-6 py-4 text-right">コメント数</th>
-                      <th className="px-6 py-4 text-right">コメント増加数</th>
-                      <th className="px-6 py-4 text-right">シェア数</th>
-                      <th className="px-6 py-4 text-right">シェア増加数</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">投稿日</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">サムネイル</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">タイトル</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">再生回数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">再生増加数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">いいね数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">いいね増加数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">コメント数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">コメント増加数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">シェア数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">シェア増加数</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
