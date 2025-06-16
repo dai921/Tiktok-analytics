@@ -316,8 +316,11 @@ async def get_tiktok_videos(
             MAX(latest.play_cnt) as view_count,
             COALESCE(CAST(MAX(latest.play_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.play_cnt, 0)) AS SIGNED), 0) as view_growth,
             MAX(latest.like_cnt) as like_count,
+            COALESCE(CAST(MAX(latest.like_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.like_cnt, 0)) AS SIGNED), 0) as like_growth,
             MAX(latest.comment_cnt) as comment_count,
+            COALESCE(CAST(MAX(latest.comment_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.comment_cnt, 0)) AS SIGNED), 0) as comment_growth,
             MAX(latest.share_cnt) as share_count,
+            COALESCE(CAST(MAX(latest.share_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.share_cnt, 0)) AS SIGNED), 0) as share_growth,
             v.thumbnail_url
         FROM 
             users_videos v
@@ -363,6 +366,13 @@ async def get_tiktok_videos(
         
         videos = []
         for row in results:
+            thumbnail_url = row['thumbnail_url']
+            if thumbnail_url and isinstance(thumbnail_url, str) and thumbnail_url.startswith('gs://'):
+                parts = thumbnail_url.split('/')
+                bucket = parts[2]
+                object_path = '/'.join(parts[3:])
+                thumbnail_url = f"https://storage.googleapis.com/{bucket}/{object_path}"
+
             videos.append(TikTokVideo(
                 id=row['id'],
                 title=row['title'] or "タイトルなし",
@@ -370,9 +380,12 @@ async def get_tiktok_videos(
                 viewCount=int(row['view_count']) if row['view_count'] else 0,
                 viewGrowth=int(row['view_growth']) if row['view_growth'] else 0,
                 likeCount=int(row['like_count']) if row['like_count'] else 0,
+                likeGrowth=int(row['like_growth']) if row['like_growth'] else 0,
                 commentCount=int(row['comment_count']) if row['comment_count'] else 0,
+                commentGrowth=int(row['comment_growth']) if row['comment_growth'] else 0,
                 shareCount=int(row['share_count']) if row['share_count'] else 0,
-                thumbnailUrl=row['thumbnail_url'],
+                shareGrowth=int(row['share_growth']) if row['share_growth'] else 0,
+                thumbnailUrl=thumbnail_url or "",
                 videoUrl=f"https://www.tiktok.com/@user/video/{row['id']}"  # 仮のURL
             ))
         

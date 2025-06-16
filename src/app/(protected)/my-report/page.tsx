@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TikTokStats, TikTokVideo } from "@/types/my-account";
+import { TikTokStats, TikTokVideo } from "@/types/my-report";
 import Image from "next/image";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 
@@ -219,24 +219,32 @@ export default function MyAccountPage() {
       const videosData = await videosResponse.json();
       console.log('[DEBUG] 取得した動画データ:', videosData);
       
+      // thumbnailUrlをオブジェクト型に変換
+      const videosWithObjThumbnail = videosData.map((video: any) => ({
+        ...video,
+        thumbnailUrl: video.thumbnailUrl
+          ? { url: video.thumbnailUrl, valueType: 'IMAGE' }
+          : null,
+      }));
+      
       // 統計データを計算・拡張
-      if (statsData && videosData && videosData.length > 0) {
+      if (statsData && videosWithObjThumbnail && videosWithObjThumbnail.length > 0) {
         // 総再生数を計算
-        const totalPlayCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
+        const totalPlayCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
         // 総コメント数を計算
-        const commentCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
+        const commentCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
         // 総シェア数を計算（保存数として代用）
-        const saveCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
+        const saveCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
         
         // statsDataに拡張データを追加
         statsData.totalPlayCount = totalPlayCount;
         statsData.commentCount = commentCount;
         statsData.saveCount = saveCount;
-        statsData.videosCount = videosData.length;
+        statsData.videosCount = videosWithObjThumbnail.length;
       }
       
       setStats(statsData);
-      setVideos(videosData);
+      setVideos(videosWithObjThumbnail);
       
     } catch (err) {
       console.error('[ERROR] APIデータ取得エラー:', err);
@@ -831,12 +839,18 @@ export default function MyAccountPage() {
                       <th className="px-6 py-4 text-right">再生回数</th>
                       <th className="px-6 py-4 text-right">再生増加数</th>
                       <th className="px-6 py-4 text-right">いいね数</th>
+                      <th className="px-6 py-4 text-right">いいね増加数</th>
                       <th className="px-6 py-4 text-right">コメント数</th>
+                      <th className="px-6 py-4 text-right">コメント増加数</th>
                       <th className="px-6 py-4 text-right">シェア数</th>
+                      <th className="px-6 py-4 text-right">シェア増加数</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {getSortedVideos().map((video, index) => {
+                      // ここでログ出力
+                      console.log('thumbnailUrl.url:', video.thumbnailUrl?.url);
+
                       // 伸び率による視覚効果は一律で緑色の矢印に統一
                       const growthClass = 'text-green-500';
                       const growthIcon = '↑';
@@ -852,7 +866,7 @@ export default function MyAccountPage() {
                           <td className="px-6 py-4">
                             {video.thumbnailUrl ? (
                               <Image
-                                src={video.thumbnailUrl}
+                                src={video.thumbnailUrl.url ?? ""}
                                 alt={video.title}
                                 width={80}
                                 height={45}
@@ -878,11 +892,20 @@ export default function MyAccountPage() {
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.likeCount)}
                           </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-green-500">
+                            {formatNumber(video.likeGrowth)} {growthIcon}
+                          </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.commentCount)}
                           </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-green-500">
+                            {formatNumber(video.commentGrowth)} {growthIcon}
+                          </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.shareCount)}
+                          </td>
+                          <td className="px-6 py-4 text-right whitespace-nowrap text-green-500">
+                            {formatNumber(video.shareGrowth)} {growthIcon}
                           </td>
                         </tr>
                       );
