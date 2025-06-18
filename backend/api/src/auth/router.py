@@ -431,7 +431,7 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
     cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
     
     # フロントエンドへリダイレクト
-    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-account?tiktok_connected=true"})
+    response = Response(status_code=status.HTTP_302_FOUND, headers={"Location": "/app/my-report?tiktok_connected=true"})
     response.set_cookie(
         key="session", 
         value=cookie, 

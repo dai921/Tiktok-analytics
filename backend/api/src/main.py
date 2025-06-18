@@ -26,7 +26,7 @@ from src.auth.utils import update_session_activity
 from sqlalchemy import text
 
 from src.auth.tiktok import router as auth_tiktok_router
-from src.tiktok.routes import router as tiktok_router
+from src.my_report.routes import router as tiktok_router
 from src.transcription.router import router as transcription_router
 from src.transcription.webhook import router as webhook_router
 

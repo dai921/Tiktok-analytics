@@ -46,12 +46,30 @@ export interface TikTokStats {
     viewGrowth: number;
     /** いいね数 */
     likeCount: number;
+    /** いいね増加数 */
+    likeGrowth: number;
     /** コメント数 */
     commentCount: number;
+    /** コメント増加数 */
+    commentGrowth: number;
     /** シェア数 */
     shareCount: number;
-    /** サムネイルURL */
-    thumbnailUrl?: string;
+    /** シェア増加数 */
+    shareGrowth: number;
+    /** サムネイルURL（オブジェクト型に変更） */
+    thumbnailUrl?: {
+      valueType: 'IMAGE';
+      url: string;
+    } | null;
     /** 動画URL */
     videoUrl?: string;
+    /** 視聴率データ */
+    viewRates?: {
+      /** 2秒視聴率 (%) */
+      twoSecondRate?: number;
+      /** 6秒視聴率 (%) */
+      sixSecondRate?: number;
+      /** フル視聴率 (%) */
+      fullViewRate?: number;
+    };
   } 

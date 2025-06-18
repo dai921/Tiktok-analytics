@@ -17,26 +17,26 @@ router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
 # ビデオウォッチリストのモデル
 class VideoWatchlistItem(BaseModel):
     video_id: str  # ビデオのURLを保存
-    watchlist_name: Optional[str] = None
+    video_watchlist_name: Optional[str] = None
 
 class VideoWatchlistResponse(BaseModel):
-    watchlist_id: int
+    id: int
     email: str
     video_id: str  # ビデオのURL
-    watchlist_name: Optional[str] = None
+    video_watchlist_name: Optional[str] = None
     created_at: str
     updated_at: str
 
 # アカウントブックマークのモデル
 class AccountBookmarkItem(BaseModel):
     account_name: str
-    bookmark_name: Optional[str] = None
+    account_watchlist_name: Optional[str] = None
 
 class AccountBookmarkResponse(BaseModel):
-    bookmark_id: int
+    id: int
     email: str
     account_name: str
-    bookmark_name: Optional[str] = None
+    account_watchlist_name: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -62,44 +62,44 @@ async def add_video_to_watchlist(
             update_query = text(
                 """
                 UPDATE video_watchlists 
-                SET watchlist_name = :watchlist_name, updated_at = NOW()
-                WHERE watchlist_id = :watchlist_id
+                SET video_watchlist_name = :video_watchlist_name, updated_at = NOW()
+                WHERE id = :id
                 """
             )
             conn.execute(update_query, {
-                "watchlist_name": video_item.watchlist_name, 
-                "watchlist_id": existing["watchlist_id"]
+                "video_watchlist_name": video_item.video_watchlist_name, 
+                "id": existing["id"]
             })
-            watchlist_id = existing["watchlist_id"]
+            id = existing["id"]
         else:
             # 新規登録
             insert_query = text(
                 """
-                INSERT INTO video_watchlists (email, video_id, watchlist_name)
-                VALUES (:email, :video_id, :watchlist_name)
+                INSERT INTO video_watchlists (email, video_id, video_watchlist_name)
+                VALUES (:email, :video_id, :video_watchlist_name)
                 """
             )
             result = conn.execute(insert_query, {
                 "email": current_user.email, 
                 "video_id": video_item.video_id, 
-                "watchlist_name": video_item.watchlist_name
+                "video_watchlist_name": video_item.video_watchlist_name
             })
-            watchlist_id = result.lastrowid
+            id = result.lastrowid
         
         conn.commit()
         
         # 登録された情報を取得
         select_query = text(
-            "SELECT * FROM video_watchlists WHERE watchlist_id = :watchlist_id"
+            "SELECT * FROM video_watchlists WHERE id = :id"
         )
-        result = conn.execute(select_query, {"watchlist_id": watchlist_id})
+        result = conn.execute(select_query, {"id": id})
         result_row = result.mappings().first()
         
         return {
-            "watchlist_id": result_row["watchlist_id"],
+            "id": result_row["id"],
             "email": result_row["email"],
             "video_id": result_row["video_id"],
-            "watchlist_name": result_row["watchlist_name"],
+            "video_watchlist_name": result_row["video_watchlist_name"],
             "created_at": result_row["created_at"].isoformat(),
             "updated_at": result_row["updated_at"].isoformat()
         }
@@ -172,10 +172,10 @@ async def get_video_watchlist(
         watchlist = []
         for item in results:
             watchlist.append({
-                "watchlist_id": item["watchlist_id"],
+                "id": item["id"],
                 "email": item["email"],
                 "video_id": item["video_id"],
-                "watchlist_name": item["watchlist_name"],
+                "video_watchlist_name": item["video_watchlist_name"],
                 "created_at": item["created_at"].isoformat(),
                 "updated_at": item["updated_at"].isoformat()
             })
@@ -233,7 +233,7 @@ async def get_video_watchlist_with_details(
         # ウォッチリストとビデオデータを結合して取得
         query = text("""
         SELECT 
-            vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
+            vw.id, vw.email, vw.video_id, vw.video_watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, 
             SUM(pch.play_count_increase) as play_count_increase,
             SUM(pch.likes_count_increase) as likes_count_increase,
@@ -256,7 +256,7 @@ async def get_video_watchlist_with_details(
             
         query = text(query.text + """
         GROUP BY 
-            vw.watchlist_id, vw.email, vw.video_id, vw.watchlist_name, vw.created_at, vw.updated_at,
+            vw.id, vw.email, vw.video_id, vw.video_watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at, fd.play_count, fd.account_name, fd.display_name, 
             fd.content_type, fd.likes_count, fd.comment_count, fd.save_count, fd.hashtags, fd.caption
         ORDER BY vw.updated_at DESC
@@ -302,10 +302,10 @@ async def get_video_watchlist_with_details(
             
             watchlist_with_details.append({
                 "watchlist": {
-                    "watchlist_id": item["watchlist_id"],
+                    "id": item["id"],
                     "email": item["email"],
                     "video_id": item["video_id"],
-                    "watchlist_name": item["watchlist_name"],
+                    "video_watchlist_name": item["video_watchlist_name"],
                     "created_at": item["created_at"].isoformat(),
                     "updated_at": item["updated_at"].isoformat()
                 },
@@ -490,7 +490,7 @@ async def add_account_to_bookmarks(
     try:
         # 同じアカウントが既に登録されているか確認
         check_query = text(
-            "SELECT * FROM account_bookmarks WHERE email = :email AND account_name = :account_name"
+            "SELECT * FROM account_watchlists WHERE email = :email AND account_name = :account_name"
         )
         result = conn.execute(check_query, {
             "email": current_user.email, 
@@ -502,45 +502,45 @@ async def add_account_to_bookmarks(
             # 既存の登録を更新
             update_query = text(
                 """
-                UPDATE account_bookmarks 
-                SET bookmark_name = :bookmark_name, updated_at = NOW()
-                WHERE bookmark_id = :bookmark_id
+                UPDATE account_watchlists 
+                SET account_watchlist_name = :account_watchlist_name, updated_at = NOW()
+                WHERE id = :id
                 """
             )
             conn.execute(update_query, {
-                "bookmark_name": account_item.bookmark_name, 
-                "bookmark_id": existing["bookmark_id"]
+                "account_watchlist_name": account_item.account_watchlist_name, 
+                "id": existing["id"]
             })
-            bookmark_id = existing["bookmark_id"]
+            id = existing["id"]
         else:
             # 新規登録
             insert_query = text(
                 """
-                INSERT INTO account_bookmarks (email, account_name, bookmark_name)
-                VALUES (:email, :account_name, :bookmark_name)
+                INSERT INTO account_watchlists (email, account_name, account_watchlist_name)
+                VALUES (:email, :account_name, :account_watchlist_name)
                 """
             )
             result = conn.execute(insert_query, {
                 "email": current_user.email, 
                 "account_name": account_item.account_name, 
-                "bookmark_name": account_item.bookmark_name
+                "account_watchlist_name": account_item.account_watchlist_name
             })
-            bookmark_id = result.lastrowid
+            id = result.lastrowid
         
         conn.commit()
         
         # 登録された情報を取得
         select_query = text(
-            "SELECT * FROM account_bookmarks WHERE bookmark_id = :bookmark_id"
+            "SELECT * FROM account_watchlists WHERE id = :id"
         )
-        result = conn.execute(select_query, {"bookmark_id": bookmark_id})
+        result = conn.execute(select_query, {"id": id})
         result_row = result.mappings().first()
         
         return {
-            "bookmark_id": result_row["bookmark_id"],
+            "id": result_row["id"],
             "email": result_row["email"],
             "account_name": result_row["account_name"],
-            "bookmark_name": result_row["bookmark_name"],
+            "account_watchlist_name": result_row["account_watchlist_name"],
             "created_at": result_row["created_at"].isoformat(),
             "updated_at": result_row["updated_at"].isoformat()
         }
@@ -566,7 +566,7 @@ async def remove_account_from_bookmarks(
     try:
         # アカウントが存在するか確認
         check_query = text(
-            "SELECT * FROM account_bookmarks WHERE email = :email AND account_name = :account_name"
+            "SELECT * FROM account_watchlists WHERE email = :email AND account_name = :account_name"
         )
         result = conn.execute(check_query, {"email": current_user.email, "account_name": account_name})
         if not result.first():
@@ -577,7 +577,7 @@ async def remove_account_from_bookmarks(
         
         # ブックマークから削除
         delete_query = text(
-            "DELETE FROM account_bookmarks WHERE email = :email AND account_name = :account_name"
+            "DELETE FROM account_watchlists WHERE email = :email AND account_name = :account_name"
         )
         conn.execute(delete_query, {"email": current_user.email, "account_name": account_name})
         
@@ -605,7 +605,7 @@ async def get_account_bookmarks(
     
     try:
         query = text(
-            "SELECT * FROM account_bookmarks WHERE email = :email ORDER BY updated_at DESC"
+            "SELECT * FROM account_watchlists WHERE email = :email ORDER BY updated_at DESC"
         )
         result = conn.execute(query, {"email": current_user.email})
         results = result.mappings().all()
@@ -613,10 +613,10 @@ async def get_account_bookmarks(
         bookmarks = []
         for item in results:
             bookmarks.append({
-                "bookmark_id": item["bookmark_id"],
+                "id": item["id"],
                 "email": item["email"],
                 "account_name": item["account_name"],
-                "bookmark_name": item["bookmark_name"],
+                "account_watchlist_name": item["account_watchlist_name"],
                 "created_at": item["created_at"].isoformat(),
                 "updated_at": item["updated_at"].isoformat()
             })
@@ -674,7 +674,7 @@ async def get_account_bookmarks_with_details(
         # アカウントブックマークとアカウント集計データを結合して取得
         query = text("""
         SELECT 
-            ab.bookmark_id, ab.email, ab.account_name, ab.bookmark_name, ab.created_at, ab.updated_at,
+            ab.id, ab.email, ab.account_name, ab.account_watchlist_name, ab.created_at, ab.updated_at,
             COUNT(DISTINCT fd.video_id) AS total_videos,
             SUM(fd.play_count) AS total_plays,
             SUM(pch.play_count_increase) AS total_play_increase,
@@ -683,7 +683,7 @@ async def get_account_bookmarks_with_details(
             SUM(pch.save_count_increase) AS total_saves_increase,
             MAX(fd.display_name) AS display_name,
             MAX(al.account_type) AS account_type
-        FROM account_bookmarks ab
+        FROM account_watchlists ab
         LEFT JOIN frontend_data fd ON ab.account_name = fd.account_name
         LEFT JOIN play_count_history pch ON fd.video_id = pch.video_id
         LEFT JOIN account_list al ON ab.account_name = al.favorite_user_username
@@ -698,7 +698,7 @@ async def get_account_bookmarks_with_details(
             params.update({"start_date": start_date, "end_date": end_date})
         
         query = text(query.text + """
-        GROUP BY ab.bookmark_id, ab.email, ab.account_name, ab.bookmark_name, ab.created_at, ab.updated_at
+        GROUP BY ab.id, ab.email, ab.account_name, ab.account_watchlist_name, ab.created_at, ab.updated_at
         ORDER BY ab.updated_at DESC
         """)
         
@@ -709,10 +709,10 @@ async def get_account_bookmarks_with_details(
         for item in results:
             bookmarks_with_details.append({
                 "bookmark": {
-                    "bookmark_id": item["bookmark_id"],
+                    "id": item["id"],
                     "email": item["email"],
                     "account_name": item["account_name"],
-                    "bookmark_name": item["bookmark_name"],
+                    "account_watchlist_name": item["account_watchlist_name"],
                     "created_at": item["created_at"].isoformat(),
                     "updated_at": item["updated_at"].isoformat()
                 },
@@ -787,7 +787,7 @@ async def get_account_trends(
         # ブックマークされているアカウント名を取得
         bookmark_query = text("""
         SELECT account_name 
-        FROM account_bookmarks 
+        FROM account_watchlists 
         WHERE email = :email
         """)
         

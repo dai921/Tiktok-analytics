@@ -50,6 +50,7 @@ steps:
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,CLOUD_STORAGE_BUCKET=tiktok-videos-storage,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+      - '--set-secrets=GEMINI_API_KEY=projects/tiktok-analytics-prod-451609/secrets/gemini-api-key/versions/latest'
 
   # product-scoring
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'

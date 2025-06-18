@@ -103,10 +103,10 @@ CREATE TABLE sort_settings (
 
 -- 動画ウォッチリストテーブル
 CREATE TABLE video_watchlists (
-  watchlist_id INT AUTO_INCREMENT PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   email VARCHAR(255) NOT NULL,
   video_id VARCHAR(255) NOT NULL,
-  watchlist_name VARCHAR(100),
+  video_watchlist_name VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,
@@ -116,11 +116,11 @@ CREATE TABLE video_watchlists (
 );
 
 -- アカウントブックマークテーブル
-CREATE TABLE account_bookmarks (
-  bookmark_id INT AUTO_INCREMENT PRIMARY KEY,
+CREATE TABLE account_watchlists (
+  id INT AUTO_INCREMENT PRIMARY KEY,
   email VARCHAR(255) NOT NULL,
   account_name VARCHAR(100) NOT NULL,
-  bookmark_name VARCHAR(100),
+  account_watchlist_name VARCHAR(100),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (email) REFERENCES users(email) ON DELETE CASCADE,

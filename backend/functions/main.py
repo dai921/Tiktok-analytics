@@ -4,7 +4,6 @@ from core.config import initialize_config
 # 各モジュールからエントリーポイント関数をインポート
 
 # データ同期関連
-from services.data_sync.category_analytics_aggregator import process_category_statistics as category_analytics_function
 from services.data_sync.frontend_data_update.frontend_data_update import process_pubsub_message as frontend_update_job
 from services.data_sync.update_needs_flags import update_needs_flags as update_needs_flags_function
 from services.data_sync.summary_table_sync import update_product_daily_summary as summary_table_sync_function

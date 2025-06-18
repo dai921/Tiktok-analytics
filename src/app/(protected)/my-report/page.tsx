@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TikTokStats, TikTokVideo } from "@/types/my-account";
+import { TikTokStats, TikTokVideo } from "@/types/my-report";
 import Image from "next/image";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 
@@ -219,24 +219,32 @@ export default function MyAccountPage() {
       const videosData = await videosResponse.json();
       console.log('[DEBUG] 取得した動画データ:', videosData);
       
+      // thumbnailUrlをオブジェクト型に変換
+      const videosWithObjThumbnail = videosData.map((video: any) => ({
+        ...video,
+        thumbnailUrl: video.thumbnailUrl
+          ? { url: video.thumbnailUrl, valueType: 'IMAGE' }
+          : null,
+      }));
+      
       // 統計データを計算・拡張
-      if (statsData && videosData && videosData.length > 0) {
+      if (statsData && videosWithObjThumbnail && videosWithObjThumbnail.length > 0) {
         // 総再生数を計算
-        const totalPlayCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
+        const totalPlayCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
         // 総コメント数を計算
-        const commentCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
+        const commentCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
         // 総シェア数を計算（保存数として代用）
-        const saveCount = videosData.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
+        const saveCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
         
         // statsDataに拡張データを追加
         statsData.totalPlayCount = totalPlayCount;
         statsData.commentCount = commentCount;
         statsData.saveCount = saveCount;
-        statsData.videosCount = videosData.length;
+        statsData.videosCount = videosWithObjThumbnail.length;
       }
       
       setStats(statsData);
-      setVideos(videosData);
+      setVideos(videosWithObjThumbnail);
       
     } catch (err) {
       console.error('[ERROR] APIデータ取得エラー:', err);
@@ -492,6 +500,21 @@ export default function MyAccountPage() {
     return `${start} 〜 ${end}`;
   };
 
+  // 1. ソート対象の拡張とプルダウン化
+  const sortOptions = [
+    { value: 'viewGrowth', label: '再生増加数' },
+    { value: 'viewCount', label: '総再生回数' },
+    { value: 'likeGrowth', label: 'いいね増加数' },
+    { value: 'commentGrowth', label: 'コメント増加数' },
+    { value: 'shareGrowth', label: 'シェア増加数' },
+    { value: 'createTime', label: '投稿日' },
+  ];
+
+  const handleSortSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSortField(e.target.value as typeof sortField);
+    setSortDirection('desc'); // プルダウン選択時は降順にリセット
+  };
+
   // ソート関数
   const sortVideos = (videos: TikTokVideo[], field: 'viewCount' | 'viewGrowth' | 'createTime', direction: 'asc' | 'desc') => {
     return [...videos].sort((a, b) => {
@@ -507,18 +530,6 @@ export default function MyAccountPage() {
     });
   };
 
-  // ソート切り替えハンドラー
-  const handleSortChange = (field: 'viewCount' | 'viewGrowth' | 'createTime') => {
-    if (field === sortField) {
-      // 同じフィールドをクリックした場合、ソート方向を切り替え
-      setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
-    } else {
-      // 違うフィールドをクリックした場合、そのフィールドで降順にソート
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
-
   // 選択された期間に応じてソートされた動画を取得
   const getSortedVideos = () => {
     // ソートされた動画のリスト
@@ -528,6 +539,151 @@ export default function MyAccountPage() {
   // タブ切り替えハンドラー
   const handleTabChange = (tab: 'stats' | 'videos') => {
     setActiveTab(tab);
+  };
+
+  // モーダルの状態管理
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<TikTokVideo | null>(null);
+  const [viewRates, setViewRates] = useState({
+    twoSecondRate: 0,
+    sixSecondRate: 0,
+    fullViewRate: 0
+  });
+
+  // モーダルコンポーネント
+  const ViewRateModal = ({ isOpen, onClose, video, onSave }: {
+    isOpen: boolean;
+    onClose: () => void;
+    video: TikTokVideo | null;
+    onSave: (rates: { twoSecondRate: number; sixSecondRate: number; fullViewRate: number }) => void;
+  }) => {
+    if (!isOpen || !video) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-[#1a1a1a] rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-xl font-bold text-white mb-4">視聴率データの追加</h3>
+          <p className="text-gray-400 mb-4">{video.title}</p>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">2秒視聴率 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={viewRates.twoSecondRate}
+                onChange={(e) => setViewRates(prev => ({
+                  ...prev,
+                  twoSecondRate: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">6秒視聴率 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={viewRates.sixSecondRate}
+                onChange={(e) => setViewRates(prev => ({
+                  ...prev,
+                  sixSecondRate: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">フル視聴率 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={viewRates.fullViewRate}
+                onChange={(e) => setViewRates(prev => ({
+                  ...prev,
+                  fullViewRate: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700"
+              />
+            </div>
+          </div>
+          
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={() => {
+                onSave(viewRates);
+                onClose();
+              }}
+              className="px-4 py-2 bg-[#FE2C55] text-white rounded-md hover:bg-[#FE2C55]/90 transition-colors"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 動画データの行をクリックしたときの処理
+  const handleVideoRowClick = (video: TikTokVideo) => {
+    setSelectedVideo(video);
+    setViewRates({
+      twoSecondRate: video.viewRates?.twoSecondRate || 0,
+      sixSecondRate: video.viewRates?.sixSecondRate || 0,
+      fullViewRate: video.viewRates?.fullViewRate || 0
+    });
+    setIsModalOpen(true);
+  };
+
+  // 視聴率データの保存処理
+  const handleSaveViewRates = async (rates: { twoSecondRate: number; sixSecondRate: number; fullViewRate: number }) => {
+    if (!selectedVideo) return;
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+
+      // APIエンドポイントにデータを送信
+      const response = await fetch(`${API_BASE_URL}/api/tiktok/videos/${selectedVideo.id}/view-rates`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(rates)
+      });
+
+      if (!response.ok) {
+        throw new Error('視聴率データの保存に失敗しました');
+      }
+
+      // 成功したら、ローカルの動画データを更新
+      setVideos(prevVideos => prevVideos.map(video => 
+        video.id === selectedVideo.id
+          ? { ...video, viewRates: rates }
+          : video
+      ));
+
+    } catch (err) {
+      console.error('[ERROR] 視聴率データ保存エラー:', err);
+      setError(err instanceof Error ? err.message : '視聴率データの保存に失敗しました');
+    }
   };
 
   /** ---------- 以降 JSX ---------- */
@@ -776,94 +932,69 @@ export default function MyAccountPage() {
                     {formatDateRange()}
                   </span>
                 </h2>
-                
-                <div className="text-sm text-gray-400 mt-2 sm:mt-0">
+                <div className="text-sm text-gray-400 mt-2 sm:mt-0 flex items-center">
                   ソート: 
-                  <button 
-                    onClick={() => handleSortChange('viewGrowth')}
-                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                      sortField === 'viewGrowth' 
-                        ? 'bg-[#FE2C55] text-white' 
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
+                  <select
+                    value={sortField}
+                    onChange={handleSortSelect}
+                    className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
                   >
-                    期間内再生増加数
-                    {sortField === 'viewGrowth' && (
-                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => handleSortChange('viewCount')}
-                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                      sortField === 'viewCount' 
-                        ? 'bg-[#FE2C55] text-white' 
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
+                    {sortOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
+                    className="ml-2 px-2 py-1 rounded-md bg-gray-700 text-white text-xs border border-gray-600"
+                    title="ソート方向切替"
                   >
-                    総再生回数
-                    {sortField === 'viewCount' && (
-                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                    )}
-                  </button>
-                  <button 
-                    onClick={() => handleSortChange('createTime')}
-                    className={`ml-2 px-3 py-1 rounded-md transition-colors ${
-                      sortField === 'createTime' 
-                        ? 'bg-[#FE2C55] text-white' 
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
-                  >
-                    投稿日
-                    {sortField === 'createTime' && (
-                      <span className="ml-1">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                    )}
+                    {sortDirection === 'desc' ? '↓' : '↑'}
                   </button>
                 </div>
               </div>
               
               <div className="overflow-x-auto rounded-lg border border-gray-800">
-                <table className="w-full text-sm">
-                  <thead className="text-xs bg-gray-900 text-gray-300">
+                <table className="w-full min-w-[900px] text-sm">
+                  <thead className="text-[11px] bg-gray-900 text-gray-300">
                     <tr>
-                      <th className="px-6 py-4 text-left">投稿日</th>
-                      <th className="px-6 py-4 text-left">サムネイル</th>
-                      <th className="px-6 py-4 text-left">タイトル</th>
-                      <th className="px-6 py-4 text-right">再生回数</th>
-                      <th className="px-6 py-4 text-right">期間内再生増加数</th>
-                      <th className="px-6 py-4 text-right">いいね数</th>
-                      <th className="px-6 py-4 text-right">コメント数</th>
-                      <th className="px-6 py-4 text-right">シェア数</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">投稿日</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">サムネイル</th>
+                      <th className="px-6 py-4 text-left whitespace-nowrap">タイトル</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">再生回数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">再生増加数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">いいね数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">いいね増加数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">コメント数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">コメント増加数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">シェア数</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">シェア増加数</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {getSortedVideos().map((video, index) => {
-                      // 期間内の増加率を計算（視覚効果用）
-                      const growthRate = video.viewGrowth / video.viewCount;
-                      let growthClass = 'text-gray-400'; // デフォルト
-                      let growthIcon = '';
-                      
-                      if (growthRate > 0.5) {
-                        growthClass = 'text-green-400 font-medium';
-                        growthIcon = '🔥'; // 急上昇
-                      } else if (growthRate > 0.2) {
-                        growthClass = 'text-green-500';
-                        growthIcon = '↑'; // 上昇
-                      } else if (growthRate < 0.05) {
-                        growthClass = 'text-gray-500';
-                      }
+                      // ここでログ出力
+                      console.log('thumbnailUrl.url:', video.thumbnailUrl?.url);
+
+                      // 伸び率による視覚効果は一律で緑色の矢印に統一
+                      const growthClass = 'text-green-500';
+                      const growthIcon = '↑';
 
                       // 背景色を交互に変える
                       const rowBgClass = index % 2 === 0 ? 'bg-[#1a1a1a]' : 'bg-[#242424]';
                       
                       return (
-                        <tr key={video.id} className={`${rowBgClass} hover:bg-gray-800 transition-colors`}>
+                        <tr 
+                          key={video.id} 
+                          className={`${rowBgClass} hover:bg-gray-800 transition-colors cursor-pointer`}
+                          onClick={() => handleVideoRowClick(video)}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap text-gray-300">
                             {formatDate(video.createTime)}
                           </td>
                           <td className="px-6 py-4">
                             {video.thumbnailUrl ? (
                               <Image
-                                src={video.thumbnailUrl}
+                                src={video.thumbnailUrl.url ?? ""}
                                 alt={video.title}
                                 width={80}
                                 height={45}
@@ -883,17 +1014,30 @@ export default function MyAccountPage() {
                           <td className="px-6 py-4 text-right whitespace-nowrap text-white">
                             {formatNumber(video.viewCount)}
                           </td>
-                          <td className={`px-6 py-4 text-right whitespace-nowrap ${growthClass}`}>
-                            {formatNumber(video.viewGrowth)} {growthIcon}
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.viewGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.viewGrowth)}
+                            {video.viewGrowth >= 1 && ' ↑'}
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.likeCount)}
                           </td>
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.likeGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.likeGrowth)}
+                            {video.likeGrowth >= 1 && ' ↑'}
+                          </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.commentCount)}
                           </td>
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.commentGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.commentGrowth)}
+                            {video.commentGrowth >= 1 && ' ↑'}
+                          </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap text-gray-300">
                             {formatNumber(video.shareCount)}
+                          </td>
+                          <td className={`px-6 py-4 text-right whitespace-nowrap ${video.shareGrowth >= 1 ? 'text-green-500' : 'text-gray-300'}`}>
+                            {formatNumber(video.shareGrowth)}
+                            {video.shareGrowth >= 1 && ' ↑'}
                           </td>
                         </tr>
                       );
@@ -910,6 +1054,14 @@ export default function MyAccountPage() {
           )}
         </>
       )}
+
+      {/* モーダルコンポーネント */}
+      <ViewRateModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        video={selectedVideo}
+        onSave={handleSaveViewRates}
+      />
     </div>
   );
 }

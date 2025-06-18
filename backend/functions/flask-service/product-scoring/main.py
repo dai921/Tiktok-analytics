@@ -218,19 +218,14 @@ def update_product_in_db(video_id: str, product: str) -> None:
     video_masterテーブルのproductカラムをUPDATEする
     """
     try:
-        # 現在の値を取得
-        current_query = "SELECT product FROM video_master WHERE video_id = %s"
-        current_result = execute_query(current_query, {"video_id": video_id})
-        current_product = current_result[0]['product'] if current_result else None
         
         # 更新を実行
         query = "UPDATE video_master SET product = %s WHERE video_id = %s"
-        params = {"product": product, "video_id": video_id}
+        params = (product, video_id)  # タプル形式に変更
         affected = execute_write_query(query, params)
         
         # 変更前後の値を表示
         print(f"video_id: {video_id}")
-        print(f"変更前のproduct: {current_product}")
         print(f"変更後のproduct: {product}")
         
         logger.info(f"DB更新: video_id={video_id}, product={product}, 更新件数={affected}")

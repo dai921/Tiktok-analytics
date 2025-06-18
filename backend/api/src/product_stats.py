@@ -187,7 +187,7 @@ async def get_product_stats(
                 v.product,
                 v.video_id,
                 fd.url,
-                v.thumbnail_url,
+                fd.thumbnail_url,
                 SUM(v.plays_increase) AS total_play_inc, 
                 SUM(v.likes_increase) AS total_like_inc,
                 MAX(v.post_time) AS created_at,
@@ -200,7 +200,7 @@ async def get_product_stats(
             WHERE v.fetch_date BETWEEN :start_date AND :end_date
               AND v.product IN ({', '.join(product_placeholders)})
               {genre_filter}
-            GROUP BY v.product, v.video_id, fd.url, v.thumbnail_url, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name
+            GROUP BY v.product, v.video_id, fd.url, fd.thumbnail_url, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name
             ORDER BY v.product, total_play_inc DESC  # 集計後のエイリアス名を使用
             """)
             

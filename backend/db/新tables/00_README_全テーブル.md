@@ -39,6 +39,11 @@
 - [41_products](./41_products.md) - 商品のマスターテーブル
 - [42_video_promotes_product](./42_video_promotes_product.md) - 「動画が広告している商品」という関係の中間テーブル
 
+### クローラー処理管理テーブル
+- [51_crawler_accounts](./51_crawler_accounts.md) - クローラー処理に使うTiktokアカウントの管理テーブル
+- [52_play_count_crawler_accounts](./52_play_count_crawler_accounts.md) - 再生数クローラー処理に使うTiktokアカウントの管理テーブル
+
+
 ### フロントエンド表示用非正規テーブル
 - [71_frontend_data](./71_frontend_data.md) - フロントエンド表示用データ
 - [72_play_count_history](./72_play_count_history.md) - 再生数履歴データ

@@ -2,7 +2,6 @@ import type { VideoData, TikTokVideo, AccountData, CategoryData, HashtagData } f
 import type { PaginatedResponse, FilterQuery, FilterType, ComparisonOperator } from '@/types/dashboard'
 
 // 環境変数からAPI設定を取得
-const useBackendApi = process.env.NEXT_PUBLIC_USE_BACKEND_API === 'true';
 const apiUrl = process.env.NEXT_PUBLIC_API_URL 
 
 /**

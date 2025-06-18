@@ -22,8 +22,11 @@ class TikTokVideo(BaseModel):
     viewCount: int = Field(..., description="視聴回数")
     viewGrowth: int = Field(..., description="期間内の視聴回数増加")
     likeCount: int = Field(..., description="いいね数")
+    likeGrowth: int = Field(..., description="期間内のいいね増加数")
     commentCount: int = Field(..., description="コメント数")
+    commentGrowth: int = Field(..., description="期間内のコメント増加数")
     shareCount: int = Field(..., description="シェア数")
+    shareGrowth: int = Field(..., description="期間内のシェア増加数")
     thumbnailUrl: Optional[str] = Field(None, description="サムネイルURL")
     videoUrl: Optional[str] = Field(None, description="動画URL")
 

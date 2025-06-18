@@ -42,7 +42,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             reset_query = """
             UPDATE video_master
-            SET playCountIncrease = 0
+            SET playCountIncrease = 0,
+                likesCountIncrease = 0,
+                commentCountIncrease = 0,
+                saveCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
             AND playCountIncrease < 1000
             AND play_count < 100000
@@ -59,7 +62,10 @@ def update_frontend_from_master() -> Dict[str, Any]:
             
             null_reset_query = """
             UPDATE video_master
-            SET playCountIncrease = 0
+            SET playCountIncrease = 0,
+                likesCountIncrease = 0,
+                commentCountIncrease = 0,
+                saveCountIncrease = 0
             WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 3 DAY)
             AND playCountIncrease = play_count
             AND is_new_video = 1
@@ -82,8 +88,11 @@ def update_frontend_from_master() -> Dict[str, Any]:
 
             sync_query = """
             UPDATE video_master
-            SET playCountIncrease = play_count
-            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+            SET playCountIncrease = play_count,
+                likesCountIncrease = likes_count,
+                commentCountIncrease = comment_count,
+                saveCountIncrease = save_count
+            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
             AND (playCountIncrease != play_count)
             """
             
@@ -92,17 +101,6 @@ def update_frontend_from_master() -> Dict[str, Any]:
             sync_execution_time = (datetime.now() - sync_start_time).total_seconds()
             print(f"playCountIncrease同期完了: {sync_affected_rows}件更新、実行時間: {sync_execution_time}秒")
         
-        # 基本クエリでデータ確認
-        debug_query = """
-        SELECT id, created_at, status
-        FROM video_master
-        LIMIT 5
-        """
-        
-        debug_data = execute_query(debug_query)
-        print(f"デバッグ: video_masterテーブルからのサンプルデータ ({len(debug_data)}件)")
-        for row in debug_data:
-            print(f"サンプル: id={row['id']}, created_at={row['created_at']} ({type(row['created_at']).__name__}), status={row['status']}")
         
         # パラメータ化されたクエリに変更
         min_date = '2023-12-01'

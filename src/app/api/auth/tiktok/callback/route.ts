@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   const stateParam = searchParams.get('state');
   
   if (!code) {
-    return NextResponse.redirect('/my-account?error=no_code');
+    return NextResponse.redirect('/my-report?error=no_code');
   }
   
   // 環境変数がundefinedの場合を考慮
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       
       // エラーがあってもユーザー体験のために成功扱いとしてリダイレクト
       console.log('APIエラーですが、モックデータ表示のためにsuccessとしてリダイレクトします');
-      return NextResponse.redirect(`${redirectBase}/my-account?tiktok_connected=true`);
+      return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
     }
     
     try {
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
       // ※セキュリティ上の考慮が必要
       
       // 絶対URLでリダイレクト
-      return NextResponse.redirect(`${redirectBase}/my-account?tiktok_connected=true`);
+      return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
     } catch (jsonError) {
       console.error('JSONパースエラー:', jsonError);
       
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
       }
       
       // JSONパースエラーがあっても、モックデータ表示のために成功扱いとしてリダイレクト
-      return NextResponse.redirect(`${redirectBase}/my-account?tiktok_connected=true`);
+      return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
     }
   } catch (error) {
     console.error('Token exchange error:', error);
@@ -87,6 +87,6 @@ export async function GET(request: Request) {
     }
     
     // エラーがあってもモックデータ表示のためにsuccessとしてリダイレクト
-    return NextResponse.redirect(`${redirectBase}/my-account?tiktok_connected=true`);
+    return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
   }
 }

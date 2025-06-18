@@ -6,7 +6,7 @@ import json
 from typing import List, Optional, Dict, Any
 import requests
 from ..auth.router import get_current_user
-from ..models.tiktok import TikTokStats, TikTokVideo, TikTokUserConnection
+from .models import TikTokStats, TikTokVideo, TikTokUserConnection
 import os
 from fastapi.responses import StreamingResponse
 from io import BytesIO
@@ -316,8 +316,11 @@ async def get_tiktok_videos(
             MAX(latest.play_cnt) as view_count,
             COALESCE(CAST(MAX(latest.play_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.play_cnt, 0)) AS SIGNED), 0) as view_growth,
             MAX(latest.like_cnt) as like_count,
+            COALESCE(CAST(MAX(latest.like_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.like_cnt, 0)) AS SIGNED), 0) as like_growth,
             MAX(latest.comment_cnt) as comment_count,
+            COALESCE(CAST(MAX(latest.comment_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.comment_cnt, 0)) AS SIGNED), 0) as comment_growth,
             MAX(latest.share_cnt) as share_count,
+            COALESCE(CAST(MAX(latest.share_cnt) AS SIGNED) - CAST(MAX(IFNULL(prev.share_cnt, 0)) AS SIGNED), 0) as share_growth,
             v.thumbnail_url
         FROM 
             users_videos v
@@ -363,6 +366,13 @@ async def get_tiktok_videos(
         
         videos = []
         for row in results:
+            thumbnail_url = row['thumbnail_url']
+            if thumbnail_url and isinstance(thumbnail_url, str) and thumbnail_url.startswith('gs://'):
+                parts = thumbnail_url.split('/')
+                bucket = parts[2]
+                object_path = '/'.join(parts[3:])
+                thumbnail_url = f"https://storage.googleapis.com/{bucket}/{object_path}"
+
             videos.append(TikTokVideo(
                 id=row['id'],
                 title=row['title'] or "タイトルなし",
@@ -370,9 +380,12 @@ async def get_tiktok_videos(
                 viewCount=int(row['view_count']) if row['view_count'] else 0,
                 viewGrowth=int(row['view_growth']) if row['view_growth'] else 0,
                 likeCount=int(row['like_count']) if row['like_count'] else 0,
+                likeGrowth=int(row['like_growth']) if row['like_growth'] else 0,
                 commentCount=int(row['comment_count']) if row['comment_count'] else 0,
+                commentGrowth=int(row['comment_growth']) if row['comment_growth'] else 0,
                 shareCount=int(row['share_count']) if row['share_count'] else 0,
-                thumbnailUrl=row['thumbnail_url'],
+                shareGrowth=int(row['share_growth']) if row['share_growth'] else 0,
+                thumbnailUrl=thumbnail_url or "",
                 videoUrl=f"https://www.tiktok.com/@user/video/{row['id']}"  # 仮のURL
             ))
         
@@ -490,5 +503,135 @@ async def generate_report(
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"レポート生成に失敗しました: {str(e)}")
+
+@router.post("/videos/{video_id}/view-rates")
+async def save_video_view_rates(
+    video_id: str,
+    view_rates: Dict[str, float] = Body(...),
+    user = Depends(get_current_user)
+):
+    """動画の視聴率データを手動で保存します"""
+    print(f"[DEBUG] save_video_view_rates 開始: video_id={video_id}")
+    
+    if not user:
+        print("[ERROR] ユーザー認証失敗")
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    
+    try:
+        # データベース接続
+        conn = get_db_connection()
+        
+        # 視聴率データを保存
+        query = text("""
+            INSERT INTO users_video_view_rates (
+                video_id,
+                user_number,
+                two_second_rate,
+                six_second_rate,
+                full_view_rate,
+                created_at,
+                updated_at
+            ) VALUES (
+                :video_id,
+                :user_number,
+                :two_second_rate,
+                :six_second_rate,
+                :full_view_rate,
+                NOW(),
+                NOW()
+            ) ON DUPLICATE KEY UPDATE
+                two_second_rate = VALUES(two_second_rate),
+                six_second_rate = VALUES(six_second_rate),
+                full_view_rate = VALUES(full_view_rate),
+                updated_at = NOW()
+        """)
+        
+        params = {
+            "video_id": video_id,
+            "user_number": user.user_number,
+            "two_second_rate": view_rates.get("twoSecondRate", 0),
+            "six_second_rate": view_rates.get("sixSecondRate", 0),
+            "full_view_rate": view_rates.get("fullViewRate", 0)
+        }
+        
+        try:
+            print(f"[DEBUG] 視聴率データ保存クエリ実行: {params}")
+            conn.execute(query, params)
+            conn.commit()
+            print("[DEBUG] 視聴率データ保存成功")
+        except Exception as e:
+            print(f"[ERROR] 視聴率データ保存エラー: {str(e)}")
+            conn.rollback()
+            raise
+        
+        conn.close()
+        
+        return {"success": True, "message": "視聴率データを保存しました"}
+        
+    except Exception as e:
+        print(f"[ERROR] save_video_view_rates 処理エラー: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"視聴率データの保存に失敗しました: {str(e)}")
+
+@router.get("/videos/{video_id}/view-rates")
+async def get_video_view_rates(
+    video_id: str,
+    user = Depends(get_current_user)
+):
+    """動画の視聴率データを取得します"""
+    print(f"[DEBUG] get_video_view_rates 開始: video_id={video_id}")
+    
+    if not user:
+        print("[ERROR] ユーザー認証失敗")
+        raise HTTPException(status_code=401, detail="認証が必要です")
+    
+    try:
+        # データベース接続
+        conn = get_db_connection()
+        
+        # 視聴率データを取得
+        query = text("""
+            SELECT 
+                two_second_rate,
+                six_second_rate,
+                full_view_rate,
+                updated_at
+            FROM users_video_view_rates
+            WHERE video_id = :video_id
+            AND user_number = :user_number
+        """)
+        
+        params = {
+            "video_id": video_id,
+            "user_number": user.user_number
+        }
+        
+        try:
+            print(f"[DEBUG] 視聴率データ取得クエリ実行: {params}")
+            result = conn.execute(query, params).mappings().first()
+            print(f"[DEBUG] 視聴率データ取得結果: {result}")
+        except Exception as e:
+            print(f"[ERROR] 視聴率データ取得エラー: {str(e)}")
+            raise
+        
+        conn.close()
+        
+        if not result:
+            return {
+                "twoSecondRate": None,
+                "sixSecondRate": None,
+                "fullViewRate": None,
+                "updatedAt": None
+            }
+        
+        return {
+            "twoSecondRate": float(result['two_second_rate']) if result['two_second_rate'] is not None else None,
+            "sixSecondRate": float(result['six_second_rate']) if result['six_second_rate'] is not None else None,
+            "fullViewRate": float(result['full_view_rate']) if result['full_view_rate'] is not None else None,
+            "updatedAt": result['updated_at'].isoformat() if result['updated_at'] else None
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] get_video_view_rates 処理エラー: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"視聴率データの取得に失敗しました: {str(e)}")
 
 
