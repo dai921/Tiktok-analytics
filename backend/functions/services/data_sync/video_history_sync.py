@@ -18,7 +18,7 @@ initialize_config()
 
 def sync_video_history(event, context):
     """
-    video_masterの情報をvideo_view_historyに同期し、10日間の集計を更新する
+    frontend_dataの情報をplay_count_historyに同期し、10日間の集計を更新する
     
     Args:
         event (dict): Pub/Subイベントデータ（メッセージ内容を含む）

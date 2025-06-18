@@ -462,6 +462,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             hashtags = VALUES(hashtags),
             category = VALUES(category),
             product = VALUES(product),
+            content_type = VALUES(content_type),
             account_type = VALUES(account_type),
             created_at = VALUES(created_at),
             likesCountIncrease = VALUES(likesCountIncrease),

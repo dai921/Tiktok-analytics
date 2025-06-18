@@ -26,6 +26,16 @@
 |-----------|-----------|-----------|------|
 | category_master | category_id -> category_id | 多対一 | 各キーワードは一つのカテゴリーに属する |
 
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| sync_category_spreadsheet | sync_category_spreadsheet | 205 | 既存の動画ジャンルキーワードリストを取得 |
+| sync_category_spreadsheet | sync_category_spreadsheet | 221~225 | 新たな動画ジャンルキーワードを挿入 |
+| sync_category_spreadsheet | sync_category_spreadsheet | 239~243 | 新たな動画ジャンルキーワード(商品名)を挿入 |
+| video_master_sync | analyze_title | 129~136 | 動画ジャンルとキーワードとのマッピング |
+| manual_sync_master | analyze_title | 126~133 | 動画ジャンルとキーワードとのマッピング |
+| update_all_categories | process_update_all_categories | 107~111 | 動画ジャンルのキーワードを取得 |
+| update_all_categories | analyze_title | 466~473 | 動画ジャンルのキーワードを取得 |
+
 ## 備考
 - TikTok動画の自動分類に使用されるキーワードを管理するテーブルです
 - is_productフラグが1の場合、そのキーワードは商品を表します

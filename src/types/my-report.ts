@@ -63,4 +63,13 @@ export interface TikTokStats {
     } | null;
     /** 動画URL */
     videoUrl?: string;
+    /** 視聴率データ */
+    viewRates?: {
+      /** 2秒視聴率 (%) */
+      twoSecondRate?: number;
+      /** 6秒視聴率 (%) */
+      sixSecondRate?: number;
+      /** フル視聴率 (%) */
+      fullViewRate?: number;
+    };
   } 

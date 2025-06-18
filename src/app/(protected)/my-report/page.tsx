@@ -541,6 +541,151 @@ export default function MyAccountPage() {
     setActiveTab(tab);
   };
 
+  // モーダルの状態管理
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<TikTokVideo | null>(null);
+  const [viewRates, setViewRates] = useState({
+    twoSecondRate: 0,
+    sixSecondRate: 0,
+    fullViewRate: 0
+  });
+
+  // モーダルコンポーネント
+  const ViewRateModal = ({ isOpen, onClose, video, onSave }: {
+    isOpen: boolean;
+    onClose: () => void;
+    video: TikTokVideo | null;
+    onSave: (rates: { twoSecondRate: number; sixSecondRate: number; fullViewRate: number }) => void;
+  }) => {
+    if (!isOpen || !video) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-[#1a1a1a] rounded-lg p-6 w-full max-w-md">
+          <h3 className="text-xl font-bold text-white mb-4">視聴率データの追加</h3>
+          <p className="text-gray-400 mb-4">{video.title}</p>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">2秒視聴率 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={viewRates.twoSecondRate}
+                onChange={(e) => setViewRates(prev => ({
+                  ...prev,
+                  twoSecondRate: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">6秒視聴率 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={viewRates.sixSecondRate}
+                onChange={(e) => setViewRates(prev => ({
+                  ...prev,
+                  sixSecondRate: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">フル視聴率 (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={viewRates.fullViewRate}
+                onChange={(e) => setViewRates(prev => ({
+                  ...prev,
+                  fullViewRate: parseFloat(e.target.value) || 0
+                }))}
+                className="w-full px-3 py-2 bg-gray-800 text-white rounded-md border border-gray-700"
+              />
+            </div>
+          </div>
+          
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={() => {
+                onSave(viewRates);
+                onClose();
+              }}
+              className="px-4 py-2 bg-[#FE2C55] text-white rounded-md hover:bg-[#FE2C55]/90 transition-colors"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 動画データの行をクリックしたときの処理
+  const handleVideoRowClick = (video: TikTokVideo) => {
+    setSelectedVideo(video);
+    setViewRates({
+      twoSecondRate: video.viewRates?.twoSecondRate || 0,
+      sixSecondRate: video.viewRates?.sixSecondRate || 0,
+      fullViewRate: video.viewRates?.fullViewRate || 0
+    });
+    setIsModalOpen(true);
+  };
+
+  // 視聴率データの保存処理
+  const handleSaveViewRates = async (rates: { twoSecondRate: number; sixSecondRate: number; fullViewRate: number }) => {
+    if (!selectedVideo) return;
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+
+      // APIエンドポイントにデータを送信
+      const response = await fetch(`${API_BASE_URL}/api/tiktok/videos/${selectedVideo.id}/view-rates`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(rates)
+      });
+
+      if (!response.ok) {
+        throw new Error('視聴率データの保存に失敗しました');
+      }
+
+      // 成功したら、ローカルの動画データを更新
+      setVideos(prevVideos => prevVideos.map(video => 
+        video.id === selectedVideo.id
+          ? { ...video, viewRates: rates }
+          : video
+      ));
+
+    } catch (err) {
+      console.error('[ERROR] 視聴率データ保存エラー:', err);
+      setError(err instanceof Error ? err.message : '視聴率データの保存に失敗しました');
+    }
+  };
+
   /** ---------- 以降 JSX ---------- */
   return (
     <div className="container mx-auto px-4 py-8">
@@ -838,7 +983,11 @@ export default function MyAccountPage() {
                       const rowBgClass = index % 2 === 0 ? 'bg-[#1a1a1a]' : 'bg-[#242424]';
                       
                       return (
-                        <tr key={video.id} className={`${rowBgClass} hover:bg-gray-800 transition-colors`}>
+                        <tr 
+                          key={video.id} 
+                          className={`${rowBgClass} hover:bg-gray-800 transition-colors cursor-pointer`}
+                          onClick={() => handleVideoRowClick(video)}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap text-gray-300">
                             {formatDate(video.createTime)}
                           </td>
@@ -905,6 +1054,14 @@ export default function MyAccountPage() {
           )}
         </>
       )}
+
+      {/* モーダルコンポーネント */}
+      <ViewRateModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        video={selectedVideo}
+        onSave={handleSaveViewRates}
+      />
     </div>
   );
 }
