@@ -10,6 +10,7 @@ export interface VideoStats {
   display_name: string;
   created_at: string;
   ten_days_increase: number;
+  play_count_increase_2d?: number;
 }
 
 export interface ProductStats {

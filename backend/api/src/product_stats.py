@@ -194,13 +194,14 @@ async def get_product_stats(
                 fd.play_count,
                 fd.ten_days_increase,
                 fd.account_name,
-                fd.display_name
+                fd.display_name,
+                fd.play_count_increase
             FROM product_daily_top100_videos v
             JOIN frontend_data fd ON fd.video_id = v.video_id
             WHERE v.fetch_date BETWEEN :start_date AND :end_date
               AND v.product IN ({', '.join(product_placeholders)})
               {genre_filter}
-            GROUP BY v.product, v.video_id, fd.url, fd.thumbnail_url, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name
+            GROUP BY v.product, v.video_id, fd.url, fd.thumbnail_url, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.play_count_increase
             ORDER BY v.product, total_play_inc DESC  # 集計後のエイリアス名を使用
             """)
             
@@ -230,7 +231,8 @@ async def get_product_stats(
                         "play_count": row.play_count,
                         "ten_days_increase": row.ten_days_increase,
                         "account_name": row.account_name,
-                        "display_name": row.display_name
+                        "display_name": row.display_name,
+                        "play_count_increase_2d": row.play_count_increase
                     })
                     video_count += 1
         
