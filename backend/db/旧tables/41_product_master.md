@@ -36,13 +36,19 @@
 | コード名 | 関数名 | 行数 | 説明 |
 |--------------|-------|------|------|
 | product-scoring | fetch_product_data_from_db | 35~42 | 商品判定に使うキーワードマッピングに使用 |
-
-| sync_category_spreadsheet | sync_category_spreadsheet | 172 | 既存の動画ジャンルリストを取得 |
-| sync_category_spreadsheet | sync_category_spreadsheet | 185~188 | 新たな動画ジャンルリストを挿入 |
-| video_master_sync | analyze_title | 129~136 | 動画ジャンルとキーワードとのマッピング |
-| manual_sync_master | analyze_title | 126~133 | 動画ジャンルとキーワードとのマッピング |
-| update_all_categories | process_update_all_categories | 107~111 | 動画ジャンルのキーワードを取得 |
-| update_all_categories | analyze_title | 466~473 | 動画ジャンルのキーワードを取得 |
+| product-scoring | get_product_category | 93~97 | 商品の動画ジャンルを取得する |
+| sync_category_spreadsheet | sync_category_spreadsheet | 266 | 既存の商品リストを取得 |
+| sync_category_spreadsheet | sync_category_spreadsheet | 277~281 | 新たな動画ジャンルリストを挿入 |
+| summary_table_sync | update_product_daily_summary | 50~79 | 商品ごとのDaily（更新日）集計 |
+| top100_videos_sync | update_product_top100_by_date | 85~89 | 商品ごとのDaily（更新日）TOP100動画集計 |
+| video_master_sync | analyze_title | 57~64 | 商品、動画ジャンル、キーワードの一括取得 |
+| video_master_sync | analyze_title | 108~112 | 商品名に対応する動画ジャンルに変更 |
+| manual_summary_sync | process_product_summary | 155~184 | 商品ごとのDaily（更新日）集計 |
+| manual_sync_master | analyze_title | 54~61 | 商品、動画ジャンル、キーワードの一括取得 |
+| manual_sync_master | analyze_title | 105~109 | 商品名に対応する動画ジャンルに変更 |
+| manual_top100_sync | process_product_top100 | 136~140 | 商品ごとのDaily（更新日）TOP100動画集計 |
+| update_all_categories | analyze_title | 395~402 | 商品、動画ジャンル、キーワードの一括取得 |
+| update_all_categories | analyze_title | 466~473 | 商品名に対応する動画ジャンルに変更 |
 
 ## 備考
 - TikTok動画に関連する商品のマスターテーブルです

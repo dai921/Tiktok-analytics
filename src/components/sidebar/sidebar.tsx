@@ -99,9 +99,10 @@ export function Sidebar() {
       <aside className={cn(
         "bg-black border-r border-gray-800 flex flex-col",
         "fixed md:static z-40 h-screen transition-all duration-300",
+        "w-64 flex-shrink-0",
         isMobile 
-          ? isMobileOpen ? "w-64 left-0" : "w-64 -left-64" 
-          : "w-64"
+          ? isMobileOpen ? "left-0" : "-left-64" 
+          : ""
       )}>
         <div className="p-4">
           <Logo className="w-full max-w-[200px]" variant="sidebar" />
@@ -185,6 +186,17 @@ export function Sidebar() {
             comingSoon={true}
           />
         </nav>
+
+        <div className="px-4 pb-2">
+          <a
+            href="https://docs.google.com/forms/d/e/1FAIpQLSdO_WCDxWCJfDlZMURIxVaH_X4B8iVRuBVYTYyfX26vJrRL_A/viewform"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full text-center bg-black text-white font-medium py-2 rounded-md hover:bg-gray-900 transition-colors text-xs border border-white"
+          >
+            アカウント追加の依頼はこちらから
+          </a>
+        </div>
 
         <div className="border-t border-gray-800 pt-4 pb-4">
           <SidebarItem
