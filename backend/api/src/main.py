@@ -382,17 +382,33 @@ async def get_videos(
                 print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
         # 商品フィルターの処理
-        if product:
-            # 商品名でフィルタリング
+        product_filters = []
+
+        # product_countパラメータがある場合は複数商品
+        product_count = request.query_params.get('product_count')
+        if product_count and product_count.isdigit():
+            count = int(product_count)
+            for i in range(count):
+                product_param = request.query_params.get(f'product_{i}')
+                if product_param:
+                    escaped_product = product_param.replace("_", r"\_").replace("%", r"\%")
+                    product_filters.append(f"product LIKE :product_{i}")
+                    params[f"product_{i}"] = f"%{escaped_product}%"
+
+        # 1つ以上のproductフィルターがある場合は、OR条件で結合
+        if product_filters:
+            where_clauses.append(f"({' OR '.join(product_filters)})")
+        # 従来の単一商品名処理
+        elif product:
             escaped_product = product.replace("_", r"\_").replace("%", r"\%")
-            # 商品名に対する部分一致検索
             where_clauses.append("product LIKE :product")
             params["product"] = f"%{escaped_product}%"
         
-        # アカウントタイプフィルターの処理（OR条件）
+        # アカウントタイプフィルターの処理
         account_type_filters = []
 
         # account_type_countパラメータがある場合は複数アカウントタイプ
+        account_type_count = request.query_params.get('account_type_count')
         if account_type_count and account_type_count.isdigit():
             count = int(account_type_count)
             for i in range(count):
@@ -401,11 +417,11 @@ async def get_videos(
                     escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
                     account_type_filters.append(f"account_type LIKE :account_type_{i}")
                     params[f"account_type_{i}"] = f"%{escaped_account}%"
-        
+
         # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
         if account_type_filters:
             where_clauses.append(f"({' OR '.join(account_type_filters)})")
-        # 単一アカウントタイプ処理
+        # 従来の単一アカウントタイプ処理
         elif account_type:
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_type LIKE :account_type")

@@ -30,11 +30,13 @@
 ### Backend API
 | コード名 | 関数名 | 行数 | 説明 |
 |--------------|-------|------|------|
-| main | get_trends_genres | 1179 | 商材トレンド分析ページのフィルタに使用するジャンル一覧を取得 |
+| main | get_products | 1391~1403 | フィルタに使用する商品名を取得 |
 
 ### その他Cloud Function
 | コード名 | 関数名 | 行数 | 説明 |
 |--------------|-------|------|------|
+| product-scoring | fetch_product_data_from_db | 35~42 | 商品判定に使うキーワードマッピングに使用 |
+
 | sync_category_spreadsheet | sync_category_spreadsheet | 172 | 既存の動画ジャンルリストを取得 |
 | sync_category_spreadsheet | sync_category_spreadsheet | 185~188 | 新たな動画ジャンルリストを挿入 |
 | video_master_sync | analyze_title | 129~136 | 動画ジャンルとキーワードとのマッピング |
