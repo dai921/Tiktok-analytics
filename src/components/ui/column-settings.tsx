@@ -55,16 +55,16 @@ export const ColumnSettings = ({
   const calcPos = (anchor: HTMLElement | null) => {
     if (!anchor) return { top: 0, left: 0 }
     const rect = anchor.getBoundingClientRect()
-    const xoffset = -100           // ↓ボタン下に 8px 余白
+    const popupWidth = 400 // ポップアップの幅(px)と合わせる
     const yoffset = 10
     return {
       top:  rect.bottom + window.scrollY + yoffset,
-      left: rect.left   + window.scrollX + xoffset
+      left: rect.right + window.scrollX - popupWidth
     }
   }
 
   /* ---------- 3. スクロール / リサイズ で再計算 ---------- */
-   /* ② useLayoutEffect ―― “開いた瞬間だけ” 計算 */
+   /* ② useLayoutEffect ―― "開いた瞬間だけ" 計算 */
    useLayoutEffect(() => {
     if (!isOpen) return
     // 1回だけ座標を決定
