@@ -29,6 +29,28 @@
 | video_id | frontend_data.video_id | 多対1の中間テーブル | 各動画は複数のユーザーにウォッチリストに追加される可能性がある |
 | email | users.email | 多対1の中間テーブル | 1ユーザーに対して複数の動画がウォッチリストに追加される可能性がある |
 
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| watchlist | add_video_to_watchlist | 54~56 | ビデオウォッチリストにデータ存在するかチェック |
+
+### Crawler処理
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| creare_tables | - | 23~50 | テーブルの作成クエリ |
+| repositories | get_favorite_users | 124~139 | クロール対象のアカウントを取得する |
+| repositories | get_favorite_users_by_play_count_crawler_id | 161~176 | 再生数のクロール対象のアカウントを取得する |
+| repositories | save_favorite_user_nickname | 198~203 | アカウントリストにニックネームを保存する |
+| repositories | update_favorite_user_last_crawled | 208~212 | 最終クロール時間をDBに更新する |
+| repositories | update_favorite_user_is_alive | 222~226 | アカウントが削除されていたらフラグ付けする |
+| repositories | update_favorite_user_is_new_account | 236~240 | 新規追加アカウントをクロールし終わったらフラグを削除する |
+
+### その他Cloud Function
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| sync_account_list | process_account_list | 197~211 | スプレッドシートのアカウントデータをDBに同期する |
+| video_master_sync | sync_video_data | 377~382 | アカウントタイプの取得 |
 ## 特徴
 
 1. **ウォッチリストに登録した動画の一元管理**

@@ -273,29 +273,34 @@ def normalize_video_title(title: str) -> str:
     # 「作成した」の長さ（4文字）を加えて、それ以降の部分を取得
     return title[first_marker_index + 4:].strip()
 
-def extract_hashtags(title: str) -> str:
+def extract_hashtags(title: str) -> Tuple[str, bool]:
     """
-    動画タイトルからハッシュタグを抽出し、カンマ区切りの文字列として返す
+    動画タイトルからハッシュタグを抽出し、PR判定も行う
     
     Args:
         title (str): 動画タイトル
         
     Returns:
-        str: カンマ区切りのハッシュタグ文字列（例: "ハッシュタグA,ハッシュタグB"）
+        Tuple[str, bool]: (カンマ区切りのハッシュタグ文字列, PR判定フラグ)
     """
     if not title:
-        return ""
+        return "", False
         
     # #で分割し、最初の要素（タイトル本文）を除外
     parts = title.split('#')
     if len(parts) <= 1:  # ハッシュタグがない場合
-        return ""
+        return "", False
         
     # ハッシュタグ部分を処理（先頭の#を除去し、空白を除去）
     hashtags = [tag.strip() for tag in parts[1:] if tag.strip()]
     
+    # PR判定（大文字小文字を区別しない）
+    is_pr = any(tag.lower() == 'pr' for tag in hashtags)
+    
     # カンマ区切りの文字列として結合
-    return ','.join(hashtags)
+    hashtags_str = ','.join(hashtags)
+    
+    return hashtags_str, is_pr
 
 def sync_video_data(video_data: Dict) -> Dict[str, str]:
     """
@@ -375,13 +380,14 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
 
         # アカウントタイプの取得
         account_type_query = """
-            SELECT account_type
+            SELECT account_type, parent_account_type
             FROM account_list
             WHERE favorite_user_username = %s
             LIMIT 1
         """
         account_type_results = execute_query(account_type_query, (username,))
         account_type = account_type_results[0]['account_type'] if account_type_results else None
+        parent_account_type = account_type_results[0]['parent_account_type'] if account_type_results else None
         
         # タイトル分析
         # ②加工前のvideo_titleのログ
@@ -401,8 +407,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # ニックネームのクリーニング
         cleaned_nickname = clean_nickname(video_data['user_nickname'])
 
-        # ハッシュタグの抽出
-        hashtags = extract_hashtags(video_data['video_title'])
+        # ハッシュタグの抽出とPR判定
+        hashtags, is_pr = extract_hashtags(video_data['video_title'])
 
         # post_timeを受け取った形式によって処理を変える
         if isinstance(video_data['post_time'], str):
@@ -424,11 +430,13 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'cover_image_url': thumbnail_url,
             'description': video_title,
             'hashtags': hashtags,
+            'is_pr': is_pr,
             'category': title_analysis['category'],
             'product': title_analysis['product_name'],
             'content_type': content_type,
             'created_at': jst_time,
             'account_type': account_type,
+            'parent_account_type': parent_account_type,
             'likesCountIncrease': likes_count_increase,
             'commentCountIncrease': comment_count_increase,
             'saveCountIncrease': save_count_increase,
@@ -442,15 +450,15 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         insert_query = """
         INSERT INTO video_master (
             video_id, url, username, display_name, cover_image_url,
-            description, hashtags, category, product, content_type,
-            account_type, created_at, likesCountIncrease,
+            description, hashtags, is_pr, category, product, content_type,
+            account_type, parent_account_type, created_at, likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
             likes_count, comment_count, save_count, front_needs_update
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
-            %(category)s, %(product)s, %(content_type)s,
-            %(account_type)s, %(created_at)s, %(likesCountIncrease)s,
+            %(is_pr)s, %(category)s, %(product)s, %(content_type)s,
+            %(account_type)s, %(parent_account_type)s, %(created_at)s, %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
             %(music_title)s, %(likes_count)s,
             %(comment_count)s, %(save_count)s, %(front_needs_update)s
@@ -460,10 +468,12 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             cover_image_url = VALUES(cover_image_url),
             description = VALUES(description),
             hashtags = VALUES(hashtags),
+            is_pr = VALUES(is_pr),
             category = VALUES(category),
             product = VALUES(product),
             content_type = VALUES(content_type),
             account_type = VALUES(account_type),
+            parent_account_type = VALUES(parent_account_type),
             created_at = VALUES(created_at),
             likesCountIncrease = VALUES(likesCountIncrease),
             commentCountIncrease = VALUES(commentCountIncrease),
@@ -475,37 +485,38 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         """
         execute_write_query(insert_query, insert_params)
 
-        # アフィリエイトアカウントで商品名が空またはNoneの場合、Pub/Subメッセージを送信
-        if (account_type and 
-            account_type.lower() == 'アフィリエイト' and 
-            (title_analysis['product_name'] is None or title_analysis['product_name'].strip() == '')):
-            try:
-                publisher = pubsub_v1.PublisherClient()
-                topic_path = publisher.topic_path(project_id, 'video-download-tasks')
+        # 商品名の対策ができたらコメントアウトを外す
+        # # アフィリエイトアカウントで商品名が空またはNoneの場合、Pub/Subメッセージを送信
+        # if (account_type and 
+        #     account_type.lower() == 'アフィリエイト' and 
+        #     (title_analysis['product_name'] is None or title_analysis['product_name'].strip() == '')):
+        #     try:
+        #         publisher = pubsub_v1.PublisherClient()
+        #         topic_path = publisher.topic_path(project_id, 'video-download-tasks')
                 
-                # メッセージデータの作成
-                message_data = {
-                    'video_id': video_id,
-                    'url': video_data['video_url'],
-                    'type': 'product_analysis'
-                }
+        #         # メッセージデータの作成
+        #         message_data = {
+        #             'video_id': video_id,
+        #             'url': video_data['video_url'],
+        #             'type': 'product_analysis'
+        #         }
                 
-                # メッセージの送信
-                future = publisher.publish(
-                    topic_path,
-                    json.dumps(message_data).encode('utf-8')
-                )
-                future.result()  # 送信完了を待機
+        #         # メッセージの送信
+        #         future = publisher.publish(
+        #             topic_path,
+        #             json.dumps(message_data).encode('utf-8')
+        #         )
+        #         future.result()  # 送信完了を待機
                 
-                logger.info(f"Product analysis task published for video {video_id}")
-            except Exception as e:
-                logger.error(f"Failed to publish product analysis task: {str(e)}")
-                # メッセージ送信の失敗は全体の処理を失敗させない
+        #         logger.info(f"Product analysis task published for video {video_id}")
+        #     except Exception as e:
+        #         logger.error(f"Failed to publish product analysis task: {str(e)}")
+        #         # メッセージ送信の失敗は全体の処理を失敗させない
 
-        return {
-            'status': 'success',
-            'message': f'Successfully processed video {video_id}'
-        }
+        # return {
+        #     'status': 'success',
+        #     'message': f'Successfully processed video {video_id}'
+        # }
 
     except Exception as e:
         logger.error(f"同期処理エラー: {str(e)}")
