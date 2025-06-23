@@ -283,37 +283,6 @@ async def analyze_product_from_transcription(transcription: str) -> str:
         logger.error(f"Gemini商材判定エラー: {e}")
         return ""
 
-def get_target_videos() -> List[Dict[str, Any]]:
-    """
-    対象動画を取得する
-    - account_typeがアフィリエイト
-    - productが空欄
-    - video_transcriptionにデータが存在
-    
-    Returns:
-        List[Dict[str, Any]]: 対象動画のリスト
-    """
-    try:
-        target_query = """
-            SELECT 
-                fd.video_id,
-                fd.product,
-                vt.transcription
-            FROM frontend_data fd
-            JOIN video_transcription vt ON fd.video_id = vt.video_id
-            WHERE fd.account_type = 'アフィリエイト'
-            AND (fd.product IS NULL OR fd.product = '')
-            AND vt.transcription IS NOT NULL
-            AND vt.transcription != ''
-        """
-        
-        results = execute_query(target_query)
-        logger.info(f"対象動画数: {len(results)}")
-        return results
-        
-    except DatabaseError as e:
-        logger.error(f"対象動画取得エラー: {e}")
-        raise
 
 def get_or_initialize_cursor(processor_name, target_table, default_batch_size=2400):
     """カーソル情報を取得、存在しない場合は初期化"""

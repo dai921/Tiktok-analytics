@@ -111,12 +111,6 @@ class VideoTranscriptionRepository:
     """動画文字起こし関連のデータベース操作"""
     
     @staticmethod
-    def find_video_by_id(video_id: str) -> Optional[dict]:
-        """frontend_dataテーブルからvideo_idで動画を検索"""
-        query = "SELECT url FROM frontend_data WHERE url LIKE :video_id_pattern LIMIT 1"
-        return fetch_one(query, {"video_id_pattern": f"%{video_id}%"})
-    
-    @staticmethod
     def find_transcription_by_video_id(video_id: str) -> Optional[dict]:
         """video_transcriptionテーブルから文字起こしを検索"""
         query = "SELECT transcription FROM video_transcription WHERE video_id = :video_id"
