@@ -315,7 +315,7 @@ def get_target_videos() -> List[Dict[str, Any]]:
         logger.error(f"対象動画取得エラー: {e}")
         raise
 
-def get_or_initialize_cursor(processor_name, target_table, default_batch_size=60):
+def get_or_initialize_cursor(processor_name, target_table, default_batch_size=2400):
     """カーソル情報を取得、存在しない場合は初期化"""
     query = """
     SELECT id, processor_name, target_table, last_cursor_id, 
@@ -596,24 +596,24 @@ def process_batch():
         logger.info(f"バッチ#{batch_number}完了: {processed_count}/{len(target_videos)}件処理、実行時間: {batch_execution_time}秒")
         
         # 処理完了していない場合、Pub/Subに継続メッセージを送信
-        if remaining_count > 0:
-            publish_message("product-scoring-status", {
-                "status": "in_progress",
-                "message": f"バッチ#{batch_number}完了、残り{remaining_count}件",
-                "batch_number": batch_number,
-                "remaining": remaining_count,
-                "timestamp": datetime.now().isoformat()
-            })
-        else:
-            # 処理完了
-            publish_message("product-scoring-status", {
-                "status": "completed",
-                "message": "全バッチの処理が完了しました",
-                "timestamp": datetime.now().isoformat()
-            })
+        # if remaining_count > 0:
+        #     publish_message("product-scoring-status", {
+        #         "status": "in_progress",
+        #         "message": f"バッチ#{batch_number}完了、残り{remaining_count}件",
+        #         "batch_number": batch_number,
+        #         "remaining": remaining_count,
+        #         "timestamp": datetime.now().isoformat()
+        #     })
+        # else:
+        #     # 処理完了
+        #     publish_message("product-scoring-status", {
+        #         "status": "completed",
+        #         "message": "全バッチの処理が完了しました",
+        #         "timestamp": datetime.now().isoformat()
+        #     })
             
-            # カーソルをリセット（次回は最初から）
-            reset_cursor(processor_name, target_table)
+        #     # カーソルをリセット（次回は最初から）
+        #     reset_cursor(processor_name, target_table)
         
         return {
             "status": "success",

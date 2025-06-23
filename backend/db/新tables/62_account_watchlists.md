@@ -29,6 +29,20 @@
 | account_name | account_lists.account_name | 多対1の中間テーブル | 各動アカウント複数のユーザーにウォッチリストに追加される可能性がある |
 | email | users.email | 多対1の中間テーブル | 1ユーザーに対して複数のアカウントがウォッチリストに追加される可能性がある |
 
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| watchlist | add_account_to_bookmarks | 493 | アカウントウォッチリストにデータ存在するかチェック |
+| watchlist | add_account_to_bookmarks | 503~509 | テーブルにデータを更新 |
+| watchlist | add_account_to_bookmarks | 517~522 | テーブルにデータを挿入 |
+| watchlist | add_account_to_bookmarks | 533~535 | 登録された情報を取得 |
+| watchlist | remove_account_from_bookmarks | 568~570 | アカウントウォッチリストにデータが存在するか確認 |
+| watchlist | remove_account_from_bookmarks | 579~581 | アカウントウォッチリストを削除 |
+| watchlist | get_account_bookmarks | 607~609 | ウォッチリストの情報を取得 |
+| watchlist | get_account_bookmarks_with_details | 675~691 | ウォッチリストの動画のエンゲージメントの推移を取得 |
+| watchlist | get_account_bookmarks_with_details | 788~792 | ウォッチリスト名を取得 |
+
 ## 特徴
 
 1. **ウォッチリストに登録した動画の一元管理**

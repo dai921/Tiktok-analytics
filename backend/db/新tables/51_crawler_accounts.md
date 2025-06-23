@@ -25,7 +25,6 @@
 | idx_last_crawled_at | last_crawled_at | INDEX | 更新日時が古いアカウントを優先 |
 
 ## 関連Function
-
 ### Crawler処理
 | コード名 | 関数名 | 行数 | 説明 |
 |--------------|-------|------|------|
