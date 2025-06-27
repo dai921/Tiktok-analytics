@@ -1020,16 +1020,7 @@ async def get_video_play_count_history(
         tables_result = execute_query("SHOW TABLES")
         tables_list = [list(row.values())[0] for row in tables_result]
         logger.info(f"利用可能なテーブル: {tables_list}")
-        
-        if 'play_count_history' not in tables_list:
-            logger.error("play_count_historyテーブルが存在しません")
-            return {
-                "success": False,
-                "error": "必要なテーブルが存在しません",
-                "video_id": video_id,
-                "history": []
-            }
-
+    
         # video_idの形式チェック
         if not video_id.isdigit():
             logger.warning(f"無効な動画ID形式: {video_id}")
@@ -1076,81 +1067,6 @@ async def get_video_play_count_history(
 
     except Exception as e:
         logger.error(f"再生数履歴取得エラー: {str(e)}")
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": str(e),
-            "video_id": video_id,
-            "history": []
-        }
-
-@app.get("/api/video/save-count-history/{video_id}")
-async def get_video_save_count_history(
-    video_id: str,
-    days: Optional[int] = 30
-):
-    logger.info(f"保存数履歴取得リクエスト受信: video_id={video_id}, days={days}")
-    try:
-        # テーブル存在確認
-        tables_result = execute_query("SHOW TABLES")
-        tables_list = [list(row.values())[0] for row in tables_result]
-        logger.info(f"利用可能なテーブル: {tables_list}")
-        
-        if 'play_count_history' not in tables_list:
-            logger.error("play_count_historyテーブルが存在しません")
-            return {
-                "success": False,
-                "error": "必要なテーブルが存在しません",
-                "video_id": video_id,
-                "history": []
-            }
-
-        # video_idの形式チェック
-        if not video_id.isdigit():
-            logger.warning(f"無効な動画ID形式: {video_id}")
-            return {
-                "success": False,
-                "error": "無効な動画ID形式です",
-                "video_id": video_id,
-                "history": []
-            }
-
-        query = """
-        SELECT 
-            collection_date,
-            save_count_increase
-        FROM play_count_history
-        WHERE 
-            video_id = :video_id
-            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
-        ORDER BY collection_date ASC
-        """
-        
-        # クエリ実行前のデバッグログ
-        logger.info(f"実行するクエリ: {query}")
-        logger.info(f"パラメータ: video_id={video_id}, days={days}")
-        
-        results = execute_query(query, {"video_id": video_id, "days": days})
-        
-        # 結果のデバッグログ
-        logger.info(f"取得した結果: {results}")
-
-        # 結果を整形
-        history = []
-        for result in results:
-            history.append({
-                "collection_date": result["collection_date"].strftime("%Y-%m-%d"),
-                "save_count_increase": result["save_count_increase"] if result["save_count_increase"] is not None else 0
-            })
-
-        return {
-            "success": True,
-            "video_id": video_id,
-            "history": history
-        }
-
-    except Exception as e:
-        logger.error(f"保存数履歴取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {
             "success": False,

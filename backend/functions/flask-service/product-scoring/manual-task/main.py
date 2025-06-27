@@ -236,12 +236,49 @@ def update_product_and_category_in_db(video_id: str, product: str, category: str
         logger.error(f"DB更新失敗: {e}")
         raise
 
-async def analyze_product_from_transcription(transcription: str) -> str:
+def get_video_file_path(video_id: str) -> str:
     """
-    文字起こしデータからGeminiで商材判定を実行
+    指定したvideo_idに対応する動画ファイルのパスを取得
+    
+    Args:
+        video_id: 動画ID
+    
+    Returns:
+        str: 動画ファイルのパス（存在しない場合は空文字列）
+    """
+    try:
+        # 動画ファイルのパスを取得するクエリ
+        video_path_query = """
+            SELECT file_path
+            FROM video_transcription
+            WHERE video_id = %s
+        """
+        
+        result = execute_query(video_path_query, (video_id,))
+        
+        if result and result[0]['file_path']:
+            video_path = result[0]['file_path']
+            # ファイルが存在するかチェック
+            if os.path.exists(video_path):
+                return video_path
+            else:
+                logger.warning(f"動画ファイルが存在しません: {video_path}")
+                return ""
+        else:
+            logger.warning(f"video_id {video_id} の動画ファイルパスが見つかりません")
+            return ""
+            
+    except DatabaseError as e:
+        logger.error(f"動画ファイルパス取得エラー: {e}")
+        return ""
+
+def analyze_product_from_transcription(transcription: str, video_id: str = None) -> str:
+    """
+    文字起こしデータと動画ファイルからGeminiで商材判定を実行（同期処理）
     
     Args:
         transcription: 文字起こしテキスト
+        video_id: 動画ID（動画ファイルを使用する場合）
     
     Returns:
         str: 商材判定結果
@@ -256,11 +293,35 @@ async def analyze_product_from_transcription(transcription: str) -> str:
         model = genai.GenerativeModel('gemini-2.0-flash')
 
         prompt = (
-            "この文字起こしデータで紹介されている製品やサービスの名称を、商品名のみ一語で正確に回答してください。"
+            "この動画で紹介されている製品やサービスの名称を、商品名のみ一語で正確に回答してください。"
             "特定できない場合は『不明』とだけ記載してください。"
         )
 
-        response = model.generate_content([prompt, transcription])
+        response = None
+        
+        # 動画ファイルが利用可能な場合は動画を使用
+        if video_id:
+            video_path = get_video_file_path(video_id)
+            if video_path and os.path.exists(video_path):
+                try:
+                    with open(video_path, "rb") as f:
+                        video_bytes = f.read()
+                    response = model.generate_content([
+                        prompt,
+                        {"mime_type": "video/mp4", "data": video_bytes}
+                    ])
+                    logger.info(f"動画ファイルを使用してGemini判定実行: {video_path}")
+                except Exception as e:
+                    logger.error(f"動画ファイル読み込みエラー: {e}")
+                    # 動画ファイルでエラーが発生した場合は文字起こしのみで実行
+                    response = model.generate_content([prompt, transcription])
+                    logger.info("動画ファイルエラーのため文字起こしのみでGemini判定実行")
+            else:
+                logger.info("動画ファイルが存在しないため文字起こしのみでGemini判定実行")
+                response = model.generate_content([prompt, transcription])
+        else:
+            # 動画IDが指定されていない場合は文字起こしのみで実行
+            response = model.generate_content([prompt, transcription])
         
         # Geminiの返答を解析
         product_name = ""
@@ -283,8 +344,7 @@ async def analyze_product_from_transcription(transcription: str) -> str:
         logger.error(f"Gemini商材判定エラー: {e}")
         return ""
 
-
-def get_or_initialize_cursor(processor_name, target_table, default_batch_size=2400):
+def get_or_initialize_cursor(processor_name, target_table, default_batch_size=100):
     """カーソル情報を取得、存在しない場合は初期化"""
     query = """
     SELECT id, processor_name, target_table, last_cursor_id, 
@@ -346,18 +406,15 @@ def get_target_videos_batch(last_cursor_id: int, batch_size: int) -> Tuple[List[
     try:
         target_query = """
             SELECT 
-                fd.video_id,
-                fd.product,
+                vm.video_id,
+                vm.product,
                 vt.transcription,
-                fd.id
-            FROM frontend_data fd
-            JOIN video_transcription vt ON fd.video_id = vt.video_id
-            WHERE fd.account_type = 'アフィリエイト'
-            AND (fd.product IS NULL OR fd.product = '')
-            AND vt.transcription IS NOT NULL
-            AND vt.transcription != ''
-            AND fd.id > %s
-            ORDER BY fd.id
+                vm.id
+            FROM video_master vm
+            JOIN video_transcription vt ON vm.video_id = vt.video_id
+            WHERE vm.product_update = 1
+            AND vm.id > %s
+            ORDER BY vm.id
             LIMIT %s
         """
         
@@ -378,13 +435,10 @@ def get_remaining_count(max_id: int) -> int:
     try:
         count_query = """
             SELECT COUNT(*) as remaining_count
-            FROM frontend_data fd
-            JOIN video_transcription vt ON fd.video_id = vt.video_id
-            WHERE fd.account_type = 'アフィリエイト'
-            AND (fd.product IS NULL OR fd.product = '')
-            AND vt.transcription IS NOT NULL
-            AND vt.transcription != ''
-            AND fd.id > %s
+            FROM video_master vm
+            JOIN video_transcription vt ON vm.video_id = vt.video_id
+            WHERE vm.product_update = 1
+            AND vm.id > %s
         """
         
         result = execute_query(count_query, (max_id,))
@@ -433,12 +487,12 @@ def process_single_video(video_id: str):
     # 特定の動画を取得
     single_video_query = """
         SELECT 
-            fd.video_id,
-            fd.product,
+            vm.video_id,
+            vm.product,
             vt.transcription
-        FROM frontend_data fd
-        JOIN video_transcription vt ON fd.video_id = vt.video_id
-        WHERE fd.video_id = %s
+        FROM video_master vm
+        JOIN video_transcription vt ON vm.video_id = vt.video_id
+        WHERE vm.video_id = %s
     """
     
     video_data = execute_query(single_video_query, (video_id,))
@@ -448,9 +502,8 @@ def process_single_video(video_id: str):
     video = video_data[0]
     transcription = video['transcription']
     
-    # 処理実行
-    import asyncio
-    mapped_product = asyncio.run(analyze_product_from_transcription(transcription))
+    # 処理実行（動画IDを渡して同期処理）
+    mapped_product = analyze_product_from_transcription(transcription, video_id)
     best_product = score_product(transcription, product_names, keywords_list, mapped_product, category_keywords)
     
     if best_product:
@@ -526,9 +579,8 @@ def process_batch():
                 
                 logger.info(f"処理開始: video_id={current_video_id}")
                 
-                # 1. 文字起こしデータからGeminiで商材判定を実行
-                import asyncio
-                mapped_product = asyncio.run(analyze_product_from_transcription(transcription))
+                # 1. 文字起こしデータと動画ファイルからGeminiで商材判定を実行（同期処理）
+                mapped_product = analyze_product_from_transcription(transcription, current_video_id)
                 logger.info(f"Gemini商材判定結果: {mapped_product}")
                 
                 # 2. スコアリング実行
@@ -563,26 +615,6 @@ def process_batch():
         
         batch_execution_time = (datetime.now() - batch_start_time).total_seconds()
         logger.info(f"バッチ#{batch_number}完了: {processed_count}/{len(target_videos)}件処理、実行時間: {batch_execution_time}秒")
-        
-        # 処理完了していない場合、Pub/Subに継続メッセージを送信
-        # if remaining_count > 0:
-        #     publish_message("product-scoring-status", {
-        #         "status": "in_progress",
-        #         "message": f"バッチ#{batch_number}完了、残り{remaining_count}件",
-        #         "batch_number": batch_number,
-        #         "remaining": remaining_count,
-        #         "timestamp": datetime.now().isoformat()
-        #     })
-        # else:
-        #     # 処理完了
-        #     publish_message("product-scoring-status", {
-        #         "status": "completed",
-        #         "message": "全バッチの処理が完了しました",
-        #         "timestamp": datetime.now().isoformat()
-        #     })
-            
-        #     # カーソルをリセット（次回は最初から）
-        #     reset_cursor(processor_name, target_table)
         
         return {
             "status": "success",

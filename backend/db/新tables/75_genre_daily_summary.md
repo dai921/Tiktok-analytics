@@ -25,5 +25,21 @@ Tiktok動画の再生増加数、投稿数、10万以上動画数を動画ジャ
 
 作成予定
 
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| genre_stats | get_genre_stats | 64~70 | 収集日の一覧を取得 |
+| genre_stats | get_genre_stats | 95~106 | 動画ジャンルトレンドのデータを取得 |
+| genre_stats | get_genre_trends | 214~220 | 収集日の一覧を取得 |
+| genre_stats | get_ganre_trends | 245~254 | トップ10動画を取得 |
+| genre_stats | get_ganre_trends | 272~283 | 動画ジャンルの日次（収集日）データ |
+
+### その他Cloud Function
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| summary_table_sync| update_genre_daily_summary | 127~159 | 動画ジャンルの日次データをテーブルに共有する |
+| manual_summary_sync| process_ganre_summary | 193~225 | 動画ジャンルの日次データをテーブルに共有する |
+
 ## 備考
 - genre-stats、genre-trendsエンドポイントの処理を高速化するためのサブテーブル

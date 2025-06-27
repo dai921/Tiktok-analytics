@@ -26,5 +26,21 @@ Tiktok動画の再生増加数、投稿数、10万以上動画数を商品ごと
 
 作成予定
 
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| product_stats | get_product_stats | 90~97 | 収集日の一覧を取得 |
+| product_stats | get_product_stats | 145~101 | 商品トレンドのデータを取得 |
+| product_stats | get_product_trends | 279~285 | 収集日の一覧を取得 |
+| product_stats | get_product_trends | 337~347 | トップ10動画を取得 |
+| product_stats | get_product_trends | 365~378 | 商品の日次（収集日）データ |
+
+### その他Cloud Function
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| summary_table_sync| update_product_daily_summary | 50~79 | 商品の日次データをテーブルに共有する |
+| manual_summary_sync| process_product_summary | 155~184 | 商品の日次データをテーブルに共有する |
+
 ## 備考
 - product-stats、product-trendsエンドポイントの処理を高速化するためのサブテーブル
