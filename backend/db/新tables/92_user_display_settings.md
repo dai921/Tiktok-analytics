@@ -35,8 +35,8 @@
 | display_settings/router | save_display_settings | 30~37 | 既存の設定を更新 |
 | display_settings/router | save_display_settings | 46~56 | 新しい設定を挿入 |
 | display_settings/router | get_display_settings | 91~98 | 表示設定を取得 |
-| display_settings/router | update_default_settings | 138~144 | デフォルトの設定を更新 |
-
+| display_settings/router | update_default_settings | 138~144 | 設定の所有者を確認 |
+| display_settings/router | update_default_settings | 153~160 | デフォルトの設定を更新|
 
 ## 備考
 - ユーザーごとに複数の表示設定（プリセット）を管理できます
