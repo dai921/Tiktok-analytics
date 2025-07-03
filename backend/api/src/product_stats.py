@@ -208,7 +208,7 @@ async def get_product_stats(
             videos_result = conn.execute(videos_query, params)
             videos_rows = videos_result.fetchall()
             
-            # トップ動画を追加（各商品ごとに上位10件を選択）
+            # トップ動画を追加（各商品ごとに上位20件を選択）
             current_product = None
             video_count = 0
             
@@ -220,8 +220,8 @@ async def get_product_stats(
                     current_product = product
                     video_count = 0
                 
-                # 各商品の上位10件のみを追加
-                if product in stats and video_count < 10:
+                # 各商品の上位20件を追加
+                if product in stats and video_count < 20:
                     stats[product]["top_videos"].append({
                         "url": row.url,
                         "thumbnail_url": convert_gs_to_https(row.thumbnail_url),

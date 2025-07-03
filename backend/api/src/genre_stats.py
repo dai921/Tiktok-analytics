@@ -160,7 +160,7 @@ async def get_genre_stats(
         genre_video_counts = {genre: 0 for genre in genre_names}
         for v in result.mappings().all():
             genre = v["genre"]
-            if genre in stats and genre_video_counts[genre] < 10:
+            if genre in stats and genre_video_counts[genre] < 20:
                 g = stats[genre]
                 g["top_videos"].append({
                     "url"                 : v["url"],

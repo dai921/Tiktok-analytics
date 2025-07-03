@@ -21,6 +21,7 @@
 | crawling_algorithm | VARCHAR(50) | NO | | INDEX | 使用したクローリングアルゴリズム |
 | created_at | DATETIME | NO | CURRENT_TIMESTAMP | - | レコード作成日時 |
 | needs_update | TINYINT | NO | 1 | INDEX | 更新が必要かどうかのフラグ |
+| is_alive | TINYINT | NO | 1 | INDEX | 動画が削除済みかどうかのフラグ |
 
 ## インデックス
 
@@ -32,6 +33,7 @@
 | idx_crawled_at | crawled_at | INDEX | クロール日時検索用 |
 | idx_algorithm | crawling_algorithm | INDEX | アルゴリズム検索用 |
 | idx_needs_update | needs_update | INDEX | 更新フラグ検索用 |
+| idx_is_alive | is_alive | INDEX | 削除済みフラグ検索用 |
 
 ## 関連Function
 ### Crawler処理
