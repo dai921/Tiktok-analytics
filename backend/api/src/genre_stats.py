@@ -102,23 +102,13 @@ async def get_genre_stats(
         WHERE fetch_date BETWEEN :start_date AND :end_date
         GROUP BY video_genre
         ORDER BY {sort_column} DESC
-        LIMIT 12
         """)
         
         result = conn.execute(stats_sql, params)
         all_results = result.mappings().all()
 
-        # 「その他」と空文字の処理も調整
-        has_other_in_top10 = any(r["genre"] == "その他" for r in all_results[:10])
-        has_empty_in_top10 = any(r["genre"] == "" for r in all_results[:10])
-
-        # 条件に応じて表示件数を変える
-        if has_other_in_top10 and has_empty_in_top10:
-            limited_results = all_results  # 12件すべて使用
-        elif has_other_in_top10 or has_empty_in_top10:
-            limited_results = all_results[:11]  # 11件使用
-        else:
-            limited_results = all_results[:10]  # 10件使用
+        # 制限処理を削除 - 全件使用
+        limited_results = all_results
 
         # 辞書に変換
         stats = {r["genre"]: {
@@ -241,7 +231,7 @@ async def get_genre_trends(
         logger.info(f"Executing genre-trends query with metric: {metric}")
         print(f"Executing genre-trends query with metric: {metric}")
 
-        # 1. まず人気トップ10ジャンルを取得
+        # 1. 全ジャンルを取得（制限なし）
         top_genres_sql = text(f"""
         SELECT 
             video_genre AS genre,
@@ -250,15 +240,14 @@ async def get_genre_trends(
         WHERE fetch_date BETWEEN :start_date AND :end_date
         GROUP BY video_genre
         ORDER BY metric_value DESC
-        LIMIT 12
         """)
         
         result = conn.execute(top_genres_sql, {"start_date": start_date, "end_date": end_date})
         top_genres = [row["genre"] for row in result.mappings().all()]
 
-        # 「その他」や空文字列を除外
+        # 「その他」や空文字列を除外（制限なし）
         excluded_genres = ["その他", ""]
-        filtered_genres = [g for g in top_genres if g not in excluded_genres and g.strip() != ""][:10]
+        filtered_genres = [g for g in top_genres if g not in excluded_genres and g.strip() != ""]
 
         if not filtered_genres:
             # フィルタリング後にジャンルがなくなった場合の対応

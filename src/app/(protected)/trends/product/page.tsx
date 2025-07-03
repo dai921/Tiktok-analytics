@@ -126,6 +126,8 @@ export default function ProductPage() {
   // まず、ジャンルデータ読み込み完了フラグを追加
   const [genresLoaded, setGenresLoaded] = useState(false);
 
+  const [displayLimit, setDisplayLimit] = useState(15);
+
   // ジャンル取得のuseEffect
   useEffect(() => {
     const loadGenres = async () => {
@@ -345,7 +347,7 @@ export default function ProductPage() {
     if (tempDateRange) {
       setDateRange(tempDateRange);
       setUserSelectedDate(true);
-      // 日付変更時にキャッシュをクリア
+      setDisplayLimit(15);
       setCachedProductStats({
         viewsIncrease: [],
         over100kViews: [],
@@ -380,10 +382,9 @@ export default function ProductPage() {
   // ジャンルフィルターを適用するハンドラを追加
   const handleApplyGenreFilter = () => {
     setSelectedGenres(tempSelectedGenres);
-    // ジャンル変更時にデータを再ロードするためのフラグをリセット
+    setDisplayLimit(15);
     setDataLoaded(false);
     setGraphDataLoaded(false);
-    // ジャンル変更時にキャッシュをクリア
     setCachedProductStats({
       viewsIncrease: [],
       over100kViews: [],
@@ -402,6 +403,7 @@ export default function ProductPage() {
     const newMetric = e.target.value as MetricKey;
     console.log(`指標変更: ${oldMetric} → ${newMetric}`);
     setMetric(newMetric);
+    setDisplayLimit(15);
     
     // 指標変更時は常に再読込（キャッシュを使わない）
     console.log(`${newMetric}のデータを再読み込み`);
@@ -540,7 +542,7 @@ export default function ProductPage() {
                       <TableBody>
                         {productStats
                           .filter(stat => stat.product && stat.product.trim() !== '')
-                          .slice(0, 15)
+                          .slice(0, displayLimit)
                           .map((stat, index) => {
                             const metricValue = {
                               viewsIncrease: Number(stat.total_play_count_increase) || 0,
@@ -576,6 +578,18 @@ export default function ProductPage() {
                           })}
                       </TableBody>
                     </Table>
+                    
+                    {/* さらに読み込むボタン */}
+                    {productStats.filter(stat => stat.product && stat.product.trim() !== '').length > displayLimit && (
+                      <div className="mt-4 text-center">
+                        <button
+                          onClick={() => setDisplayLimit(prev => prev + 15)}
+                          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                        >
+                          さらに15件読み込む
+                        </button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
