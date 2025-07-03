@@ -128,6 +128,8 @@ export default function ProductPage() {
 
   const [displayLimit, setDisplayLimit] = useState(15);
 
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   // ジャンル取得のuseEffect
   useEffect(() => {
     const loadGenres = async () => {
@@ -348,6 +350,7 @@ export default function ProductPage() {
       setDateRange(tempDateRange);
       setUserSelectedDate(true);
       setDisplayLimit(15);
+      setSearchQuery('');
       setCachedProductStats({
         viewsIncrease: [],
         over100kViews: [],
@@ -383,6 +386,7 @@ export default function ProductPage() {
   const handleApplyGenreFilter = () => {
     setSelectedGenres(tempSelectedGenres);
     setDisplayLimit(15);
+    setSearchQuery('');
     setDataLoaded(false);
     setGraphDataLoaded(false);
     setCachedProductStats({
@@ -404,17 +408,14 @@ export default function ProductPage() {
     console.log(`指標変更: ${oldMetric} → ${newMetric}`);
     setMetric(newMetric);
     setDisplayLimit(15);
+    setSearchQuery('');
     
-    // 指標変更時は常に再読込（キャッシュを使わない）
-    console.log(`${newMetric}のデータを再読み込み`);
-    setDataLoaded(false); // ランキングデータを再読込
+    setDataLoaded(false);
     
     if (activeTab === 'graph') {
       console.log(`${newMetric}のグラフデータも再読み込み`);
-      setGraphDataLoaded(false); // グラフデータも再読込
+      setGraphDataLoaded(false);
     }
-    
-    // キャッシュは保持するが、使用しない
   };
 
   // グラフ表示用データの前処理関数を更新
@@ -444,6 +445,25 @@ export default function ProductPage() {
       return dataPoint;
     });
   };
+
+  // 検索フィルター機能
+  const filteredProductStats = productStats.filter(stat => {
+    if (!searchQuery.trim()) return true;
+    
+    const productName = stat.product?.toLowerCase() || '';
+    const category = stat.product_category?.toLowerCase() || '';
+    const query = searchQuery.toLowerCase();
+    
+    return productName.includes(query) || category.includes(query);
+  });
+
+  // 元の順位を保持するためのマップを作成
+  const originalRankMap = new Map<string, number>();
+  productStats
+    .filter(stat => stat.product && stat.product.trim() !== '')
+    .forEach((stat, index) => {
+      originalRankMap.set(stat.product, index + 1);
+    });
 
   if (isLoading) {
     return (
@@ -485,6 +505,27 @@ export default function ProductPage() {
               <option value="postCount">投稿数</option>
             </select>
           </div>
+          
+          {/* 検索ボックス */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm whitespace-nowrap">商品検索:</label>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="商品名またはカテゴリで検索..."
+              className="border rounded px-3 py-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE] w-64"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">ジャンルフィルタ:</label>
             <MultiSelect
@@ -540,7 +581,7 @@ export default function ProductPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {productStats
+                        {filteredProductStats
                           .filter(stat => stat.product && stat.product.trim() !== '')
                           .slice(0, displayLimit)
                           .map((stat, index) => {
@@ -551,6 +592,7 @@ export default function ProductPage() {
                             }[metric];
                             
                             const isSelected = selectedProduct === stat.product;
+                            const originalRank = originalRankMap.get(stat.product) || 0; // 元の順位を取得
                             
                             return (
                               <TableRow 
@@ -564,7 +606,7 @@ export default function ProductPage() {
                                 <TableCell className={cn(
                                   "py-3",
                                 )}>
-                                  {index + 1}
+                                  {originalRank} {/* index + 1 から originalRank に変更 */}
                                 </TableCell>
                                 <TableCell className="py-3">
                                   <GenreBadge 
@@ -580,7 +622,7 @@ export default function ProductPage() {
                     </Table>
                     
                     {/* さらに読み込むボタン */}
-                    {productStats.filter(stat => stat.product && stat.product.trim() !== '').length > displayLimit && (
+                    {filteredProductStats.filter(stat => stat.product && stat.product.trim() !== '').length > displayLimit && (
                       <div className="mt-4 text-center">
                         <button
                           onClick={() => setDisplayLimit(prev => prev + 15)}
