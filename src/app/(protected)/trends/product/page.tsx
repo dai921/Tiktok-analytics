@@ -513,7 +513,7 @@ export default function ProductPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="商品名またはカテゴリで検索..."
+              placeholder="商品名で検索..."
               className="border rounded px-3 py-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE] w-64"
             />
             {searchQuery && (
