@@ -127,7 +127,7 @@ def process_account_list():
 
         # スプレッドシートからデータを読み取る（アカウント作業用シート）
         print("アカウント作業用シートデータ取得開始")
-        range_name = '10万以下シート!B:K'  # B列からK列までの範囲を取得
+        range_name = '運用代行シート!B:K'  # B列からK列までの範囲を取得
         
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,

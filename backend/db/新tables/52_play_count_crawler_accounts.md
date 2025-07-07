@@ -24,3 +24,16 @@
 | idx_is_alive | is_alive | INDEX | ブロックされていないアカウントを優先 |
 | idx_last_crawled_at | last_crawled_at | INDEX | 更新日時が古いアカウントを優先 |
 
+## 関連Function
+
+### Crawler処理
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| repositories | update_play_count_crawler_account_last_crawled | 54~58 | 最終クロール時間をDBに更新する |
+| repositories | get_play_count_crawler_account | 95~101 | 指定されたIDのクローラーアカウントを取得 |
+
+### その他Cloud Function
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| sync_crawler_accounts | process_crawler_accounts | 128~132 | スプレッドシートのアカウントデータをDBに同期する |
+

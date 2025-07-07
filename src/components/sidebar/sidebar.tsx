@@ -19,10 +19,11 @@ import {
   Users,
   ChevronDown,
   X,
-  Mic
+  Mic,
+  TrendingUp
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp';
 
 type SidebarItemProps = {
   href?: string;
@@ -85,6 +86,8 @@ export function Sidebar() {
     }
   };
   
+  const [isOverallTrendsOpen, setIsOverallTrendsOpen] = useState(false);
+
   return (
     <>
       {/* モバイル用メニューボタン */}
@@ -99,9 +102,10 @@ export function Sidebar() {
       <aside className={cn(
         "bg-black border-r border-gray-800 flex flex-col",
         "fixed md:static z-40 h-screen transition-all duration-300",
+        "w-64 flex-shrink-0",
         isMobile 
-          ? isMobileOpen ? "w-64 left-0" : "w-64 -left-64" 
-          : "w-64"
+          ? isMobileOpen ? "left-0" : "-left-64" 
+          : ""
       )}>
         <div className="p-4">
           <Logo className="w-full max-w-[200px]" variant="sidebar" />
@@ -139,6 +143,31 @@ export function Sidebar() {
               </Link>
             </div>
           </div>
+          {/* <div 
+            className="relative group"
+            onMouseEnter={() => setIsOverallTrendsOpen(true)}
+            onMouseLeave={() => setIsOverallTrendsOpen(false)}
+          >
+            <SidebarItem
+              icon="TrendingUp"
+              label="TikTok全体トレンド"
+              active={pathname.startsWith('/overall-trends')}
+            />
+            <div 
+              className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[180px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+            >
+              <Link href="/overall-trends/hashtags">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
+                  ハッシュタグトレンド
+                </div>
+              </Link>
+              <Link href="/overall-trends/sounds">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors">
+                  音声トレンド
+                </div>
+              </Link>
+            </div>
+          </div> */}
           <div 
             className="relative group"
             onMouseEnter={() => setIsWatchlistOpen(true)}
@@ -185,6 +214,17 @@ export function Sidebar() {
             comingSoon={true}
           />
         </nav>
+
+        <div className="px-4 pb-2">
+          <a
+            href="https://docs.google.com/forms/d/e/1FAIpQLSdO_WCDxWCJfDlZMURIxVaH_X4B8iVRuBVYTYyfX26vJrRL_A/viewform"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full text-center bg-black text-white font-medium py-2 rounded-md hover:bg-gray-900 transition-colors text-xs border border-white"
+          >
+            アカウント追加の依頼はこちらから
+          </a>
+        </div>
 
         <div className="border-t border-gray-800 pt-4 pb-4">
           <SidebarItem
@@ -276,6 +316,8 @@ function renderIcon(iconName: IconName) {
       return <Users size={20} />;
     case 'Mic':
       return <Mic size={20} />;
+    case 'TrendingUp':
+      return <TrendingUp size={20} />;
     default:
       return null;
   }

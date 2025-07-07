@@ -26,6 +26,16 @@
 | product_master | product_name -> product_name | 多対一 | 各別名は一つの商品に属する |
 | product_alias_keywords | alias_id -> alias_id | 一対多 | 一つの別名は複数のキーワードを持つことができる |
 
+## 関連Function
+
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| product-scoring | get_alias_keywords | 78~86 | シリーズが複数ある商品のキーワードマッピングに使用 |
+| sync_category_spreadsheet | sync_category_spreadsheet | 332~337 | スプシ上の商品キーワードを挿入/更新 |
+| video_master_sync | analyze_title | 78~87 | シリーズ商品のキーワード、優先順位を取得 |
+| manual_sync_master | analyze_title | 75~84 | 商品、動画ジャンル、キーワードの一括取得 |
+| update_all_categories | analyze_title | 416~425 | 商品、動画ジャンル、キーワードの一括取得 |
+
 ## 備考
 - TikTok動画内で使用される商品の別名を管理するテーブルです
 - 同じ別名は一度だけ登録可能です（重複不可）

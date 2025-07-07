@@ -26,6 +26,7 @@
 |-----------|-----------|-----------|------|
 | category_master | category_id -> category_id | 多対一 | 各キーワードは一つのカテゴリーに属する |
 
+## 関連Function
 | コード名 | 関数名 | 行数 | 説明 |
 |--------------|-------|------|------|
 | sync_category_spreadsheet | sync_category_spreadsheet | 205 | 既存の動画ジャンルキーワードリストを取得 |

@@ -194,20 +194,21 @@ async def get_product_stats(
                 fd.play_count,
                 fd.ten_days_increase,
                 fd.account_name,
-                fd.display_name
+                fd.display_name,
+                fd.play_count_increase
             FROM product_daily_top100_videos v
             JOIN frontend_data fd ON fd.video_id = v.video_id
             WHERE v.fetch_date BETWEEN :start_date AND :end_date
               AND v.product IN ({', '.join(product_placeholders)})
               {genre_filter}
-            GROUP BY v.product, v.video_id, fd.url, fd.thumbnail_url, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name
+            GROUP BY v.product, v.video_id, fd.url, fd.thumbnail_url, fd.play_count, fd.ten_days_increase, fd.account_name, fd.display_name, fd.play_count_increase
             ORDER BY v.product, total_play_inc DESC  # 集計後のエイリアス名を使用
             """)
             
             videos_result = conn.execute(videos_query, params)
             videos_rows = videos_result.fetchall()
             
-            # トップ動画を追加（各商品ごとに上位10件を選択）
+            # トップ動画を追加（各商品ごとに上位20件を選択）
             current_product = None
             video_count = 0
             
@@ -219,8 +220,8 @@ async def get_product_stats(
                     current_product = product
                     video_count = 0
                 
-                # 各商品の上位10件のみを追加
-                if product in stats and video_count < 10:
+                # 各商品の上位20件を追加
+                if product in stats and video_count < 20:
                     stats[product]["top_videos"].append({
                         "url": row.url,
                         "thumbnail_url": convert_gs_to_https(row.thumbnail_url),
@@ -230,7 +231,8 @@ async def get_product_stats(
                         "play_count": row.play_count,
                         "ten_days_increase": row.ten_days_increase,
                         "account_name": row.account_name,
-                        "display_name": row.display_name
+                        "display_name": row.display_name,
+                        "play_count_increase_2d": row.play_count_increase
                     })
                     video_count += 1
         

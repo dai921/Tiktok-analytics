@@ -160,58 +160,62 @@ def score_product(transcription, product_names, keywords_list, mapped_product, c
                     elif ratio_kw_trans >= 60:
                         score += 0.5
                         reasons.append(f"キーワードと文字起こしの単語の類似度60以上(+0.5, kw={kw}, word={word}, ratio={ratio_kw_trans})")
-
-        # 3. B列に「/」が含まれる場合はE列キーワードで加点
-
-        if cat_kw == '複数':
-            alias_data = get_alias_keywords(pname)
-            alias_match = False
-            priority_alias = None
-            for alias_info in alias_data:
-                alias_keyword = alias_info['keyword'].lower()
-                alias_name = alias_info['alias_name']
-                alias_priority = alias_info['alias_priority']
-                # Gemini抽出商品名または文字起こしに別名キーワードが含まれるか
-                if alias_keyword in norm_mapped or alias_keyword in norm_trans:
-                    # 別名で再スコアリング（再帰的に呼び出しも可だが、ここでは加点例）
-                    score += 2
-                    reasons.append(f"別名キーワード一致(+2, alias={alias_name}, kw={alias_keyword})")
-                    # 別名商品名に切り替え
-                    pname = alias_name
-                    alias_match = True
-                    break
-                elif alias_priority == 1:
-                    priority_alias = alias_name
-            # マッチしなかった場合はPriority=1の別名を使用
-            if not alias_match and priority_alias:
-                pname = priority_alias
-                reasons.append(f"Priority=1の別名を使用(alias={priority_alias})")
-            # カテゴリも更新
-            updated_category = get_product_category(pname)
-            if updated_category and updated_category != '複数':
-                cat_kw = updated_category
-        else:
-            # 通常のカテゴリ特有キーワード加点
-            for ekw in cat_kw.split(','):
-                ekw = ekw.strip()
-                norm_ekw = normalize(ekw)
-                if not norm_ekw:
-                    continue
-                if norm_ekw in norm_mapped:
-                    score += 1
-                    reasons.append(f"カテゴリ特有キーワードがGemini抽出商品名に含まれる(+1, ekw={ekw})")
-                if norm_ekw in norm_trans:
-                    score += 1
-                    reasons.append(f"カテゴリ特有キーワードが文字起こしに含まれる(+1, ekw={ekw})")
+        
         log_details.append(f"商品名: {pname}, スコア: {score}, 内訳: {'; '.join(reasons)}")
         if score > best_score:
             best_score = score
             best_product = pname
+            best_category = cat_kw
+    
     if best_score < 1:
         logger.info("スコア計算詳細: " + " | ".join(log_details) + " => 判定: 空文字列")
         return ""
+    
     logger.info("スコア計算詳細: " + " | ".join(log_details) + f" => 判定: {best_product} (スコア: {best_score})")
     return best_product
+
+def process_alias_for_multiple_category(product_name: str, transcription: str, mapped_product: str) -> str:
+    """
+    cat_kw=複数の商品に対して別名処理を実行する
+    
+    Args:
+        product_name: スコアリングで確定した商品名（product_aliasテーブルのproduct_nameに含まれる）
+        transcription: 文字起こしテキスト
+        mapped_product: Gemini抽出商品名
+    
+    Returns:
+        str: 処理後の商品名
+    """
+    logger.info(f"別名処理開始: {product_name}")
+    
+    norm_trans = normalize(transcription)
+    norm_mapped = normalize(mapped_product) if mapped_product else ""
+    
+    # product_aliasテーブルから該当商品の別名・キーワードを取得
+    alias_data = get_alias_keywords(product_name)
+    alias_match = False
+    priority_alias = None
+    
+    for alias_info in alias_data:
+        alias_keyword = alias_info['keyword'].lower()
+        alias_name = alias_info['alias_name']
+        alias_priority = alias_info['alias_priority']
+        
+        # Gemini抽出商品名または文字起こしに別名キーワードが含まれるか
+        if alias_keyword in norm_mapped or alias_keyword in norm_trans:
+            logger.info(f"別名キーワード一致により商品名変更: {product_name} -> {alias_name}")
+            return alias_name
+        elif alias_priority == 1:
+            priority_alias = alias_name
+    
+    # マッチしなかった場合はPriority=1の別名を使用
+    if priority_alias:
+        logger.info(f"Priority=1の別名を使用: {product_name} -> {priority_alias}")
+        return priority_alias
+    
+    # 別名が見つからない場合は元の商品名を返す
+    logger.info(f"別名が見つからないため元の商品名を使用: {product_name}")
+    return product_name
 
 def update_product_in_db(video_id: str, product: str) -> None:
     """
@@ -257,14 +261,20 @@ def refine_product_scoring(event, context):
         # DBから商品名・キーワード・カテゴリ特有キーワードを取得
         product_names, keywords_list, category_keywords = fetch_product_data_from_db()
 
-        # スコアリング
+        # 1. スコアリング実行
         best_product = score_product(transcription, product_names, keywords_list, mapped_product, category_keywords)
+        
+        # 2. 商品が確定した場合、cat_kw=複数の場合は別名処理を実行
+        if best_product:
+            # 確定した商品のカテゴリを取得
+            product_category = get_product_category(best_product)
+            if product_category == '複数':
+                best_product = process_alias_for_multiple_category(best_product, transcription, mapped_product)
 
         logger.info(f"video_id={video_id} の精査結果: {best_product}")
 
         # ここでDBをUPDATE
         update_product_in_db(video_id, best_product)
-
 
     except Exception as e:
         logger.error(f"精査処理エラー: {e}")

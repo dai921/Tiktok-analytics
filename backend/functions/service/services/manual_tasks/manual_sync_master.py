@@ -270,29 +270,34 @@ def normalize_video_title(title: str) -> str:
     # 「作成した」の長さ（4文字）を加えて、それ以降の部分を取得
     return title[first_marker_index + 4:].strip()
 
-def extract_hashtags(title: str) -> str:
+def extract_hashtags(title: str) -> Tuple[str, bool]:
     """
-    動画タイトルからハッシュタグを抽出し、カンマ区切りの文字列として返す
+    動画タイトルからハッシュタグを抽出し、PR判定も行う
     
     Args:
         title (str): 動画タイトル
         
     Returns:
-        str: カンマ区切りのハッシュタグ文字列（例: "ハッシュタグA,ハッシュタグB"）
+        Tuple[str, bool]: (カンマ区切りのハッシュタグ文字列, PR判定フラグ)
     """
     if not title:
-        return ""
+        return "", False
         
     # #で分割し、最初の要素（タイトル本文）を除外
     parts = title.split('#')
     if len(parts) <= 1:  # ハッシュタグがない場合
-        return ""
+        return "", False
         
     # ハッシュタグ部分を処理（先頭の#を除去し、空白を除去）
     hashtags = [tag.strip() for tag in parts[1:] if tag.strip()]
     
+    # PR判定（大文字小文字を区別しない）
+    is_pr = any(tag.lower() == 'pr' for tag in hashtags)
+    
     # カンマ区切りの文字列として結合
-    return ','.join(hashtags)
+    hashtags_str = ','.join(hashtags)
+    
+    return hashtags_str, is_pr
 
 def extract_username_from_url(video_url: str) -> Optional[str]:
     """
@@ -516,9 +521,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # ニックネームのクリーニング
         cleaned_nickname = clean_nickname(video_data['user_nickname'])
 
-        # ハッシュタグの抽出
-        hashtags = extract_hashtags(video_data['video_title_light'])
-
+        # ハッシュタグの抽出とPR判定
+        hashtags, is_pr = extract_hashtags(video_data['video_title_light'])
 
         # 同期データの作成
         insert_params = {
@@ -529,6 +533,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'cover_image_url': thumbnail_url,
             'description':video_title,
             'hashtags': hashtags,
+            'is_pr': is_pr,  # PRフラグを追加
             'category': title_analysis['category'],
             'product': title_analysis['product_name'],
             'content_type': content_type,
@@ -547,14 +552,14 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         insert_query = """
         INSERT INTO video_master (
             video_id, url, username, display_name, cover_image_url,
-            description, hashtags, category, product, content_type,
+            description, hashtags, is_pr, category, product, content_type,
             account_type, created_at, likesCountIncrease,
             commentCountIncrease, saveCountIncrease, music_title,
             likes_count, comment_count, save_count, front_needs_update
         ) VALUES (
             %(video_id)s, %(url)s, %(username)s, %(display_name)s,
             %(cover_image_url)s, %(description)s, %(hashtags)s,
-            %(category)s, %(product)s, %(content_type)s,
+            %(is_pr)s, %(category)s, %(product)s, %(content_type)s,
             %(account_type)s, %(created_at)s,  %(likesCountIncrease)s,
             %(commentCountIncrease)s, %(saveCountIncrease)s,
             %(music_title)s, %(likes_count)s,
@@ -565,6 +570,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             cover_image_url = VALUES(cover_image_url),
             description = VALUES(description),
             hashtags = VALUES(hashtags),
+            is_pr = VALUES(is_pr),  # PRフラグの更新を追加
             category = VALUES(category),
             product = VALUES(product),
             content_type = VALUES(content_type),

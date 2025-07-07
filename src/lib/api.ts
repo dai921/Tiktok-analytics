@@ -584,6 +584,19 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           return;
         }
 
+        // アカウントタイプフィルター
+        if (key === 'account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`account_type_${index}`, type.toString().trim());
+            });
+            params.append('account_type_count', filter.value.length.toString());
+          } else {
+            params.append('account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
         // カテゴリフィルター
         if (key === 'category' || key === 'PR動画ジャンル') {
           if (Array.isArray(filter.value)) {
@@ -612,6 +625,19 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
           const comparison = filter.comparison || filter.type || 'equal';
           params.append('created_at', filter.value.toString());
           params.append('created_at_type', comparison);
+          return;
+        }
+
+        // 商品名フィルター
+        if (key === 'product') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((product, index) => {
+              params.append(`product_${index}`, product.toString().trim());
+            });
+            params.append('product_count', filter.value.length.toString());
+          } else {
+            params.append('product', filter.value.toString().trim());
+          }
           return;
         }
 

@@ -288,7 +288,7 @@ export const FilterPopup = ({
       }
     ],
     text: [
-      { id: 'accountName', label: 'アカウント検索', type: 'text' },
+      { id: 'account_name', label: 'アカウント検索', type: 'text' },
       { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' },
       { id: 'audioTitle', label: 'BGM検索', type: 'text' }
     ],
@@ -409,7 +409,7 @@ export const FilterPopup = ({
   };
   
 
-  /* ② useLayoutEffect ―― “開いた瞬間だけ” 計算 */
+  /* ② useLayoutEffect ―― "開いた瞬間だけ" 計算 */
   useLayoutEffect(() => {
     if (!isOpen) return
     // 1回だけ座標を決定
@@ -1074,7 +1074,7 @@ export const FilterPopup = ({
         return label;
       } else if (React.isValidElement(label)) {
         // Reactエレメントの場合は、fieldIdからラベルを判断
-        return field.id === 'accountName' ? 'アカウント' :
+        return field.id === 'account_name' ? 'アカウント' :
                field.id === 'hashtags' ? 'ハッシュタグ' :
                field.id === 'audioTitle' ? 'BGM' : '';
       }

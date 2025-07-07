@@ -34,6 +34,7 @@
 | caption | TEXT | YES | NULL | キャプション |
 | category | VARCHAR(255) | YES | NULL | カテゴリ |
 | product | VARCHAR(255) | YES | NULL | 関連商品 |
+| is_pr | TINYINT | YES | 0 | PRフラグ |
 
 ## インデックス
 
@@ -56,9 +57,51 @@
 | idx_category | category | インデックス | カテゴリ検索用 |
 | idx_product | product | インデックス | 商品検索用 |
 | idx_created_at | created_at | インデックス | 投稿日検索用 |
+| idx_is_pr | is_pr | インデックス | prフラグ検索用 |
 
 ## 関連テーブル
 このテーブルは他のテーブルとの直接的な外部キー関連はありませんが、video_idやurlを通じて他のテーブルと関連付けられます。
+
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| genre_stats| get_genre_stats | 133~153 | 各ジャンルのTOP10動画を取得 |
+| main | get_videos | 157~166 | ダッシュボードのデータを取得する基本クエリ |
+| main | get_filter_options | 691 | ダッシュボードの動画のカテゴリ一覧を取得 |
+| main | get_filter_options | 710 | ダッシュボードの動画のアカウント一覧を取得 |
+| main | get_filter_options | 717 | ダッシュボードの動画のハッシュタグ一覧を取得 |
+| main | get_filter_options | 759 | ダッシュボードの動画のBGM一覧を取得 |
+| main | get_account_types | 1214~1216 | ダッシュボードのアカウントタイプ一覧を取得 |
+| product_stats | get_product_stats | 185~206 | 商品別上位10動画を取得 |
+| watchlist | get_video_watchlist_with_details | 234~248 | 各動画のデータを取得 |
+| watchlist | get_video_watchlist_trends | 411~431 | 各動画のトレンドデータを取得 |
+| watchlist | get_account_bookmarks_with_details | 676~691 | 各アカウントの集計データを取得 |
+| watchlist | get_account_trends | 811~831 | 各アカウントのトレンドデータを取得 |
+| watchlist | get_account_videos | 913~928 | 各アカウントの動画を取得 |
+
+### その他Cloud Function
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| product-scoring\manual-task | get_target_videos_batch | 347~362 | 更新対象の動画一覧を取得（バッチ処理） |
+| product-scoring\manual-task | get_remaining_count | 379~388 | 残りの更新対象の動画数を取得 |
+| product-scoring\manual-task | process_single_video | 379~388 |動画の文字起こし情報などを取得 |
+| frontend_data_update | update_frontend_from_master | 110~155 | video_masterからダッシュボードに移したいデータを取得 |
+| frontend_data_update | update_frontend_from_master | 172~184 | 同期すべき残りのデータ数を取得 |
+| frontend_data_update | update_frontend_from_master | 252~264 | frontend_dataへ更新するクエリ |
+| summary_table_sync | update_product_daily_summary | 50~79 | 商品ごとの集計を行うクエリ |
+| summary_table_sync | update_genre_daily_summary | 127~159 | 動画ジャンルごとの集計を行うクエリ |
+| top100_videos_sync | update_product_top100_by_date | 106~128 | 商品ごとのTOP100(更新日)集計を行うクエリ |
+| top100_videos_sync | update_genre_top100_by_date | 157~171 | 動画ジャンル一覧を取得 |
+| top100_videos_sync | update_genre_top100_by_date | 188~215 | 動画ジャンルごとのTOP100(更新日)集計を行うクエリ |
+| video_history_sync | sync_video_history | 51~83 | 動画のエンゲージメントデータ（更新日）の集計 |
+| video_history_sync | sync_video_history | 91~146 | エンゲージメントの10日間増加数（更新日）の集計 |
+| manual_summary_sync | process_product_summary | 155~184 | 商品ごとの集計を行うクエリ |
+| manual_summary_sync | process_genre_summary | 193~225 | 動画ジャンルごとの集計を行うクエリ |
+| manual_top100_sync | process_product_top100 | 167~191 | 商品ごとのTOP100(更新日)集計を行うクエリ |
+| manual_top100_sync | process_genre_top100 | 227~241 | 動画ジャンル一覧を取得 |
+| manual_top100_sync | process_genre_top100 | 262~291 | 動画ジャンルごとのTOP100(更新日)集計を行うクエリ |
+
 
 ## 備考
 - フロントエンド表示に最適化されたデータを格納するテーブルです

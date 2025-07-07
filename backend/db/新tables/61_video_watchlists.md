@@ -29,6 +29,19 @@
 | video_id | frontend_data.video_id | 多対1の中間テーブル | 各動画は複数のユーザーにウォッチリストに追加される可能性がある |
 | email | users.email | 多対1の中間テーブル | 1ユーザーに対して複数の動画がウォッチリストに追加される可能性がある |
 
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| watchlist | add_video_to_watchlist | 54~56 | ビデオウォッチリストにデータ存在するかチェック |
+| watchlist | add_video_to_watchlist | 62~68 | テーブルにデータを更新 |
+| watchlist | add_video_to_watchlist | 76~81 | テーブルにデータを挿入 |
+| watchlist | remove_video_from_watchlist | 128 | ビデオウォッチリストにデータ存在するかチェック |
+| watchlist | remove_video_from_watchlist | 138~140 | ビデオウォッチリストから削除 |
+| watchlist | get_video_watchlist | 167 | ビデオウォッチリストの一覧を取得 |
+| watchlist | get_video_watchlist_with_details | 234~249 | ウォッチリストの動画情報を結合して取得 |
+| watchlist | get_video_watchlist_trends | 388~392 | ウォッチリストの動画のエンゲージメントの推移を取得 |
+
 ## 特徴
 
 1. **ウォッチリストに登録した動画の一元管理**

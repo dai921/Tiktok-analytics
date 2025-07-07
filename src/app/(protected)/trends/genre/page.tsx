@@ -121,6 +121,8 @@ export default function GenrePage() {
     postCount: []
   });
 
+  const [displayLimit, setDisplayLimit] = useState(15);
+
   useEffect(() => {
     if (!dataLoaded || userSelectedDate) {
       const loadGenreStats = async () => {
@@ -309,7 +311,7 @@ export default function GenrePage() {
     if (tempDateRange) {
       setDateRange(tempDateRange);
       setUserSelectedDate(true);
-      // 日付変更時にキャッシュをクリア
+      setDisplayLimit(15);
       setCachedGenreStats({
         viewsIncrease: [],
         over100kViews: [],
@@ -339,7 +341,7 @@ export default function GenrePage() {
   // ジャンル選択用のハンドラを修正
   const handleGenreChange = (selected: string[]) => {
     setSelectedGenres(selected);
-    // ジャンル変更時にデータを再ロードするためのフラグをリセット
+    setDisplayLimit(15);
     setDataLoaded(false);
     setGraphDataLoaded(false);
   };
@@ -350,14 +352,13 @@ export default function GenrePage() {
     const newMetric = e.target.value as MetricKey;
     console.log(`指標変更: ${oldMetric} → ${newMetric}`);
     setMetric(newMetric);
+    setDisplayLimit(15);
     
-    // 指標変更時は常に再読込（キャッシュを使わない）
-    console.log(`${newMetric}のデータを再読み込み`);
-    setDataLoaded(false); // ランキングデータを再読込
+    setDataLoaded(false);
     
     if (activeTab === 'graph') {
       console.log(`${newMetric}のグラフデータも再読み込み`);
-      setGraphDataLoaded(false); // グラフデータも再読込
+      setGraphDataLoaded(false);
     }
   };
 
@@ -472,10 +473,10 @@ export default function GenrePage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {/* その他以外のジャンルを最大10件表示 */}
+                        {/* その他以外のジャンルを表示 */}
                         {genreStats
                           .filter(stat => stat.genre && stat.genre.trim() !== '' && stat.genre !== 'その他')
-                          .slice(0, 10)
+                          .slice(0, displayLimit)
                           .map((stat, index) => {
                             const metricValue = {
                               viewsIncrease: Number(stat.total_play_count_increase) || 0,
@@ -555,6 +556,23 @@ export default function GenrePage() {
                         )}
                       </TableBody>
                     </Table>
+                    
+                    {/* さらに読み込むボタン - 修正 */}
+                    {(() => {
+                      const filteredGenres = genreStats.filter(stat => 
+                        stat.genre && stat.genre.trim() !== '' && stat.genre !== 'その他'
+                      );
+                      return filteredGenres.length > displayLimit ? (
+                        <div className="mt-4 text-center">
+                          <button
+                            onClick={() => setDisplayLimit(prev => prev + 15)}
+                            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                          >
+                            さらに15件読み込む
+                          </button>
+                        </div>
+                      ) : null;
+                    })()}
                   </CardContent>
                 </Card>
               </div>
@@ -605,7 +623,7 @@ export default function GenrePage() {
                                           videoUrl={video.url}
                                           videoData={{
                                             views: Number(video.play_count) ?? 0,
-                                            viewsIncrease: Number(video.play_count_increase) ?? 0,
+                                            viewsIncrease: Number(video.play_count_increase_2d) ?? 0,
                                             ten_days_increase: Number(video.ten_days_increase) ?? 0,
                                             createdAt: video.created_at,
                                             accountName: video.account_name,

@@ -37,8 +37,39 @@ RANGE パーティション（TO_DAYS(collection_date)による）
 - p_current: TO_DAYS('2025-05-01')未満
 - p_future: MAXVALUE未満
 
+
 ## 関連テーブル
 このテーブルは他のテーブルとの直接的な外部キー関連はありませんが、video_idやvideo_urlを通じて他のテーブルと関連付けられます。
+
+## 関連Function
+### Backend API
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| main | get_video_play_count_history | 1034~1043 | 保存している収集日を取得 |
+| watchlist | get_video_watchlist_with_details | 207~213 | 保存している収集日を取得  |
+| watchlist | get_video_watchlist_with_details | 234~248 | ウォッチリストの動画の集計データを取得 |
+| watchlist | get_video_watchlist_trends | 363~369 | 保存している収集日を取得  |
+| watchlist | get_video_watchlist_trends | 411~431 | ウォッチリストの日別データを取得  |
+| watchlist | get_account_bookmarks_with_details | 648~654 | 保存している収集日を取得 |
+| watchlist | get_account_bookmarks_with_details | 675~691 | アカウントのエンゲージメントデータを取得 |
+| watchlist | get_account_trends | 763~770 | 保存している収集日を取得 |
+| watchlist | get_account_trends | 811~831 | 各アカウントのトレンドデータを取得 |
+| watchlist | get_account_videos | 913~928 | 各アカウントの動画を取得 |
+
+### その他Cloud Function
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| summary_table_sync | update_product_daily_summary | 50~79 | 商品ごとの集計を行うクエリ |
+| summary_table_sync | update_genre_daily_summary | 127~159 | 動画ジャンルごとの集計を行うクエリ |
+| video_history_sync | sync_video_history | 51~83 | 動画のエンゲージメントデータ（更新日）の集計 |
+| video_history_sync | sync_video_history | 91~146 | エンゲージメントの10日間増加数（更新日）の集計 |
+| manual_summary_sync | process_data_range | 86~91 | 保存している収集日を取得 |
+| manual_summary_sync | process_all_dates | 109~114 | 保存している収集日を取得 |
+| manual_summary_sync | process_product_summary | 155~184 | 動画ジャンルごとの集計を行うクエリ |
+| manual_summary_sync | process_genre_summary | 193~225 | 動画ジャンルごとの集計を行うクエリ |
+| manual_top100_sync | process_top100_data | 82~87 | 保存している収集日を取得 |
+| manual_top100_sync | process_product_top100 | 167~191 | 商品ごとのTOP100(更新日)集計を行うクエリ |
+| manual_top100_sync | process_genre_top100 | 262~291 | 動画ジャンルごとのTOP100(更新日)集計を行うクエリ |
 
 ## 備考
 - 動画の再生数などの増加データを日付ごとに格納するテーブルです

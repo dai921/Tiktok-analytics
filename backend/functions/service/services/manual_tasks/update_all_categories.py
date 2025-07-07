@@ -117,7 +117,7 @@ def process_update_all_categories():
             SELECT id, url,video_id, username, description, hashtags
             FROM video_master 
             WHERE id > {last_cursor_id}
-            AND up_update = 1
+            AND category_update = 1
             ORDER BY id
             LIMIT {batch_size}
         """
@@ -195,7 +195,7 @@ def process_update_all_categories():
             SELECT COUNT(*) as count
             FROM video_master
             WHERE id > {max_id}
-            AND up_update = 1
+            AND category_update = 1
         """
         remain_data = execute_query(remain_query)
         remaining_count = remain_data[0]['count'] if remain_data else 0

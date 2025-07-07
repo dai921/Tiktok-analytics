@@ -382,17 +382,33 @@ async def get_videos(
                 print(f"単一コンテンツタイプフィルター適用: {content_type}")
 
         # 商品フィルターの処理
-        if product:
-            # 商品名でフィルタリング
+        product_filters = []
+
+        # product_countパラメータがある場合は複数商品
+        product_count = request.query_params.get('product_count')
+        if product_count and product_count.isdigit():
+            count = int(product_count)
+            for i in range(count):
+                product_param = request.query_params.get(f'product_{i}')
+                if product_param:
+                    escaped_product = product_param.replace("_", r"\_").replace("%", r"\%")
+                    product_filters.append(f"product LIKE :product_{i}")
+                    params[f"product_{i}"] = f"%{escaped_product}%"
+
+        # 1つ以上のproductフィルターがある場合は、OR条件で結合
+        if product_filters:
+            where_clauses.append(f"({' OR '.join(product_filters)})")
+        # 従来の単一商品名処理
+        elif product:
             escaped_product = product.replace("_", r"\_").replace("%", r"\%")
-            # 商品名に対する部分一致検索
             where_clauses.append("product LIKE :product")
             params["product"] = f"%{escaped_product}%"
         
-        # アカウントタイプフィルターの処理（OR条件）
+        # アカウントタイプフィルターの処理
         account_type_filters = []
 
         # account_type_countパラメータがある場合は複数アカウントタイプ
+        account_type_count = request.query_params.get('account_type_count')
         if account_type_count and account_type_count.isdigit():
             count = int(account_type_count)
             for i in range(count):
@@ -401,11 +417,11 @@ async def get_videos(
                     escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
                     account_type_filters.append(f"account_type LIKE :account_type_{i}")
                     params[f"account_type_{i}"] = f"%{escaped_account}%"
-        
+
         # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
         if account_type_filters:
             where_clauses.append(f"({' OR '.join(account_type_filters)})")
-        # 単一アカウントタイプ処理
+        # 従来の単一アカウントタイプ処理
         elif account_type:
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_type LIKE :account_type")
@@ -558,235 +574,6 @@ async def health_check():
         print(f"Unexpected error in health check: {e}")
         print(traceback.format_exc())
         raise
-
-@app.get("/test")
-async def test():
-    print("Test endpoint called")  # デバッグ用ログ
-    return {"status": "ok"}
-
-@app.get("/debug/row/{row_id}")
-async def debug_row(row_id: str):
-    """特定の行の生データとJSONパース結果を確認するためのデバッグエンドポイント"""
-    try:
-        # テーブル内の特定の行を検索
-        query = "SELECT * FROM frontend_data WHERE id = :row_id"
-        results = execute_query(query, {"row_id": row_id})
-        
-        if not results:
-            return {"error": "Row not found"}
-            
-        # 結果の最初の行を取得
-        row = results[0]
-        
-        # データ構造を構築
-        raw_data = {
-            "row_data": {key: str(value) for key, value in row.items()},
-            "columns": list(row.keys())
-        }
-        
-        # format_videoを試す（エラーをキャッチする）
-        formatted = None
-        try:
-            formatted = format_video(row)
-        except Exception as e:
-            formatted = {"error": str(e)}
-            
-        return {
-            "raw_data": raw_data,
-            "formatted": formatted
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/api/categories")
-async def get_categories():
-    """カテゴリ一覧を取得するエンドポイント"""
-
-    try:
-        # SQLAlchemyを使用してテーブル一覧を取得
-        tables_result = execute_query("SHOW TABLES")
-        tables = [list(row.values())[0] for row in tables_result]
-        logger.info(f"データベース内のテーブル: {tables}")
-
-        # frontend_dataテーブルの構造確認
-        columns_result = execute_query("DESCRIBE frontend_data")
-        columns = [row['Field'] for row in columns_result]
-        logger.info(f"frontend_dataテーブルのカラム: {columns}")
-
-        # カテゴリ情報があるか確認
-        if "category" in columns:
-            categories_rows = execute_query(
-                """
-                SELECT DISTINCT category
-                FROM frontend_data
-                WHERE category IS NOT NULL AND category != ''
-                """
-            )
-            logger.info(f"取得したカテゴリデータ行数: {len(categories_rows)}")
-
-            categories = [row['category'] for row in categories_rows if row['category']]
-            result = {
-                "success": True,
-                "categories": categories,
-                "products": [],
-                "category_products": {}
-            }
-        else:
-            result = {
-                "success": False,
-                "error": "カテゴリ情報が見つかりません",
-                "categories": []
-            }
-
-        return result
-
-    except Exception as e:
-        logger.error(f"カテゴリ取得エラー: {e}")
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": str(e),
-            "categories": []
-        }
-
-@app.get("/api/accounts")
-async def get_accounts():
-    """アカウント一覧を取得するエンドポイント"""
-    try:
-        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
-        
-            # アカウント一覧の取得
-            cursor.execute(
-                "SELECT DISTINCT account_name FROM frontend_data WHERE account_name IS NOT NULL AND account_name != ''"
-            )
-            accounts = [row[0] for row in cursor.fetchall()]
-        
-        return {
-            "success": True,
-            "data": accounts
-        }
-    except Exception as e:
-        logger.error(f"アカウント取得エラー: {str(e)}")
-        return {"success": False, "error": str(e)}
-
-@app.get("/api/hashtags")
-async def get_hashtags(limit: int = None):
-    """ハッシュタグ一覧を取得するエンドポイント"""
-    try:
-        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
-        
-            # ハッシュタグ一覧の取得
-            if limit:
-                cursor.execute(
-                    "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != '' LIMIT %s",
-                    (limit,)
-                )
-            else:
-                cursor.execute(
-                    "SELECT DISTINCT hashtags FROM frontend_data WHERE hashtags IS NOT NULL AND hashtags != ''"
-                )
-            hashtags_rows = cursor.fetchall()
-            
-            # ハッシュタグはJSONとして保存されている可能性があるため、パースして個別のハッシュタグを抽出
-            all_hashtags = []
-            for row in hashtags_rows:
-                try:
-                    # JSON文字列をパースして配列として扱う
-                    hashtags_list = json.loads(row[0])
-                    if isinstance(hashtags_list, list):
-                        all_hashtags.extend(hashtags_list)
-                    else:
-                        # 単一の値の場合
-                        all_hashtags.append(row[0])
-                except json.JSONDecodeError:
-                    # JSON形式でない場合は単一の値として扱う
-                    all_hashtags.append(row[0])
-            
-            # 重複を除去
-            unique_hashtags = list(set(all_hashtags))
-            # ハッシュタグをオブジェクト形式に変換
-            hashtags = [{"hashtags": tag} for tag in unique_hashtags if tag]
-
-        return {
-            "success": True,
-            "data": hashtags
-        }
-    except Exception as e:
-        logger.error(f"ハッシュタグ取得エラー: {str(e)}")
-        return {"success": False, "error": str(e)}
-
-@app.get("/api/music")
-async def get_music(limit: int = 100):
-    """BGM(音声タイトル)一覧を取得するエンドポイント"""
-    try:
-        with closing(get_db_connection()) as conn, closing(conn.cursor()) as cursor:
-        
-            # テーブルの構造確認
-            cursor.execute("DESCRIBE frontend_data")
-            columns = [row[0] for row in cursor.fetchall()]
-            logger.info(f"frontend_dataテーブルのカラム: {columns}")
-            
-            music_titles = []
-            # audio_titleカラムがあるか確認
-            if 'audio_title' in columns:
-                # BGM一覧の取得
-                cursor.execute(
-                    "SELECT DISTINCT audio_title FROM frontend_data WHERE audio_title IS NOT NULL AND audio_title != '' LIMIT %s",
-                    (limit,)
-                )
-                music_rows = cursor.fetchall()
-                logger.info(f"audio_titleから取得したBGM行数: {len(music_rows)}")
-                
-                # データ抽出
-                music_titles = [row[0] for row in music_rows if row[0]]
-                if music_titles:
-                    logger.info(f"BGMサンプル: {music_titles[:5]}")
-            
-            # music_infoカラムがあるか確認
-            elif 'music_info' in columns:
-                # 代替として music_info カラムを使用
-                cursor.execute(
-                    "SELECT DISTINCT music_info FROM frontend_data WHERE music_info IS NOT NULL AND music_info != '' LIMIT %s",
-                    (limit,)
-                )
-                music_rows = cursor.fetchall()
-                logger.info(f"music_infoから取得したBGM行数: {len(music_rows)}")
-                
-                # データ処理
-                for row in music_rows:
-                    if row[0]:
-                        try:
-                            # JSON文字列の場合はパース
-                            if isinstance(row[0], str) and (row[0].startswith('{') or row[0].startswith('[')):
-                                music_info = json.loads(row[0])
-                                if isinstance(music_info, dict) and 'title' in music_info:
-                                    music_titles.append(music_info['title'])
-                                else:
-                                    music_titles.append(str(music_info))
-                            else:
-                                music_titles.append(str(row[0]))
-                        except json.JSONDecodeError:
-                            music_titles.append(str(row[0]))
-                
-                if music_titles:
-                    logger.info(f"パース後のBGMサンプル: {music_titles[:5]}")
-            
-            # 音楽情報がない場合
-            if not music_titles:
-                logger.warning("BGM情報を取得できませんでした")
-        
-        return {
-            "success": True,
-            "data": music_titles
-        }
-    except Exception as e:
-        logger.error(f"BGM一覧取得エラー: {str(e)}")
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": str(e),
-            "data": []
-        }
 
 @app.get("/api/filter-options")
 async def get_filter_options(
@@ -1244,16 +1031,7 @@ async def get_video_play_count_history(
         tables_result = execute_query("SHOW TABLES")
         tables_list = [list(row.values())[0] for row in tables_result]
         logger.info(f"利用可能なテーブル: {tables_list}")
-        
-        if 'play_count_history' not in tables_list:
-            logger.error("play_count_historyテーブルが存在しません")
-            return {
-                "success": False,
-                "error": "必要なテーブルが存在しません",
-                "video_id": video_id,
-                "history": []
-            }
-
+    
         # video_idの形式チェック
         if not video_id.isdigit():
             logger.warning(f"無効な動画ID形式: {video_id}")
@@ -1300,81 +1078,6 @@ async def get_video_play_count_history(
 
     except Exception as e:
         logger.error(f"再生数履歴取得エラー: {str(e)}")
-        logger.error(traceback.format_exc())
-        return {
-            "success": False,
-            "error": str(e),
-            "video_id": video_id,
-            "history": []
-        }
-
-@app.get("/api/video/save-count-history/{video_id}")
-async def get_video_save_count_history(
-    video_id: str,
-    days: Optional[int] = 30
-):
-    logger.info(f"保存数履歴取得リクエスト受信: video_id={video_id}, days={days}")
-    try:
-        # テーブル存在確認
-        tables_result = execute_query("SHOW TABLES")
-        tables_list = [list(row.values())[0] for row in tables_result]
-        logger.info(f"利用可能なテーブル: {tables_list}")
-        
-        if 'play_count_history' not in tables_list:
-            logger.error("play_count_historyテーブルが存在しません")
-            return {
-                "success": False,
-                "error": "必要なテーブルが存在しません",
-                "video_id": video_id,
-                "history": []
-            }
-
-        # video_idの形式チェック
-        if not video_id.isdigit():
-            logger.warning(f"無効な動画ID形式: {video_id}")
-            return {
-                "success": False,
-                "error": "無効な動画ID形式です",
-                "video_id": video_id,
-                "history": []
-            }
-
-        query = """
-        SELECT 
-            collection_date,
-            save_count_increase
-        FROM play_count_history
-        WHERE 
-            video_id = :video_id
-            AND collection_date >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
-        ORDER BY collection_date ASC
-        """
-        
-        # クエリ実行前のデバッグログ
-        logger.info(f"実行するクエリ: {query}")
-        logger.info(f"パラメータ: video_id={video_id}, days={days}")
-        
-        results = execute_query(query, {"video_id": video_id, "days": days})
-        
-        # 結果のデバッグログ
-        logger.info(f"取得した結果: {results}")
-
-        # 結果を整形
-        history = []
-        for result in results:
-            history.append({
-                "collection_date": result["collection_date"].strftime("%Y-%m-%d"),
-                "save_count_increase": result["save_count_increase"] if result["save_count_increase"] is not None else 0
-            })
-
-        return {
-            "success": True,
-            "video_id": video_id,
-            "history": history
-        }
-
-    except Exception as e:
-        logger.error(f"保存数履歴取得エラー: {str(e)}")
         logger.error(traceback.format_exc())
         return {
             "success": False,

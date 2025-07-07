@@ -25,6 +25,17 @@
 |-----------|-----------|-----------|------|
 | product_master | product_id -> product_id | 多対一 | 各キーワードは一つの商品に属する |
 
+## 関連Function
+
+| コード名 | 関数名 | 行数 | 説明 |
+|--------------|-------|------|------|
+| product-scoring | fetch_product_data_from_db | 35~42 | 商品判定に使うキーワードマッピングに使用 |
+| sync_category_spreadsheet | sync_category_spreadsheet | 300~304 | スプシ上の商品キーワードを更新 |
+| video_master_sync | analyze_title | 57~64 | 商品、動画ジャンル、キーワードの一括取得 |
+| manual_sync_master | analyze_title | 54~61 | 商品、動画ジャンル、キーワードの一括取得 |
+| update_all_categories | analyze_title | 395~402 | 商品、動画ジャンル、キーワードの一括取得 |
+
+
 ## 備考
 - TikTok動画の商品自動識別に使用されるキーワードを管理するテーブルです
 - 動画の説明文やハッシュタグにこれらのキーワードが含まれていると、対応する商品に関連付けられます
