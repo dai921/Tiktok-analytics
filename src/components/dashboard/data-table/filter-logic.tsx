@@ -74,14 +74,11 @@ export function useFilterLogic(
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({});
   const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({});
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState(0);
   const [isPrOnly, setIsPrOnly] = useState(initialPrOnly);
   
   // フィルターをクリアする関数 - データテーブルとAPIの両方を更新
   const handleClearAllFilters = useCallback(() => {
-    console.log('DataTable - handleClearAllFilters called');
-    console.log('DataTable - columnFilters before clear:', columnFilters);
-    
+
     // 状態をリセット
     setHasActiveFilters(false);
     setColumnFilters({});
@@ -90,30 +87,21 @@ export function useFilterLogic(
     sortState.setSecondarySort(null);
     sortState.setSortField(null);
     sortState.setSortDirection(null);
-    
-    console.log('DataTable - columnFilters after clear: {}');
-    
     // 親コンポーネントに通知 - 明示的なフィルターリセット信号を送る
     onFilterChange(false, { field: 'reset', type: 'clear', value: '', active: false });
     
     // フィルターポップアップを閉じる
     setIsFilterPopupOpen(false);
 
-    // 強制的に再レンダリングを発生させる
-    // setForceUpdate(prev => prev + 1);
   }, [onFilterChange, columnFilters, sortState]);
   
   // ポップアップ内のフィルター入力のみをクリアする関数 - ポップアップの入力のみクリア（APIリクエストなし）
   const handleClearFilterInputs = useCallback(() => {
-    console.log('FilterPopup内の入力のみをクリア');
-    // 明示的にFilterPopupを直接クリアするのではなく、ポップアップ内部のClearAllボタンに任せる
-    // 実際のデータのクリアはhandleBulkFilterChangeで処理される
   }, []);
   
   // handleFilterを拡張してソート処理を明示的に扱う
   const handleFilter = useCallback((field: string) => {
     return (filterValue: FilterValue, shouldMerge = false) => {
-      console.log(`[DataTable] フィルター処理 - フィールド: ${field}`, filterValue);
       
       if (filterValue.type === 'sort') {
         // ソート処理
@@ -137,15 +125,10 @@ export function useFilterLogic(
           });
         }
         
-        // 親コンポーネントに通知は不要
-        // onFilterChange(true, filterValue); // ← この行をコメントアウトまたは削除
-        // setForceUpdate(prev => prev + 1); // ★ 不要であればこの行も削除検討
         return;
       }
       
       if (filterValue.type === 'clear') {
-        console.log(`[DataTable] 明示的なクリア処理 - フィールド: ${field}`, filterValue);
-        
         // ソートもクリアする
         if (sortState.primarySort?.field === field) {
           sortState.setSortField(null);
@@ -180,9 +163,6 @@ export function useFilterLogic(
           // 全てのフィルターが空になった場合、明示的にリセット信号を送る
           onFilterChange(false, { field: 'reset', type: 'clear', value: '', clear: true });
         }
-        
-        // 強制的に再レンダリングを発生させる
-        // setForceUpdate(prev => prev + 1);
         return;
       }
       
@@ -191,7 +171,6 @@ export function useFilterLogic(
         ...filterValue,
         active: true
       };
-      console.log(`[DataTable] フィルター値を更新 - フィールド: ${field}, active=true を設定`);
       
       // 新しいフィルターを適用
       const newFilters = shouldMerge 
@@ -199,7 +178,6 @@ export function useFilterLogic(
         : { [field]: updatedFilterValue };
       
       setColumnFilters(newFilters);
-      console.log(`[DataTable] columnFiltersを更新 - フィールド: ${field}`, newFilters[field]);
       
       // 現在のフィルターに追加
       const updatedFilter = {
@@ -209,7 +187,6 @@ export function useFilterLogic(
         }
       };
       setCurrentFilters(updatedFilter);
-      console.log(`[DataTable] currentFiltersを更新 - フィールド: ${field}`, updatedFilter[field]);
       
       // フィルターがアクティブになったことを通知
       setHasActiveFilters(true);
@@ -219,42 +196,16 @@ export function useFilterLogic(
         ...updatedFilterValue
       });
       
-      // 強制的に再レンダリングを発生させる
-      // setForceUpdate(prev => prev + 1);
       return;
     };
   }, [columnFilters, currentFilters, onFilterChange, sortState]);
 
   // handleBulkFilterChange関数 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
   const handleBulkFilterChange = useCallback((filters: Record<string, FilterValue>) => {
-    console.log('[デバッグ-犯人捜し] handleBulkFilterChange 呼び出し', {
-      isPrOnly,
-      receivedFilters: JSON.stringify(filters),
-      hasPrFilter: Object.keys(filters).some(key => 
-        (key === 'hashtags_pr' || 
-         (filters[key].field === 'hashtags' && 
-          filters[key].type === 'exact_hashtags' && 
-          filters[key].value === 'pr'))
-      )
-    });
     
-    // ソート関連のフィルターを特に詳しくログ
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value.type === 'sort') {
-        console.log('[SORT-DEBUG] DataTable - ソートフィルター詳細:', {
-          key,
-          field: value.field,
-          sortField: value.sortField,
-          direction: value.value,
-          isPrimarySort: value.isPrimarySort,
-          active: value.active
-        });
-      }
-    });
     
     // 明示的なリセット信号をチェック
     if (filters.reset && filters.reset.type === 'clear') {
-      console.log('[SORT-DEBUG] DataTable - 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
       
       // 状態をリセット
       setColumnFilters({});
@@ -293,20 +244,6 @@ export function useFilterLogic(
     // ソート関連のフラグ - ソート関連のキーがあるかどうかを確認
     const hasSortKeys = Object.keys(filters).some(key => key.startsWith('sort_'));
     
-    // 明示的なソートキーログ
-    if (hasSortKeys) {
-      const sortKeys = Object.keys(filters).filter(key => key.startsWith('sort_'));
-      console.log('[SORT-DEBUG] DataTable - ソートキー検出:', {
-        sortKeys,
-        values: sortKeys.map(key => ({
-          key,
-          value: filters[key].value,
-          field: filters[key].field || key.replace(/^sort_/, ''),
-          type: filters[key].type
-        }))
-      });
-    }
-    
     // フィルターを処理し、ソート情報とフィルター情報を分離
     Object.entries(filters).forEach(([key, filter]) => {
       // ソート情報の処理
@@ -317,16 +254,6 @@ export function useFilterLogic(
         
         // フィールド名のマッピングを行う
         const apiFieldName = mapFieldNameToApi(fieldName);
-        
-        console.log('[SORT-DEBUG] DataTable - ソート情報抽出:', {
-          key,
-          uiFieldName: fieldName,
-          apiFieldName,
-          isPrimarySort: filter.isPrimarySort,
-          direction: filter.value,
-          filterType: filter.type,
-          hasSortPrefix: key.startsWith('sort_')
-        });
         
         // ソート方向を取得
         const direction = (filter.value as 'asc' | 'desc') || 'desc';
@@ -342,12 +269,6 @@ export function useFilterLogic(
           sortState.setSortField(fieldName);
           sortState.setSortDirection(direction);
           
-          console.log('[SORT-DEBUG] DataTable - 第一ソート設定:', {
-            field: fieldName,
-            direction: direction,
-            source: filter.isPrimarySort ? 'isPrimarySort' : 'first detected',
-            timestamp: new Date().toISOString()
-          });
         } else if (!newSecondarySort) {
           // 第二ソートの設定（まだ設定されていない場合のみ）
           newSecondarySort = {
@@ -355,11 +276,6 @@ export function useFilterLogic(
             direction: direction
           };
           
-          console.log('[SORT-DEBUG] DataTable - 第二ソート設定:', {
-            field: fieldName,
-            direction: direction,
-            timestamp: new Date().toISOString()
-          });
         }
       } else if (
         key === 'hashtags_pr' || 
@@ -368,7 +284,6 @@ export function useFilterLogic(
          filter.value === 'pr')
       ) {
         // PRフィルターは無視する - このフィルターはisPrOnlyの状態のみで制御
-        console.log('[デバッグ-犯人捜し] PRフィルターを検出、無視します', { key, filter });
       } else {
         // 通常のフィルター情報 - active プロパティを明示的に保持
         normalFilters[key] = {
@@ -378,15 +293,8 @@ export function useFilterLogic(
       }
     });
     
-    // ソート情報を更新
+    // 必ず正しいオブジェクトを渡す
     if (sortUpdated) {
-      console.log('[SORT-DEBUG] DataTable - ソート状態更新:', {
-        primarySort: newPrimarySort,
-        secondarySort: newSecondarySort,
-        timestamp: new Date().toISOString()
-      });
-      
-      // 必ず正しいオブジェクトを渡す
       if (newPrimarySort) {
         sortState.setPrimarySort(newPrimarySort);
       }
@@ -399,7 +307,6 @@ export function useFilterLogic(
       }
     } else if (hasSortKeys && !sortUpdated) {
       // sort_プレフィックスのキーがあるのにソート情報が処理されなかった場合の追加対応
-      console.log('[SORT-DEBUG] DataTable - sort_プレフィックスキーがあるがソート情報が処理されませんでした。再処理を試みます。');
       
       // 明示的にsort_プレフィックスを持つキーを探してソート情報を処理
       Object.entries(filters).forEach(([key, filter]) => {
@@ -420,11 +327,6 @@ export function useFilterLogic(
             sortState.setSortField(fieldName);
             sortState.setSortDirection(direction);
             
-            console.log('[SORT-DEBUG] DataTable - プレフィックスから第一ソート検出:', {
-              field: fieldName,
-              direction,
-              timestamp: new Date().toISOString()
-            });
           } else if (!newSecondarySort) {
             // セカンダリソートとして処理
             newSecondarySort = {
@@ -432,11 +334,6 @@ export function useFilterLogic(
               direction
             };
             
-            console.log('[SORT-DEBUG] DataTable - プレフィックスから第二ソート検出:', {
-              field: fieldName,
-              direction,
-              timestamp: new Date().toISOString()
-            });
           }
           
           sortUpdated = true;
@@ -536,25 +433,6 @@ export function useFilterLogic(
     // フィルターポップアップを閉じる
     setIsFilterPopupOpen(false);
     
-    console.log('[SORT-DEBUG] DataTable - フィルター処理完了:', {
-      hasFilters,
-      normalFiltersCount: Object.keys(normalFilters).length,
-      hasPrFilter: !!Object.keys(prFilterConfig).length, // PRフィルター状態をログ出力
-      columnFiltersWithSort: JSON.stringify({
-        ...normalFilters,
-        ...primarySortConfig,
-        ...secondarySortConfig,
-        ...prFilterConfig
-      })
-    });
-
-    // 修正: 変数名を正しいものに変更
-    console.log('[デバッグ-犯人捜し] PRフィルター処理後の状態', {
-      columnFilters: JSON.stringify(updatedColumnFilters),
-      currentFilters: JSON.stringify(newCurrentFilters),
-      remainingFiltersCount: Object.keys(updatedColumnFilters).length,
-      isPrOnlyValue: isPrOnly
-    });
   }, [onFilterChange, sortState, isPrOnly]);
 
   // フィルター適用時にisPrOnlyも含める
@@ -577,12 +455,7 @@ export function useFilterLogic(
   
   // PR状態変更ハンドラー
   const handlePrOnlyChange = useCallback((newPrOnly: boolean) => {
-    console.log('[デバッグ-犯人捜し] handlePrOnlyChange 呼び出し', {
-      oldPrState: isPrOnly,
-      newPrState: newPrOnly,
-      currentFilters: JSON.stringify(currentFilters),
-      columnFilters: JSON.stringify(columnFilters)
-    });
+    
     
     setIsPrOnly(newPrOnly);
     
@@ -637,12 +510,7 @@ export function useFilterLogic(
         isPrOnly: false  // 明示的にPR状態をfalseに設定
       });
 
-      console.log('[デバッグ-犯人捜し] PRフィルター削除後の状態', {
-        columnFilters: JSON.stringify(newColumnFilters),
-        currentFilters: JSON.stringify(newCurrentFilters),
-        remainingFiltersCount: Object.keys(newColumnFilters).length,
-        isPrOnlyValue: newPrOnly
-      });
+
     } else {
       // PR有効時
       const prFilter: FilterQuery = {
@@ -668,13 +536,6 @@ export function useFilterLogic(
       
       // 親コンポーネントに通知
       onFilterChange(true, prFilter);
-
-      console.log('[デバッグ-犯人捜し] PRフィルター追加後の状態', {
-        columnFilters: JSON.stringify(newFilters),
-        currentFilters: JSON.stringify(newFilters),
-        remainingFiltersCount: Object.keys(newFilters).length,
-        isPrOnlyValue: newPrOnly
-      });
     }
   }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
 

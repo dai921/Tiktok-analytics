@@ -54,43 +54,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     defaultVisibleColumns,
     onColumnSettingsChange
   }, ref) => {
-    // コールバック関数の参照変化を追跡するためのref
-    const onFilterChangeRef = useRef(onFilterChange);
-    const onPageChangeRef = useRef(onPageChange);
-    const onPrOnlyChangeRef = useRef(onPrOnlyChange);
-    const onPageSizeChangeRef = useRef(onPageSizeChange);
-
-    // コールバック関数の参照変化をログ出力
-    useEffect(() => {
-      if (onFilterChangeRef.current !== onFilterChange) {
-        console.log('[DEBUG-PROPS] DataTable - onFilterChange の参照が変化しました');
-        onFilterChangeRef.current = onFilterChange;
-      }
-      
-      if (onPageChangeRef.current !== onPageChange) {
-        onPageChangeRef.current = onPageChange;
-      }
-      
-      if (onPrOnlyChangeRef.current !== onPrOnlyChange) {
-        onPrOnlyChangeRef.current = onPrOnlyChange;
-      }
-      
-      if (onPageSizeChangeRef.current !== onPageSizeChange) {
-        onPageSizeChangeRef.current = onPageSizeChange;
-      }
-    }, [onFilterChange, onPageChange, onPrOnlyChange, onPageSizeChange]);
-    
-    // コンポーネントのマウント回数をカウント
-    const renderCountRef = useRef(0);
-    
-    // レンダリングごとにカウントを増加
-    useEffect(() => {
-      renderCountRef.current += 1;
-    });
-    
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
-    const [forceUpdate, setForceUpdate] = useState(0);
     const filterButtonRef = useRef<HTMLButtonElement>(null);
     
     // ソートロジック
@@ -105,10 +70,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSortField,
       setSortDirection
     } = sortLogic;
-    
-    // ソート状態の初期化をログ
-    useEffect(() => {
-    }, []);
     
     // フィルターロジック
     const [filterState, filterHandlers] = useFilterLogic(onFilterChange, {
@@ -148,33 +109,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       isLoadingFilterOptions,
       getFilteredOptions
     } = useFilterOptions(currentFilters);
-    
-    // filterOptions関数の参照変化を監視（useFilterOptionsの近く）
-    const prevHandleFilterRef = useRef(handleFilter);
-    const prevGetFilteredOptionsRef = useRef(getFilteredOptions);
 
-    useEffect(() => {
-      if (prevHandleFilterRef.current !== handleFilter) {
+    const { productCategories } = useProductCategories();
 
-        prevHandleFilterRef.current = handleFilter;
-      }
-      
-      if (prevGetFilteredOptionsRef.current !== getFilteredOptions) {
-        prevGetFilteredOptionsRef.current = getFilteredOptions;
-      }
-    }, [handleFilter, getFilteredOptions]);
-    
-    // 製品カテゴリを取得
-    const { productCategories, loading: loadingProductCategories } = useProductCategories();
-    
-    useEffect(() => {
-      if (!loadingProductCategories) {
-      }
-    }, [loadingProductCategories, productCategories]);
-
-    const productCellRenderer = useMemo(() => {
-      return createProductCellRenderer();
-    }, []);
 
     // カラム定義を取得
     const columns = useMemo(() => {
@@ -187,7 +124,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         isLoadingFilterOptions,
         sortField,
         sortDirection,
-        productCellRenderer
+        createProductCellRenderer() // 直接呼び出し
       );
       
       return createdColumns;
@@ -199,13 +136,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       getFilteredOptions, 
       isLoadingFilterOptions, 
       sortField, 
-      sortDirection,
-      productCellRenderer
+      sortDirection
     ]);
-    
-    // 依存配列の変更を監視するための追加ログ
-    useEffect(() => {
-    }, [primarySort, secondarySort, sortField, sortDirection]);
     
     // カラムのドラッグ＆ドロップ機能
     const {
@@ -215,15 +147,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       SortableContextProvider
     } = useColumnDnd(columns);
     
-    // useColumnDndの直後にメモイゼーションのデバッグログを追加
-    useEffect(() => {
-    }, [columns]);
-    
-    // orderedColumnsの変更をデバッグ
-    useEffect(() => {
-    }, [orderedColumns]);
-    
-    // 初期化時にカラムの順序を設定（ここが問題と思われる箇所）
+    // 初期化時にカラムの順序を設定
     const isInitialRenderRef = useRef(true);
     useEffect(() => {
       if (isInitialRenderRef.current) {
@@ -258,83 +182,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
     };
 
-    // ColumnのcellプロパティをDataTable.tsx側で直接オーバーライド
-    // filteredColumnsを作成する前に、product カラムの cell プロパティを直接変更する
-    const columnsWithProductRenderer = useMemo(() => {
-      return columns.map(column => {
-        if (column.accessorKey === 'product') {
-          return {
-            ...column,
-            cell: ({ row }: { row: VideoData }) => {
-              // 完全なrow情報をログ出力
-              
-              // キーが"product"ではなく別の可能性がある場合の検証
-              const possibleProductKeys = ['product', 'products', 'productName', 'product_name'];
-              const foundKey = possibleProductKeys.find(key => row[key as keyof typeof row]);
-              
-              
-              return (
-                <div className="w-[120px] min-w-[120px]">
-                  <div className="flex flex-wrap gap-1 justify-start items-center">
-                    {row.product && (
-                      <div className="px-2 py-1 bg-gray-100 rounded text-xs">
-                        {row.product} 
-                        <span className="text-gray-500">
-                          ({productCategories?.[row.product] || 'その他'})
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-          };
-        }
-        return column;
-      });
-    }, [columns, productCategories]);
 
-    // filteredColumns の定義で columnsWithProductRenderer を使用
+    // filteredColumns の定義で columns を直接使用
     const filteredColumns = useMemo(() => {
       return orderedColumns.filter(col => 
         !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
         visibleColumns.includes(String(col.accessorKey))
       );
-    }, [orderedColumns, columnsWithProductRenderer, visibleColumns]);
+    }, [orderedColumns, visibleColumns]); // columnsWithProductRendererを依存配列から削除
     
-    useEffect(() => {
-      // ソート状態の変更をデバッグ
-      
-    }, [primarySort, secondarySort, sortField, sortDirection]);
-    
-    // フィルターのバルク変更ハンドラーにデバッグログを追加
-    const handleDebugBulkFilterChange = (filters: Record<string, FilterValue>) => {
-      
-      // ソート関連のフィルターを特に詳しくログ
-      const sortFilters = Object.entries(filters).filter(([key, value]) => 
-        value.type === 'sort' || key.startsWith('sort_')
-      );
-      
-      if (sortFilters.length > 0) {
-        
-        sortFilters.forEach(([key, value]) => {
-
-        });
-      } else {
-      }
-      
-      // 元のハンドラーを呼び出し
-      handleBulkFilterChange(filters);
-      
-      // ソート状態が正しく更新されたか確認
-      
-    };
-
-    // productCategoriesの変化を監視
-    useEffect(() => {
-      // productCategoriesの変化をデバッグ
-    }, [productCategories, loadingProductCategories]);
-
     // PR切り替えハンドラーの連携
     const handlePrToggle = useCallback((checked: boolean) => {
       handlePrOnlyChange(checked);
@@ -370,18 +226,29 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               <span className="ml-1">フィルター</span>
             </button>
             
-            <label className="flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={internalIsPrOnly}
-                onChange={(e) => handlePrToggle(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="relative w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-[#FE2C55] peer-focus:ring-2 peer-focus:ring-[#FE2C55]/30 transition-colors">
-                <div className="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-all duration-300 peer-checked:translate-x-5"></div>
-              </div>
-              <span className="ml-2 text-sm font-medium text-black">#PR動画のみ</span>
-            </label>
+            {/* PR動画タブ */}
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => handlePrToggle(false)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                  !internalIsPrOnly
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                すべての動画
+              </button>
+              <button
+                onClick={() => handlePrToggle(true)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                  internalIsPrOnly
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                アフィリエイト系動画
+              </button>
+            </div>
           </div>
           <Pagination 
             currentPage={currentPage}
@@ -406,20 +273,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 setSelectedText, 
                 productCategories 
               }}>
-                {/* プロバイダーの値をより詳細にログ出力 */}
-                {(() => {
-                  return null;
-                })()}
                 <table className="min-w-full divide-y divide-gray-200">
                   <DndContextProvider>
                     <thead className="bg-gray-50 border-b">
                       <tr>
                         <SortableContextProvider>
                           {filteredColumns.map((column, index) => {
-                            // 再生数カラムの場合、特別に詳細なログを出力
-                            if (column.accessorKey === 'views') {
-                            }
-                            
                             return (
                               <SortableHeaderCell
                                 key={column.accessorKey}
@@ -545,7 +404,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         </div>
 
-        {/* ▼▼▼ ここが今回のポイント：Portalを使用してDOM階層の上位に表示 ▼▼▼ */}
+        {/* Portalを使用してDOM階層の上位に表示 */}
         {isFilterPopupOpen && createPortal(
           <FilterPopup
             isOpen={isFilterPopupOpen}
@@ -571,7 +430,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           visibleColumns={visibleColumns}
           onColumnVisibilityChange={handleColumnVisibilityChange}
         />
-        {/* ▲▲▲---------------------------------------------------- */}
       </div>
     );
   }
