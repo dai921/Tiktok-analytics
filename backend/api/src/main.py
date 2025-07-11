@@ -31,6 +31,7 @@ from src.transcription.router import router as transcription_router
 from src.transcription.webhook import router as webhook_router
 from src.dashboard.affiliate_videos import router as affiliate_videos_router
 from src.dashboard.corporate_videos import router as corporate_videos_router
+from src.dashboard.influencer_videos import router as influencer_videos_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -84,6 +85,7 @@ app.include_router(transcription_router)
 app.include_router(webhook_router)
 app.include_router(affiliate_videos_router)
 app.include_router(corporate_videos_router)
+app.include_router(influencer_videos_router)
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)

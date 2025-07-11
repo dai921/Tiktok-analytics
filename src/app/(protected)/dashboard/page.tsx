@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DataTable } from '@/components/dashboard/data-table/Datatable'
-import { getDbData, getAffiliateData, getCorporateData, COLUMN_MAP } from '@/lib/api'
+import { getDbData, getAffiliateData, getCorporateData, getInfluencerData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
@@ -41,12 +41,13 @@ const Dashboard = () => {
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const [isPrOnly, setIsPrOnly] = useState(false)
   const [isCorporateOnly, setIsCorporateOnly] = useState(false)
+  const [isInfluencerOnly, setIsInfluencerOnly] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
 
   // fetchData 関数をメモ化（依存配列を最小限に）
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
-    console.log('fetchData呼び出し:', { page, isPrOnly, isCorporateOnly, filtersCount: Object.keys(currentFilters || {}).length });
+    console.log('fetchData呼び出し:', { page, isPrOnly, isCorporateOnly, isInfluencerOnly, filtersCount: Object.keys(currentFilters || {}).length });
     
     setIsLoading(true);
     try {
@@ -58,6 +59,9 @@ const Dashboard = () => {
       } else if (isCorporateOnly) {
         console.log('運用代行用データAPIを呼び出し');
         response = await getCorporateData(page, currentFilters, pageSize);
+      } else if (isInfluencerOnly) {
+        console.log('インフルエンサーデータAPIを呼び出し');
+        response = await getInfluencerData(page, currentFilters, pageSize);
       } else {
         console.log('通常データAPIを呼び出し');
         response = await getDbData(page, currentFilters, pageSize);
@@ -82,11 +86,11 @@ const Dashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [pageSize, isPrOnly, isCorporateOnly]);
+  }, [pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
   // メインのデータ取得用useEffect - fetchDataを依存配列から除外
   useEffect(() => {
-    console.log('メインuseEffect実行:', { isPrOnly, isCorporateOnly, currentPage, filtersCount: Object.keys(filters).length });
+    console.log('メインuseEffect実行:', { isPrOnly, isCorporateOnly, isInfluencerOnly, currentPage, filtersCount: Object.keys(filters).length });
     
     if (Object.keys(filters).length === 0) {
       fetchData(currentPage, {});
@@ -98,7 +102,7 @@ const Dashboard = () => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [filters, currentPage, pageSize, isPrOnly, isCorporateOnly]); // fetchDataを除外
+  }, [filters, currentPage, pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
   // handleFilter 関数をメモ化（fetchDataを直接呼び出しを削除）
   const handleFilter = useCallback((newFilter: FilterValue) => {
@@ -175,6 +179,7 @@ const Dashboard = () => {
     
     setIsPrOnly(false);
     setIsCorporateOnly(false);
+    setIsInfluencerOnly(false);
     setFilters({});
     setCurrentPage(1);
     // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
@@ -185,6 +190,7 @@ const Dashboard = () => {
     console.log('handlePrOnlyChange:', checked);
     setIsPrOnly(checked);
     setIsCorporateOnly(false);
+    setIsInfluencerOnly(false);
     setCurrentPage(1);
     setFilters({}); // フィルターをクリア
     // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
@@ -195,9 +201,20 @@ const Dashboard = () => {
     console.log('handleCorporateOnlyChange:', checked);
     setIsCorporateOnly(checked);
     setIsPrOnly(false);
+    setIsInfluencerOnly(false);
     setCurrentPage(1);
     setFilters({}); // フィルターをクリア
     // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
+  }, []);
+
+  // handleInfluencerOnlyChange 関数を追加
+  const handleInfluencerOnlyChange = useCallback((checked: boolean) => {
+    console.log('handleInfluencerOnlyChange:', checked);
+    setIsInfluencerOnly(checked);
+    setIsPrOnly(false);
+    setIsCorporateOnly(false);
+    setCurrentPage(1);
+    setFilters({});
   }, []);
 
   const handlePageSizeChange = useCallback((size: number) => {
@@ -395,6 +412,8 @@ const Dashboard = () => {
           onPrOnlyChange={handlePrOnlyChange}
           isCorporateOnly={isCorporateOnly}
           onCorporateOnlyChange={handleCorporateOnlyChange}
+          isInfluencerOnly={isInfluencerOnly}
+          onInfluencerOnlyChange={handleInfluencerOnlyChange}
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
         />

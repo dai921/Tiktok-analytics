@@ -35,6 +35,8 @@ interface DataTableProps {
   onPrOnlyChange: (isPrOnly: boolean) => void;
   isCorporateOnly: boolean;
   onCorporateOnlyChange: (isCorporateOnly: boolean) => void;
+  isInfluencerOnly: boolean;
+  onInfluencerOnlyChange: (isInfluencerOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (pageSize: number) => void;
   defaultVisibleColumns?: string[];
@@ -53,6 +55,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     onPrOnlyChange,
     isCorporateOnly = false,
     onCorporateOnlyChange,
+    isInfluencerOnly = false,
+    onInfluencerOnlyChange,
     pageSize = 50,
     onPageSizeChange,
     defaultVisibleColumns,
@@ -216,7 +220,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       console.log('すべての動画タブクリック');
       onPrOnlyChange(false);
       onCorporateOnlyChange(false);
-    }, [onPrOnlyChange, onCorporateOnlyChange]);
+      onInfluencerOnlyChange(false);
+    }, [onPrOnlyChange, onCorporateOnlyChange, onInfluencerOnlyChange]);
 
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
@@ -252,7 +257,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               <button
                 onClick={handleAllVideosToggle}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  !isPrOnly && !isCorporateOnly // internalを削除
+                  !isPrOnly && !isCorporateOnly && !isInfluencerOnly
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -263,29 +268,40 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 onClick={() => {
                   console.log('アフィリエイト系動画タブクリック');
                   onPrOnlyChange(true);
-                  // onCorporateOnlyChange(false); // 削除 - Dashboardコンポーネントで処理
                 }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  isPrOnly // internalを削除
+                  isPrOnly
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                アフィリエイト系動画
+                アフィ系動画
               </button>
               <button
                 onClick={() => {
                   console.log('運用代行用動画タブクリック');
-                  // onPrOnlyChange(false); // 削除 - Dashboardコンポーネントで処理
                   onCorporateOnlyChange(true);
                 }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  isCorporateOnly // internalを削除
+                  isCorporateOnly
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                運用代行用動画
+                企業系動画
+              </button>
+              <button
+                onClick={() => {
+                  console.log('インフルエンサー動画タブクリック');
+                  onInfluencerOnlyChange(true);
+                }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                  isInfluencerOnly
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                インフルエンサー系動画
               </button>
             </div>
           </div>

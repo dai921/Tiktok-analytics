@@ -133,6 +133,8 @@ export interface DataTableProps {
   onPrOnlyChange?: (isPrOnly: boolean) => void;
   isCorporateOnly?: boolean;
   onCorporateOnlyChange?: (isCorporateOnly: boolean) => void;
+  isInfluencerOnly?: boolean;
+  onInfluencerOnlyChange?: (isInfluencerOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (size: number) => void;
   defaultVisibleColumns?: string[];
