@@ -33,6 +33,8 @@ interface DataTableProps {
   isLoading: boolean;
   isPrOnly: boolean;
   onPrOnlyChange: (isPrOnly: boolean) => void;
+  isCorporateOnly: boolean;
+  onCorporateOnlyChange: (isCorporateOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (pageSize: number) => void;
   defaultVisibleColumns?: string[];
@@ -49,6 +51,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     isLoading = false,
     isPrOnly = false,
     onPrOnlyChange,
+    isCorporateOnly = false,
+    onCorporateOnlyChange,
     pageSize = 50,
     onPageSizeChange,
     defaultVisibleColumns,
@@ -71,7 +75,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSortDirection
     } = sortLogic;
     
-    // フィルターロジック
+    // フィルターロジック - 初期値を正しく設定
     const [filterState, filterHandlers] = useFilterLogic(onFilterChange, {
       primarySort,
       secondarySort,
@@ -79,13 +83,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSecondarySort,
       setSortField,
       setSortDirection
-    }, isPrOnly);
+    }, isPrOnly, isCorporateOnly); // 両方の初期値を個別に渡す
     
     const { 
       columnFilters, 
       currentFilters, 
       hasActiveFilters,
-      isPrOnly: internalIsPrOnly
+      isPrOnly: internalIsPrOnly,
+      isCorporateOnly: internalIsCorporateOnly
     } = filterState;
     
     const { 
@@ -94,8 +99,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleClearAllFilters, 
       handleClearFilterInputs,
       setIsFilterPopupOpen,
-      handlePrOnlyChange
+      handlePrOnlyChange,
+      handleCorporateOnlyChange
     } = filterHandlers;
+
+    // 外部状態と内部状態の同期
+    useEffect(() => {
+      if (internalIsPrOnly !== isPrOnly) {
+        handlePrOnlyChange(isPrOnly);
+      }
+    }, [isPrOnly, internalIsPrOnly, handlePrOnlyChange]);
+
+    useEffect(() => {
+      if (internalIsCorporateOnly !== isCorporateOnly) {
+        handleCorporateOnlyChange(isCorporateOnly);
+      }
+    }, [isCorporateOnly, internalIsCorporateOnly, handleCorporateOnlyChange]);
     
     // フィルターポップアップの状態
     const [isFilterPopupOpen, setFilterPopupOpenState] = useState(false);
@@ -193,9 +212,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // PR切り替えハンドラーの連携
     const handlePrToggle = useCallback((checked: boolean) => {
-      handlePrOnlyChange(checked);
-      onPrOnlyChange(checked); // 親コンポーネントにも通知
-    }, [handlePrOnlyChange, onPrOnlyChange]);
+      console.log('PR切り替え:', checked); // デバッグログ追加
+      onPrOnlyChange(checked);
+    }, [onPrOnlyChange]);
+
+    // 運用代行用切り替えハンドラーの連携
+    const handleCorporateToggle = useCallback((checked: boolean) => {
+      console.log('運用代行用切り替え:', checked); // デバッグログ追加
+      onCorporateOnlyChange(checked);
+    }, [onCorporateOnlyChange]);
+
+    // すべての動画タブのハンドラー
+    const handleAllVideosToggle = useCallback(() => {
+      console.log('すべての動画タブクリック'); // デバッグログ追加
+      onPrOnlyChange(false);
+      onCorporateOnlyChange(false);
+    }, [onPrOnlyChange, onCorporateOnlyChange]);
 
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
@@ -226,12 +258,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               <span className="ml-1">フィルター</span>
             </button>
             
-            {/* PR動画タブ */}
+            {/* 動画タイプタブ */}
             <div className="flex bg-gray-100 rounded-lg p-1">
               <button
-                onClick={() => handlePrToggle(false)}
+                onClick={handleAllVideosToggle}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  !internalIsPrOnly
+                  !internalIsPrOnly && !internalIsCorporateOnly
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -239,7 +271,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 すべての動画
               </button>
               <button
-                onClick={() => handlePrToggle(true)}
+                onClick={() => {
+                  console.log('アフィリエイト系動画タブクリック'); // デバッグログ追加
+                  onPrOnlyChange(true);
+                  onCorporateOnlyChange(false);
+                }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
                   internalIsPrOnly
                     ? 'bg-white text-gray-900 shadow-sm'
@@ -247,6 +283,20 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 }`}
               >
                 アフィリエイト系動画
+              </button>
+              <button
+                onClick={() => {
+                  console.log('運用代行用動画タブクリック'); // デバッグログ追加
+                  onPrOnlyChange(false);
+                  onCorporateOnlyChange(true);
+                }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                  internalIsCorporateOnly
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                運用代行用動画
               </button>
             </div>
           </div>

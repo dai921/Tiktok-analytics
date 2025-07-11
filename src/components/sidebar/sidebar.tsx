@@ -20,11 +20,10 @@ import {
   ChevronDown,
   X,
   Mic,
-  TrendingUp,
-  Shield
+  TrendingUp
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp' | 'Shield';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp';
 
 type SidebarItemProps = {
   href?: string;
@@ -41,7 +40,7 @@ type SidebarItemProps = {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { logout, isAdmin } = useAuth();
+  const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isTrendsOpen, setIsTrendsOpen] = useState(false);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
@@ -319,8 +318,6 @@ function renderIcon(iconName: IconName) {
       return <Mic size={20} />;
     case 'TrendingUp':
       return <TrendingUp size={20} />;
-    case 'Shield':
-      return <Shield size={20} />;
     default:
       return null;
   }

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DataTable } from '@/components/dashboard/data-table/Datatable'
-import { getDbData, getAffiliateData, COLUMN_MAP } from '@/lib/api'
+import { getDbData, getAffiliateData, getCorporateData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
@@ -40,6 +40,7 @@ const Dashboard = () => {
   const [pageSize, setPageSize] = useState(50)
   const [filters, setFilters] = useState<Record<string, FilterQuery>>({})
   const [isPrOnly, setIsPrOnly] = useState(false)
+  const [isCorporateOnly, setIsCorporateOnly] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
 
@@ -117,11 +118,14 @@ const Dashboard = () => {
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true);
     try {
-      // isPrOnlyの状態に応じてAPIを切り替え
+      // データソースに応じてAPIを切り替え
       let response;
       if (isPrOnly) {
         // アフィリエイトデータ用のAPIを呼び出し
         response = await getAffiliateData(page, currentFilters, pageSize);
+      } else if (isCorporateOnly) {
+        // 運用代行用データのAPIを呼び出し
+        response = await getCorporateData(page, currentFilters, pageSize);
       } else {
         // 通常のデータ用のAPIを呼び出し
         response = await getDbData(page, currentFilters, pageSize);
@@ -146,7 +150,7 @@ const Dashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [pageSize, isPrOnly]); // isPrOnlyを依存配列に追加
+  }, [pageSize, isPrOnly, isCorporateOnly]); // isCorporateOnlyを依存配列に追加
 
   useEffect(() => {
     if (Object.keys(filters).length === 0) {
@@ -168,6 +172,7 @@ const Dashboard = () => {
     }
     
     setIsPrOnly(false);
+    setIsCorporateOnly(false);
     setFilters({});
     setCurrentPage(1);
     fetchData(1, {});
@@ -176,6 +181,7 @@ const Dashboard = () => {
   // handlePrOnlyChange 関数をメモ化
   const handlePrOnlyChange = useCallback((checked: boolean) => {
     setIsPrOnly(checked);
+    setIsCorporateOnly(false); // 他のタブをオフにする
     
     if (checked) {
       const prFilter: FilterQuery = {
@@ -190,23 +196,63 @@ const Dashboard = () => {
         hashtags_pr: prFilter
       }));
     } else {
-      const updatedFilters = { ...filters };
-      delete updatedFilters.hashtags_pr;
-      
-      Object.keys(updatedFilters).forEach(key => {
-        const filter = updatedFilters[key];
-        if ((key === 'hashtags' || key.includes('hashtag')) && 
-            filter && filter.type === 'exact_hashtags' && 
-            filter.value === 'pr') {
-          delete updatedFilters[key];
-        }
+      setFilters(prev => {
+        const updatedFilters = { ...prev };
+        delete updatedFilters.hashtags_pr;
+        
+        Object.keys(updatedFilters).forEach(key => {
+          const filter = updatedFilters[key];
+          if ((key === 'hashtags' || key.includes('hashtag')) && 
+              filter && filter.type === 'exact_hashtags' && 
+              filter.value === 'pr') {
+            delete updatedFilters[key];
+          }
+        });
+        
+        return updatedFilters;
       });
-      
-      setFilters(updatedFilters);
     }
     
     setCurrentPage(1);
-  }, [filters]);
+  }, []); // filtersの依存配列を削除
+
+  // handleCorporateOnlyChange 関数を修正
+  const handleCorporateOnlyChange = useCallback((checked: boolean) => {
+    setIsCorporateOnly(checked);
+    setIsPrOnly(false); // 他のタブをオフにする
+    
+    if (checked) {
+      const corporateFilter: FilterQuery = {
+        field: 'hashtags',
+        type: 'exact_hashtags',
+        value: 'corporate',
+        isHashtag: true
+      };
+      
+      setFilters(prev => ({
+        ...prev,
+        hashtags_corporate: corporateFilter
+      }));
+    } else {
+      setFilters(prev => {
+        const updatedFilters = { ...prev };
+        delete updatedFilters.hashtags_corporate;
+        
+        Object.keys(updatedFilters).forEach(key => {
+          const filter = updatedFilters[key];
+          if ((key === 'hashtags' || key.includes('hashtag')) && 
+              filter && filter.type === 'exact_hashtags' && 
+              filter.value === 'corporate') {
+            delete updatedFilters[key];
+          }
+        });
+        
+        return updatedFilters;
+      });
+    }
+    
+    setCurrentPage(1);
+  }, []); // filtersの依存配列を削除
 
   const handlePageSizeChange = useCallback((size: number) => {
     setPageSize(size);
@@ -402,6 +448,8 @@ const Dashboard = () => {
           isLoading={isLoading}
           isPrOnly={isPrOnly}
           onPrOnlyChange={handlePrOnlyChange}
+          isCorporateOnly={isCorporateOnly}
+          onCorporateOnlyChange={handleCorporateOnlyChange}
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
         />

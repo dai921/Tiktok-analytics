@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { FilterValue, FilterQuery } from '@/types/dashboard';
+
 
 // APIとUIのフィールド名の対応をマッピングする関数
 function mapFieldNameToApi(uiFieldName: string): string {
@@ -45,6 +46,7 @@ export interface FilterState {
   columnFilters: Record<string, FilterValue>;
   currentFilters: Record<string, FilterQuery>;
   isPrOnly: boolean;
+  isCorporateOnly: boolean;
 }
 
 export interface FilterHandlers {
@@ -56,6 +58,8 @@ export interface FilterHandlers {
   setColumnFilters: (filters: Record<string, FilterValue> | ((prev: Record<string, FilterValue>) => Record<string, FilterValue>)) => void;
   isPrOnly: boolean;
   handlePrOnlyChange: (newPrOnly: boolean) => void;
+  isCorporateOnly: boolean;
+  handleCorporateOnlyChange: (newCorporateOnly: boolean) => void;
 }
 
 export function useFilterLogic(
@@ -68,14 +72,25 @@ export function useFilterLogic(
     setPrimarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
     setSecondarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
   },
-  initialPrOnly = false // PR状態の初期値
+  initialPrOnly = false, // PR状態の初期値
+  initialCorporateOnly = false // 運用代行用状態の初期値
 ): [FilterState, FilterHandlers] {
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({});
   const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({});
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
   const [isPrOnly, setIsPrOnly] = useState(initialPrOnly);
-  
+  const [isCorporateOnly, setIsCorporateOnly] = useState(initialCorporateOnly);
+
+  // 初期値が変更された場合の同期
+  useEffect(() => {
+    setIsPrOnly(initialPrOnly);
+  }, [initialPrOnly]);
+
+  useEffect(() => {
+    setIsCorporateOnly(initialCorporateOnly);
+  }, [initialCorporateOnly]);
+
   // フィルターをクリアする関数 - データテーブルとAPIの両方を更新
   const handleClearAllFilters = useCallback(() => {
 
@@ -83,6 +98,8 @@ export function useFilterLogic(
     setHasActiveFilters(false);
     setColumnFilters({});
     setCurrentFilters({});
+    setIsPrOnly(false);
+    setIsCorporateOnly(false);
     sortState.setPrimarySort(null);
     sortState.setSecondarySort(null);
     sortState.setSortField(null);
@@ -210,20 +227,21 @@ export function useFilterLogic(
       // 状態をリセット
       setColumnFilters({});
       setCurrentFilters({});
+      setIsPrOnly(false);
+      setIsCorporateOnly(false);
       sortState.setPrimarySort(null);
       sortState.setSecondarySort(null);
       sortState.setSortField(null);
       sortState.setSortDirection(null);
       setHasActiveFilters(false);
       
-      // PR状態はリセットしない - フィルター共存のため維持する
-      
       // 親コンポーネントに通知 - リセット信号を含める
-      onFilterChange(isPrOnly, { 
+      onFilterChange(false, { 
         field: 'reset', 
         type: 'clear', 
         value: '',
-        isPrOnly // PR状態を含める
+        isPrOnly: false,
+        isCorporateOnly: false
       });
       
       // フィルターポップアップを閉じる
@@ -284,6 +302,13 @@ export function useFilterLogic(
          filter.value === 'pr')
       ) {
         // PRフィルターは無視する - このフィルターはisPrOnlyの状態のみで制御
+      } else if (
+        key === 'hashtags_corporate' || 
+        (filter.field === 'hashtags' && 
+         filter.type === 'exact_hashtags' && 
+         filter.value === 'corporate')
+      ) {
+        // 運用代行用フィルターは無視する - このフィルターはisCorporateOnlyの状態のみで制御
       } else {
         // 通常のフィルター情報 - active プロパティを明示的に保持
         normalFilters[key] = {
@@ -375,14 +400,23 @@ export function useFilterLogic(
     } : {};
 
     // ここが重要な修正ポイント：
-    // isPrOnlyの状態に応じてPRフィルターを追加または削除する
+    // isPrOnlyとisCorporateOnlyの状態に応じてフィルターを追加または削除する
     const prFilterConfig: Record<string, FilterValue> = {};
+    const corporateFilterConfig: Record<string, FilterValue> = {};
     
     // フィルター情報からPR状態を確認
     const hasPrFilter = Object.values(normalFilters).some(
       filter => filter.field === 'hashtags' && 
                 filter.type === 'exact_hashtags' && 
                 filter.value === 'pr' && 
+                filter.active === true
+    );
+
+    // フィルター情報から運用代行用状態を確認
+    const hasCorporateFilter = Object.values(normalFilters).some(
+      filter => filter.field === 'hashtags' && 
+                filter.type === 'exact_hashtags' && 
+                filter.value === 'corporate' && 
                 filter.active === true
     );
     
@@ -397,12 +431,24 @@ export function useFilterLogic(
       };
     }
 
-    // フィルター情報を設定 - PRフィルターの状態を正確に反映
+    // もしフィルターに運用代行用が含まれているか、または明示的にisCorporateOnly=trueが設定されている場合
+    if (hasCorporateFilter || isCorporateOnly) {
+      corporateFilterConfig.hashtags_corporate = {
+        field: 'hashtags',
+        type: 'exact_hashtags' as const,
+        value: 'corporate',
+        isHashtag: true,
+        active: true
+      };
+    }
+
+    // フィルター情報を設定 - PRフィルターと運用代行用フィルターの状態を正確に反映
     const updatedColumnFilters: Record<string, FilterValue> = {
       ...normalFilters,
       ...primarySortConfig,
       ...secondarySortConfig,
-      ...prFilterConfig
+      ...prFilterConfig,
+      ...corporateFilterConfig
     };
     
     setColumnFilters(updatedColumnFilters);
@@ -412,28 +458,30 @@ export function useFilterLogic(
       ...normalFilters,
       ...primarySortConfig,
       ...secondarySortConfig,
-      ...prFilterConfig
+      ...prFilterConfig,
+      ...corporateFilterConfig
     };
     
     setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
-    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0;
+    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0 || Object.keys(corporateFilterConfig).length > 0;
     setHasActiveFilters(hasFilters);
     
-    // 親コンポーネントに通知 - isPrOnlyの状態も含める
+    // 親コンポーネントに通知 - isPrOnlyとisCorporateOnlyの状態も含める
     onFilterChange(hasFilters, {
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
       filters: newCurrentFilters,
-      isPrOnly: !!Object.keys(prFilterConfig).length // PRフィルターの有無に基づいて設定
+      isPrOnly: !!Object.keys(prFilterConfig).length, // PRフィルターの有無に基づいて設定
+      isCorporateOnly: !!Object.keys(corporateFilterConfig).length // 運用代行用フィルターの有無に基づいて設定
     });
     
     // フィルターポップアップを閉じる
     setIsFilterPopupOpen(false);
     
-  }, [onFilterChange, sortState, isPrOnly]);
+  }, [onFilterChange, sortState, isPrOnly, isCorporateOnly]);
 
   // フィルター適用時にisPrOnlyも含める
   const applyFilters = useCallback((filters: Record<string, FilterValue>) => {
@@ -455,9 +503,8 @@ export function useFilterLogic(
   
   // PR状態変更ハンドラー
   const handlePrOnlyChange = useCallback((newPrOnly: boolean) => {
-    
-    
     setIsPrOnly(newPrOnly);
+    setIsCorporateOnly(false); // 他のタブをオフにする
     
     if (!newPrOnly) {
       // 新しいフィルターを作成（PRフィルターを除外）
@@ -507,9 +554,9 @@ export function useFilterLogic(
         field: 'multipleFilters',
         value: Object.values(newCurrentFilters),
         filters: newCurrentFilters,  // PRフィルターが含まれていないフィルターセットを渡す
-        isPrOnly: false  // 明示的にPR状態をfalseに設定
+        isPrOnly: false,  // 明示的にPR状態をfalseに設定
+        isCorporateOnly: false
       });
-
 
     } else {
       // PR有効時
@@ -539,8 +586,93 @@ export function useFilterLogic(
     }
   }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
 
+  // 運用代行用状態変更ハンドラー
+  const handleCorporateOnlyChange = useCallback((newCorporateOnly: boolean) => {
+    setIsCorporateOnly(newCorporateOnly);
+    setIsPrOnly(false); // 他のタブをオフにする
+    
+    if (!newCorporateOnly) {
+      // 新しいフィルターを作成（運用代行用フィルターを除外）
+      const newColumnFilters = { ...columnFilters };
+      delete newColumnFilters.hashtags_corporate;
+      delete newColumnFilters.hashtags;
+      
+      // 他のハッシュタグ関連フィルターもチェックして削除
+      Object.keys(newColumnFilters).forEach(key => {
+        const filter = newColumnFilters[key];
+        if (
+          (filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'corporate') ||
+          (key.includes('hashtag') && filter.value === 'corporate')
+        ) {
+          delete newColumnFilters[key];
+        }
+      });
+      
+      // フィルター状態を更新
+      setColumnFilters(newColumnFilters);
+      
+      // 現在のフィルターからも運用代行用関連を削除
+      const newCurrentFilters = { ...currentFilters };
+      delete newCurrentFilters.hashtags_corporate;
+      delete newCurrentFilters.hashtags;
+      
+      // 同様に関連フィルターをすべて削除
+      Object.keys(newCurrentFilters).forEach(key => {
+        const filter = newCurrentFilters[key];
+        if (
+          (filter && filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'corporate') ||
+          (key.includes('hashtag') && filter && filter.value === 'corporate')
+        ) {
+          delete newCurrentFilters[key];
+        }
+      });
+      
+      // 現在のフィルターを更新
+      setCurrentFilters(newCurrentFilters);
+      
+      // フィルターポップアップを閉じて内部状態をリセット
+      setIsFilterPopupOpen(false);
+      
+      // 親コンポーネントに通知 - ダッシュボードに対して明示的に運用代行用フィルターを削除する信号を送信
+      onFilterChange(Object.keys(newColumnFilters).length > 0, {
+        type: 'multiple',
+        field: 'multipleFilters',
+        value: Object.values(newCurrentFilters),
+        filters: newCurrentFilters,  // 運用代行用フィルターが含まれていないフィルターセットを渡す
+        isPrOnly: false,
+        isCorporateOnly: false  // 明示的に運用代行用状態をfalseに設定
+      });
+
+    } else {
+      // 運用代行用有効時
+      const corporateFilter: FilterQuery = {
+        field: 'hashtags',
+        type: 'exact_hashtags' as const,
+        value: 'corporate',
+        isHashtag: true,
+        active: true
+      };
+      
+      // 既存のフィルターに運用代行用フィルターを追加
+      const newFilters = {
+        ...currentFilters,
+        hashtags_corporate: corporateFilter
+      };
+      
+      // フィルター状態を更新
+      setColumnFilters(newFilters);
+      setCurrentFilters(newFilters);
+      
+      // フィルターポップアップを閉じて内部状態をリセット
+      setIsFilterPopupOpen(false);
+      
+      // 親コンポーネントに通知
+      onFilterChange(true, corporateFilter);
+    }
+  }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
+
   return [
-    { hasActiveFilters, columnFilters, currentFilters, isPrOnly },
+    { hasActiveFilters, columnFilters, currentFilters, isPrOnly, isCorporateOnly },
     { 
       handleFilter, 
       handleBulkFilterChange, 
@@ -549,7 +681,9 @@ export function useFilterLogic(
       setIsFilterPopupOpen,
       setColumnFilters,
       isPrOnly,
-      handlePrOnlyChange
+      handlePrOnlyChange,
+      isCorporateOnly,
+      handleCorporateOnlyChange
     }
   ];
 } 

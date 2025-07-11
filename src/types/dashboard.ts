@@ -20,6 +20,7 @@ export interface FilterQuery {
   filters?: Record<string, FilterValue>  // 複数フィルター用
   active?: boolean  // フィルターがアクティブかどうかを示すフラグ
   isPrOnly?: boolean // PR動画フィルターのフラグを追加
+  isCorporateOnly?: boolean // 運用代行用動画フィルターのフラグを追加
 }
 
 export interface FilterValue extends FilterQuery {
@@ -130,6 +131,8 @@ export interface DataTableProps {
   isLoading?: boolean;
   isPrOnly?: boolean;
   onPrOnlyChange?: (isPrOnly: boolean) => void;
+  isCorporateOnly?: boolean;
+  onCorporateOnlyChange?: (isCorporateOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (size: number) => void;
   defaultVisibleColumns?: string[];
