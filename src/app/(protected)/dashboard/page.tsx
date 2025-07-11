@@ -44,24 +44,77 @@ const Dashboard = () => {
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
 
-  // handleFilter 関数をメモ化
+  // fetchData 関数をメモ化（依存配列を最小限に）
+  const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
+    console.log('fetchData呼び出し:', { page, isPrOnly, isCorporateOnly, filtersCount: Object.keys(currentFilters || {}).length });
+    
+    setIsLoading(true);
+    try {
+      // データソースに応じてAPIを切り替え
+      let response;
+      if (isPrOnly) {
+        console.log('アフィリエイトデータAPIを呼び出し');
+        response = await getAffiliateData(page, currentFilters, pageSize);
+      } else if (isCorporateOnly) {
+        console.log('運用代行用データAPIを呼び出し');
+        response = await getCorporateData(page, currentFilters, pageSize);
+      } else {
+        console.log('通常データAPIを呼び出し');
+        response = await getDbData(page, currentFilters, pageSize);
+      }
+      
+      if (response && response.success) {
+        if (Array.isArray(response.data)) {
+          setData(response.data);
+          setCurrentPage(response.currentPage || page);
+          setTotalPages(response.totalPages || 1);
+        } else {
+          console.error('データの形式が不正です:', response.data);
+          setData([]);
+        }
+      } else {
+        console.error('APIエラー:', response?.error || '不明なエラー');
+        setData([]);
+      }
+    } catch (error) {
+      console.error('データ取得エラー:', error);
+      setData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pageSize, isPrOnly, isCorporateOnly]);
+
+  // メインのデータ取得用useEffect - fetchDataを依存配列から除外
+  useEffect(() => {
+    console.log('メインuseEffect実行:', { isPrOnly, isCorporateOnly, currentPage, filtersCount: Object.keys(filters).length });
+    
+    if (Object.keys(filters).length === 0) {
+      fetchData(currentPage, {});
+      return;
+    }
+    
+    const timer = setTimeout(() => {
+      fetchData(currentPage, filters);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [filters, currentPage, pageSize, isPrOnly, isCorporateOnly]); // fetchDataを除外
+
+  // handleFilter 関数をメモ化（fetchDataを直接呼び出しを削除）
   const handleFilter = useCallback((newFilter: FilterValue) => {
     // クリア操作を明示的に検出
     if (newFilter.type === 'clear') {
       if (newFilter.field === 'reset') {
         setFilters({});
         setCurrentPage(1);
-        fetchData(1, {});
-        return;
+        return; // fetchDataの直接呼び出しを削除
       }
       
       if (newFilter.field && filters[newFilter.field]) {
         const updatedFilters = { ...filters };
         delete updatedFilters[newFilter.field];
         setFilters(updatedFilters);
-        fetchData(1, updatedFilters);
-      } else {
-        fetchData(1, filters);
+        return; // fetchDataの直接呼び出しを削除
       }
       return;
     }
@@ -112,60 +165,9 @@ const Dashboard = () => {
         [field]: filterQuery
       }));
     }
-  }, [filters]);
+  }, [filters]); // fetchDataを依存配列から削除
 
-  // fetchData 関数をメモ化
-  const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
-    setIsLoading(true);
-    try {
-      // データソースに応じてAPIを切り替え
-      let response;
-      if (isPrOnly) {
-        // アフィリエイトデータ用のAPIを呼び出し
-        response = await getAffiliateData(page, currentFilters, pageSize);
-      } else if (isCorporateOnly) {
-        // 運用代行用データのAPIを呼び出し
-        response = await getCorporateData(page, currentFilters, pageSize);
-      } else {
-        // 通常のデータ用のAPIを呼び出し
-        response = await getDbData(page, currentFilters, pageSize);
-      }
-      
-      if (response && response.success) {
-        if (Array.isArray(response.data)) {
-          setData(response.data);
-          setCurrentPage(response.currentPage || page);
-          setTotalPages(response.totalPages || 1);
-        } else {
-          console.error('データの形式が不正です:', response.data);
-          setData([]);
-        }
-      } else {
-        console.error('APIエラー:', response?.error || '不明なエラー');
-        setData([]);
-      }
-    } catch (error) {
-      console.error('データ取得エラー:', error);
-      setData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pageSize, isPrOnly, isCorporateOnly]); // isCorporateOnlyを依存配列に追加
-
-  useEffect(() => {
-    if (Object.keys(filters).length === 0) {
-      fetchData(currentPage, {});
-      return;
-    }
-    
-    const timer = setTimeout(() => {
-      fetchData(currentPage, filters);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [filters, currentPage, pageSize, fetchData]);
-
-  // handleClearAllFilters 関数をメモ化
+  // handleClearAllFilters 関数をメモ化（fetchDataの直接呼び出しを削除）
   const handleClearAllFilters = useCallback(() => {
     if (tableRef.current && tableRef.current.clearAllFilters) {
       tableRef.current.clearAllFilters();
@@ -175,70 +177,40 @@ const Dashboard = () => {
     setIsCorporateOnly(false);
     setFilters({});
     setCurrentPage(1);
-    fetchData(1, {});
-  }, [fetchData]);
+    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
+  }, []); // fetchDataを依存配列から削除
 
-  // handlePrOnlyChange 関数をメモ化
+  // handlePrOnlyChange 関数をメモ化（fetchDataの直接呼び出しを削除）
   const handlePrOnlyChange = useCallback((checked: boolean) => {
+    console.log('handlePrOnlyChange:', checked);
     setIsPrOnly(checked);
-    setIsCorporateOnly(false); // 他のタブをオフにする
-    
-    if (checked) {
-      const prFilter: FilterQuery = {
-        field: 'hashtags',
-        type: 'exact_hashtags',
-        value: 'pr',
-        isHashtag: true
-      };
-      
-      setFilters(prev => ({
-        ...prev,
-        hashtags_pr: prFilter
-      }));
-    } else {
-      setFilters(prev => {
-        const updatedFilters = { ...prev };
-        delete updatedFilters.hashtags_pr;
-        
-        Object.keys(updatedFilters).forEach(key => {
-          const filter = updatedFilters[key];
-          if ((key === 'hashtags' || key.includes('hashtag')) && 
-              filter && filter.type === 'exact_hashtags' && 
-              filter.value === 'pr') {
-            delete updatedFilters[key];
-          }
-        });
-        
-        return updatedFilters;
-      });
-    }
-    
+    setIsCorporateOnly(false);
     setCurrentPage(1);
-  }, []); // filtersの依存配列を削除
+    setFilters({}); // フィルターをクリア
+    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
+  }, []);
 
-  // handleCorporateOnlyChange 関数を修正
+  // handleCorporateOnlyChange 関数を修正（fetchDataの直接呼び出しを削除）
   const handleCorporateOnlyChange = useCallback((checked: boolean) => {
+    console.log('handleCorporateOnlyChange:', checked);
     setIsCorporateOnly(checked);
-    setIsPrOnly(false); // 他のタブをオフにする
-    
-    // ハッシュタグフィルターの追加・削除を削除
-    // 運用代行用動画は専用テーブルを使用するため、フィルターは不要
-    
+    setIsPrOnly(false);
     setCurrentPage(1);
-  }, []); // filtersの依存配列を削除
+    setFilters({}); // フィルターをクリア
+    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
+  }, []);
 
   const handlePageSizeChange = useCallback((size: number) => {
     setPageSize(size);
     setCurrentPage(1);
   }, []);
 
-  // handleMultipleFilters 関数をメモ化
+  // handleMultipleFilters 関数をメモ化（fetchDataの直接呼び出しを削除）
   const handleMultipleFilters = useCallback((filters: Record<string, FilterQuery>) => {
     if (filters.reset && filters.reset.type === 'clear') {
       setFilters({});
       setCurrentPage(1);
-      fetchData(1, {});
-      return;
+      return; // fetchDataの直接呼び出しを削除
     }
 
     if (filters['sort_clear'] || filters['sort_indicator']) {
@@ -277,7 +249,7 @@ const Dashboard = () => {
       
       setFilters(newFilterSet);
       setCurrentPage(1);
-      fetchData(1, newFilterSet);
+      // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
       return;
     }
     
@@ -344,8 +316,8 @@ const Dashboard = () => {
     
     setFilters(newFilters);
     setCurrentPage(1);
-    fetchData(1, newFilters);
-  }, [fetchData]);
+    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
+  }, []); // fetchDataを依存配列から削除
 
   // 初期読み込み時に設定を取得
   useEffect(() => {

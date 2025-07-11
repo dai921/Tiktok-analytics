@@ -83,14 +83,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSecondarySort,
       setSortField,
       setSortDirection
-    }, isPrOnly, isCorporateOnly); // 両方の初期値を個別に渡す
+    }, isPrOnly, isCorporateOnly);
     
     const { 
       columnFilters, 
       currentFilters, 
       hasActiveFilters,
-      isPrOnly: internalIsPrOnly,
-      isCorporateOnly: internalIsCorporateOnly
+      // isPrOnly: internalIsPrOnly, // 削除
+      // isCorporateOnly: internalIsCorporateOnly // 削除
     } = filterState;
     
     const { 
@@ -99,22 +99,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleClearAllFilters, 
       handleClearFilterInputs,
       setIsFilterPopupOpen,
-      handlePrOnlyChange,
-      handleCorporateOnlyChange
+      // handlePrOnlyChange, // 削除
+      // handleCorporateOnlyChange // 削除
     } = filterHandlers;
 
-    // 外部状態と内部状態の同期
-    useEffect(() => {
-      if (internalIsPrOnly !== isPrOnly) {
-        handlePrOnlyChange(isPrOnly);
-      }
-    }, [isPrOnly, internalIsPrOnly, handlePrOnlyChange]);
+    // 外部状態と内部状態の同期 - 削除
+    // useEffect(() => {
+    //   if (internalIsPrOnly !== isPrOnly) {
+    //     handlePrOnlyChange(isPrOnly);
+    //   }
+    // }, [isPrOnly, internalIsPrOnly, handlePrOnlyChange]);
 
-    useEffect(() => {
-      if (internalIsCorporateOnly !== isCorporateOnly) {
-        handleCorporateOnlyChange(isCorporateOnly);
-      }
-    }, [isCorporateOnly, internalIsCorporateOnly, handleCorporateOnlyChange]);
+    // useEffect(() => {
+    //   if (internalIsCorporateOnly !== isCorporateOnly) {
+    //     handleCorporateOnlyChange(isCorporateOnly);
+    //   }
+    // }, [isCorporateOnly, internalIsCorporateOnly, handleCorporateOnlyChange]);
     
     // フィルターポップアップの状態
     const [isFilterPopupOpen, setFilterPopupOpenState] = useState(false);
@@ -209,22 +209,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         visibleColumns.includes(String(col.accessorKey))
       );
     }, [orderedColumns, visibleColumns]); // columnsWithProductRendererを依存配列から削除
-    
-    // PR切り替えハンドラーの連携
-    const handlePrToggle = useCallback((checked: boolean) => {
-      console.log('PR切り替え:', checked); // デバッグログ追加
-      onPrOnlyChange(checked);
-    }, [onPrOnlyChange]);
-
-    // 運用代行用切り替えハンドラーの連携
-    const handleCorporateToggle = useCallback((checked: boolean) => {
-      console.log('運用代行用切り替え:', checked); // デバッグログ追加
-      onCorporateOnlyChange(checked);
-    }, [onCorporateOnlyChange]);
+  
 
     // すべての動画タブのハンドラー
     const handleAllVideosToggle = useCallback(() => {
-      console.log('すべての動画タブクリック'); // デバッグログ追加
+      console.log('すべての動画タブクリック');
       onPrOnlyChange(false);
       onCorporateOnlyChange(false);
     }, [onPrOnlyChange, onCorporateOnlyChange]);
@@ -263,7 +252,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               <button
                 onClick={handleAllVideosToggle}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  !internalIsPrOnly && !internalIsCorporateOnly
+                  !isPrOnly && !isCorporateOnly // internalを削除
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -272,12 +261,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </button>
               <button
                 onClick={() => {
-                  console.log('アフィリエイト系動画タブクリック'); // デバッグログ追加
+                  console.log('アフィリエイト系動画タブクリック');
                   onPrOnlyChange(true);
-                  onCorporateOnlyChange(false);
+                  // onCorporateOnlyChange(false); // 削除 - Dashboardコンポーネントで処理
                 }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  internalIsPrOnly
+                  isPrOnly // internalを削除
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
@@ -286,12 +275,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
               </button>
               <button
                 onClick={() => {
-                  console.log('運用代行用動画タブクリック'); // デバッグログ追加
-                  onPrOnlyChange(false);
+                  console.log('運用代行用動画タブクリック');
+                  // onPrOnlyChange(false); // 削除 - Dashboardコンポーネントで処理
                   onCorporateOnlyChange(true);
                 }}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
-                  internalIsCorporateOnly
+                  isCorporateOnly // internalを削除
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}

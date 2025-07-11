@@ -295,13 +295,6 @@ export function useFilterLogic(
           };
           
         }
-      } else if (
-        key === 'hashtags_pr' || 
-        (filter.field === 'hashtags' && 
-         filter.type === 'exact_hashtags' && 
-         filter.value === 'pr')
-      ) {
-        // PRフィルターは無視する - このフィルターはisPrOnlyの状態のみで制御
       } else {
         // 通常のフィルター情報 - active プロパティを明示的に保持
         normalFilters[key] = {
@@ -393,59 +386,46 @@ export function useFilterLogic(
     } : {};
 
     // ここが重要な修正ポイント：
-    // isPrOnlyとisCorporateOnlyの状態に応じてフィルターを追加または削除する
-    const prFilterConfig: Record<string, FilterValue> = {};
+    // PRフィルターと運用代行用フィルターの処理を削除
+    // const prFilterConfig: Record<string, FilterValue> = {}; // 削除
     
-    // フィルター情報からPR状態を確認
-    const hasPrFilter = Object.values(normalFilters).some(
-      filter => filter.field === 'hashtags' && 
-                filter.type === 'exact_hashtags' && 
-                filter.value === 'pr' && 
-                filter.active === true
-    );
+    // フィルター情報からPR状態を確認する処理を削除
+    // const hasPrFilter = Object.values(normalFilters).some(...); // 削除
 
-    // もしフィルターにPRが含まれているか、または明示的にisPrOnly=trueが設定されている場合
-    if (hasPrFilter || isPrOnly) {
-      prFilterConfig.hashtags_pr = {
-        field: 'hashtags',
-        type: 'exact_hashtags' as const,
-        value: 'pr',
-        isHashtag: true,
-        active: true
-      };
-    }
+    // PRフィルターの追加処理を削除
+    // if (hasPrFilter || isPrOnly) { ... } // 削除
 
-    // フィルター情報を設定 - PRフィルターのみ反映（運用代行用フィルターは削除）
+    // フィルター情報を設定 - PRフィルターと運用代行用フィルターを削除
     const updatedColumnFilters: Record<string, FilterValue> = {
       ...normalFilters,
       ...primarySortConfig,
-      ...secondarySortConfig,
-      ...prFilterConfig
+      ...secondarySortConfig
+      // ...prFilterConfig を削除
     };
     
     setColumnFilters(updatedColumnFilters);
     
-    // 現在のフィルターも更新（ソート情報も含める）
+    // 現在のフィルターも更新（ソート情報のみ含める）
     const newCurrentFilters: Record<string, FilterQuery> = {
       ...normalFilters,
       ...primarySortConfig,
-      ...secondarySortConfig,
-      ...prFilterConfig
+      ...secondarySortConfig
+      // ...prFilterConfig を削除
     };
     
     setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
-    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0;
+    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
     setHasActiveFilters(hasFilters);
     
-    // 親コンポーネントに通知 - isPrOnlyとisCorporateOnlyの状態も含める
+    // 親コンポーネントに通知 - 状態のみ渡す（フィルターは適用しない）
     onFilterChange(hasFilters, {
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
       filters: newCurrentFilters,
-      isPrOnly: !!Object.keys(prFilterConfig).length, // PRフィルターの有無に基づいて設定
+      isPrOnly: isPrOnly, // 状態のみ渡す（フィルターは適用しない）
       isCorporateOnly: isCorporateOnly // 状態のみ渡す（フィルターは適用しない）
     });
     
@@ -454,108 +434,46 @@ export function useFilterLogic(
     
   }, [onFilterChange, sortState, isPrOnly, isCorporateOnly]);
 
-  // フィルター適用時にisPrOnlyも含める
+  // フィルター適用時の処理を修正
   const applyFilters = useCallback((filters: Record<string, FilterValue>) => {
     // フィルターオブジェクトの構築
     const filterQuery: FilterQuery = {
       field: 'multiple',
       type: 'multiple',
       value: Object.values(filters),
-      filters,
-      isPrOnly // PR状態も含める
+      filters
+      // isPrOnly を削除
     };
     
     // フィルターがあるかどうかの判定
-    const hasFilters = Object.keys(filters).length > 0 || isPrOnly;
+    const hasFilters = Object.keys(filters).length > 0;
     
     // 親コンポーネントに通知
     onFilterChange(hasFilters, filterQuery);
-  }, [isPrOnly, onFilterChange, currentFilters]);
+  }, [onFilterChange, currentFilters]);
   
-  // PR状態変更ハンドラー
+  // PR状態変更ハンドラーを修正
   const handlePrOnlyChange = useCallback((newPrOnly: boolean) => {
     setIsPrOnly(newPrOnly);
     setIsCorporateOnly(false); // 他のタブをオフにする
     
-    if (!newPrOnly) {
-      // 新しいフィルターを作成（PRフィルターを除外）
-      const newColumnFilters = { ...columnFilters };
-      delete newColumnFilters.hashtags_pr;
-      delete newColumnFilters.hashtags;
-      
-      // 他のハッシュタグ関連フィルターもチェックして削除
-      Object.keys(newColumnFilters).forEach(key => {
-        const filter = newColumnFilters[key];
-        if (
-          (filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'pr') ||
-          (key.includes('hashtag') && filter.value === 'pr')
-        ) {
-          delete newColumnFilters[key];
-        }
-      });
-      
-      // フィルター状態を更新
-      setColumnFilters(newColumnFilters);
-      
-      // 現在のフィルターからもPR関連を削除
-      const newCurrentFilters = { ...currentFilters };
-      delete newCurrentFilters.hashtags_pr;
-      delete newCurrentFilters.hashtags;
-      
-      // 同様に関連フィルターをすべて削除
-      Object.keys(newCurrentFilters).forEach(key => {
-        const filter = newCurrentFilters[key];
-        if (
-          (filter && filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'pr') ||
-          (key.includes('hashtag') && filter && filter.value === 'pr')
-        ) {
-          delete newCurrentFilters[key];
-        }
-      });
-      
-      // 現在のフィルターを更新
-      setCurrentFilters(newCurrentFilters);
-      
-      // フィルターポップアップを閉じて内部状態をリセット
-      setIsFilterPopupOpen(false);
-      
-      // 親コンポーネントに通知 - ダッシュボードに対して明示的にPRフィルターを削除する信号を送信
-      onFilterChange(Object.keys(newColumnFilters).length > 0, {
-        type: 'multiple',
-        field: 'multipleFilters',
-        value: Object.values(newCurrentFilters),
-        filters: newCurrentFilters,  // PRフィルターが含まれていないフィルターセットを渡す
-        isPrOnly: false,  // 明示的にPR状態をfalseに設定
-        isCorporateOnly: false
-      });
-
-    } else {
-      // PR有効時
-      const prFilter: FilterQuery = {
-        field: 'hashtags',
-        type: 'exact_hashtags' as const,
-        value: 'pr',
-        isHashtag: true,
-        active: true
-      };
-      
-      // 既存のフィルターにPRフィルターを追加
-      const newFilters = {
-        ...currentFilters,
-        hashtags_pr: prFilter
-      };
-      
-      // フィルター状態を更新
-      setColumnFilters(newFilters);
-      setCurrentFilters(newFilters);
-      
-      // フィルターポップアップを閉じて内部状態をリセット
-      setIsFilterPopupOpen(false);
-      
-      // 親コンポーネントに通知
-      onFilterChange(true, prFilter);
-    }
-  }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
+    // 親コンポーネントの状態も更新する必要がある
+    // しかし、この関数は内部状態の管理のみを行うべき
+    
+    // フィルターポップアップを閉じて内部状態をリセット
+    setIsFilterPopupOpen(false);
+    
+    // 親コンポーネントに通知 - フィルターは適用しない
+    onFilterChange(false, {
+      type: 'multiple',
+      field: 'multipleFilters',
+      value: [],
+      filters: {},
+      isPrOnly: newPrOnly,
+      isCorporateOnly: false
+    });
+    
+  }, [onFilterChange]);
 
   // 運用代行用状態変更ハンドラー
   const handleCorporateOnlyChange = useCallback((newCorporateOnly: boolean) => {

@@ -12,7 +12,7 @@ def fix_nan(row):
 def import_csv_to_mysql():
     try:
         # CSVファイルを読み込み（エンコーディングを指定）
-        df = pd.read_csv('affi_2.csv', encoding='utf-8')
+        df = pd.read_csv('affi_5.csv', encoding='utf-8')
         df = df.astype(object).where(pd.notnull(df), None)
         
         # データの確認
@@ -64,7 +64,7 @@ def import_csv_to_mysql():
                 try:
                     # 列名を明示的に指定してINSERT
                     insert_query = """
-                    INSERT INTO frontend_affiliate_data 
+                    INSERT INTO frontend_influencer_data 
                     (id, url, thumbnail_url, created_at, play_count, play_count_increase, account_name, likes_count,comment_count, 
                     hashtags, music_info, caption, category, display_name, content_type, ten_days_increase, product, likes_count_increase, 
                     ten_days_likes_increase, comment_count_increase, ten_days_comment_increase, account_type, save_count, save_count_increase, 
