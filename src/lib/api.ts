@@ -1214,6 +1214,226 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
   }
 }
 
+/**
+ * アフィリエイト動画データを取得する
+ */
+export async function getAffiliateData(page: number = 1, filters?: Record<string, FilterQuery>, limit: number = 50) {
+  // URLSearchParamsを使用してパラメータを適切にエンコード
+  const params = new URLSearchParams();
+
+  // 基本パラメータの追加
+  params.append('page', page.toString());
+  params.append('limit', limit.toString());
+
+  // ソートフィルターの初期化
+  const sortFilters: Array<{
+    key: string;
+    field: string;
+    apiField: string;
+    direction: string | number;
+    timestamp: number;
+    isPrimarySort: boolean;
+  }> = [];
+
+  try {
+    if (filters) {
+      // ソートフィルターの抽出と処理
+      const extractedSortFilters = Object.entries(filters)
+        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .map(([key, filter]) => {
+          const timestamp = filter.timestamp && filter.timestamp > 0 
+            ? Number(filter.timestamp) 
+            : Date.now();
+
+          let direction = Array.isArray(filter.value) 
+            ? filter.value[0]?.toString().toLowerCase() || 'desc'
+            : filter.value?.toString().toLowerCase() || 'desc';
+          
+          direction = ['asc', 'desc'].includes(direction) ? direction : 'desc';
+
+          return {
+            key,
+            field: key.replace('_sort', ''),
+            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            direction,
+            timestamp,
+            isPrimarySort: !!filter.isPrimarySort
+          };
+        })
+        .sort((a, b) => {
+          if (a.isPrimarySort && !b.isPrimarySort) return -1;
+          if (!a.isPrimarySort && b.isPrimarySort) return 1;
+          return b.timestamp - a.timestamp;
+        });
+
+      sortFilters.push(...extractedSortFilters);
+
+      // メインソートの設定
+      if (sortFilters.length > 0) {
+        const primarySort = sortFilters[0];
+        params.append('sort_by', primarySort.apiField);
+        params.append('sort_order', primarySort.direction.toString());
+
+        if (sortFilters.length > 1) {
+          const secondarySort = sortFilters[1];
+          params.append('sort_by_secondary', secondarySort.apiField);
+          params.append('sort_order_secondary', secondarySort.direction.toString());
+        }
+      } else {
+        params.append('sort_by', 'created_at');
+        params.append('sort_order', 'desc');
+        params.append('sort_by_secondary', 'play_count');
+        params.append('sort_order_secondary', 'desc');
+      }
+
+      // 通常のフィルターの処理
+      Object.entries(filters).forEach(([key, filter]) => {
+        if (!filter || key.endsWith('_sort') || filter.clear === true) return;
+
+        console.log('アフィリエイトフィルター処理開始:', {
+          key,
+          filter,
+          type: filter.type,
+          value: filter.value,
+          apiFieldName: mapFieldToApiField(key),
+          active: filter.active
+        });
+
+        const apiField = mapFieldToApiField(key);
+
+        // 数値フィルターの処理
+        if (['greater', 'less', 'equal'].includes(filter.type) || 
+            (filter.type === 'number' && filter.comparison && ['greater', 'less', 'equal'].includes(filter.comparison))) {
+          console.log('アフィリエイト数値フィルター検出:', {
+            key,
+            type: filter.type,
+            comparison: filter.comparison,
+            value: filter.value,
+            apiField,
+            active: filter.active
+          });
+          
+          params.append(apiField, String(filter.value));
+          const filterType = filter.comparison && ['greater', 'less', 'equal'].includes(filter.comparison) 
+            ? filter.comparison 
+            : filter.type;
+          params.append(`${apiField}_type`, filterType);
+          
+          console.log('アフィリエイト数値フィルターパラメータ設定後:', Object.fromEntries(params.entries()));
+          return;
+        }
+
+        // ハッシュタグフィルター
+        if (filter.isHashtag || key === 'hashtags') {
+          params.append('hashtags', filter.value.toString().trim());
+          
+          if (filter.type === 'exact_hashtags') {
+            params.append('exact_hashtags', 'true');
+            console.log('アフィリエイトハッシュタグ完全一致検索パラメータを設定:', filter.value);
+          }
+          
+          return;
+        }
+
+        // アカウントタイプフィルター
+        if (key === 'account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`account_type_${index}`, type.toString().trim());
+            });
+            params.append('account_type_count', filter.value.length.toString());
+          } else {
+            params.append('account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        // カテゴリフィルター
+        if (key === 'category' || key === 'PR動画ジャンル') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((category, index) => {
+              params.append(`category_${index}`, category.toString().trim());
+            });
+            params.append('category_count', filter.value.length.toString());
+          } else {
+            params.append('category', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        // コンテンツタイプフィルター
+        if (key === 'content_type') {
+          if (Array.isArray(filter.value)) {
+            params.append('content_type', filter.value.join(','));
+          } else {
+            params.append('content_type', filter.value.toString());
+          }
+          return;
+        }
+
+        // 日付フィルター
+        if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
+          const comparison = filter.comparison || filter.type || 'equal';
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', comparison);
+          return;
+        }
+
+        // 商品名フィルター
+        if (key === 'product') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((product, index) => {
+              params.append(`product_${index}`, product.toString().trim());
+            });
+            params.append('product_count', filter.value.length.toString());
+          } else {
+            params.append('product', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        // その他のフィルター
+        if (filter.value !== undefined && filter.value !== null && filter.value !== '') {
+          params.append(apiField, filter.value.toString().trim());
+        }
+      });
+    }
+
+    // アフィリエイトデータ用のエンドポイントを使用
+    const url = `${apiUrl}/api/affiliate-videos?${params.toString()}`;
+    console.log('アフィリエイトAPIリクエストURL:', url);
+    console.log('アフィリエイトAPIパラメータ:', Object.fromEntries(params.entries()));
+
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    // getDbDataと同じレスポンス形式に統一
+    return {
+      success: true,
+      data: result.data.map(convertToVideoData),
+      currentPage: result.currentPage || 1,
+      totalPages: result.totalPages || 1,
+      totalCount: result.total || result.data.length
+    };
+
+  } catch (error) {
+    console.error('アフィリエイトデータ取得エラー:', error);
+    return {
+      success: false,
+      data: [],
+      currentPage: page,
+      totalPages: 1,
+      totalCount: 0,
+      error: error instanceof Error ? error.message : '不明なエラー'
+    };
+  }
+}
+
 // APIのベースURL（環境変数から取得）
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 

@@ -29,6 +29,7 @@ from src.auth.tiktok import router as auth_tiktok_router
 from src.my_report.routes import router as tiktok_router
 from src.transcription.router import router as transcription_router
 from src.transcription.webhook import router as webhook_router
+from src.dashboard.affiliate_videos import router as affiliate_videos_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -80,6 +81,7 @@ app.include_router(auth_tiktok_router)
 app.include_router(tiktok_router)
 app.include_router(transcription_router)
 app.include_router(webhook_router)
+app.include_router(affiliate_videos_router)  # 追加
 
 # カスタム例外ハンドラ
 @app.exception_handler(Exception)

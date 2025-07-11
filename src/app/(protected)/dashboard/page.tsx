@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DataTable } from '@/components/dashboard/data-table/Datatable'
-import { getDbData, COLUMN_MAP } from '@/lib/api'
+import { getDbData, getAffiliateData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
@@ -117,7 +117,15 @@ const Dashboard = () => {
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     setIsLoading(true);
     try {
-      const response = await getDbData(page, currentFilters, pageSize);
+      // isPrOnlyの状態に応じてAPIを切り替え
+      let response;
+      if (isPrOnly) {
+        // アフィリエイトデータ用のAPIを呼び出し
+        response = await getAffiliateData(page, currentFilters, pageSize);
+      } else {
+        // 通常のデータ用のAPIを呼び出し
+        response = await getDbData(page, currentFilters, pageSize);
+      }
       
       if (response && response.success) {
         if (Array.isArray(response.data)) {
@@ -138,7 +146,7 @@ const Dashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [pageSize]);
+  }, [pageSize, isPrOnly]); // isPrOnlyを依存配列に追加
 
   useEffect(() => {
     if (Object.keys(filters).length === 0) {
