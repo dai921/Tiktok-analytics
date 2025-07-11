@@ -302,13 +302,6 @@ export function useFilterLogic(
          filter.value === 'pr')
       ) {
         // PRフィルターは無視する - このフィルターはisPrOnlyの状態のみで制御
-      } else if (
-        key === 'hashtags_corporate' || 
-        (filter.field === 'hashtags' && 
-         filter.type === 'exact_hashtags' && 
-         filter.value === 'corporate')
-      ) {
-        // 運用代行用フィルターは無視する - このフィルターはisCorporateOnlyの状態のみで制御
       } else {
         // 通常のフィルター情報 - active プロパティを明示的に保持
         normalFilters[key] = {
@@ -402,7 +395,6 @@ export function useFilterLogic(
     // ここが重要な修正ポイント：
     // isPrOnlyとisCorporateOnlyの状態に応じてフィルターを追加または削除する
     const prFilterConfig: Record<string, FilterValue> = {};
-    const corporateFilterConfig: Record<string, FilterValue> = {};
     
     // フィルター情報からPR状態を確認
     const hasPrFilter = Object.values(normalFilters).some(
@@ -412,14 +404,6 @@ export function useFilterLogic(
                 filter.active === true
     );
 
-    // フィルター情報から運用代行用状態を確認
-    const hasCorporateFilter = Object.values(normalFilters).some(
-      filter => filter.field === 'hashtags' && 
-                filter.type === 'exact_hashtags' && 
-                filter.value === 'corporate' && 
-                filter.active === true
-    );
-    
     // もしフィルターにPRが含まれているか、または明示的にisPrOnly=trueが設定されている場合
     if (hasPrFilter || isPrOnly) {
       prFilterConfig.hashtags_pr = {
@@ -431,24 +415,12 @@ export function useFilterLogic(
       };
     }
 
-    // もしフィルターに運用代行用が含まれているか、または明示的にisCorporateOnly=trueが設定されている場合
-    if (hasCorporateFilter || isCorporateOnly) {
-      corporateFilterConfig.hashtags_corporate = {
-        field: 'hashtags',
-        type: 'exact_hashtags' as const,
-        value: 'corporate',
-        isHashtag: true,
-        active: true
-      };
-    }
-
-    // フィルター情報を設定 - PRフィルターと運用代行用フィルターの状態を正確に反映
+    // フィルター情報を設定 - PRフィルターのみ反映（運用代行用フィルターは削除）
     const updatedColumnFilters: Record<string, FilterValue> = {
       ...normalFilters,
       ...primarySortConfig,
       ...secondarySortConfig,
-      ...prFilterConfig,
-      ...corporateFilterConfig
+      ...prFilterConfig
     };
     
     setColumnFilters(updatedColumnFilters);
@@ -458,14 +430,13 @@ export function useFilterLogic(
       ...normalFilters,
       ...primarySortConfig,
       ...secondarySortConfig,
-      ...prFilterConfig,
-      ...corporateFilterConfig
+      ...prFilterConfig
     };
     
     setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
-    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0 || Object.keys(corporateFilterConfig).length > 0;
+    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0;
     setHasActiveFilters(hasFilters);
     
     // 親コンポーネントに通知 - isPrOnlyとisCorporateOnlyの状態も含める
@@ -475,7 +446,7 @@ export function useFilterLogic(
       value: Object.values(normalFilters),
       filters: newCurrentFilters,
       isPrOnly: !!Object.keys(prFilterConfig).length, // PRフィルターの有無に基づいて設定
-      isCorporateOnly: !!Object.keys(corporateFilterConfig).length // 運用代行用フィルターの有無に基づいて設定
+      isCorporateOnly: isCorporateOnly // 状態のみ渡す（フィルターは適用しない）
     });
     
     // フィルターポップアップを閉じる
@@ -591,85 +562,23 @@ export function useFilterLogic(
     setIsCorporateOnly(newCorporateOnly);
     setIsPrOnly(false); // 他のタブをオフにする
     
-    if (!newCorporateOnly) {
-      // 新しいフィルターを作成（運用代行用フィルターを除外）
-      const newColumnFilters = { ...columnFilters };
-      delete newColumnFilters.hashtags_corporate;
-      delete newColumnFilters.hashtags;
-      
-      // 他のハッシュタグ関連フィルターもチェックして削除
-      Object.keys(newColumnFilters).forEach(key => {
-        const filter = newColumnFilters[key];
-        if (
-          (filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'corporate') ||
-          (key.includes('hashtag') && filter.value === 'corporate')
-        ) {
-          delete newColumnFilters[key];
-        }
-      });
-      
-      // フィルター状態を更新
-      setColumnFilters(newColumnFilters);
-      
-      // 現在のフィルターからも運用代行用関連を削除
-      const newCurrentFilters = { ...currentFilters };
-      delete newCurrentFilters.hashtags_corporate;
-      delete newCurrentFilters.hashtags;
-      
-      // 同様に関連フィルターをすべて削除
-      Object.keys(newCurrentFilters).forEach(key => {
-        const filter = newCurrentFilters[key];
-        if (
-          (filter && filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'corporate') ||
-          (key.includes('hashtag') && filter && filter.value === 'corporate')
-        ) {
-          delete newCurrentFilters[key];
-        }
-      });
-      
-      // 現在のフィルターを更新
-      setCurrentFilters(newCurrentFilters);
-      
-      // フィルターポップアップを閉じて内部状態をリセット
-      setIsFilterPopupOpen(false);
-      
-      // 親コンポーネントに通知 - ダッシュボードに対して明示的に運用代行用フィルターを削除する信号を送信
-      onFilterChange(Object.keys(newColumnFilters).length > 0, {
-        type: 'multiple',
-        field: 'multipleFilters',
-        value: Object.values(newCurrentFilters),
-        filters: newCurrentFilters,  // 運用代行用フィルターが含まれていないフィルターセットを渡す
-        isPrOnly: false,
-        isCorporateOnly: false  // 明示的に運用代行用状態をfalseに設定
-      });
-
-    } else {
-      // 運用代行用有効時
-      const corporateFilter: FilterQuery = {
-        field: 'hashtags',
-        type: 'exact_hashtags' as const,
-        value: 'corporate',
-        isHashtag: true,
-        active: true
-      };
-      
-      // 既存のフィルターに運用代行用フィルターを追加
-      const newFilters = {
-        ...currentFilters,
-        hashtags_corporate: corporateFilter
-      };
-      
-      // フィルター状態を更新
-      setColumnFilters(newFilters);
-      setCurrentFilters(newFilters);
-      
-      // フィルターポップアップを閉じて内部状態をリセット
-      setIsFilterPopupOpen(false);
-      
-      // 親コンポーネントに通知
-      onFilterChange(true, corporateFilter);
-    }
-  }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
+    // 運用代行用タブがクリックされた時の処理を削除
+    // フィルターは適用せず、状態のみ管理する
+    
+    // フィルターポップアップを閉じて内部状態をリセット
+    setIsFilterPopupOpen(false);
+    
+    // 親コンポーネントに通知 - フィルターは適用しない
+    onFilterChange(false, {
+      type: 'multiple',
+      field: 'multipleFilters',
+      value: [],
+      filters: {},
+      isPrOnly: false,
+      isCorporateOnly: newCorporateOnly
+    });
+    
+  }, [onFilterChange]);
 
   return [
     { hasActiveFilters, columnFilters, currentFilters, isPrOnly, isCorporateOnly },

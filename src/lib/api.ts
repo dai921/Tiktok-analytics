@@ -1515,34 +1515,96 @@ export async function getCorporateData(page: number = 1, filters?: Record<string
         }
       }
 
-      // フィルターパラメータの処理
+      // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort') || filter.type === 'indicator') {
-          return;
-        }
+        if (!filter || key.endsWith('_sort') || filter.clear === true) return;
+
+        console.log('運用代行用フィルター処理開始:', {
+          key,
+          filter,
+          type: filter.type,
+          value: filter.value,
+          apiFieldName: mapFieldToApiField(key),
+          active: filter.active
+        });
 
         const apiField = mapFieldToApiField(key);
 
         // 数値フィルターの処理
-        if (filter.type === 'number' && filter.comparison) {
-          params.append(apiField, filter.value.toString().trim());
-          params.append(`${apiField}_type`, filter.comparison);
+        if (['greater', 'less', 'equal'].includes(filter.type) || 
+            (filter.type === 'number' && filter.comparison && ['greater', 'less', 'equal'].includes(filter.comparison))) {
+          console.log('運用代行用数値フィルター検出:', {
+            key,
+            type: filter.type,
+            comparison: filter.comparison,
+            value: filter.value,
+            apiField,
+            active: filter.active
+          });
+          
+          params.append(apiField, String(filter.value));
+          const filterType = filter.comparison && ['greater', 'less', 'equal'].includes(filter.comparison) 
+            ? filter.comparison 
+            : filter.type;
+          params.append(`${apiField}_type`, filterType);
+          
+          console.log('運用代行用数値フィルターパラメータ設定後:', Object.fromEntries(params.entries()));
           return;
         }
 
-        // 日付フィルターの処理
-        if (filter.type === 'date' && filter.comparison) {
-          params.append(apiField, filter.value.toString().trim());
-          params.append(`${apiField}_type`, filter.comparison);
-          return;
-        }
-
-        // ハッシュタグフィルターの処理
-        if (key === 'hashtags' && filter.isHashtag) {
+        // ハッシュタグフィルター（追加フィルター用に残す）
+        if (filter.isHashtag || key === 'hashtags') {
+          params.append('hashtags', filter.value.toString().trim());
+          
           if (filter.type === 'exact_hashtags') {
             params.append('exact_hashtags', 'true');
+            console.log('運用代行用ハッシュタグ完全一致検索パラメータを設定:', filter.value);
           }
-          params.append('hashtags', filter.value.toString().trim());
+          
+          return;
+        }
+
+        // アカウントタイプフィルター
+        if (key === 'account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`account_type_${index}`, type.toString().trim());
+            });
+            params.append('account_type_count', filter.value.length.toString());
+          } else {
+            params.append('account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        // カテゴリフィルター
+        if (key === 'category' || key === 'PR動画ジャンル') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((category, index) => {
+              params.append(`category_${index}`, category.toString().trim());
+            });
+            params.append('category_count', filter.value.length.toString());
+          } else {
+            params.append('category', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        // コンテンツタイプフィルター
+        if (key === 'content_type') {
+          if (Array.isArray(filter.value)) {
+            params.append('content_type', filter.value.join(','));
+          } else {
+            params.append('content_type', filter.value.toString());
+          }
+          return;
+        }
+
+        // 日付フィルター
+        if (key === 'createdAt' || apiField === 'created_at' || key === '投稿日') {
+          const comparison = filter.comparison || filter.type || 'equal';
+          params.append('created_at', filter.value.toString());
+          params.append('created_at_type', comparison);
           return;
         }
 

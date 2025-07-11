@@ -221,35 +221,8 @@ const Dashboard = () => {
     setIsCorporateOnly(checked);
     setIsPrOnly(false); // 他のタブをオフにする
     
-    if (checked) {
-      const corporateFilter: FilterQuery = {
-        field: 'hashtags',
-        type: 'exact_hashtags',
-        value: 'corporate',
-        isHashtag: true
-      };
-      
-      setFilters(prev => ({
-        ...prev,
-        hashtags_corporate: corporateFilter
-      }));
-    } else {
-      setFilters(prev => {
-        const updatedFilters = { ...prev };
-        delete updatedFilters.hashtags_corporate;
-        
-        Object.keys(updatedFilters).forEach(key => {
-          const filter = updatedFilters[key];
-          if ((key === 'hashtags' || key.includes('hashtag')) && 
-              filter && filter.type === 'exact_hashtags' && 
-              filter.value === 'corporate') {
-            delete updatedFilters[key];
-          }
-        });
-        
-        return updatedFilters;
-      });
-    }
+    // ハッシュタグフィルターの追加・削除を削除
+    // 運用代行用動画は専用テーブルを使用するため、フィルターは不要
     
     setCurrentPage(1);
   }, []); // filtersの依存配列を削除
