@@ -253,13 +253,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             </button>
             
             {/* 動画タイプタブ */}
-            <div className="flex bg-gray-100 rounded-lg p-1">
+            <div className="flex bg-gray-50 rounded-lg p-1">
               <button
                 onClick={handleAllVideosToggle}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
                   !isPrOnly && !isCorporateOnly && !isInfluencerOnly
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
                 }`}
               >
                 すべての動画
@@ -269,10 +269,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   console.log('アフィリエイト系動画タブクリック');
                   onPrOnlyChange(true);
                 }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ml-1 ${
                   isPrOnly
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
                 }`}
               >
                 アフィ系動画
@@ -282,10 +282,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   console.log('運用代行用動画タブクリック');
                   onCorporateOnlyChange(true);
                 }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ml-1 ${
                   isCorporateOnly
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
                 }`}
               >
                 企業系動画
@@ -295,10 +295,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                   console.log('インフルエンサー動画タブクリック');
                   onInfluencerOnlyChange(true);
                 }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ${
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ml-1 ${
                   isInfluencerOnly
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
                 }`}
               >
                 インフルエンサー系動画
