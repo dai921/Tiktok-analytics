@@ -6,6 +6,7 @@ import { getDbData, getAffiliateData, getCorporateData, getInfluencerData, COLUM
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
+import { TAB_DEFAULT_COLUMNS, getCurrentTabType } from '@/components/dashboard/data-table/tab-columns'
 
 const headers = [
   { key: 'createdAt', title: '作成日時', type: 'date' as const },
@@ -185,29 +186,55 @@ const Dashboard = () => {
     // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
   }, []); // fetchDataを依存配列から削除
 
-  // handlePrOnlyChange 関数をメモ化（fetchDataの直接呼び出しを削除）
+  // handleColumnSettingsChange関数を先に定義
+  const handleColumnSettingsChange = useCallback((columns: string[]) => {
+    setVisibleColumns(columns);
+  }, []);
+
+  // タブ切り替え時にカラム設定を更新する関数
+  const updateColumnsForTab = useCallback((tabType: keyof typeof TAB_DEFAULT_COLUMNS) => {
+    const defaultColumns = TAB_DEFAULT_COLUMNS[tabType];
+    setVisibleColumns(defaultColumns);
+    
+    // カラム設定変更をDataTableに通知（必要に応じて）
+    // handleColumnSettingsChange(defaultColumns); // この行は不要かもしれません
+  }, [handleColumnSettingsChange]);
+
+  // handlePrOnlyChange 関数を修正
   const handlePrOnlyChange = useCallback((checked: boolean) => {
     console.log('handlePrOnlyChange:', checked);
     setIsPrOnly(checked);
     setIsCorporateOnly(false);
     setIsInfluencerOnly(false);
     setCurrentPage(1);
-    setFilters({}); // フィルターをクリア
-    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
-  }, []);
+    setFilters({});
+    
+    // タブ切り替え時にカラムを更新
+    if (checked) {
+      updateColumnsForTab('affiliate');
+    } else {
+      updateColumnsForTab('all');
+    }
+  }, [updateColumnsForTab]);
 
-  // handleCorporateOnlyChange 関数を修正（fetchDataの直接呼び出しを削除）
+  // handleCorporateOnlyChange 関数を修正
   const handleCorporateOnlyChange = useCallback((checked: boolean) => {
     console.log('handleCorporateOnlyChange:', checked);
     setIsCorporateOnly(checked);
     setIsPrOnly(false);
     setIsInfluencerOnly(false);
     setCurrentPage(1);
-    setFilters({}); // フィルターをクリア
-    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
-  }, []);
+    setFilters({});
+    
+    // タブ切り替え時にカラムを更新
+    if (checked) {
+      updateColumnsForTab('corporate');
+    } else {
+      updateColumnsForTab('all');
+    }
+  }, [updateColumnsForTab]);
 
-  // handleInfluencerOnlyChange 関数を追加
+  // handleInfluencerOnlyChange 関数を修正
   const handleInfluencerOnlyChange = useCallback((checked: boolean) => {
     console.log('handleInfluencerOnlyChange:', checked);
     setIsInfluencerOnly(checked);
@@ -215,7 +242,14 @@ const Dashboard = () => {
     setIsCorporateOnly(false);
     setCurrentPage(1);
     setFilters({});
-  }, []);
+    
+    // タブ切り替え時にカラムを更新
+    if (checked) {
+      updateColumnsForTab('influencer');
+    } else {
+      updateColumnsForTab('all');
+    }
+  }, [updateColumnsForTab]);
 
   const handlePageSizeChange = useCallback((size: number) => {
     setPageSize(size);
@@ -336,7 +370,7 @@ const Dashboard = () => {
     // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
   }, []); // fetchDataを依存配列から削除
 
-  // 初期読み込み時に設定を取得
+  // 初期読み込み時に設定を取得する部分を修正
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -348,14 +382,18 @@ const Dashboard = () => {
             .map(col => col.column_name);
           
           if (visibleColumnNames.length === 0) {
-            const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
-            setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+            // 現在のタブに応じてデフォルトカラムを設定
+            const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+            const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
+            setVisibleColumns(defaultColumns);
           } else {
             setVisibleColumns(visibleColumnNames);
           }
         } else {
-          const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
-          setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+          // 設定がない場合は現在のタブに応じてデフォルトカラムを設定
+          const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+          const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
+          setVisibleColumns(defaultColumns);
         }
         setIsSettingsLoaded(true);
       } catch (error) {
@@ -366,18 +404,16 @@ const Dashboard = () => {
           variant: "destructive",
         });
         
-        const { DEFAULT_VISIBLE_COLUMNS } = require('@/components/dashboard/data-table/constants');
-        setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+        // エラー時も現在のタブに応じてデフォルトカラムを設定
+        const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+        const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
+        setVisibleColumns(defaultColumns);
         setIsSettingsLoaded(true);
       }
     };
 
     loadSettings();
-  }, []);
-
-  const handleColumnSettingsChange = useCallback((columns: string[]) => {
-    setVisibleColumns(columns);
-  }, []);
+  }, []); // 初期読み込みのみ実行
 
   if (!isSettingsLoaded) {
     return (

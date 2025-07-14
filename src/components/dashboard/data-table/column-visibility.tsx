@@ -24,6 +24,16 @@ export function useColumnVisibility(
     });
   }
   
+  // defaultColumnsが変更された時にvisibleColumnsを更新
+  useEffect(() => {
+    if (defaultColumns && defaultColumns.length > 0) {
+      setVisibleColumns(defaultColumns);
+      if (DEBUG) {
+        console.log('defaultColumnsが変更されました:', defaultColumns);
+      }
+    }
+  }, [defaultColumns]);
+  
   const columnSettingsButtonRef = useRef<HTMLButtonElement>(null) as React.RefObject<HTMLButtonElement>;
   
   // カラムの表示/非表示を切り替える関数
