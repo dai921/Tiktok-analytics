@@ -156,8 +156,10 @@ export const CORPORATE_TYPE_COLORS = {
   
   // グループ14: 特殊用途・その他（ニュートラル系）
   'その他': { bg: '#F9FAFB', text: '#4B5563', border: '#E5E7EB' },
-  '採用': { bg: '#F3F4F6', text: '#374151', border: '#D1D5DB' },
-  '集客': { bg: '#F5F5F4', text: '#57534E', border: '#D6D3D1' }
+  
+  // グループ15: ビジネス活動系（アクティブカラー）
+  '採用': { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD' },
+  '集客': { bg: '#FED7AA', text: '#C2410C', border: '#FDBA74' }
 } as const;
 
 // デフォルトのジャンル色

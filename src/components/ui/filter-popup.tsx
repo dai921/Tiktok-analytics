@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, RefObject, useLayoutEffect } from 'react'
 import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashboard'
-import { TIKTOK_COLORS, GENRE_COLORS, ACCOUNT_TYPE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
+import { TIKTOK_COLORS, GENRE_COLORS, ACCOUNT_TYPE_COLORS, CORPORATE_TYPE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL 
@@ -169,23 +169,6 @@ const SortDescIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
-// ヘルプアイコン
-const HelpIcon = ({ size = 16 }: { size?: number }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="10"></circle>
-    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-  </svg>
-);
 
 export const FilterPopup = ({
   isOpen,
@@ -1290,10 +1273,14 @@ export const FilterPopup = ({
             // フィールドIDに応じて適切な色を取得
             let colors;
             if (field.id === 'account_type') {
-              // アカウントタイプの場合はACCOUNT_TYPE_COLORSを使用
+              // アカウントタイプの場合は、まずACCOUNT_TYPE_COLORSを確認し、
+              // 見つからなければCORPORATE_TYPE_COLORSを確認し、
+              // それでも見つからなければデフォルトカラーを使用
               colors = option in ACCOUNT_TYPE_COLORS
                 ? ACCOUNT_TYPE_COLORS[option as keyof typeof ACCOUNT_TYPE_COLORS]
-                : DEFAULT_GENRE_COLOR;
+                : option in CORPORATE_TYPE_COLORS
+                  ? CORPORATE_TYPE_COLORS[option as keyof typeof CORPORATE_TYPE_COLORS]
+                  : DEFAULT_GENRE_COLOR;
             } else {
               // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
               colors = option in GENRE_COLORS 
