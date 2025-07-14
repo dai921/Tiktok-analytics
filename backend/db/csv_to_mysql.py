@@ -53,7 +53,7 @@ def import_csv_to_mysql():
             cursor = connection.cursor()
             
             # テーブル構造を確認
-            cursor.execute("DESCRIBE frontend_affiliate_data")
+            cursor.execute("DESCRIBE frontend_data")
             table_structure = cursor.fetchall()
             print("\nテーブル構造:")
             for row in table_structure:
@@ -64,12 +64,12 @@ def import_csv_to_mysql():
                 try:
                     # 列名を明示的に指定してINSERT
                     insert_query = """
-                    INSERT INTO frontend_influencer_data 
-                    (id, url, thumbnail_url, created_at, play_count, play_count_increase, account_name, likes_count,comment_count, 
+                    INSERT INTO frontend_data 
+                    (url, thumbnail_url, created_at, play_count, play_count_increase, account_name, likes_count,comment_count, 
                     hashtags, music_info, caption, category, display_name, content_type, ten_days_increase, product, likes_count_increase, 
                     ten_days_likes_increase, comment_count_increase, ten_days_comment_increase, account_type, save_count, save_count_increase, 
                     video_id, ten_days_save_increase,is_pr)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES ( %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     # 実際の列名に合わせて調整してください
                     
