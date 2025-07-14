@@ -74,6 +74,11 @@ const Dashboard = () => {
       
       if (response && response.success) {
         if (Array.isArray(response.data)) {
+          console.log('企業系動画データ設定:', {
+            dataCount: response.data.length,
+            isCorporateOnly,
+            firstItem: response.data[0]
+          });
           setData(response.data);
           setCurrentPage(response.currentPage || page);
           setTotalPages(response.totalPages || 1);

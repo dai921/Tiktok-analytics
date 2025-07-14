@@ -1641,6 +1641,14 @@ export async function getCorporateData(page: number = 1, filters?: Record<string
 
     const result = await response.json();
 
+    // この部分にログを追加
+    console.log('企業系動画APIレスポンス:', {
+      success: result.success,
+      dataCount: result.data?.length,
+      total: result.total,
+      firstItem: result.data?.[0] // 最初のアイテムの内容確認用
+    });
+
     // getDbDataと同じレスポンス形式に統一
     return {
       success: true,
@@ -2067,5 +2075,3 @@ export async function getInfluencerData(page: number = 1, filters?: Record<strin
   }
 }
 
-// 既存のインポートに追加
-import { getDbData, getAffiliateData, getCorporateData, getInfluencerData, COLUMN_MAP } from '@/lib/api'
