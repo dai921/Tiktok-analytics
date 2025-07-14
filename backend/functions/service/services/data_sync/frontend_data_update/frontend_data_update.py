@@ -206,11 +206,12 @@ def update_frontend_from_master() -> Dict[str, Any]:
                 "message": "全バッチの処理が完了しました",
                 "timestamp": datetime.now().isoformat()
             })
-                        # カテゴリー統計集計用のトリガーメッセージを送信
-            print("カテゴリー統計集計のトリガーメッセージを送信します")
-            publish_message("needs-update-flag", {
-                "status": "completed",
-                "message": "カテゴリー統計集計を開始します",
+            
+            # アフィリエイトデータ更新のトリガーメッセージを送信
+            print("アフィリエイトデータ更新のトリガーメッセージを送信します")
+            publish_message("frontend-affiliate-trigger", {
+                "status": "start",
+                "message": "アフィリエイトデータ更新を開始します",
                 "timestamp": datetime.now().isoformat()
             })
             
@@ -319,11 +320,11 @@ def update_frontend_from_master() -> Dict[str, Any]:
                 "timestamp": datetime.now().isoformat()
             })
             
-            # カテゴリー統計集計用のトリガーメッセージを送信
-            print("カテゴリー統計集計のトリガーメッセージを送信します")
-            publish_message("needs-update-flag", {
-                "status": "completed",
-                "message": "カテゴリー統計集計を開始します",
+            # アフィリエイトデータ更新のトリガーメッセージを送信
+            print("アフィリエイトデータ更新のトリガーメッセージを送信します")
+            publish_message("frontend-affiliate-trigger", {
+                "status": "start",
+                "message": "アフィリエイトデータ更新を開始します",
                 "timestamp": datetime.now().isoformat()
             })
             
@@ -349,7 +350,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
         }
 
 # カーソル管理用の関数
-def get_or_initialize_cursor(processor_name, target_table, default_batch_size=1000):
+def get_or_initialize_cursor(processor_name, target_table, default_batch_size=10000):
     """カーソル情報を取得、存在しない場合は初期化"""
     query = """
     SELECT id, processor_name, target_table, last_cursor_id, 
