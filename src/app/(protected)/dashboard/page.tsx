@@ -6,7 +6,7 @@ import { getDbData, getAffiliateData, getCorporateData, getInfluencerData, COLUM
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
-import { TAB_DEFAULT_COLUMNS, getCurrentTabType } from '@/components/dashboard/data-table/tab-columns'
+import { TAB_DEFAULT_COLUMNS, TAB_FILTER_FIELDS, getCurrentTabType, getTabFilterFields } from '@/components/dashboard/data-table/tab-columns'
 
 const headers = [
   { key: 'createdAt', title: '作成日時', type: 'date' as const },
@@ -45,6 +45,10 @@ const Dashboard = () => {
   const [isInfluencerOnly, setIsInfluencerOnly] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
+
+  // 現在のタブフィルタ設定を取得
+  const currentTabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+  const currentTabFilterFields = getTabFilterFields(currentTabType);
 
   // fetchData 関数をメモ化（依存配列を最小限に）
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
@@ -452,6 +456,7 @@ const Dashboard = () => {
           onInfluencerOnlyChange={handleInfluencerOnlyChange}
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
+          tabFilterFields={currentTabFilterFields}
         />
       </main>
     </div>

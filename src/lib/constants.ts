@@ -172,3 +172,28 @@ export const DEFAULT_ACCOUNT_TYPE_COLOR = { bg: '#F9FAFB', text: '#4B5563', bord
 export const DEFAULT_CORPORATE_TYPE_COLOR = { bg: '#F9FAFB', text: '#4B5563', border: '#E5E7EB' };
 
 // その他の定数をここに追加 
+
+// 既存の定数を活用したヘルパー関数
+export const getInfluencerAccountTypes = () => Object.keys(ACCOUNT_TYPE_COLORS);
+export const getCorporateAccountTypes = () => Object.keys(CORPORATE_TYPE_COLORS);
+export const getAllAccountTypes = () => [...getInfluencerAccountTypes(), ...getCorporateAccountTypes()];
+
+// カラー取得のヘルパー関数
+export const getAccountTypeColor = (accountType: string, context?: 'influencer' | 'corporate' | 'all') => {
+  if (context === 'influencer') {
+    return accountType in ACCOUNT_TYPE_COLORS
+      ? ACCOUNT_TYPE_COLORS[accountType as keyof typeof ACCOUNT_TYPE_COLORS]
+      : DEFAULT_GENRE_COLOR;
+  } else if (context === 'corporate') {
+    return accountType in CORPORATE_TYPE_COLORS
+      ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
+      : DEFAULT_GENRE_COLOR;
+  } else {
+    // 既存のロジック（インフルエンサー → 企業の順で検索）
+    return accountType in ACCOUNT_TYPE_COLORS
+      ? ACCOUNT_TYPE_COLORS[accountType as keyof typeof ACCOUNT_TYPE_COLORS]
+      : accountType in CORPORATE_TYPE_COLORS
+        ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
+        : DEFAULT_GENRE_COLOR;
+  }
+}; 

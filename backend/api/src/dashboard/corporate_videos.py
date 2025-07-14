@@ -22,13 +22,18 @@ async def get_corporate_videos(
     print(f"Received corporate request with params: {request.query_params}")
 
     try:
-        # 基本クエリ構築
-        query = build_video_query("frontend_corporate_data")
+        # 基本クエリ構築 - frontend_dataテーブルを使用
+        query = build_video_query("frontend_data")
         params = {}
         where_clauses = []
 
+        # 企業系動画のフィルタリング条件を追加
+        # is_pr = 0 (非PR動画) かつ account_type が企業系のもの
+        where_clauses.append("(is_pr = 0 OR is_pr IS NULL)")
+        where_clauses.append("(account_type IS NOT NULL AND account_type != '')")
+        
         # フィルター適用
-        query, params = apply_filters(query, params, where_clauses, request, "frontend_corporate_data")
+        query, params = apply_filters(query, params, where_clauses, request, "frontend_data")
 
         # ソート適用
         query = apply_sorting(query, sort_by, sort_order, sort_by_secondary, sort_order_secondary)
@@ -50,8 +55,8 @@ async def get_corporate_videos(
         total_result = fetch_one(count_query, params)
         total = total_result["total"] if total_result else 0
 
-        # 最終更新日取得
-        latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_corporate_data")
+        # 最終更新日取得 - frontend_dataテーブルを使用
+        latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_data WHERE (is_pr = 0 OR is_pr IS NULL) AND (account_type IS NOT NULL AND account_type != '')")
         global_latest_date = latest_date_result["max_date"] if latest_date_result else None
         global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
 

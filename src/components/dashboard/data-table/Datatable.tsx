@@ -41,6 +41,13 @@ interface DataTableProps {
   onPageSizeChange?: (pageSize: number) => void;
   defaultVisibleColumns?: string[];
   onColumnSettingsChange?: (visibleColumns: string[]) => void;
+  tabFilterFields?: {
+    date: string[];
+    metrics: string[];
+    categories: string[];
+    text: string[];
+    sort: string[];
+  };
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -60,7 +67,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     pageSize = 50,
     onPageSizeChange,
     defaultVisibleColumns,
-    onColumnSettingsChange
+    onColumnSettingsChange,
+    tabFilterFields
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -473,6 +481,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             products={[]}
             isLoading={isLoadingFilterOptions}
             onClearAll={handleClearFilterInputs}
+            tabFilterFields={tabFilterFields}
+            accountTypeContext={isCorporateOnly ? 'corporate' : isInfluencerOnly ? 'influencer' : 'all'}
           />,
           document.body
         )}
