@@ -5,12 +5,14 @@ import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashbo
 import { 
   TIKTOK_COLORS, 
   GENRE_COLORS, 
-  ACCOUNT_TYPE_COLORS, 
+  AFFILIATE_TYPE_COLORS,      // 新規追加
+  INFLUENCER_TYPE_COLORS,     // 名前変更
   CORPORATE_TYPE_COLORS, 
   DEFAULT_GENRE_COLOR,
-  getInfluencerAccountTypes,  // 追加
-  getCorporateAccountTypes,   // 追加
-  getAllAccountTypes,         // 追加
+  getAffiliateAccountTypes,   // 新規追加
+  getInfluencerAccountTypes,
+  getCorporateAccountTypes,
+  getAllAccountTypes,
   getAccountTypeColor         // 追加
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'

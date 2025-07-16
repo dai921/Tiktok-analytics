@@ -45,16 +45,19 @@ export const GENRE_COLORS = {
   'その他': { bg: '#F9FAFB', text: '#4B5563', border: '#E5E7EB' }
 } as const;
 
-// アカウントタイプごとのカラー定義
-export const ACCOUNT_TYPE_COLORS = {
-  // グループ1: アフィリエイト（赤系）
+// 新しいアフィリエイトタイプの色定義
+export const AFFILIATE_TYPE_COLORS = {
   'アフィリエイト': { bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
-  
-  // グループ2: エンターテイメント・コンテンツ（オレンジ系）
+  '自社ページ': { bg: '#ECFEFF', text: '#0E7490', border: '#A5F3FC' }
+} as const;
+
+// インフルエンサータイプの色定義（旧ACCOUNT_TYPE_COLORSから「アフィリエイト」と「自社ページ」を除いたもの）
+export const INFLUENCER_TYPE_COLORS = {
+  // エンターテイメント・コンテンツ（オレンジ系）
   'エンタメ・おもしろ': { bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' },
   'アニメ・ショートドラマ': { bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
   
-  // グループ3: インフルエンサー系（黄色〜黄緑系）
+  // インフルエンサー系（黄色〜黄緑系）
   '男性インフルエンサー': { bg: '#FEFCE8', text: '#A16207', border: '#FEF08A' },
   '女性インフルエンサー': { bg: '#FAFAF5', text: '#856D20', border: '#F7FEE7' },
   '男女インフルエンサー': { bg: '#F7FEE7', text: '#4D7C0F', border: '#D9F99D' },
@@ -62,31 +65,27 @@ export const ACCOUNT_TYPE_COLORS = {
   '女性タレント・女優': { bg: '#ECFDF5', text: '#065F46', border: '#A7F3D0' },
   'アーティスト': { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' },
   
-  // グループ4: 自社ページ（青緑系）
-  '自社ページ': { bg: '#ECFEFF', text: '#0E7490', border: '#A5F3FC' },
-  
-  // グループ5: 健康・美容系（水色〜青系）
+  // 健康・美容系（水色〜青系）
   '健康・フィットネス': { bg: '#F0F9FF', text: '#0369A1', border: '#BAE6FD' },
   '美容': { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
   '医療': { bg: '#EEF2FF', text: '#3730A3', border: '#C7D2FE' },
   
-  // グループ6: 知識・教育系（青紫系）
+  // 知識・教育系（青紫系）
   '教育': { bg: '#F5F3FF', text: '#5B21B6', border: '#DDD6FE' },
   '社会・時事': { bg: '#FAF5FF', text: '#6D28D9', border: '#E9D5FF' },
   'ビジネス': { bg: '#FDF4FF', text: '#7E22CE', border: '#F5D0FE' },
   
-  // グループ7: ライフスタイル系（紫系）
+  // ライフスタイル系（紫系）
   'ライフスタイル': { bg: '#FDF4FF', text: '#A21CAF', border: '#F5D0FE' },
   'グルメ': { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' },
   
-  // グループ8: 趣味・特殊興味系（赤紫系）
-  '占い': { bg: '#FBE9F9', text: '#C01A79', border: '#F9A8D4' },
+  // 趣味・特殊興味系（赤紫系）
   '動物': { bg: '#FEE2E2', text: '#BE123C', border: '#FECACA' },
   
-  // グループ9: スポーツ系（濃い赤系）
+  // スポーツ系（濃い赤系）
   'スポーツ': { bg: '#FEE2E2', text: '#991B1B', border: '#FECACA' },
   
-  // グループ10: 恋愛系（ピンク系）
+  // 恋愛系（ピンク系）
   '恋愛': { bg: '#FCE7F3', text: '#9D174D', border: '#FBCFE8' }
 } as const;
 
@@ -174,26 +173,33 @@ export const DEFAULT_CORPORATE_TYPE_COLOR = { bg: '#F9FAFB', text: '#4B5563', bo
 // その他の定数をここに追加 
 
 // 既存の定数を活用したヘルパー関数
-export const getInfluencerAccountTypes = () => Object.keys(ACCOUNT_TYPE_COLORS);
+export const getAffiliateAccountTypes = () => Object.keys(AFFILIATE_TYPE_COLORS);
+export const getInfluencerAccountTypes = () => Object.keys(INFLUENCER_TYPE_COLORS);
 export const getCorporateAccountTypes = () => Object.keys(CORPORATE_TYPE_COLORS);
-export const getAllAccountTypes = () => [...getInfluencerAccountTypes(), ...getCorporateAccountTypes()];
+export const getAllAccountTypes = () => [...getAffiliateAccountTypes(), ...getInfluencerAccountTypes(), ...getCorporateAccountTypes()];
 
-// カラー取得のヘルパー関数
-export const getAccountTypeColor = (accountType: string, context?: 'influencer' | 'corporate' | 'all') => {
-  if (context === 'influencer') {
-    return accountType in ACCOUNT_TYPE_COLORS
-      ? ACCOUNT_TYPE_COLORS[accountType as keyof typeof ACCOUNT_TYPE_COLORS]
-      : DEFAULT_GENRE_COLOR;
+// カラー取得のヘルパー関数の更新
+export const getAccountTypeColor = (accountType: string, context?: 'affiliate' | 'influencer' | 'corporate' | 'all') => {
+  if (context === 'affiliate') {
+    return accountType in AFFILIATE_TYPE_COLORS
+      ? AFFILIATE_TYPE_COLORS[accountType as keyof typeof AFFILIATE_TYPE_COLORS]
+      : DEFAULT_ACCOUNT_TYPE_COLOR;
+  } else if (context === 'influencer') {
+    return accountType in INFLUENCER_TYPE_COLORS
+      ? INFLUENCER_TYPE_COLORS[accountType as keyof typeof INFLUENCER_TYPE_COLORS]
+      : DEFAULT_ACCOUNT_TYPE_COLOR;
   } else if (context === 'corporate') {
     return accountType in CORPORATE_TYPE_COLORS
       ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
-      : DEFAULT_GENRE_COLOR;
+      : DEFAULT_ACCOUNT_TYPE_COLOR;
   } else {
-    // 既存のロジック（インフルエンサー → 企業の順で検索）
-    return accountType in ACCOUNT_TYPE_COLORS
-      ? ACCOUNT_TYPE_COLORS[accountType as keyof typeof ACCOUNT_TYPE_COLORS]
-      : accountType in CORPORATE_TYPE_COLORS
-        ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
-        : DEFAULT_GENRE_COLOR;
+    // 優先順位: アフィリエイト → インフルエンサー → 企業
+    return accountType in AFFILIATE_TYPE_COLORS
+      ? AFFILIATE_TYPE_COLORS[accountType as keyof typeof AFFILIATE_TYPE_COLORS]
+      : accountType in INFLUENCER_TYPE_COLORS
+        ? INFLUENCER_TYPE_COLORS[accountType as keyof typeof INFLUENCER_TYPE_COLORS]
+        : accountType in CORPORATE_TYPE_COLORS
+          ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
+          : DEFAULT_ACCOUNT_TYPE_COLOR;
   }
 }; 

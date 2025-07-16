@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from "@/lib/constants"
-import { ACCOUNT_TYPE_COLORS, CORPORATE_TYPE_COLORS, DEFAULT_ACCOUNT_TYPE_COLOR } from "@/lib/constants"
+import { AFFILIATE_TYPE_COLORS, INFLUENCER_TYPE_COLORS, CORPORATE_TYPE_COLORS, DEFAULT_ACCOUNT_TYPE_COLOR } from "@/lib/constants"
 
 const badgeVariants = cva(
   "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
@@ -126,12 +126,14 @@ export interface AccountTypeBadgeProps extends React.HTMLAttributes<HTMLDivEleme
 // アカウントタイプバッジコンポーネント
 function AccountTypeBadge({ accountType, className, ...props }: AccountTypeBadgeProps) {
   // アカウントタイプに基づいて色を決定
-  // まずACCOUNT_TYPE_COLORSを確認し、見つからなければCORPORATE_TYPE_COLORSを確認
-  const colors = accountType in ACCOUNT_TYPE_COLORS
-    ? ACCOUNT_TYPE_COLORS[accountType as keyof typeof ACCOUNT_TYPE_COLORS]
-    : accountType in CORPORATE_TYPE_COLORS
-      ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
-      : DEFAULT_ACCOUNT_TYPE_COLOR;
+  // 優先順位: アフィリエイト → インフルエンサー → 企業
+  const colors = accountType in AFFILIATE_TYPE_COLORS
+    ? AFFILIATE_TYPE_COLORS[accountType as keyof typeof AFFILIATE_TYPE_COLORS]
+    : accountType in INFLUENCER_TYPE_COLORS
+      ? INFLUENCER_TYPE_COLORS[accountType as keyof typeof INFLUENCER_TYPE_COLORS]
+      : accountType in CORPORATE_TYPE_COLORS
+        ? CORPORATE_TYPE_COLORS[accountType as keyof typeof CORPORATE_TYPE_COLORS]
+        : DEFAULT_ACCOUNT_TYPE_COLOR;
   
   return (
     <div 
