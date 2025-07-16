@@ -78,9 +78,9 @@ def scheduled_job(request):
     logger.info(f"====== カテゴリ同期処理開始：{datetime.now().isoformat()} ======")
     
     try:
-        # 実行可能かチェック
-        if not check_last_execution():
-            return "前回の実行から36時間経過していないため、処理をスキップします", 200
+        # 36時間制限のチェックを削除
+        # if not check_last_execution():
+        #     return "前回の実行から36時間経過していないため、処理をスキップします", 200
             
         return sync_category_spreadsheet()
     except Exception as e:

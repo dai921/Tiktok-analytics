@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 import functions_framework
 from typing import List, Dict, Any, Optional
 import base64
@@ -18,463 +18,95 @@ PROJECT_ID = os.getenv('PROJECT_ID', 'tiktok-analytics-prod-451609')
 LOCATION = 'asia-northeast1'    # リージョンを設定
 SCHEDULER_CLIENT = scheduler_v1.CloudSchedulerClient()
 
-# 設定の初期化
-initialize_config()
-
-def update_corporate_frontend_from_master() -> Dict[str, Any]:
+def manage_corporate_update_schedule(event, context):
     """
-    video_masterからfrontend_corporate_dataを更新（parent_account_type='企業アカウント'のみ）
-    """
-    try:
-        print("video_masterからfrontend_corporate_dataの更新を開始")
-        
-        # カーソル情報の取得または初期化
-        cursor_info = get_or_initialize_cursor("frontend_corporate_data_update", "frontend_corporate_data")
-        processor_name = cursor_info["processor_name"]
-        target_table = cursor_info["target_table"]
-        last_cursor_id = cursor_info["last_cursor_id"]
-        batch_size = cursor_info["batch_size"]
-        batch_number = cursor_info["batch_number"]
-        
-        print(f"企業アカウントバッチ処理情報: processor={processor_name}, target={target_table}, " 
-                   f"last_id={last_cursor_id}, batch_size={batch_size}, batch_number={batch_number}")
-        
-        # バッチ番号が1（最初のバッチ）の場合、企業アカウント動画の前処理
-        if batch_number == 1:
-            print("企業アカウントバッチ1: 2週間以前のplayCountIncreaseリセット処理を開始")
-            reset_start_time = datetime.now()
-            
-            reset_query = """
-            UPDATE video_master
-            SET playCountIncrease = 0,
-                likesCountIncrease = 0,
-                commentCountIncrease = 0,
-                saveCountIncrease = 0
-            WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 14 DAY)
-            AND playCountIncrease < 1000
-            AND play_count < 100000
-            AND parent_account_type = '企業アカウント'
-            """
-            
-            affected_rows = execute_write_query(reset_query)
-            
-            reset_execution_time = (datetime.now() - reset_start_time).total_seconds()
-            print(f"企業アカウント動画playCountIncreaseリセット完了: {affected_rows}件更新、実行時間: {reset_execution_time}秒")
-            
-            # 2日前以前でplayCountIncreaseとplay_countが一致している動画の処理
-            print("企業アカウントバッチ1: 2日前以前で再生数と増加数が一致する動画の処理を開始")
-            null_reset_start_time = datetime.now()
-            
-            null_reset_query = """
-            UPDATE video_master
-            SET playCountIncrease = 0,
-                likesCountIncrease = 0,
-                commentCountIncrease = 0,
-                saveCountIncrease = 0
-            WHERE created_at < DATE_SUB(CURDATE(), INTERVAL 3 DAY)
-            AND playCountIncrease = play_count
-            AND is_new_video = 1
-            AND parent_account_type = '企業アカウント'
-            """
-            
-            null_affected_rows = execute_write_query(null_reset_query)
-            
-            null_reset_execution_time = (datetime.now() - null_reset_start_time).total_seconds()
-            print(f"企業アカウント動画playCountIncrease NULL設定完了: {null_affected_rows}件更新、実行時間: {null_reset_execution_time}秒")
-            
-            # 作成日が2日以内でplayCountIncreaseとplay_countが一致していない動画の処理
-            print("企業アカウントバッチ1: 作成日が2日以内で再生数と増加数が一致していない動画の処理を開始")
-            sync_start_time = datetime.now()
-
-            # 日付条件の確認
-            date_check_query = "SELECT DATE_SUB(CURDATE(), INTERVAL 2 DAY) as target_date"
-            date_result = execute_query(date_check_query)
-            target_date = date_result[0]['target_date'] if date_result else None
-            print(f"企業アカウント処理対象日付の条件: created_at >= {target_date} (現在の日付から2日前)")
-
-            sync_query = """
-            UPDATE video_master
-            SET playCountIncrease = play_count,
-                likesCountIncrease = likes_count,
-                commentCountIncrease = comment_count,
-                saveCountIncrease = save_count
-            WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 3 DAY)
-            AND (playCountIncrease != play_count)
-            AND parent_account_type = '企業アカウント'
-            """
-            
-            sync_affected_rows = execute_write_query(sync_query)
-            
-            sync_execution_time = (datetime.now() - sync_start_time).total_seconds()
-            print(f"企業アカウント動画playCountIncrease同期完了: {sync_affected_rows}件更新、実行時間: {sync_execution_time}秒")
-        
-        # 企業アカウント動画のデータ取得クエリ
-        min_date = '2023-12-01'
-        max_date = "DATE_SUB(CURDATE(), INTERVAL 2 DAY)"
-        
-        select_query = """
-        SELECT 
-            vm.id,
-            vm.url,
-            vm.video_id,
-            vm.cover_image_url as thumbnail_url,
-            vm.created_at,
-            vm.play_count,
-            vm.playCountIncrease as play_count_increase,
-            vm.username as account_name,
-            vm.likes_count,
-            vm.comment_count,
-            COALESCE(vm.hashtags, '') as hashtags,
-            vm.music_title as music_info,
-            vm.description as caption,
-            vm.category,
-            vm.product,
-            vm.content_type,
-            vm.status,
-            vm.display_name,
-            vm.save_count,
-            vm.likesCountIncrease,
-            vm.commentCountIncrease,
-            vm.saveCountIncrease,
-            vm.account_type,
-            vm.is_pr,
-            vm.parent_account_type
-        FROM 
-            video_master vm
-        LEFT JOIN frontend_corporate_data fcd ON vm.id = fcd.id
-        WHERE 
-            vm.status != 'deleted'
-            AND vm.created_at IS NOT NULL
-            AND vm.front_needs_update = 1
-            AND vm.play_count is not null
-            AND vm.play_needs_update = 1
-            AND vm.account_type is not null
-            AND vm.cover_image_url is not null
-            AND vm.is_delay = 0
-            AND vm.parent_account_type = '企業アカウント'
-            AND vm.created_at >= %(min_date)s
-            AND vm.created_at <= """ + max_date + """
-            AND vm.id > %(last_id)s
-        ORDER BY 
-            vm.id
-        LIMIT %(batch_size)s
-        """
-        
-        params = {
-            'min_date': min_date,
-            'last_id': last_cursor_id,
-            'batch_size': batch_size
-        }
-        
-        print(f"企業アカウント実行するバッチクエリ: {select_query}")
-        print(f"企業アカウントクエリパラメータ: {params}")
-        
-        batch_rows = execute_query(select_query, params)
-        
-        # このバッチの最大IDを取得
-        max_id = batch_rows[-1]['id'] if batch_rows else last_cursor_id
-        
-        # 残りのレコード数を確認するクエリ
-        count_query = f"""
-        SELECT 
-            COUNT(*) as remaining_count
-        FROM 
-            video_master vm
-        LEFT JOIN frontend_corporate_data fcd ON vm.id = fcd.id
-        WHERE 
-            vm.status != 'deleted'
-            AND vm.created_at IS NOT NULL
-            AND vm.parent_account_type = '企業アカウント'
-            AND vm.created_at >= %(min_date)s
-            AND vm.created_at <= {max_date}
-            AND vm.id > %(max_id)s
-        """
-        
-        # 残り件数のクエリ実行
-        remaining_data = execute_query(count_query, {
-            'min_date': min_date, 
-            'max_id': max_id
-        })
-        remaining_count = remaining_data[0]['remaining_count'] if remaining_data else 0
-        
-        # 取得したデータの検証
-        batch_size = len(batch_rows)
-        print(f"企業アカウントバッチ#{batch_number}: 取得したレコード数: {batch_size}, 残り: {remaining_count}")
-        
-        if not batch_rows:
-            print("企業アカウント処理すべきデータがありません。バッチ処理を完了します。")
-            
-            # カーソルをリセット（次回は最初から）
-            reset_cursor(processor_name, target_table)
-            
-            # Pub/Subにバッチ処理完了のメッセージを送信
-            publish_message("frontend-corporate-update-status", {
-                "status": "completed",
-                "message": "企業アカウント全バッチの処理が完了しました",
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            return {
-                "status": "success",
-                "message": "企業アカウントバッチ処理完了",
-                "batch_number": batch_number,
-                "updated_count": 0,
-                "is_complete": True,
-                "execution_time": datetime.now().isoformat()
-            }
-
-        # バッチ処理の実行
-        updated_count = 0
-        batch_start_time = datetime.now()
-        
-        for row in batch_rows:
-            try:
-                # ハッシュタグの処理
-                hashtags = row['hashtags']
-                if hashtags is None or hashtags == '' or hashtags == '[]':
-                    hashtags = ''
-                else:
-                    # カンマ区切りの文字列として処理
-                    hashtags = ','.join([tag.strip() for tag in hashtags.split(',') if tag.strip()])
-                
-                # created_atの処理
-                created_at = row['created_at']
-                if created_at is None:
-                    continue
-                
-                try:
-                    if isinstance(created_at, str):
-                        date_obj = datetime.strptime(created_at, '%Y-%m-%d')
-                        created_at = date_obj.strftime('%Y-%m-%d')
-                except ValueError:
-                    continue
-                
-                update_query = """
-                REPLACE INTO frontend_corporate_data (
-                    id, url, video_id, thumbnail_url, created_at, play_count, 
-                    play_count_increase, account_name, likes_count, comment_count, 
-                    hashtags, music_info, caption, category, display_name,
-                    content_type, product, save_count, likes_count_increase, 
-                    comment_count_increase, save_count_increase, account_type, 
-                    is_pr, parent_account_type
-                ) VALUES (
-                    %(id)s, %(url)s, %(video_id)s, %(thumbnail_url)s, %(created_at)s, %(play_count)s, 
-                    %(play_count_increase)s, %(account_name)s, %(likes_count)s, %(comment_count)s, 
-                    %(hashtags)s, %(music_info)s, %(caption)s, %(category)s, %(display_name)s,
-                    %(content_type)s, %(product)s, %(save_count)s, %(likesCountIncrease)s, 
-                    %(commentCountIncrease)s, %(saveCountIncrease)s, %(account_type)s, 
-                    %(is_pr)s, %(parent_account_type)s
-                )
-                """
-                
-                params = {
-                    'id': row['id'],
-                    'url': row['url'],
-                    'video_id': row['video_id'],
-                    'thumbnail_url': row['thumbnail_url'],
-                    'created_at': created_at,
-                    'play_count': row['play_count'],
-                    'play_count_increase': row['play_count_increase'],
-                    'account_name': row['account_name'],
-                    'likes_count': row['likes_count'],
-                    'comment_count': row['comment_count'],
-                    'hashtags': hashtags,
-                    'music_info': row['music_info'],
-                    'caption': row['caption'],
-                    'category': row['category'],
-                    'display_name': row['display_name'],
-                    'content_type': row['content_type'],
-                    'product': row['product'],
-                    'save_count': row['save_count'],
-                    'likesCountIncrease': row['likesCountIncrease'],
-                    'commentCountIncrease': row['commentCountIncrease'],
-                    'saveCountIncrease': row['saveCountIncrease'],
-                    'account_type': row['account_type'],
-                    'is_pr': row['is_pr'],
-                    'parent_account_type': row['parent_account_type']
-                }
-                
-                execute_write_query(update_query, params)
-                updated_count += 1
-                
-            except DatabaseError as e:
-                print(f"企業アカウントレコード更新エラー (id: {row['id']}): {str(e)}")
-                continue
-        
-        # カーソル情報の更新
-        update_cursor(processor_name, target_table, max_id, batch_number + 1)
-        
-        batch_execution_time = (datetime.now() - batch_start_time).total_seconds()
-        print(f"企業アカウントバッチ#{batch_number}完了: {updated_count}/{batch_size}件更新、実行時間: {batch_execution_time}秒")
-        
-        # 処理完了していない場合、Pub/Subに継続メッセージを送信
-        if remaining_count > 0:
-            publish_message("frontend-corporate-update-status", {
-                "status": "in_progress",
-                "message": f"企業アカウントバッチ#{batch_number}完了、残り{remaining_count}件",
-                "batch_number": batch_number,
-                "remaining": remaining_count,
-                "timestamp": datetime.now().isoformat()
-            })
-        else:
-            # 処理完了
-            publish_message("frontend-corporate-update-status", {
-                "status": "completed",
-                "message": "企業アカウント全バッチの処理が完了しました",
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            # カーソルをリセット（次回は最初から）
-            reset_cursor(processor_name, target_table)
-        
-        return {
-            "status": "success",
-            "batch_number": batch_number,
-            "updated_count": updated_count,
-            "batch_size": batch_size,
-            "remaining_count": remaining_count,
-            "is_complete": remaining_count == 0,
-            "execution_time": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        print(f"企業アカウント更新処理中にエラーが発生: {str(e)}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "execution_time": datetime.now().isoformat()
-        }
-
-# カーソル管理用の関数（既存と同じ）
-def get_or_initialize_cursor(processor_name, target_table, default_batch_size=1000):
-    """カーソル情報を取得、存在しない場合は初期化"""
-    query = """
-    SELECT id, processor_name, target_table, last_cursor_id, 
-           batch_size, batch_number, updated_at
-    FROM processing_cursors
-    WHERE processor_name = %s AND target_table = %s
-    """
-    
-    result = execute_query(query, (processor_name, target_table))
-    
-    if result:
-        return result[0]
-    else:
-        # 新しいカーソルを作成
-        insert_query = """
-        INSERT INTO processing_cursors 
-        (processor_name, target_table, last_cursor_id, batch_size, reset_interval, batch_number, created_at, updated_at)
-        VALUES (%s, %s, 0, %s, 172800, 1, NOW(), NOW())
-        """
-        
-        execute_write_query(insert_query, (processor_name, target_table, default_batch_size))
-        
-        # 作成したカーソル情報を取得
-        return execute_query(query, (processor_name, target_table))[0]
-
-def update_cursor(processor_name, target_table, last_cursor_id, batch_number):
-    """カーソル情報を更新"""
-    query = """
-    UPDATE processing_cursors
-    SET last_cursor_id = %s, batch_number = %s, updated_at = NOW()
-    WHERE processor_name = %s AND target_table = %s
-    """
-    
-    execute_write_query(query, (last_cursor_id, batch_number, processor_name, target_table))
-
-def reset_cursor(processor_name, target_table):
-    """カーソル情報をリセット"""
-    query = """
-    UPDATE processing_cursors
-    SET last_cursor_id = 0, batch_number = 1, last_reset_time = NOW(), updated_at = NOW()
-    WHERE processor_name = %s AND target_table = %s
-    """
-    
-    execute_write_query(query, (processor_name, target_table))
-
-# Cloud Functions エントリーポイント
-@functions_framework.http
-def scheduled_job(request):
-    """
-    定期実行用のCloud Function
-    """
-    start_time = datetime.now()
-    print(f"企業アカウント定期実行開始: {start_time}")
-
-    try:
-        result = update_corporate_frontend_from_master()
-        
-        execution_time = (datetime.now() - start_time).total_seconds()
-        print(f"企業アカウント定期実行完了: 実行時間 {execution_time}秒, 結果: {result}")
-        
-        return result
-
-    except Exception as e:
-        error_message = f"企業アカウント予期せぬエラーが発生: {str(e)}"
-        print(error_message)
-        raise
-
-# Pub/Subメッセージで起動するためのエントリーポイント
-def process_pubsub_message(event, context):
-    """
-    Pub/Subメッセージで実行される関数
+    Pub/Subからのメッセージを受け取り、frontend-corporate-update関数のスケジュールを管理する
     Args:
         event (dict): Pub/Subイベントデータ（メッセージ内容を含む）
         context (google.cloud.functions.Context): メタデータを含むコンテキスト
     Returns:
-        tuple: (結果データ, HTTPステータスコード)
+        dict: 処理結果
     """
-    print("==== frontend_corporate_data_update処理開始 ====")
-    
     try:
-        # Pub/Subメッセージの処理
+        # メッセージデータの取得
+        message = None
         if 'data' in event:
             message_data = base64.b64decode(event['data']).decode('utf-8')
-            message = json.loads(message_data)
-            print(f"企業アカウントPub/Subメッセージを受信: {message}")
-        else:
-            print("企業アカウントデータなしのメッセージを受信")
-            return {
-                'status': 'error',
-                'message': 'No data in message'
-            }, 400
-
-        # メッセージのステータスが'start'の場合、処理を開始
-        if message.get("status") == "start":
-            result = update_corporate_frontend_from_master()
-            status_code = 200 if result.get('status') == 'success' else 500
-            print(f"企業アカウント処理完了 - ステータス: {status_code}")
-            print(f"企業アカウント処理結果: {result}")
-            return result, status_code
-        else:
-            print(f"企業アカウント処理対象外のメッセージです: {message}")
-            return {
-                "status": "ignored", 
-                "message": "企業アカウント処理対象外のメッセージです"
-            }, 200
+            message_json = json.loads(message_data)
+            status = message_json.get("status")
             
-    except ValueError as e:
-        print(f"企業アカウント不正なリクエスト: {str(e)}")
-        return {
-            'status': 'error',
-            'message': f'Invalid request: {str(e)}'
-        }, 400
+            logger.info(f"企業アカウントステータス更新を受信: {status}")
+            
+            if status == "in_progress":
+                # 企業アカウントバッチ処理進行中 - 10分間隔のスケジュールを有効にする
+                enable_corporate_frequent_schedule()
+                return {"status": "success", "action": "corporate_frequent_schedule_enabled"}
+                
+            elif status == "completed":
+                # 企業アカウントバッチ処理完了 - 10分間隔のスケジュールを無効にする
+                disable_corporate_frequent_schedule()
+                return {"status": "success", "action": "corporate_frequent_schedule_disabled"}
+        
+        return {"status": "error", "message": "Invalid corporate message format"}
         
     except Exception as e:
-        print(f"企業アカウントエラー発生: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        return {
-            'status': 'error',
-            'message': str(e)
-        }, 500
-    finally:
-        print("==== frontend_corporate_data_update処理終了 ====")
+        logger.error(f"企業アカウントスケジュール管理中にエラーが発生: {str(e)}")
+        return {"status": "error", "error": str(e)}
+
+def enable_corporate_frequent_schedule():
+    """企業アカウント用10分間隔のスケジュールを有効にする"""
+    job_name = f"projects/{PROJECT_ID}/locations/{LOCATION}/jobs/frontend-corporate-update-frequent"
+    
+    try:
+        # スケジュールが存在するか確認
+        SCHEDULER_CLIENT.get_job(name=job_name)
+        logger.info("企業アカウント10分間隔のスケジュールは既に存在します")
+        
+    except NotFound:
+        # スケジュールが存在しない場合は作成
+        parent = f"projects/{PROJECT_ID}/locations/{LOCATION}"
+        
+        # PubSubターゲット
+        job = {
+            "name": job_name,
+            "description": "Frontend corporate update frequent schedule (10min)",
+            "schedule": "*/10 * * * *",
+            "time_zone": "Asia/Tokyo",
+            "pubsub_target": {
+                "topic_name": f"projects/{PROJECT_ID}/topics/frontend-corporate-trigger",
+                "data": base64.b64encode(json.dumps({
+                    "status": "start",
+                    "message": "frontend_corporate_data_updateの実行を開始します",
+                    "timestamp": datetime.now().isoformat()
+                }).encode()).decode()
+            }
+        }
+        
+        SCHEDULER_CLIENT.create_job(parent=parent, job=job)
+        logger.info("企業アカウント10分間隔のスケジュールを作成しました")
+
+def disable_corporate_frequent_schedule():
+    """企業アカウント用10分間隔のスケジュールを無効にする"""
+    job_name = f"projects/{PROJECT_ID}/locations/{LOCATION}/jobs/frontend-corporate-update-frequent"
+    
+    try:
+        # スケジュールが存在するか確認してから削除
+        SCHEDULER_CLIENT.get_job(name=job_name)
+        SCHEDULER_CLIENT.delete_job(name=job_name)
+        logger.info("企業アカウント10分間隔のスケジュールを削除しました")
+        
+    except NotFound:
+        logger.info("企業アカウント10分間隔のスケジュールは既に削除されています")
 
 if __name__ == "__main__":
     # ローカルテスト用
-    try:
-        result = update_corporate_frontend_from_master()
-        print("企業アカウント実行結果:", result)
-    except Exception as e:
-        print(f"企業アカウントエラーが発生しました: {str(e)}") 
+    test_event = {
+        'data': base64.b64encode(json.dumps({
+            "status": "in_progress",
+            "message": "テストメッセージ",
+            "timestamp": datetime.now().isoformat()
+        }).encode()).decode()
+    }
+    
+    result = manage_corporate_update_schedule(test_event, None)
+    print("企業アカウントテスト結果:", result) 

@@ -8,6 +8,12 @@ from services.data_sync.frontend_data_update.frontend_data_update import process
 from services.data_sync.update_needs_flags import update_needs_flags as update_needs_flags_function
 from services.data_sync.summary_table_sync import update_product_daily_summary as summary_table_sync_function
 from services.data_sync.top100_videos_sync import update_product_top100_videos as top100_videos_sync_function
+from services.data_sync.frontend_data_update.frontend_affiliate_data_update import process_pubsub_message as frontend_affiliate_update_job
+from services.data_sync.frontend_data_update.frontend_corporate_data_update import process_pubsub_message as frontend_corporate_update_job
+from services.data_sync.frontend_data_update.frontend_influencer_data_update import process_pubsub_message as frontend_influencer_update_job
+from services.data_sync.frontend_data_update.batch_scheduler_affiliate import manage_affiliate_update_schedule as frontend_affiliate_update_schedule
+from services.data_sync.frontend_data_update.batch_scheduler_corporate import manage_corporate_update_schedule as frontend_corporate_update_schedule
+from services.data_sync.frontend_data_update.batch_scheduler_influencer import manage_influencer_update_schedule as frontend_influencer_update_schedule
 
 # カテゴリー関連
 from services.category.sync_category_spreadsheet import scheduled_job as sync_category_job
@@ -39,6 +45,15 @@ initialize_config()
 def frontend_update(event,context):
     return frontend_update_job(event,context)
 
+def frontend_affiliate_update(event,context):
+    return frontend_affiliate_update_job(event,context)
+
+def frontend_corporate_update(event,context):
+    return frontend_corporate_update_job(event,context)
+
+def frontend_influencer_update(event,context):
+    return frontend_influencer_update_job(event,context)
+
 def frontend_update_trigger(request):
     return frontend_update_trigger_function(request)
 
@@ -68,9 +83,14 @@ def video_master_sync_from_raw_data(event,context):
 def manage_frontend_update_schedule(event,context):
     return batch_scheduler_function(event,context)
 
-# カテゴリー統計集計用のエントリーポイント関数
-def category_analytics_aggregator(event, context):
-    return category_analytics_function(event, context)
+def manage_frontend_affiliate_update_schedule(event,context):
+    return frontend_affiliate_update_schedule(event,context)
+
+def manage_frontend_corporate_update_schedule(event,context):
+    return frontend_corporate_update_schedule(event,context)
+
+def manage_frontend_influencer_update_schedule(event,context):
+    return frontend_influencer_update_schedule(event,context)
 
 # Pub/Sub エントリーポイント関数に追加
 def video_history_sync_function(event, context):
@@ -94,3 +114,4 @@ def manual_sync_summary(request):
 
 def manual_top100_sync(request):
     return manual_top100_sync_function(request)
+
