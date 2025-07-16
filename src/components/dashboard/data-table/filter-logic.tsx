@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { FilterValue, FilterQuery } from '@/types/dashboard';
+
 
 // APIとUIのフィールド名の対応をマッピングする関数
 function mapFieldNameToApi(uiFieldName: string): string {
@@ -45,6 +46,7 @@ export interface FilterState {
   columnFilters: Record<string, FilterValue>;
   currentFilters: Record<string, FilterQuery>;
   isPrOnly: boolean;
+  isCorporateOnly: boolean;
 }
 
 export interface FilterHandlers {
@@ -56,6 +58,8 @@ export interface FilterHandlers {
   setColumnFilters: (filters: Record<string, FilterValue> | ((prev: Record<string, FilterValue>) => Record<string, FilterValue>)) => void;
   isPrOnly: boolean;
   handlePrOnlyChange: (newPrOnly: boolean) => void;
+  isCorporateOnly: boolean;
+  handleCorporateOnlyChange: (newCorporateOnly: boolean) => void;
 }
 
 export function useFilterLogic(
@@ -68,52 +72,53 @@ export function useFilterLogic(
     setPrimarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
     setSecondarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
   },
-  initialPrOnly = false // PR状態の初期値
+  initialPrOnly = false, // PR状態の初期値
+  initialCorporateOnly = false // 運用代行用状態の初期値
 ): [FilterState, FilterHandlers] {
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({});
   const [currentFilters, setCurrentFilters] = useState<Record<string, FilterQuery>>({});
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState(0);
   const [isPrOnly, setIsPrOnly] = useState(initialPrOnly);
-  
+  const [isCorporateOnly, setIsCorporateOnly] = useState(initialCorporateOnly);
+
+  // 初期値が変更された場合の同期
+  useEffect(() => {
+    setIsPrOnly(initialPrOnly);
+  }, [initialPrOnly]);
+
+  useEffect(() => {
+    setIsCorporateOnly(initialCorporateOnly);
+  }, [initialCorporateOnly]);
+
   // フィルターをクリアする関数 - データテーブルとAPIの両方を更新
   const handleClearAllFilters = useCallback(() => {
-    console.log('DataTable - handleClearAllFilters called');
-    console.log('DataTable - columnFilters before clear:', columnFilters);
-    
+
     // 状態をリセット
     setHasActiveFilters(false);
     setColumnFilters({});
     setCurrentFilters({});
+    setIsPrOnly(false);
+    setIsCorporateOnly(false);
     sortState.setPrimarySort(null);
     sortState.setSecondarySort(null);
     sortState.setSortField(null);
     sortState.setSortDirection(null);
-    
-    console.log('DataTable - columnFilters after clear: {}');
-    
     // 親コンポーネントに通知 - 明示的なフィルターリセット信号を送る
     onFilterChange(false, { field: 'reset', type: 'clear', value: '', active: false });
     
     // フィルターポップアップを閉じる
     setIsFilterPopupOpen(false);
 
-    // 強制的に再レンダリングを発生させる
-    // setForceUpdate(prev => prev + 1);
   }, [onFilterChange, columnFilters, sortState]);
   
   // ポップアップ内のフィルター入力のみをクリアする関数 - ポップアップの入力のみクリア（APIリクエストなし）
   const handleClearFilterInputs = useCallback(() => {
-    console.log('FilterPopup内の入力のみをクリア');
-    // 明示的にFilterPopupを直接クリアするのではなく、ポップアップ内部のClearAllボタンに任せる
-    // 実際のデータのクリアはhandleBulkFilterChangeで処理される
   }, []);
   
   // handleFilterを拡張してソート処理を明示的に扱う
   const handleFilter = useCallback((field: string) => {
     return (filterValue: FilterValue, shouldMerge = false) => {
-      console.log(`[DataTable] フィルター処理 - フィールド: ${field}`, filterValue);
       
       if (filterValue.type === 'sort') {
         // ソート処理
@@ -137,15 +142,10 @@ export function useFilterLogic(
           });
         }
         
-        // 親コンポーネントに通知は不要
-        // onFilterChange(true, filterValue); // ← この行をコメントアウトまたは削除
-        // setForceUpdate(prev => prev + 1); // ★ 不要であればこの行も削除検討
         return;
       }
       
       if (filterValue.type === 'clear') {
-        console.log(`[DataTable] 明示的なクリア処理 - フィールド: ${field}`, filterValue);
-        
         // ソートもクリアする
         if (sortState.primarySort?.field === field) {
           sortState.setSortField(null);
@@ -180,9 +180,6 @@ export function useFilterLogic(
           // 全てのフィルターが空になった場合、明示的にリセット信号を送る
           onFilterChange(false, { field: 'reset', type: 'clear', value: '', clear: true });
         }
-        
-        // 強制的に再レンダリングを発生させる
-        // setForceUpdate(prev => prev + 1);
         return;
       }
       
@@ -191,7 +188,6 @@ export function useFilterLogic(
         ...filterValue,
         active: true
       };
-      console.log(`[DataTable] フィルター値を更新 - フィールド: ${field}, active=true を設定`);
       
       // 新しいフィルターを適用
       const newFilters = shouldMerge 
@@ -199,7 +195,6 @@ export function useFilterLogic(
         : { [field]: updatedFilterValue };
       
       setColumnFilters(newFilters);
-      console.log(`[DataTable] columnFiltersを更新 - フィールド: ${field}`, newFilters[field]);
       
       // 現在のフィルターに追加
       const updatedFilter = {
@@ -209,7 +204,6 @@ export function useFilterLogic(
         }
       };
       setCurrentFilters(updatedFilter);
-      console.log(`[DataTable] currentFiltersを更新 - フィールド: ${field}`, updatedFilter[field]);
       
       // フィルターがアクティブになったことを通知
       setHasActiveFilters(true);
@@ -219,60 +213,35 @@ export function useFilterLogic(
         ...updatedFilterValue
       });
       
-      // 強制的に再レンダリングを発生させる
-      // setForceUpdate(prev => prev + 1);
       return;
     };
   }, [columnFilters, currentFilters, onFilterChange, sortState]);
 
   // handleBulkFilterChange関数 - 空のフィルター配列と既存フィルターとの比較を明示的に処理
   const handleBulkFilterChange = useCallback((filters: Record<string, FilterValue>) => {
-    console.log('[デバッグ-犯人捜し] handleBulkFilterChange 呼び出し', {
-      isPrOnly,
-      receivedFilters: JSON.stringify(filters),
-      hasPrFilter: Object.keys(filters).some(key => 
-        (key === 'hashtags_pr' || 
-         (filters[key].field === 'hashtags' && 
-          filters[key].type === 'exact_hashtags' && 
-          filters[key].value === 'pr'))
-      )
-    });
     
-    // ソート関連のフィルターを特に詳しくログ
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value.type === 'sort') {
-        console.log('[SORT-DEBUG] DataTable - ソートフィルター詳細:', {
-          key,
-          field: value.field,
-          sortField: value.sortField,
-          direction: value.value,
-          isPrimarySort: value.isPrimarySort,
-          active: value.active
-        });
-      }
-    });
     
     // 明示的なリセット信号をチェック
     if (filters.reset && filters.reset.type === 'clear') {
-      console.log('[SORT-DEBUG] DataTable - 明示的なリセット信号を受信しました。すべてのフィルターをクリアします');
       
       // 状態をリセット
       setColumnFilters({});
       setCurrentFilters({});
+      setIsPrOnly(false);
+      setIsCorporateOnly(false);
       sortState.setPrimarySort(null);
       sortState.setSecondarySort(null);
       sortState.setSortField(null);
       sortState.setSortDirection(null);
       setHasActiveFilters(false);
       
-      // PR状態はリセットしない - フィルター共存のため維持する
-      
       // 親コンポーネントに通知 - リセット信号を含める
-      onFilterChange(isPrOnly, { 
+      onFilterChange(false, { 
         field: 'reset', 
         type: 'clear', 
         value: '',
-        isPrOnly // PR状態を含める
+        isPrOnly: false,
+        isCorporateOnly: false
       });
       
       // フィルターポップアップを閉じる
@@ -293,20 +262,6 @@ export function useFilterLogic(
     // ソート関連のフラグ - ソート関連のキーがあるかどうかを確認
     const hasSortKeys = Object.keys(filters).some(key => key.startsWith('sort_'));
     
-    // 明示的なソートキーログ
-    if (hasSortKeys) {
-      const sortKeys = Object.keys(filters).filter(key => key.startsWith('sort_'));
-      console.log('[SORT-DEBUG] DataTable - ソートキー検出:', {
-        sortKeys,
-        values: sortKeys.map(key => ({
-          key,
-          value: filters[key].value,
-          field: filters[key].field || key.replace(/^sort_/, ''),
-          type: filters[key].type
-        }))
-      });
-    }
-    
     // フィルターを処理し、ソート情報とフィルター情報を分離
     Object.entries(filters).forEach(([key, filter]) => {
       // ソート情報の処理
@@ -317,16 +272,6 @@ export function useFilterLogic(
         
         // フィールド名のマッピングを行う
         const apiFieldName = mapFieldNameToApi(fieldName);
-        
-        console.log('[SORT-DEBUG] DataTable - ソート情報抽出:', {
-          key,
-          uiFieldName: fieldName,
-          apiFieldName,
-          isPrimarySort: filter.isPrimarySort,
-          direction: filter.value,
-          filterType: filter.type,
-          hasSortPrefix: key.startsWith('sort_')
-        });
         
         // ソート方向を取得
         const direction = (filter.value as 'asc' | 'desc') || 'desc';
@@ -342,12 +287,6 @@ export function useFilterLogic(
           sortState.setSortField(fieldName);
           sortState.setSortDirection(direction);
           
-          console.log('[SORT-DEBUG] DataTable - 第一ソート設定:', {
-            field: fieldName,
-            direction: direction,
-            source: filter.isPrimarySort ? 'isPrimarySort' : 'first detected',
-            timestamp: new Date().toISOString()
-          });
         } else if (!newSecondarySort) {
           // 第二ソートの設定（まだ設定されていない場合のみ）
           newSecondarySort = {
@@ -355,20 +294,7 @@ export function useFilterLogic(
             direction: direction
           };
           
-          console.log('[SORT-DEBUG] DataTable - 第二ソート設定:', {
-            field: fieldName,
-            direction: direction,
-            timestamp: new Date().toISOString()
-          });
         }
-      } else if (
-        key === 'hashtags_pr' || 
-        (filter.field === 'hashtags' && 
-         filter.type === 'exact_hashtags' && 
-         filter.value === 'pr')
-      ) {
-        // PRフィルターは無視する - このフィルターはisPrOnlyの状態のみで制御
-        console.log('[デバッグ-犯人捜し] PRフィルターを検出、無視します', { key, filter });
       } else {
         // 通常のフィルター情報 - active プロパティを明示的に保持
         normalFilters[key] = {
@@ -378,15 +304,8 @@ export function useFilterLogic(
       }
     });
     
-    // ソート情報を更新
+    // 必ず正しいオブジェクトを渡す
     if (sortUpdated) {
-      console.log('[SORT-DEBUG] DataTable - ソート状態更新:', {
-        primarySort: newPrimarySort,
-        secondarySort: newSecondarySort,
-        timestamp: new Date().toISOString()
-      });
-      
-      // 必ず正しいオブジェクトを渡す
       if (newPrimarySort) {
         sortState.setPrimarySort(newPrimarySort);
       }
@@ -399,7 +318,6 @@ export function useFilterLogic(
       }
     } else if (hasSortKeys && !sortUpdated) {
       // sort_プレフィックスのキーがあるのにソート情報が処理されなかった場合の追加対応
-      console.log('[SORT-DEBUG] DataTable - sort_プレフィックスキーがあるがソート情報が処理されませんでした。再処理を試みます。');
       
       // 明示的にsort_プレフィックスを持つキーを探してソート情報を処理
       Object.entries(filters).forEach(([key, filter]) => {
@@ -420,11 +338,6 @@ export function useFilterLogic(
             sortState.setSortField(fieldName);
             sortState.setSortDirection(direction);
             
-            console.log('[SORT-DEBUG] DataTable - プレフィックスから第一ソート検出:', {
-              field: fieldName,
-              direction,
-              timestamp: new Date().toISOString()
-            });
           } else if (!newSecondarySort) {
             // セカンダリソートとして処理
             newSecondarySort = {
@@ -432,11 +345,6 @@ export function useFilterLogic(
               direction
             };
             
-            console.log('[SORT-DEBUG] DataTable - プレフィックスから第二ソート検出:', {
-              field: fieldName,
-              direction,
-              timestamp: new Date().toISOString()
-            });
           }
           
           sortUpdated = true;
@@ -478,208 +386,120 @@ export function useFilterLogic(
     } : {};
 
     // ここが重要な修正ポイント：
-    // isPrOnlyの状態に応じてPRフィルターを追加または削除する
-    const prFilterConfig: Record<string, FilterValue> = {};
+    // PRフィルターと運用代行用フィルターの処理を削除
+    // const prFilterConfig: Record<string, FilterValue> = {}; // 削除
     
-    // フィルター情報からPR状態を確認
-    const hasPrFilter = Object.values(normalFilters).some(
-      filter => filter.field === 'hashtags' && 
-                filter.type === 'exact_hashtags' && 
-                filter.value === 'pr' && 
-                filter.active === true
-    );
-    
-    // もしフィルターにPRが含まれているか、または明示的にisPrOnly=trueが設定されている場合
-    if (hasPrFilter || isPrOnly) {
-      prFilterConfig.hashtags_pr = {
-        field: 'hashtags',
-        type: 'exact_hashtags' as const,
-        value: 'pr',
-        isHashtag: true,
-        active: true
-      };
-    }
+    // フィルター情報からPR状態を確認する処理を削除
+    // const hasPrFilter = Object.values(normalFilters).some(...); // 削除
 
-    // フィルター情報を設定 - PRフィルターの状態を正確に反映
+    // PRフィルターの追加処理を削除
+    // if (hasPrFilter || isPrOnly) { ... } // 削除
+
+    // フィルター情報を設定 - PRフィルターと運用代行用フィルターを削除
     const updatedColumnFilters: Record<string, FilterValue> = {
       ...normalFilters,
       ...primarySortConfig,
-      ...secondarySortConfig,
-      ...prFilterConfig
+      ...secondarySortConfig
+      // ...prFilterConfig を削除
     };
     
     setColumnFilters(updatedColumnFilters);
     
-    // 現在のフィルターも更新（ソート情報も含める）
+    // 現在のフィルターも更新（ソート情報のみ含める）
     const newCurrentFilters: Record<string, FilterQuery> = {
       ...normalFilters,
       ...primarySortConfig,
-      ...secondarySortConfig,
-      ...prFilterConfig
+      ...secondarySortConfig
+      // ...prFilterConfig を削除
     };
     
     setCurrentFilters(newCurrentFilters);
     
     // フィルターがアクティブになったことを通知
-    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated || Object.keys(prFilterConfig).length > 0;
+    const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
     setHasActiveFilters(hasFilters);
     
-    // 親コンポーネントに通知 - isPrOnlyの状態も含める
+    // 親コンポーネントに通知 - 状態のみ渡す（フィルターは適用しない）
     onFilterChange(hasFilters, {
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
       filters: newCurrentFilters,
-      isPrOnly: !!Object.keys(prFilterConfig).length // PRフィルターの有無に基づいて設定
+      isPrOnly: isPrOnly, // 状態のみ渡す（フィルターは適用しない）
+      isCorporateOnly: isCorporateOnly // 状態のみ渡す（フィルターは適用しない）
     });
     
     // フィルターポップアップを閉じる
     setIsFilterPopupOpen(false);
     
-    console.log('[SORT-DEBUG] DataTable - フィルター処理完了:', {
-      hasFilters,
-      normalFiltersCount: Object.keys(normalFilters).length,
-      hasPrFilter: !!Object.keys(prFilterConfig).length, // PRフィルター状態をログ出力
-      columnFiltersWithSort: JSON.stringify({
-        ...normalFilters,
-        ...primarySortConfig,
-        ...secondarySortConfig,
-        ...prFilterConfig
-      })
-    });
+  }, [onFilterChange, sortState, isPrOnly, isCorporateOnly]);
 
-    // 修正: 変数名を正しいものに変更
-    console.log('[デバッグ-犯人捜し] PRフィルター処理後の状態', {
-      columnFilters: JSON.stringify(updatedColumnFilters),
-      currentFilters: JSON.stringify(newCurrentFilters),
-      remainingFiltersCount: Object.keys(updatedColumnFilters).length,
-      isPrOnlyValue: isPrOnly
-    });
-  }, [onFilterChange, sortState, isPrOnly]);
-
-  // フィルター適用時にisPrOnlyも含める
+  // フィルター適用時の処理を修正
   const applyFilters = useCallback((filters: Record<string, FilterValue>) => {
     // フィルターオブジェクトの構築
     const filterQuery: FilterQuery = {
       field: 'multiple',
       type: 'multiple',
       value: Object.values(filters),
-      filters,
-      isPrOnly // PR状態も含める
+      filters
+      // isPrOnly を削除
     };
     
     // フィルターがあるかどうかの判定
-    const hasFilters = Object.keys(filters).length > 0 || isPrOnly;
+    const hasFilters = Object.keys(filters).length > 0;
     
     // 親コンポーネントに通知
     onFilterChange(hasFilters, filterQuery);
-  }, [isPrOnly, onFilterChange, currentFilters]);
+  }, [onFilterChange, currentFilters]);
   
-  // PR状態変更ハンドラー
+  // PR状態変更ハンドラーを修正
   const handlePrOnlyChange = useCallback((newPrOnly: boolean) => {
-    console.log('[デバッグ-犯人捜し] handlePrOnlyChange 呼び出し', {
-      oldPrState: isPrOnly,
-      newPrState: newPrOnly,
-      currentFilters: JSON.stringify(currentFilters),
-      columnFilters: JSON.stringify(columnFilters)
+    setIsPrOnly(newPrOnly);
+    setIsCorporateOnly(false); // 他のタブをオフにする
+    
+    // 親コンポーネントの状態も更新する必要がある
+    // しかし、この関数は内部状態の管理のみを行うべき
+    
+    // フィルターポップアップを閉じて内部状態をリセット
+    setIsFilterPopupOpen(false);
+    
+    // 親コンポーネントに通知 - フィルターは適用しない
+    onFilterChange(false, {
+      type: 'multiple',
+      field: 'multipleFilters',
+      value: [],
+      filters: {},
+      isPrOnly: newPrOnly,
+      isCorporateOnly: false
     });
     
-    setIsPrOnly(newPrOnly);
+  }, [onFilterChange]);
+
+  // 運用代行用状態変更ハンドラー
+  const handleCorporateOnlyChange = useCallback((newCorporateOnly: boolean) => {
+    setIsCorporateOnly(newCorporateOnly);
+    setIsPrOnly(false); // 他のタブをオフにする
     
-    if (!newPrOnly) {
-      // 新しいフィルターを作成（PRフィルターを除外）
-      const newColumnFilters = { ...columnFilters };
-      delete newColumnFilters.hashtags_pr;
-      delete newColumnFilters.hashtags;
-      
-      // 他のハッシュタグ関連フィルターもチェックして削除
-      Object.keys(newColumnFilters).forEach(key => {
-        const filter = newColumnFilters[key];
-        if (
-          (filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'pr') ||
-          (key.includes('hashtag') && filter.value === 'pr')
-        ) {
-          delete newColumnFilters[key];
-        }
-      });
-      
-      // フィルター状態を更新
-      setColumnFilters(newColumnFilters);
-      
-      // 現在のフィルターからもPR関連を削除
-      const newCurrentFilters = { ...currentFilters };
-      delete newCurrentFilters.hashtags_pr;
-      delete newCurrentFilters.hashtags;
-      
-      // 同様に関連フィルターをすべて削除
-      Object.keys(newCurrentFilters).forEach(key => {
-        const filter = newCurrentFilters[key];
-        if (
-          (filter && filter.field === 'hashtags' && filter.type === 'exact_hashtags' && filter.value === 'pr') ||
-          (key.includes('hashtag') && filter && filter.value === 'pr')
-        ) {
-          delete newCurrentFilters[key];
-        }
-      });
-      
-      // 現在のフィルターを更新
-      setCurrentFilters(newCurrentFilters);
-      
-      // フィルターポップアップを閉じて内部状態をリセット
-      setIsFilterPopupOpen(false);
-      
-      // 親コンポーネントに通知 - ダッシュボードに対して明示的にPRフィルターを削除する信号を送信
-      onFilterChange(Object.keys(newColumnFilters).length > 0, {
-        type: 'multiple',
-        field: 'multipleFilters',
-        value: Object.values(newCurrentFilters),
-        filters: newCurrentFilters,  // PRフィルターが含まれていないフィルターセットを渡す
-        isPrOnly: false  // 明示的にPR状態をfalseに設定
-      });
-
-      console.log('[デバッグ-犯人捜し] PRフィルター削除後の状態', {
-        columnFilters: JSON.stringify(newColumnFilters),
-        currentFilters: JSON.stringify(newCurrentFilters),
-        remainingFiltersCount: Object.keys(newColumnFilters).length,
-        isPrOnlyValue: newPrOnly
-      });
-    } else {
-      // PR有効時
-      const prFilter: FilterQuery = {
-        field: 'hashtags',
-        type: 'exact_hashtags' as const,
-        value: 'pr',
-        isHashtag: true,
-        active: true
-      };
-      
-      // 既存のフィルターにPRフィルターを追加
-      const newFilters = {
-        ...currentFilters,
-        hashtags_pr: prFilter
-      };
-      
-      // フィルター状態を更新
-      setColumnFilters(newFilters);
-      setCurrentFilters(newFilters);
-      
-      // フィルターポップアップを閉じて内部状態をリセット
-      setIsFilterPopupOpen(false);
-      
-      // 親コンポーネントに通知
-      onFilterChange(true, prFilter);
-
-      console.log('[デバッグ-犯人捜し] PRフィルター追加後の状態', {
-        columnFilters: JSON.stringify(newFilters),
-        currentFilters: JSON.stringify(newFilters),
-        remainingFiltersCount: Object.keys(newFilters).length,
-        isPrOnlyValue: newPrOnly
-      });
-    }
-  }, [columnFilters, currentFilters, onFilterChange, setColumnFilters, setCurrentFilters, setIsFilterPopupOpen]);
+    // 運用代行用タブがクリックされた時の処理を削除
+    // フィルターは適用せず、状態のみ管理する
+    
+    // フィルターポップアップを閉じて内部状態をリセット
+    setIsFilterPopupOpen(false);
+    
+    // 親コンポーネントに通知 - フィルターは適用しない
+    onFilterChange(false, {
+      type: 'multiple',
+      field: 'multipleFilters',
+      value: [],
+      filters: {},
+      isPrOnly: false,
+      isCorporateOnly: newCorporateOnly
+    });
+    
+  }, [onFilterChange]);
 
   return [
-    { hasActiveFilters, columnFilters, currentFilters, isPrOnly },
+    { hasActiveFilters, columnFilters, currentFilters, isPrOnly, isCorporateOnly },
     { 
       handleFilter, 
       handleBulkFilterChange, 
@@ -688,7 +508,9 @@ export function useFilterLogic(
       setIsFilterPopupOpen,
       setColumnFilters,
       isPrOnly,
-      handlePrOnlyChange
+      handlePrOnlyChange,
+      isCorporateOnly,
+      handleCorporateOnlyChange
     }
   ];
 } 

@@ -53,7 +53,7 @@ def sync_video_history(event, context):
         (video_id, video_url, collection_date, 
          play_count, likes_count, comment_count, save_count,
          play_count_increase, likes_count_increase, 
-         comment_count_increase, save_count_increase)
+         comment_count_increase, save_count_increase,parent_account_type)
         SELECT 
             video_id,
             url,
@@ -65,7 +65,8 @@ def sync_video_history(event, context):
             play_count_increase,
             likes_count_increase,
             comment_count_increase,
-            save_count_increase
+            save_count_increase,
+            parent_account_type
         FROM 
             frontend_data
         WHERE 
@@ -79,7 +80,8 @@ def sync_video_history(event, context):
             play_count_increase = VALUES(play_count_increase),
             likes_count_increase = VALUES(likes_count_increase),
             comment_count_increase = VALUES(comment_count_increase),
-            save_count_increase = VALUES(save_count_increase)
+            save_count_increase = VALUES(save_count_increase),
+            parent_account_type = VALUES(parent_account_type)
         """
         
         # クエリを実行
@@ -88,6 +90,7 @@ def sync_video_history(event, context):
         logger.info(f"動画履歴の同期が完了しました。収集日: {collection_date}")
 
         # 10日間の集計を更新 (各動画IDごとに最新5件のデータを使用)
+        # 1. frontend_dataテーブルの更新
         update_ten_days_metrics_query = """
         UPDATE frontend_data fd
         SET 
@@ -145,10 +148,209 @@ def sync_video_history(event, context):
             END
         """
         
-        # 10日間の集計クエリを実行
+        # frontend_dataテーブルの10日間の集計クエリを実行
         execute_write_query(update_ten_days_metrics_query)
+        logger.info("frontend_dataテーブルの10日間の指標の更新が完了しました")
+
+        # 2. アフィリエイトテーブル（parent_account_type='アフィ'）の更新
+        update_affiliate_ten_days_metrics_query = """
+        UPDATE frontend_affiliate_data fad
+        SET 
+            ten_days_increase = CASE 
+                WHEN fad.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fad.play_count
+                ELSE LEAST(fad.play_count, (
+                    SELECT COALESCE(SUM(play_count_increase), 0)
+                    FROM (
+                        SELECT play_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fad.video_id
+                          AND pch.parent_account_type = 'アフィ'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_likes_increase = CASE 
+                WHEN fad.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fad.likes_count
+                ELSE LEAST(fad.likes_count, (
+                    SELECT COALESCE(SUM(likes_count_increase), 0)
+                    FROM (
+                        SELECT likes_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fad.video_id
+                          AND pch.parent_account_type = 'アフィ'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_comment_increase = CASE 
+                WHEN fad.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fad.comment_count
+                ELSE LEAST(fad.comment_count, (
+                    SELECT COALESCE(SUM(comment_count_increase), 0)
+                    FROM (
+                        SELECT comment_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fad.video_id
+                          AND pch.parent_account_type = 'アフィ'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_save_increase = CASE 
+                WHEN fad.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fad.save_count
+                ELSE LEAST(fad.save_count, (
+                    SELECT COALESCE(SUM(save_count_increase), 0)
+                    FROM (
+                        SELECT save_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fad.video_id
+                          AND pch.parent_account_type = 'アフィ'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END
+        WHERE fad.parent_account_type = 'アフィ'
+        """
         
-        logger.info("10日間の指標の更新が完了しました")
+        execute_write_query(update_affiliate_ten_days_metrics_query)
+        logger.info("frontend_affiliate_dataテーブルの10日間の指標の更新が完了しました")
+
+        # 3. 企業アカウントテーブル（parent_account_type='企業アカウント'）の更新
+        update_corporate_ten_days_metrics_query = """
+        UPDATE frontend_corporate_data fcd
+        SET 
+            ten_days_increase = CASE 
+                WHEN fcd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fcd.play_count
+                ELSE LEAST(fcd.play_count, (
+                    SELECT COALESCE(SUM(play_count_increase), 0)
+                    FROM (
+                        SELECT play_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fcd.video_id
+                          AND pch.parent_account_type = '企業アカウント'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_likes_increase = CASE 
+                WHEN fcd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fcd.likes_count
+                ELSE LEAST(fcd.likes_count, (
+                    SELECT COALESCE(SUM(likes_count_increase), 0)
+                    FROM (
+                        SELECT likes_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fcd.video_id
+                          AND pch.parent_account_type = '企業アカウント'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_comment_increase = CASE 
+                WHEN fcd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fcd.comment_count
+                ELSE LEAST(fcd.comment_count, (
+                    SELECT COALESCE(SUM(comment_count_increase), 0)
+                    FROM (
+                        SELECT comment_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fcd.video_id
+                          AND pch.parent_account_type = '企業アカウント'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_save_increase = CASE 
+                WHEN fcd.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fcd.save_count
+                ELSE LEAST(fcd.save_count, (
+                    SELECT COALESCE(SUM(save_count_increase), 0)
+                    FROM (
+                        SELECT save_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fcd.video_id
+                          AND pch.parent_account_type = '企業アカウント'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END
+        WHERE fcd.parent_account_type = '企業アカウント'
+        """
+        
+        execute_write_query(update_corporate_ten_days_metrics_query)
+        logger.info("frontend_corporate_dataテーブルの10日間の指標の更新が完了しました")
+
+        # 4. インフルエンサーテーブル（parent_account_type='インフルエンサー'）の更新
+        update_influencer_ten_days_metrics_query = """
+        UPDATE frontend_influencer_data fid
+        SET 
+            ten_days_increase = CASE 
+                WHEN fid.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fid.play_count
+                ELSE LEAST(fid.play_count, (
+                    SELECT COALESCE(SUM(play_count_increase), 0)
+                    FROM (
+                        SELECT play_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fid.video_id
+                          AND pch.parent_account_type = 'インフルエンサー'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_likes_increase = CASE 
+                WHEN fid.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fid.likes_count
+                ELSE LEAST(fid.likes_count, (
+                    SELECT COALESCE(SUM(likes_count_increase), 0)
+                    FROM (
+                        SELECT likes_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fid.video_id
+                          AND pch.parent_account_type = 'インフルエンサー'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_comment_increase = CASE 
+                WHEN fid.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fid.comment_count
+                ELSE LEAST(fid.comment_count, (
+                    SELECT COALESCE(SUM(comment_count_increase), 0)
+                    FROM (
+                        SELECT comment_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fid.video_id
+                          AND pch.parent_account_type = 'インフルエンサー'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END,
+            ten_days_save_increase = CASE 
+                WHEN fid.created_at >= DATE_SUB(CURDATE(), INTERVAL 10 DAY) THEN fid.save_count
+                ELSE LEAST(fid.save_count, (
+                    SELECT COALESCE(SUM(save_count_increase), 0)
+                    FROM (
+                        SELECT save_count_increase
+                        FROM play_count_history pch
+                        WHERE pch.video_id = fid.video_id
+                          AND pch.parent_account_type = 'インフルエンサー'
+                        ORDER BY collection_date DESC
+                        LIMIT 5
+                    ) AS recent_data
+                ))
+            END
+        WHERE fid.parent_account_type = 'インフルエンサー'
+        """
+        
+        execute_write_query(update_influencer_ten_days_metrics_query)
+        logger.info("frontend_influencer_dataテーブルの10日間の指標の更新が完了しました")
+
+        logger.info("全テーブルの10日間の指標更新が完了しました")
 
         # 次の処理（summary_table_sync）にメッセージを送信
         logger.info("商品日次集計処理のトリガーメッセージを送信します")

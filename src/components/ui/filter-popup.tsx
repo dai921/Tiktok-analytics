@@ -2,7 +2,17 @@
 
 import React, { useState, useRef, useEffect, RefObject, useLayoutEffect } from 'react'
 import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashboard'
-import { TIKTOK_COLORS, GENRE_COLORS, ACCOUNT_TYPE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants'
+import { 
+  TIKTOK_COLORS, 
+  GENRE_COLORS, 
+  ACCOUNT_TYPE_COLORS, 
+  CORPORATE_TYPE_COLORS, 
+  DEFAULT_GENRE_COLOR,
+  getInfluencerAccountTypes,  // 追加
+  getCorporateAccountTypes,   // 追加
+  getAllAccountTypes,         // 追加
+  getAccountTypeColor         // 追加
+} from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL 
@@ -18,6 +28,14 @@ interface FilterPopupProps {
   products: string[]
   isLoading: boolean
   onClearAll: () => void
+  tabFilterFields?: {
+    date: string[];
+    metrics: string[];
+    categories: string[];
+    text: string[];
+    sort: string[];
+  };
+  accountTypeContext?: 'influencer' | 'corporate' | 'all' // 追加
 }
 
 // フィルターの型定義
@@ -169,23 +187,6 @@ const SortDescIcon = ({ size = 16 }: { size?: number }) => (
   </svg>
 );
 
-// ヘルプアイコン
-const HelpIcon = ({ size = 16 }: { size?: number }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="10"></circle>
-    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-    <line x1="12" y1="17" x2="12.01" y2="17"></line>
-  </svg>
-);
 
 export const FilterPopup = ({
   isOpen,
@@ -198,7 +199,9 @@ export const FilterPopup = ({
   hashtags,
   products: productsList,
   isLoading,
-  onClearAll
+  onClearAll,
+  tabFilterFields,
+  accountTypeContext,
 }: FilterPopupProps) => {
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
@@ -256,59 +259,88 @@ export const FilterPopup = ({
     fetchAccountTypes()
   }, [])
 
-  // フィルターフィールドの定義
-  const filterFields: Record<string, FilterField[]> = {
-    date: [
-      { id: 'createdAt', label: '投稿日時', type: 'date' }
-    ],
-    metrics: [
-      { id: 'views', label: '再生数', type: 'number' },
-      { id: 'viewsIncrease', label: '2日再生増加数', type: 'number' },
-      { id: 'ten_days_increase', label: '10日再生増加数', type: 'number' },
-      { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number' },
-      { id: 'likes_count_increase', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">2日いいね増加数</span></span>, type: 'number' },
-      { id: 'ten_days_likes_increase', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">10日いいね増加数</span></span>, type: 'number' },
-      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' },
-      { id: 'comment_count_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">2日コメント増加数</span></span>, type: 'number' },
-      { id: 'ten_days_comment_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">10日コメント増加数</span></span>, type: 'number' },
-      { id: 'saves', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">保存数</span></span>, type: 'number' },
-      { id: 'saves_count_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">2日保存増加数</span></span>, type: 'number' },
-      { id: 'ten_days_saves_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">10日保存増加数</span></span>, type: 'number' }
-    ],
-    categories: [
-      { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect', options: ['video', 'carousel'] },
-      { id: 'category', label: 'PR動画ジャンル', type: 'multiselect', options: categories },
-      { id: 'product', label: '商品', type: 'multiselect', options: products.length > 0 
-        ? products.map(p => p.name) 
-        : productsList
-      },
-      { id: 'account_type', label: 'アカウントジャンル', type: 'multiselect', options: accountTypes.length > 0 
-        ? accountTypes 
-        : []
+  // フィルターフィールドの定義を動的に生成
+  const getFilterFields = () => {
+    // アカウントタイプの選択肢を決定
+    const getAccountTypeOptions = () => {
+      switch (accountTypeContext) {
+        case 'influencer':
+          return getInfluencerAccountTypes();
+        case 'corporate':
+          return getCorporateAccountTypes();
+        case 'all':
+        default:
+          return accountTypes.length > 0 ? accountTypes : getAllAccountTypes();
       }
-    ],
-    text: [
-      { id: 'account_name', label: 'アカウント検索', type: 'text' },
-      { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' },
-      { id: 'audioTitle', label: 'BGM検索', type: 'text' }
-    ],
-    // ソート用のフィールド - 4つに限定
-    sort: [
-      { id: 'views', label: '再生数', type: 'sort' },
-      { id: 'viewsIncrease', label: '2日再生増加数', type: 'sort' },
-      { id: 'ten_days_increase', label: '10日再生増加数', type: 'sort' },
-      { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'sort' },
-      { id: 'likes_count_increase', label: '2日いいね増加数', type: 'sort' },
-      { id: 'ten_days_likes_increase', label: '10日いいね増加数', type: 'sort' },
-      { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' },
-      { id: 'comment_count_increase', label: '2日コメント増加数', type: 'sort' },
-      { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'sort' },
-      { id: 'saves', label: '保存数', type: 'sort' },
-      { id: 'saves_count_increase', label: '2日保存増加数', type: 'sort' },
-      { id: 'ten_days_saves_increase', label: '10日保存増加数', type: 'sort' }
-    ]
-  }
+    };
 
+    const baseFields = {
+      date: [
+        { id: 'createdAt', label: '投稿日時', type: 'date' as FilterType }
+      ],
+      metrics: [
+        { id: 'views', label: '再生数', type: 'number' as FilterType },
+        { id: 'viewsIncrease', label: '2日再生増加数', type: 'number' as FilterType },
+        { id: 'ten_days_increase', label: '10日再生増加数', type: 'number' as FilterType },
+        { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'number' as FilterType },
+        { id: 'likes_count_increase', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">2日いいね増加数</span></span>, type: 'number' as FilterType },
+        { id: 'ten_days_likes_increase', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">10日いいね増加数</span></span>, type: 'number' as FilterType },
+        { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' as FilterType },
+        { id: 'comment_count_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">2日コメント増加数</span></span>, type: 'number' as FilterType },
+        { id: 'ten_days_comment_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">10日コメント増加数</span></span>, type: 'number' as FilterType },
+        { id: 'saves', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">保存数</span></span>, type: 'number' as FilterType },
+        { id: 'saves_count_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">2日保存増加数</span></span>, type: 'number' as FilterType },
+        { id: 'ten_days_saves_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">10日保存増加数</span></span>, type: 'number' as FilterType }
+      ],
+      categories: [
+        { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect' as FilterType, options: ['video', 'carousel'] },
+        { id: 'category', label: 'PR動画ジャンル', type: 'multiselect' as FilterType, options: categories },
+        { id: 'product', label: '商品', type: 'multiselect' as FilterType, options: products.length > 0 
+          ? products.map(p => p.name) 
+          : productsList
+        },
+        { 
+          id: 'account_type', 
+          label: 'アカウントジャンル', 
+          type: 'multiselect' as FilterType, 
+          options: getAccountTypeOptions()
+        }
+      ],
+      text: [
+        { id: 'account_name', label: 'アカウント検索', type: 'text' as FilterType },
+        { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' as FilterType },
+        { id: 'audioTitle', label: 'BGM検索', type: 'text' as FilterType }
+      ],
+      sort: [
+        { id: 'views', label: '再生数', type: 'sort' as FilterType },
+        { id: 'viewsIncrease', label: '2日再生増加数', type: 'sort' as FilterType },
+        { id: 'ten_days_increase', label: '10日再生増加数', type: 'sort' as FilterType },
+        { id: 'likes', label: <span className="flex items-center"><HeartIcon size={14} /><span className="ml-1">いいね数</span></span>, type: 'sort' as FilterType },
+        { id: 'likes_count_increase', label: '2日いいね増加数', type: 'sort' as FilterType },
+        { id: 'ten_days_likes_increase', label: '10日いいね増加数', type: 'sort' as FilterType },
+        { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' as FilterType },
+        { id: 'comment_count_increase', label: '2日コメント増加数', type: 'sort' as FilterType },
+        { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'sort' as FilterType },
+        { id: 'saves', label: '保存数', type: 'sort' as FilterType },
+        { id: 'saves_count_increase', label: '2日保存増加数', type: 'sort' as FilterType },
+        { id: 'ten_days_saves_increase', label: '10日保存増加数', type: 'sort' as FilterType }
+      ]
+    };
+
+    if (!tabFilterFields) return baseFields;
+
+    // タブ設定に基づいてフィールドをフィルタリング
+    return {
+      date: baseFields.date.filter(field => tabFilterFields.date.includes(field.id)),
+      metrics: baseFields.metrics.filter(field => tabFilterFields.metrics.includes(field.id)),
+      categories: baseFields.categories.filter(field => tabFilterFields.categories.includes(field.id)),
+      text: baseFields.text.filter(field => tabFilterFields.text.includes(field.id)),
+      sort: baseFields.sort.filter(field => tabFilterFields.sort.includes(field.id))
+    };
+  };
+
+  const filterFields = getFilterFields();
+  
   // ポップアップが開かれたときにcurrentFiltersから状態を初期化する
   useEffect(() => {
     if (isOpen) {
@@ -1290,10 +1322,7 @@ export const FilterPopup = ({
             // フィールドIDに応じて適切な色を取得
             let colors;
             if (field.id === 'account_type') {
-              // アカウントタイプの場合はACCOUNT_TYPE_COLORSを使用
-              colors = option in ACCOUNT_TYPE_COLORS
-                ? ACCOUNT_TYPE_COLORS[option as keyof typeof ACCOUNT_TYPE_COLORS]
-                : DEFAULT_GENRE_COLOR;
+              colors = getAccountTypeColor(option, accountTypeContext);
             } else {
               // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
               colors = option in GENRE_COLORS 
@@ -1335,7 +1364,7 @@ export const FilterPopup = ({
 
   // ソートタブのレンダリング関数
   const renderSortContent = () => {
-    const sortableFields = filterFields['sort'] || [];
+    const sortableFields = filterFields['sort'] || []
     
     // ソート対象のプルダウン用オプション
     const fieldOptions = sortableFields.map(field => {

@@ -1,6 +1,8 @@
 import os
 import json
+import traceback
 from functools import lru_cache
+from typing import Dict, Any
 
 @lru_cache 
 def get_db_config() -> dict:
@@ -45,3 +47,4 @@ def get_db_config() -> dict:
         print(f"DB 設定の構築で例外: {e}")
         traceback.print_exc()
         raise
+

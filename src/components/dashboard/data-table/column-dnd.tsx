@@ -48,18 +48,8 @@ export function useColumnDnd(initialColumns: Column[]) {
         });
     }
     
-    console.log('[DEBUG-COLUMN-DND] columnsの変化チェック:', {
-      isFirstRender,
-      hasColumnsReferenceChanged,
-      hasColumnsContentChanged,
-      columnsCount: initialColumns.length,
-      prevColumnsCount: prevColumnsRef.current?.length || 0,
-      timestamp: new Date().toISOString()
-    });
-    
     // 初回呼び出し時、または実際に列のコンテンツが変更された場合のみ更新
     if (isFirstRender || hasColumnsContentChanged) {
-      console.log('[DEBUG-COLUMN-DND] orderedColumns を更新します');
       setOrderedColumns(initialColumns);
     }
     
