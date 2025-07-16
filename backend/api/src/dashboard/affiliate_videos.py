@@ -28,8 +28,6 @@ async def get_affiliate_videos(
         where_clauses = []
 
         # アフィリエイト系動画のフィルタリング条件を追加
-        # is_pr = 1 (PR動画)
-        where_clauses.append("is_pr = 1")
 
         # フィルター適用
         query, params = apply_filters(query, params, where_clauses, request, "frontend_affiliate_data")
