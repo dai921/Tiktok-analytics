@@ -226,6 +226,149 @@ export const FilterPopup = ({
   const [productCategories, setProductCategories] = useState<Record<string, string[]>>({})
   const [accountTypes, setAccountTypes] = useState<string[]>([])
 
+  // タブごとのフィルター状態を保存するRef
+  const filterStateByContext = useRef<Record<string, {
+    tempFilters: Record<string, FilterValue>;
+    selectedCategories: string[];
+    selectedContentTypes: string[];
+    selectedAccountCategories: string[];
+    selectedProducts: string[];
+    primarySort: {field: string; direction: 'asc' | 'desc'} | null;
+    secondarySort: {field: string; direction: 'asc' | 'desc'} | null;
+  }>>({});
+  
+  // 前回のaccountTypeContextを追跡
+  const prevAccountTypeContext = useRef<string | undefined>(undefined);
+
+  // デバッグ用: currentFiltersの変更を追跡
+  useEffect(() => {
+    console.log('[DEBUG] currentFilters変更:', {
+      accountTypeContext,
+      currentFilters,
+      timestamp: new Date().toISOString()
+    });
+  }, [currentFilters, accountTypeContext]);
+
+  // デバッグ用: 状態変更を追跡
+  useEffect(() => {
+    console.log('[DEBUG] tempFilters変更:', {
+      accountTypeContext,
+      tempFilters,
+      timestamp: new Date().toISOString()
+    });
+  }, [tempFilters, accountTypeContext]);
+
+  useEffect(() => {
+    console.log('[DEBUG] selectedCategories変更:', {
+      accountTypeContext,
+      selectedCategories,
+      timestamp: new Date().toISOString()
+    });
+  }, [selectedCategories, accountTypeContext]);
+
+  // accountTypeContextが変更されたときにフィルター状態を切り替え
+  useEffect(() => {
+    console.log('[DEBUG] accountTypeContext useEffect実行:', {
+      accountTypeContext,
+      isOpen,
+      previousContext: prevAccountTypeContext.current,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!accountTypeContext) return;
+    
+    const currentContext = accountTypeContext;
+    const previousContext = prevAccountTypeContext.current;
+    
+    // コンテキストが実際に変更された場合のみ処理
+    if (previousContext && previousContext !== currentContext) {
+      console.log('[DEBUG] コンテキスト切り替え検出:', previousContext, '->', currentContext);
+      
+      // 前のコンテキストの現在の状態を保存
+      filterStateByContext.current[previousContext] = {
+        tempFilters: { ...tempFilters },
+        selectedCategories: [...selectedCategories],
+        selectedContentTypes: [...selectedContentTypes],
+        selectedAccountCategories: [...selectedAccountCategories],
+        selectedProducts: [...selectedProducts],
+        primarySort: primarySort ? { ...primarySort } : null,
+        secondarySort: secondarySort ? { ...secondarySort } : null
+      };
+      
+      console.log('[DEBUG] 前のコンテキストの状態を保存:', previousContext, filterStateByContext.current[previousContext]);
+    }
+    
+    // 新しいコンテキストの状態を復元または初期化
+    if (filterStateByContext.current[currentContext]) {
+      console.log('[DEBUG] 保存されていた状態を復元:', currentContext);
+      const savedState = filterStateByContext.current[currentContext];
+      
+      setTempFilters(savedState.tempFilters);
+      setSelectedCategories(savedState.selectedCategories);
+      setSelectedContentTypes(savedState.selectedContentTypes);
+      setSelectedAccountCategories(savedState.selectedAccountCategories);
+      setSelectedProducts(savedState.selectedProducts);
+      setPrimarySort(savedState.primarySort);
+      setSecondarySort(savedState.secondarySort);
+    } else if (previousContext !== currentContext) {
+      console.log('[DEBUG] 新しいコンテキスト、初期状態を設定:', currentContext);
+      
+      const initialState = {
+        tempFilters: {},
+        selectedCategories: [],
+        selectedContentTypes: ['video', 'carousel'],
+        selectedAccountCategories: [],
+        selectedProducts: [],
+        primarySort: null,
+        secondarySort: null
+      };
+      
+      setTempFilters(initialState.tempFilters);
+      setSelectedCategories(initialState.selectedCategories);
+      setSelectedContentTypes(initialState.selectedContentTypes);
+      setSelectedAccountCategories(initialState.selectedAccountCategories);
+      setSelectedProducts(initialState.selectedProducts);
+      setPrimarySort(initialState.primarySort);
+      setSecondarySort(initialState.secondarySort);
+      
+      filterStateByContext.current[currentContext] = initialState;
+    }
+    
+    prevAccountTypeContext.current = currentContext;
+    
+  }, [accountTypeContext]);
+
+  // 既存の初期化処理を条件付きに変更
+  useEffect(() => {
+    console.log('[DEBUG] isOpen useEffect実行:', {
+      isOpen,
+      prevAccountTypeContext: prevAccountTypeContext.current,
+      currentFilters,
+      timestamp: new Date().toISOString()
+    });
+
+    if (isOpen && !prevAccountTypeContext.current) {
+      // 初回オープン時のみ既存の初期化処理を実行
+      console.log('[DEBUG] 初回オープン時の初期化処理実行');
+      
+      setTempFilters({...currentFilters});
+      
+      // カテゴリ選択の初期化
+      const categoryFilter = currentFilters['category'];
+      if (categoryFilter && categoryFilter.value) {
+        if (typeof categoryFilter.value === 'string') {
+          setSelectedCategories([categoryFilter.value]);
+        } else if (Array.isArray(categoryFilter.value)) {
+          setSelectedCategories(categoryFilter.value as string[]);
+        }
+      } else {
+        setSelectedCategories([]);
+      }
+      
+      // 他の初期化処理も同様に実装...
+    }
+  }, [isOpen]); // currentFiltersの依存関係は削除済み
+
   // データ取得
   useEffect(() => {
     // 商品データを取得
@@ -583,22 +726,33 @@ export const FilterPopup = ({
     }
   }
 
-  // すべてのフィルターをクリア
+  // すべてのフィルターをクリア（現在のコンテキストのみ）
   const handleClearAllFilters = () => {
-    // ポップアップ内の入力のみをクリア
-    setTempFilters({})
-    setSelectedCategories([]);
-    setSelectedContentTypes(['video', 'carousel']);
-    setSelectedAccountCategories([]);
-    setSelectedProducts([]);
-    setPrimarySort(null);
-    setSecondarySort(null);
+    const clearedState = {
+      tempFilters: {},
+      selectedCategories: [],
+      selectedContentTypes: ['video', 'carousel'],
+      selectedAccountCategories: [],
+      selectedProducts: [],
+      primarySort: null,
+      secondarySort: null
+    };
     
-    // この時点では親コンポーネントのフィルター状態は変更しない
-    // onClearAll(); -- 削除：これによりAPIリクエストが発生していた
+    // 現在の状態をクリア
+    setTempFilters(clearedState.tempFilters);
+    setSelectedCategories(clearedState.selectedCategories);
+    setSelectedContentTypes(clearedState.selectedContentTypes);
+    setSelectedAccountCategories(clearedState.selectedAccountCategories);
+    setSelectedProducts(clearedState.selectedProducts);
+    setPrimarySort(clearedState.primarySort);
+    setSecondarySort(clearedState.secondarySort);
     
-    // フィルターポップアップは閉じない
-    // onClose(); -- 削除：ユーザーがクリアした後に引き続き操作できるようにする
+    // 現在のコンテキストの保存状態もクリア
+    if (accountTypeContext) {
+      filterStateByContext.current[accountTypeContext] = clearedState;
+    }
+    
+    console.log('現在のコンテキストのフィルターをクリアしました:', accountTypeContext);
   }
 
   // フィルターを適用

@@ -46,48 +46,165 @@ const Dashboard = () => {
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
 
+  // タブごとの独立したフィルター状態（型をFilterQueryに統一）
+  const [filtersByTab, setFiltersByTab] = useState<Record<string, Record<string, FilterQuery>>>({
+    all: {},
+    corporate: {},
+    influencer: {},
+    affiliate: {}
+  });
+
+  // タブごとのデータキャッシュを追加
+  const [dataByTab, setDataByTab] = useState<Record<string, {
+    data: VideoData[];
+    currentPage: number;
+    totalPages: number;
+    lastFetchTime: number;
+    filters: Record<string, FilterQuery>;
+  }>>({
+    all: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} },
+    corporate: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} },
+    influencer: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} },
+    affiliate: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} }
+  });
+
+  // キャッシュの有効期限（5分間）
+  const CACHE_DURATION = 5 * 60 * 1000;
+
+  // 現在のタブに応じたフィルターを取得
+  const getCurrentFilters = () => {
+    if (isCorporateOnly) {
+      return filtersByTab.corporate;
+    } else if (isInfluencerOnly) {
+      return filtersByTab.influencer;
+    } else if (isPrOnly) {
+      return filtersByTab.affiliate;
+    } else {
+      return filtersByTab.all;
+    }
+  };
+
+  // 現在のタブキーを取得
+  const getCurrentTabKey = () => {
+    if (isCorporateOnly) return 'corporate';
+    if (isInfluencerOnly) return 'influencer';
+    if (isPrOnly) return 'affiliate';
+    return 'all';
+  };
+
+  // 現在のタブのキャッシュを取得
+  const getCurrentCache = () => {
+    const tabKey = getCurrentTabKey();
+    return dataByTab[tabKey];
+  };
+
+  // キャッシュが有効かチェック
+  const isCacheValid = (cache: typeof dataByTab.all, filters: Record<string, FilterQuery>) => {
+    const now = Date.now();
+    const isExpired = now - cache.lastFetchTime > CACHE_DURATION;
+    const filtersChanged = JSON.stringify(cache.filters) !== JSON.stringify(filters);
+    
+    return !isExpired && !filtersChanged && cache.data.length > 0;
+  };
+
+  // FilterValueをFilterQueryに変換する関数
+  const convertFilterValueToQuery = (filterValue: FilterValue): FilterQuery => {
+    return {
+      field: filterValue.field,
+      type: filterValue.type,
+      value: filterValue.value,
+      active: filterValue.active || true,
+      ...(filterValue.comparison && { comparison: filterValue.comparison }),
+      ...(filterValue.isPrimarySort !== undefined && { isPrimarySort: filterValue.isPrimarySort }),
+      ...(filterValue.sortField && { sortField: filterValue.sortField }),
+      ...(filterValue.isHashtag && { isHashtag: filterValue.isHashtag }),
+      ...(filterValue.timestamp !== undefined && { timestamp: filterValue.timestamp })
+    };
+  };
+
+  // タブ切り替え時にフィルターを復元
+  useEffect(() => {
+    const currentTabFilters = getCurrentFilters();
+    const currentCache = getCurrentCache();
+    
+    console.log('[DEBUG] タブ切り替え - キャッシュチェック:', {
+      currentTab: getCurrentTabKey(),
+      filtersCount: Object.keys(currentTabFilters).length,
+      cacheValid: isCacheValid(currentCache, currentTabFilters),
+      cachedDataCount: currentCache.data.length
+    });
+
+    // フィルター状態を復元
+    setFilters(currentTabFilters);
+
+    // キャッシュが有効な場合はデータも復元
+    if (isCacheValid(currentCache, currentTabFilters)) {
+      console.log('[DEBUG] キャッシュからデータを復元');
+      setData(currentCache.data);
+      setCurrentPage(currentCache.currentPage);
+      setTotalPages(currentCache.totalPages);
+      setIsLoading(false);
+      return; // APIコールをスキップ
+    }
+
+    console.log('[DEBUG] キャッシュが無効、APIコールが必要');
+  }, [isCorporateOnly, isInfluencerOnly, isPrOnly]);
+
   // 現在のタブフィルタ設定を取得
   const currentTabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
   const currentTabFilterFields = getTabFilterFields(currentTabType);
 
-  // fetchData 関数をメモ化（依存配列を最小限に）
+  // fetchData関数を修正してキャッシュを更新
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
-    console.log('fetchData呼び出し:', { page, isPrOnly, isCorporateOnly, isInfluencerOnly, filtersCount: Object.keys(currentFilters || {}).length });
+    const tabKey = getCurrentTabKey();
+    
+    console.log('fetchData呼び出し:', { 
+      page, 
+      tabKey,
+      filtersCount: Object.keys(currentFilters || {}).length 
+    });
     
     setIsLoading(true);
     try {
-      // データソースに応じてAPIを切り替え
       let response;
       if (isPrOnly) {
-        console.log('アフィリエイトデータAPIを呼び出し');
         response = await getAffiliateData(page, currentFilters, pageSize);
       } else if (isCorporateOnly) {
-        console.log('運用代行用データAPIを呼び出し');
         response = await getCorporateData(page, currentFilters, pageSize);
       } else if (isInfluencerOnly) {
-        console.log('インフルエンサーデータAPIを呼び出し');
         response = await getInfluencerData(page, currentFilters, pageSize);
       } else {
-        console.log('通常データAPIを呼び出し');
         response = await getDbData(page, currentFilters, pageSize);
       }
       
-      if (response && response.success) {
-        if (Array.isArray(response.data)) {
-          console.log('企業系動画データ設定:', {
-            dataCount: response.data.length,
-            isCorporateOnly,
-            firstItem: response.data[0]
-          });
-          setData(response.data);
-          setCurrentPage(response.currentPage || page);
-          setTotalPages(response.totalPages || 1);
-        } else {
-          console.error('データの形式が不正です:', response.data);
-          setData([]);
-        }
+      if (response && response.success && Array.isArray(response.data)) {
+        const newData = response.data;
+        const newCurrentPage = response.currentPage || page;
+        const newTotalPages = response.totalPages || 1;
+
+        // UIの状態を更新
+        setData(newData);
+        setCurrentPage(newCurrentPage);
+        setTotalPages(newTotalPages);
+
+        // キャッシュを更新
+        setDataByTab(prev => ({
+          ...prev,
+          [tabKey]: {
+            data: newData,
+            currentPage: newCurrentPage,
+            totalPages: newTotalPages,
+            lastFetchTime: Date.now(),
+            filters: { ...currentFilters || {} }
+          }
+        }));
+
+        console.log('[DEBUG] データとキャッシュを更新:', {
+          tabKey,
+          dataCount: newData.length,
+          page: newCurrentPage
+        });
       } else {
-        console.error('APIエラー:', response?.error || '不明なエラー');
         setData([]);
       }
     } catch (error) {
@@ -98,9 +215,22 @@ const Dashboard = () => {
     }
   }, [pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
-  // メインのデータ取得用useEffect - fetchDataを依存配列から除外
+  // メインのuseEffectを修正（キャッシュチェックを追加）
   useEffect(() => {
-    console.log('メインuseEffect実行:', { isPrOnly, isCorporateOnly, isInfluencerOnly, currentPage, filtersCount: Object.keys(filters).length });
+    const tabKey = getCurrentTabKey();
+    const currentCache = getCurrentCache();
+
+    // キャッシュが有効な場合はAPIコールをスキップ
+    if (isCacheValid(currentCache, filters)) {
+      console.log('[DEBUG] キャッシュ有効、APIコールをスキップ');
+      return;
+    }
+
+    console.log('[DEBUG] APIコール実行:', { 
+      tabKey, 
+      filtersCount: Object.keys(filters).length,
+      reason: currentCache.data.length === 0 ? 'データなし' : 'フィルター変更'
+    });
     
     if (Object.keys(filters).length === 0) {
       fetchData(currentPage, {});
@@ -119,16 +249,30 @@ const Dashboard = () => {
     // クリア操作を明示的に検出
     if (newFilter.type === 'clear') {
       if (newFilter.field === 'reset') {
+        // タブごとのフィルターもクリア
+        const currentTab = getCurrentTabKey();
+        setFiltersByTab(prev => ({
+          ...prev,
+          [currentTab]: {}
+        }));
         setFilters({});
         setCurrentPage(1);
-        return; // fetchDataの直接呼び出しを削除
+        return;
       }
       
       if (newFilter.field && filters[newFilter.field]) {
         const updatedFilters = { ...filters };
         delete updatedFilters[newFilter.field];
+        
+        // タブごとのフィルターも更新
+        const currentTab = getCurrentTabKey();
+        setFiltersByTab(prev => ({
+          ...prev,
+          [currentTab]: updatedFilters
+        }));
+        
         setFilters(updatedFilters);
-        return; // fetchDataの直接呼び出しを削除
+        return;
       }
       return;
     }
@@ -144,42 +288,43 @@ const Dashboard = () => {
       field = 'hashtags';
     }
 
-    const filterQuery: FilterQuery = {
-      field: field,
-      type: newFilter.type,
-      value: newFilter.value,
-      active: true,
-      ...(newFilter.isHashtag && { isHashtag: true }),
-      ...(newFilter.timestamp !== undefined && { timestamp: newFilter.timestamp }),
-      ...(newFilter.isPrimarySort !== undefined && { isPrimarySort: newFilter.isPrimarySort }),
-      ...(newFilter.sortField !== undefined && { sortField: newFilter.sortField }),
-      ...(newFilter.comparison !== undefined && { comparison: newFilter.comparison })
-    };
+    const filterQuery: FilterQuery = convertFilterValueToQuery({
+      ...newFilter,
+      field: field
+    });
+    
+    let updatedFilters: Record<string, FilterQuery>;
     
     if (newFilter.type === 'sort') {
-      setFilters(prev => {
-        const existingFilter = prev[field];
-        return {
-          ...prev,
-          [`${field}_sort`]: filterQuery,
-          ...(existingFilter && { [field]: existingFilter })
-        };
-      });
+      updatedFilters = {
+        ...filters,
+        [`${field}_sort`]: filterQuery,
+        ...(filters[field] && { [field]: filters[field] })
+      };
     } else if (newFilter.type === 'multiselect') {
-      setFilters(prev => ({
-        ...prev,
+      updatedFilters = {
+        ...filters,
         [field]: {
           ...filterQuery,
           comparison: 'contains'
         }
-      }));
+      };
     } else {
-      setFilters(prev => ({
-        ...prev,
+      updatedFilters = {
+        ...filters,
         [field]: filterQuery
-      }));
+      };
     }
-  }, [filters]); // fetchDataを依存配列から削除
+    
+    // タブごとのフィルターも更新
+    const currentTab = getCurrentTabKey();
+    setFiltersByTab(prev => ({
+      ...prev,
+      [currentTab]: updatedFilters
+    }));
+    
+    setFilters(updatedFilters);
+  }, [filters]);
 
   // handleClearAllFilters 関数をメモ化（fetchDataの直接呼び出しを削除）
   const handleClearAllFilters = useCallback(() => {
@@ -187,13 +332,20 @@ const Dashboard = () => {
       tableRef.current.clearAllFilters();
     }
     
+    // 全タブのフィルターをクリア
+    setFiltersByTab({
+      all: {},
+      corporate: {},
+      influencer: {},
+      affiliate: {}
+    });
+    
     setIsPrOnly(false);
     setIsCorporateOnly(false);
     setIsInfluencerOnly(false);
     setFilters({});
     setCurrentPage(1);
-    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
-  }, []); // fetchDataを依存配列から削除
+  }, []);
 
   // handleColumnSettingsChange関数を先に定義
   const handleColumnSettingsChange = useCallback((columns: string[]) => {
@@ -204,10 +356,7 @@ const Dashboard = () => {
   const updateColumnsForTab = useCallback((tabType: keyof typeof TAB_DEFAULT_COLUMNS) => {
     const defaultColumns = TAB_DEFAULT_COLUMNS[tabType];
     setVisibleColumns(defaultColumns);
-    
-    // カラム設定変更をDataTableに通知（必要に応じて）
-    // handleColumnSettingsChange(defaultColumns); // この行は不要かもしれません
-  }, [handleColumnSettingsChange]);
+  }, []);
 
   // handlePrOnlyChange 関数を修正
   const handlePrOnlyChange = useCallback((checked: boolean) => {
@@ -216,7 +365,6 @@ const Dashboard = () => {
     setIsCorporateOnly(false);
     setIsInfluencerOnly(false);
     setCurrentPage(1);
-    setFilters({});
     
     // タブ切り替え時にカラムを更新
     if (checked) {
@@ -233,7 +381,6 @@ const Dashboard = () => {
     setIsPrOnly(false);
     setIsInfluencerOnly(false);
     setCurrentPage(1);
-    setFilters({});
     
     // タブ切り替え時にカラムを更新
     if (checked) {
@@ -250,7 +397,6 @@ const Dashboard = () => {
     setIsPrOnly(false);
     setIsCorporateOnly(false);
     setCurrentPage(1);
-    setFilters({});
     
     // タブ切り替え時にカラムを更新
     if (checked) {
@@ -268,9 +414,15 @@ const Dashboard = () => {
   // handleMultipleFilters 関数をメモ化（fetchDataの直接呼び出しを削除）
   const handleMultipleFilters = useCallback((filters: Record<string, FilterQuery>) => {
     if (filters.reset && filters.reset.type === 'clear') {
+      // タブごとのフィルターもクリア
+      const currentTab = getCurrentTabKey();
+      setFiltersByTab(prev => ({
+        ...prev,
+        [currentTab]: {}
+      }));
       setFilters({});
       setCurrentPage(1);
-      return; // fetchDataの直接呼び出しを削除
+      return;
     }
 
     if (filters['sort_clear'] || filters['sort_indicator']) {
@@ -307,9 +459,15 @@ const Dashboard = () => {
           };
         });
       
+      // タブごとのフィルターも更新
+      const currentTab = getCurrentTabKey();
+      setFiltersByTab(prev => ({
+        ...prev,
+        [currentTab]: newFilterSet
+      }));
+      
       setFilters(newFilterSet);
       setCurrentPage(1);
-      // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
       return;
     }
     
@@ -374,10 +532,16 @@ const Dashboard = () => {
       }
     });
     
+    // タブごとのフィルターも更新
+    const currentTab = getCurrentTabKey();
+    setFiltersByTab(prev => ({
+      ...prev,
+      [currentTab]: newFilters
+    }));
+    
     setFilters(newFilters);
     setCurrentPage(1);
-    // fetchDataの直接呼び出しを削除 - useEffectが自動的に呼び出す
-  }, []); // fetchDataを依存配列から削除
+  }, []);
 
   // 初期読み込み時に設定を取得する部分を修正
   useEffect(() => {
@@ -423,6 +587,65 @@ const Dashboard = () => {
 
     loadSettings();
   }, []); // 初期読み込みのみ実行
+
+  // 既存のuseEffect群の後に追加
+  
+  // ★ バックグラウンドprefetch機能を追加
+  useEffect(() => {
+    // メインデータの取得が完了したら、他のタブを事前取得
+    if (!isLoading && data.length > 0) {
+      const currentTab = getCurrentTabKey();
+      
+      const prefetchOtherTabs = async () => {
+        const tabsToFetch = [
+          { key: 'all', fetcher: () => getDbData(1, {}, pageSize) },
+          { key: 'affiliate', fetcher: () => getAffiliateData(1, {}, pageSize) },
+          { key: 'corporate', fetcher: () => getCorporateData(1, {}, pageSize) },
+          { key: 'influencer', fetcher: () => getInfluencerData(1, {}, pageSize) }
+        ].filter(tab => tab.key !== currentTab);
+
+        console.log(`[Prefetch] ${currentTab}表示完了、他のタブを事前取得開始`);
+
+        for (const [index, tab] of tabsToFetch.entries()) {
+          setTimeout(async () => {
+            const cache = dataByTab[tab.key];
+            
+            // キャッシュが有効なら次へ
+            if (isCacheValid(cache, {})) {
+              console.log(`[Prefetch] ${tab.key}: キャッシュ有効のためスキップ`);
+              return;
+            }
+
+            try {
+              const response = await tab.fetcher();
+              if (response?.success && Array.isArray(response.data)) {
+                setDataByTab(prev => ({
+                  ...prev,
+                  [tab.key]: {
+                    data: response.data,
+                    currentPage: 1,
+                    totalPages: response.totalPages || 1,
+                    lastFetchTime: Date.now(),
+                    filters: {}
+                  }
+                }));
+                console.log(`[Prefetch] ${tab.key}: 事前取得完了 (${response.data.length}件)`);
+              }
+            } catch (error) {
+              console.warn(`[Prefetch] ${tab.key}: 取得失敗`, error);
+            }
+          }, index * 800); // 800ms間隔で順次実行してAPI負荷を軽減
+        }
+      };
+
+      // アイドル時間を待ってから実行
+      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        window.requestIdleCallback(prefetchOtherTabs, { timeout: 3000 });
+      } else {
+        setTimeout(prefetchOtherTabs, 2000);
+      }
+    }
+  }, [isLoading, data.length, pageSize, getCurrentTabKey, dataByTab, isCacheValid, setDataByTab]);
 
   if (!isSettingsLoaded) {
     return (
