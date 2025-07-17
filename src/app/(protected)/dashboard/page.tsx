@@ -33,6 +33,8 @@ const headers = [
 ] as const
 
 const Dashboard = () => {
+  const CACHE_DURATION = 5 * 60 * 1000; // 先頭に配置
+  
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<VideoData[]>([])
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
@@ -54,22 +56,77 @@ const Dashboard = () => {
     affiliate: {}
   });
 
-  // タブごとのデータキャッシュを追加
-  const [dataByTab, setDataByTab] = useState<Record<string, {
+  // ★ タブごとのデータキャッシュを拡張（フィルタ状態ごとに保存）
+  const [dataByTab, setDataByTab] = useState<Record<string, Record<string, {
     data: VideoData[];
     currentPage: number;
     totalPages: number;
     lastFetchTime: number;
     filters: Record<string, FilterQuery>;
-  }>>({
-    all: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} },
-    corporate: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} },
-    influencer: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} },
-    affiliate: { data: [], currentPage: 1, totalPages: 1, lastFetchTime: 0, filters: {} }
+  }>>>({
+    all: {},
+    corporate: {},
+    influencer: {},
+    affiliate: {}
   });
 
-  // キャッシュの有効期限（5分間）
-  const CACHE_DURATION = 5 * 60 * 1000;
+  // ★ フィルタハッシュ生成関数を修正（日本語対応）
+  const generateFilterHash = useCallback((filters: Record<string, FilterQuery>) => {
+    // 空フィルタの場合は 'default'
+    if (Object.keys(filters).length === 0) {
+      return 'default';
+    }
+    
+    // フィルタ内容をソートしてJSON化
+    const sortedFilters = Object.keys(filters)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = filters[key];
+        return result;
+      }, {} as Record<string, FilterQuery>);
+    
+    const jsonString = JSON.stringify(sortedFilters);
+    
+    // シンプルなハッシュ関数（日本語対応）
+    let hash = 0;
+    for (let i = 0; i < jsonString.length; i++) {
+      const char = jsonString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 32bit整数に変換
+    }
+    
+    // 正の数にして16進数文字列に変換
+    return 'f' + Math.abs(hash).toString(16);
+  }, []);
+
+  // ★ getCurrentCache関数をシンプルに修正
+  const getCurrentCache = () => {
+    const tabKey = getCurrentTabKey();
+    const filterHash = generateFilterHash(filters);
+    return dataByTab[tabKey]?.[filterHash] || { 
+      data: [], 
+      currentPage: 1, 
+      totalPages: 1, 
+      lastFetchTime: 0, 
+      filters: {} 
+    };
+  };
+
+  // ★ フィルタ状態を含むキャッシュ有効性チェック（CACHE_DURATIONを使用）
+  const isCacheValidWithFilters = useCallback((
+    tabKey: string, 
+    filterHash: string, 
+    targetFilters: Record<string, FilterQuery>
+  ) => {
+    const cache = dataByTab[tabKey]?.[filterHash];
+    if (!cache) return false;
+
+    const now = Date.now();
+    const isExpired = now - cache.lastFetchTime > CACHE_DURATION;
+    const filtersChanged = JSON.stringify(cache.filters) !== JSON.stringify(targetFilters);
+    
+    return !isExpired && !filtersChanged && cache.data.length > 0;
+  }, [dataByTab, CACHE_DURATION]);
 
   // 現在のタブに応じたフィルターを取得
   const getCurrentFilters = () => {
@@ -90,21 +147,6 @@ const Dashboard = () => {
     if (isInfluencerOnly) return 'influencer';
     if (isPrOnly) return 'affiliate';
     return 'all';
-  };
-
-  // 現在のタブのキャッシュを取得
-  const getCurrentCache = () => {
-    const tabKey = getCurrentTabKey();
-    return dataByTab[tabKey];
-  };
-
-  // キャッシュが有効かチェック
-  const isCacheValid = (cache: typeof dataByTab.all, filters: Record<string, FilterQuery>) => {
-    const now = Date.now();
-    const isExpired = now - cache.lastFetchTime > CACHE_DURATION;
-    const filtersChanged = JSON.stringify(cache.filters) !== JSON.stringify(filters);
-    
-    return !isExpired && !filtersChanged && cache.data.length > 0;
   };
 
   // FilterValueをFilterQueryに変換する関数
@@ -130,7 +172,7 @@ const Dashboard = () => {
     console.log('[DEBUG] タブ切り替え - キャッシュチェック:', {
       currentTab: getCurrentTabKey(),
       filtersCount: Object.keys(currentTabFilters).length,
-      cacheValid: isCacheValid(currentCache, currentTabFilters),
+      cacheValid: isCacheValidWithFilters(getCurrentTabKey(), generateFilterHash(currentTabFilters), currentTabFilters),
       cachedDataCount: currentCache.data.length
     });
 
@@ -138,7 +180,7 @@ const Dashboard = () => {
     setFilters(currentTabFilters);
 
     // キャッシュが有効な場合はデータも復元
-    if (isCacheValid(currentCache, currentTabFilters)) {
+    if (isCacheValidWithFilters(getCurrentTabKey(), generateFilterHash(currentTabFilters), currentTabFilters)) {
       console.log('[DEBUG] キャッシュからデータを復元');
       setData(currentCache.data);
       setCurrentPage(currentCache.currentPage);
@@ -148,7 +190,37 @@ const Dashboard = () => {
     }
 
     console.log('[DEBUG] キャッシュが無効、APIコールが必要');
-  }, [isCorporateOnly, isInfluencerOnly, isPrOnly]);
+  }, [isCorporateOnly, isInfluencerOnly, isPrOnly, getCurrentTabKey, generateFilterHash, filters, isCacheValidWithFilters, getCurrentCache]);
+
+  // ★ タブ切り替え時にフィルター状態も含めてキャッシュチェック（こちらのみ残す）
+  useEffect(() => {
+    const currentTabFilters = getCurrentFilters();
+    const tabKey = getCurrentTabKey();
+    const filterHash = generateFilterHash(currentTabFilters);
+    
+    console.log('[DEBUG] タブ切り替え - キャッシュチェック:', {
+      currentTab: tabKey,
+      filterHash,
+      filtersCount: Object.keys(currentTabFilters).length,
+      cacheExists: !!dataByTab[tabKey]?.[filterHash]
+    });
+
+    // フィルター状態を復元
+    setFilters(currentTabFilters);
+
+    // ★ フィルタ状態を含むキャッシュが有効な場合はデータも復元
+    if (isCacheValidWithFilters(tabKey, filterHash, currentTabFilters)) {
+      const cache = dataByTab[tabKey][filterHash];
+      console.log('[DEBUG] フィルタ付きキャッシュからデータを復元');
+      setData(cache.data);
+      setCurrentPage(cache.currentPage);
+      setTotalPages(cache.totalPages);
+      setIsLoading(false);
+      return; // APIコールをスキップ
+    }
+
+    console.log('[DEBUG] フィルタ付きキャッシュが無効、APIコールが必要');
+  }, [isCorporateOnly, isInfluencerOnly, isPrOnly]); // 依存配列を簡素化
 
   // 現在のタブフィルタ設定を取得
   const currentTabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
@@ -157,6 +229,7 @@ const Dashboard = () => {
   // fetchData関数を修正してキャッシュを更新
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     const tabKey = getCurrentTabKey();
+    const filterHash = generateFilterHash(currentFilters || {});
     
     console.log('fetchData呼び出し:', { 
       page, 
@@ -187,20 +260,24 @@ const Dashboard = () => {
         setCurrentPage(newCurrentPage);
         setTotalPages(newTotalPages);
 
-        // キャッシュを更新
+        // ★ フィルタ状態ごとにキャッシュを更新
         setDataByTab(prev => ({
           ...prev,
           [tabKey]: {
-            data: newData,
-            currentPage: newCurrentPage,
-            totalPages: newTotalPages,
-            lastFetchTime: Date.now(),
-            filters: { ...currentFilters || {} }
+            ...prev[tabKey],
+            [filterHash]: {
+              data: newData,
+              currentPage: newCurrentPage,
+              totalPages: newTotalPages,
+              lastFetchTime: Date.now(),
+              filters: { ...currentFilters || {} }
+            }
           }
         }));
 
         console.log('[DEBUG] データとキャッシュを更新:', {
           tabKey,
+          filterHash,
           dataCount: newData.length,
           page: newCurrentPage
         });
@@ -213,23 +290,23 @@ const Dashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly]);
+  }, [pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly, generateFilterHash, getCurrentTabKey]);
 
-  // メインのuseEffectを修正（キャッシュチェックを追加）
+  // ★ メインのuseEffectを簡素化
   useEffect(() => {
     const tabKey = getCurrentTabKey();
-    const currentCache = getCurrentCache();
+    const filterHash = generateFilterHash(filters);
 
     // キャッシュが有効な場合はAPIコールをスキップ
-    if (isCacheValid(currentCache, filters)) {
+    if (isCacheValidWithFilters(tabKey, filterHash, filters)) {
       console.log('[DEBUG] キャッシュ有効、APIコールをスキップ');
       return;
     }
 
     console.log('[DEBUG] APIコール実行:', { 
       tabKey, 
-      filtersCount: Object.keys(filters).length,
-      reason: currentCache.data.length === 0 ? 'データなし' : 'フィルター変更'
+      filterHash,
+      filtersCount: Object.keys(filters).length
     });
     
     if (Object.keys(filters).length === 0) {
@@ -590,11 +667,11 @@ const Dashboard = () => {
 
   // 既存のuseEffect群の後に追加
   
-  // ★ バックグラウンドprefetch機能を追加
+  // ★ バックグラウンドprefetch機能を更新（フィルタ状態も考慮）
   useEffect(() => {
-    // メインデータの取得が完了したら、他のタブを事前取得
     if (!isLoading && data.length > 0) {
       const currentTab = getCurrentTabKey();
+      const currentFilterHash = generateFilterHash(filters);
       
       const prefetchOtherTabs = async () => {
         const tabsToFetch = [
@@ -604,15 +681,15 @@ const Dashboard = () => {
           { key: 'influencer', fetcher: () => getInfluencerData(1, {}, pageSize) }
         ].filter(tab => tab.key !== currentTab);
 
-        console.log(`[Prefetch] ${currentTab}表示完了、他のタブを事前取得開始`);
+        console.log(`[Prefetch] ${currentTab}(${currentFilterHash})表示完了、他のタブを事前取得開始`);
 
         for (const [index, tab] of tabsToFetch.entries()) {
           setTimeout(async () => {
-            const cache = dataByTab[tab.key];
+            const defaultFilterHash = generateFilterHash({});
             
-            // キャッシュが有効なら次へ
-            if (isCacheValid(cache, {})) {
-              console.log(`[Prefetch] ${tab.key}: キャッシュ有効のためスキップ`);
+            // ★ フィルタ状態も含めてキャッシュチェック
+            if (isCacheValidWithFilters(tab.key, defaultFilterHash, {})) {
+              console.log(`[Prefetch] ${tab.key}: デフォルト状態のキャッシュ有効のためスキップ`);
               return;
             }
 
@@ -622,11 +699,14 @@ const Dashboard = () => {
                 setDataByTab(prev => ({
                   ...prev,
                   [tab.key]: {
-                    data: response.data,
-                    currentPage: 1,
-                    totalPages: response.totalPages || 1,
-                    lastFetchTime: Date.now(),
-                    filters: {}
+                    ...prev[tab.key],
+                    [defaultFilterHash]: {
+                      data: response.data,
+                      currentPage: 1,
+                      totalPages: response.totalPages || 1,
+                      lastFetchTime: Date.now(),
+                      filters: {}
+                    }
                   }
                 }));
                 console.log(`[Prefetch] ${tab.key}: 事前取得完了 (${response.data.length}件)`);
@@ -634,18 +714,17 @@ const Dashboard = () => {
             } catch (error) {
               console.warn(`[Prefetch] ${tab.key}: 取得失敗`, error);
             }
-          }, index * 800); // 800ms間隔で順次実行してAPI負荷を軽減
+          }, index * 800);
         }
       };
 
-      // アイドル時間を待ってから実行
       if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
         window.requestIdleCallback(prefetchOtherTabs, { timeout: 3000 });
       } else {
         setTimeout(prefetchOtherTabs, 2000);
       }
     }
-  }, [isLoading, data.length, pageSize, getCurrentTabKey, dataByTab, isCacheValid, setDataByTab]);
+  }, [isLoading, data.length, pageSize, getCurrentTabKey, generateFilterHash, isCacheValidWithFilters]);
 
   if (!isSettingsLoaded) {
     return (
