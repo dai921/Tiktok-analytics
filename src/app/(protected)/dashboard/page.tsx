@@ -210,13 +210,24 @@ const Dashboard = () => {
 
   // ★ タブ切り替え専用のuseEffect
   useEffect(() => {
-    const currentTabFilters = getCurrentFilters();
     const tabKey = getCurrentTabKey();
+    const currentTabFilters = getCurrentFilters();
     
-    console.log('[DEBUG] タブ切り替え:', {
+    console.log('[DEBUG] ★★★ タブ切り替え詳細 ★★★:', {
       currentTab: tabKey,
-      newFilters: currentTabFilters,
-      oldFilters: filters
+      filtersByTabState: filtersByTab,
+      corporateFilters: filtersByTab.corporate,
+      allFilters: filtersByTab.all,
+      affiliateFilters: filtersByTab.affiliate,
+      influencerFilters: filtersByTab.influencer,
+      currentTabFilters: currentTabFilters,
+      oldFilters: filters,
+      areCurrentTabFiltersEmpty: Object.keys(currentTabFilters).length === 0,
+      areAllAndCorporateSameRef: filtersByTab.all === filtersByTab.corporate,
+      // ★ 詳細な中身を確認
+      corporateFiltersDetail: JSON.stringify(filtersByTab.corporate),
+      allFiltersDetail: JSON.stringify(filtersByTab.all),
+      currentTabFiltersDetail: JSON.stringify(currentTabFilters)
     });
 
     // フィルター状態を復元（データ復元はしない）

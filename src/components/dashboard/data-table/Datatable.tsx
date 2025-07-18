@@ -48,6 +48,7 @@ interface DataTableProps {
     text: string[];
     sort: string[];
   };
+  currentTabFilters?: Record<string, FilterQuery>; // ← 追加
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -68,7 +69,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     onPageSizeChange,
     defaultVisibleColumns,
     onColumnSettingsChange,
-    tabFilterFields
+    tabFilterFields,
+    currentTabFilters = {} // ← 追加
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -87,15 +89,21 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSortDirection
     } = sortLogic;
     
-    // フィルターロジック - 初期値を正しく設定
-    const [filterState, filterHandlers] = useFilterLogic(onFilterChange, {
-      primarySort,
-      secondarySort,
-      setPrimarySort,
-      setSecondarySort,
-      setSortField,
-      setSortDirection
-    }, isPrOnly, isCorporateOnly);
+    // フィルターロジック - 外部フィルターを渡す
+    const [filterState, filterHandlers] = useFilterLogic(
+      onFilterChange, 
+      {
+        primarySort,
+        secondarySort,
+        setPrimarySort,
+        setSecondarySort,
+        setSortField,
+        setSortDirection
+      }, 
+      isPrOnly, 
+      isCorporateOnly,
+      currentTabFilters // ← 外部フィルター状態を渡す
+    );
     
     const { 
       columnFilters, 
@@ -482,7 +490,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             isLoading={isLoadingFilterOptions}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
-            accountTypeContext={isCorporateOnly ? 'corporate' : isInfluencerOnly ? 'influencer' : 'all'}
+            accountTypeContext={
+              isPrOnly ? 'affiliate' : 
+              isCorporateOnly ? 'corporate' : 
+              isInfluencerOnly ? 'influencer' : 
+              'all'
+            }
           />,
           document.body
         )}

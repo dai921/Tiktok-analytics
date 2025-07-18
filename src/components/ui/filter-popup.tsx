@@ -37,7 +37,7 @@ interface FilterPopupProps {
     text: string[];
     sort: string[];
   };
-  accountTypeContext?: 'influencer' | 'corporate' | 'all' // 追加
+  accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all' // 追加
 }
 
 // フィルターの型定義
@@ -240,40 +240,41 @@ export const FilterPopup = ({
   // 前回のaccountTypeContextを追跡
   const prevAccountTypeContext = useRef<string | undefined>(undefined);
 
-  // デバッグ用: currentFiltersの変更を追跡
-  useEffect(() => {
-    console.log('[DEBUG] currentFilters変更:', {
-      accountTypeContext,
-      currentFilters,
-      timestamp: new Date().toISOString()
-    });
-  }, [currentFilters, accountTypeContext]);
+  // デバッグ用: currentFiltersの変更を追跡 - 無効化
+  // useEffect(() => {
+  //   console.log('[DEBUG] currentFilters変更:', {
+  //     accountTypeContext,
+  //     currentFilters,
+  //     timestamp: new Date().toISOString()
+  //   });
+  // }, [currentFilters, accountTypeContext]);
 
-  // デバッグ用: 状態変更を追跡
-  useEffect(() => {
-    console.log('[DEBUG] tempFilters変更:', {
-      accountTypeContext,
-      tempFilters,
-      timestamp: new Date().toISOString()
-    });
-  }, [tempFilters, accountTypeContext]);
+  // デバッグ用: 状態変更を追跡 - 無効化
+  // useEffect(() => {
+  //   console.log('[DEBUG] tempFilters変更:', {
+  //     accountTypeContext,
+  //     tempFilters,
+  //     timestamp: new Date().toISOString()
+  //   });
+  // }, [tempFilters, accountTypeContext]);
 
-  useEffect(() => {
-    console.log('[DEBUG] selectedCategories変更:', {
-      accountTypeContext,
-      selectedCategories,
-      timestamp: new Date().toISOString()
-    });
-  }, [selectedCategories, accountTypeContext]);
+  // useEffect(() => {
+  //   console.log('[DEBUG] selectedCategories変更:', {
+  //     accountTypeContext,
+  //     selectedCategories,
+  //     timestamp: new Date().toISOString()
+  //   });
+  // }, [selectedCategories, accountTypeContext]);
 
   // accountTypeContextが変更されたときにフィルター状態を切り替え
   useEffect(() => {
-    console.log('[DEBUG] accountTypeContext useEffect実行:', {
-      accountTypeContext,
-      isOpen,
-      previousContext: prevAccountTypeContext.current,
-      timestamp: new Date().toISOString()
-    });
+    // ★★★ デバッグログを無効化 ★★★
+    // console.log('[DEBUG] accountTypeContext useEffect実行:', {
+    //   accountTypeContext,
+    //   isOpen,
+    //   previousContext: prevAccountTypeContext.current,
+    //   timestamp: new Date().toISOString()
+    // });
 
     if (!accountTypeContext) return;
     
@@ -282,7 +283,7 @@ export const FilterPopup = ({
     
     // コンテキストが実際に変更された場合のみ処理
     if (previousContext && previousContext !== currentContext) {
-      console.log('[DEBUG] コンテキスト切り替え検出:', previousContext, '->', currentContext);
+      // console.log('[DEBUG] コンテキスト切り替え検出:', previousContext, '->', currentContext);
       
       // 前のコンテキストの現在の状態を保存
       filterStateByContext.current[previousContext] = {
@@ -295,12 +296,12 @@ export const FilterPopup = ({
         secondarySort: secondarySort ? { ...secondarySort } : null
       };
       
-      console.log('[DEBUG] 前のコンテキストの状態を保存:', previousContext, filterStateByContext.current[previousContext]);
+      // console.log('[DEBUG] 前のコンテキストの状態を保存:', previousContext, filterStateByContext.current[previousContext]);
     }
     
     // 新しいコンテキストの状態を復元または初期化
     if (filterStateByContext.current[currentContext]) {
-      console.log('[DEBUG] 保存されていた状態を復元:', currentContext);
+      // console.log('[DEBUG] 保存されていた状態を復元:', currentContext);
       const savedState = filterStateByContext.current[currentContext];
       
       setTempFilters(savedState.tempFilters);
@@ -311,7 +312,7 @@ export const FilterPopup = ({
       setPrimarySort(savedState.primarySort);
       setSecondarySort(savedState.secondarySort);
     } else if (previousContext !== currentContext) {
-      console.log('[DEBUG] 新しいコンテキスト、初期状態を設定:', currentContext);
+      // console.log('[DEBUG] 新しいコンテキスト、初期状態を設定:', currentContext);
       
       const initialState = {
         tempFilters: {},
@@ -336,20 +337,20 @@ export const FilterPopup = ({
     
     prevAccountTypeContext.current = currentContext;
     
-  }, [accountTypeContext]);
+  }, [accountTypeContext]); // ★★★ 他の依存配列を削除
 
   // 既存の初期化処理を条件付きに変更
   useEffect(() => {
-    console.log('[DEBUG] isOpen useEffect実行:', {
-      isOpen,
-      prevAccountTypeContext: prevAccountTypeContext.current,
-      currentFilters,
-      timestamp: new Date().toISOString()
-    });
+    // ★★★ デバッグログを無効化 ★★★
+    // console.log('[DEBUG] isOpen useEffect実行:', {
+    //   isOpen,
+    //   prevAccountTypeContext: prevAccountTypeContext.current,
+    //   currentFilters,
+    //   timestamp: new Date().toISOString()
+    // });
 
     if (isOpen && !prevAccountTypeContext.current) {
-      // 初回オープン時のみ既存の初期化処理を実行
-      console.log('[DEBUG] 初回オープン時の初期化処理実行');
+      // console.log('[DEBUG] 初回オープン時の初期化処理実行');
       
       setTempFilters({...currentFilters});
       
@@ -413,6 +414,8 @@ export const FilterPopup = ({
           return getInfluencerAccountTypes();
         case 'corporate':
           return getCorporateAccountTypes();
+        case 'affiliate':
+          return getAffiliateAccountTypes();
         case 'all':
         default:
           return accountTypes.length > 0 ? accountTypes : getAllAccountTypes();
@@ -596,7 +599,7 @@ export const FilterPopup = ({
 
 
   useEffect(() => {
-    console.log('[pos]', popupPosition);   // 位置が変わるたびに確認
+    // console.log('[pos]', popupPosition);
   }, [popupPosition]);
   // 外部クリックでポップアップを閉じる
   useEffect(() => {

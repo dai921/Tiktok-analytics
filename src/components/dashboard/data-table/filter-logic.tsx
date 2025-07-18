@@ -72,8 +72,9 @@ export function useFilterLogic(
     setPrimarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
     setSecondarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
   },
-  initialPrOnly = false, // PR状態の初期値
-  initialCorporateOnly = false // 運用代行用状態の初期値
+  initialPrOnly = false,
+  initialCorporateOnly = false,
+  externalFilters: Record<string, FilterQuery> = {} // ← 外部フィルター状態を追加
 ): [FilterState, FilterHandlers] {
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({});
@@ -81,6 +82,30 @@ export function useFilterLogic(
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
   const [isPrOnly, setIsPrOnly] = useState(initialPrOnly);
   const [isCorporateOnly, setIsCorporateOnly] = useState(initialCorporateOnly);
+
+  // ★ 外部フィルター状態との同期を追加
+  useEffect(() => {
+    // 外部フィルターが変更された場合、内部状態を同期
+    const convertedFilters: Record<string, FilterValue> = {};
+    
+    Object.entries(externalFilters).forEach(([key, filterQuery]) => {
+      convertedFilters[key] = {
+        field: filterQuery.field,
+        type: filterQuery.type,
+        value: filterQuery.value,
+        active: filterQuery.active,
+        ...(filterQuery.comparison && { comparison: filterQuery.comparison }),
+        ...(filterQuery.isPrimarySort !== undefined && { isPrimarySort: filterQuery.isPrimarySort }),
+        ...(filterQuery.sortField && { sortField: filterQuery.sortField }),
+        ...(filterQuery.isHashtag && { isHashtag: filterQuery.isHashtag }),
+        ...(filterQuery.timestamp !== undefined && { timestamp: filterQuery.timestamp })
+      };
+    });
+    
+    setColumnFilters(convertedFilters);
+    setCurrentFilters(externalFilters);
+    setHasActiveFilters(Object.keys(externalFilters).length > 0);
+  }, [externalFilters]);
 
   // 初期値が変更された場合の同期
   useEffect(() => {
