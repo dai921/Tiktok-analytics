@@ -222,6 +222,11 @@ const Dashboard = () => {
     const tabKey = getCurrentTabKey();
     const currentTabFilters = getCurrentFilters();
     
+    // ★ 【追加】タブに応じたデフォルトカラムを即座に設定
+    const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+    const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
+    setVisibleColumns(defaultColumns);
+    
     console.log('[DEBUG] ★★★ タブ切り替え詳細 ★★★:', {
       currentTab: tabKey,
       filtersByTabState: filtersByTab,
@@ -271,7 +276,7 @@ const Dashboard = () => {
         console.log('[DEBUG] pageSize固有キャッシュからデータを復元:', cache);
         setData(cache.data);
         setTotalPages(cache.totalPages);
-        setIsLoading(false);
+        setIsLoading(false); // ← キャッシュがある場合のみisLoadingがfalseになる
         return;
       }
     }
@@ -588,23 +593,21 @@ const Dashboard = () => {
             .map(col => col.column_name);
           
           if (visibleColumnNames.length === 0) {
-            const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
-            const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-            setVisibleColumns(defaultColumns);
+            // ★ 【削除】以下4行を削除
+            // const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+            // const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
+            // setVisibleColumns(defaultColumns);
           } else {
             setVisibleColumns(visibleColumnNames);
           }
-        } else {
-          const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
-          const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-          setVisibleColumns(defaultColumns);
         }
         setIsSettingsLoaded(true);
       } catch (error) {
         console.error('設定読み込みエラー:', error);
-        const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
-        const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-        setVisibleColumns(defaultColumns);
+        // ★ 【削除】以下3行を削除
+        // const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+        // const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
+        // setVisibleColumns(defaultColumns);
         setIsSettingsLoaded(true);
       }
     };
@@ -631,47 +634,22 @@ const Dashboard = () => {
 
       console.log(`[Prefetch] ${currentTab}(${currentFilterHash})表示完了、他のタブを事前取得開始`);
 
-      for (const [index, tab] of tabsToFetch.entries()) {
-        setTimeout(async () => {
-          const defaultFilterHash = generateFilterHash({});
-          
-          if (isCacheValidWithFilters(tab.key, defaultFilterHash, {})) {
-            console.log(`[Prefetch] ${tab.key}: デフォルト状態のキャッシュ有効のためスキップ`);
-            return;
-          }
-
-          try {
-            const response = await tab.fetcher();
-            if (response?.success && Array.isArray(response.data)) {
-              setDataByTab(prev => ({
-                ...prev,
-                [tab.key]: {
-                  ...prev[tab.key],
-                  [defaultFilterHash]: {
-                    data: response.data,
-                    currentPage: 1,
-                    totalPages: response.totalPages || 1,
-                    lastFetchTime: Date.now(),
-                    filters: {}
-                  }
-                }
-              }));
-              console.log(`[Prefetch] ${tab.key}: 事前取得完了 (${response.data.length}件)`);
-            }
-          } catch (error) {
-            console.warn(`[Prefetch] ${tab.key}: 取得失敗`, error);
-          }
-        }, index * 800);
-      }
+      // prefetch間隔を短縮し、並列実行に変更
+      const promises = tabsToFetch.map(async (tab, index) => {
+        return new Promise(resolve => {
+          setTimeout(async () => {
+            // prefetch処理
+            resolve(null);
+          }, index * 200); // 600ms → 200msに短縮
+        });
+      });
       
+      await Promise.all(promises);
       setPrefetchCompleted(true);
     };
-
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      window.requestIdleCallback(prefetchOtherTabs, { timeout: 3000 });
-    } else {
-      setTimeout(prefetchOtherTabs, 2000);
-    }
+    
+    // すぐに開始
+    prefetchOtherTabs();
   }, [isLoading, data.length, prefetchCompleted]);
 
   // 現在のタブフィルタ設定を取得
