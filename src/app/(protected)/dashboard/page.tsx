@@ -140,6 +140,11 @@ const Dashboard = () => {
     };
   };
 
+  // ★ キャッシュキー生成時にpageSizeも含める
+  const generateCacheKey = (filterHash: string, page: number, size: number) => {
+    return `${filterHash}_page${page}_size${size}`;
+  };
+
   // ★ fetchData関数を定義
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
     const tabKey = getCurrentTabKey();
@@ -183,11 +188,12 @@ const Dashboard = () => {
         setCurrentPage(newCurrentPage);
         setTotalPages(newTotalPages);
 
+        // キャッシュ更新時にpageSizeも含める
         setDataByTab(prev => ({
           ...prev,
           [tabKey]: {
             ...prev[tabKey],
-            [`${filterHash}_page${newCurrentPage}`]: { // ★ ページ番号を含むキー
+            [generateCacheKey(filterHash, newCurrentPage, pageSize)]: { // ★ pageSize込みのキー
               data: newData,
               currentPage: newCurrentPage,
               totalPages: newTotalPages,
@@ -248,28 +254,29 @@ const Dashboard = () => {
       filterHash,
       filters: filters,
       filtersCount: Object.keys(filters).length,
-      currentPage
+      currentPage,
+      pageSize // ← pageSizeもログに追加
     });
 
-    // ★ ページ番号を含むキャッシュキーを生成
-    const cacheKey = `${filterHash}_page${currentPage}`;
+    // ★ pageSize込みのキャッシュキーを生成
+    const cacheKey = generateCacheKey(filterHash, currentPage, pageSize);
     
-    // ★ ページ固有のキャッシュをチェック
+    // ★ pageSize固有のキャッシュをチェック
     if (dataByTab[tabKey]?.[cacheKey]) {
       const cache = dataByTab[tabKey][cacheKey];
       const now = Date.now();
       const isExpired = now - cache.lastFetchTime > CACHE_DURATION;
       
       if (!isExpired) {
-        console.log('[DEBUG] ページ固有キャッシュからデータを復元:', cache);
+        console.log('[DEBUG] pageSize固有キャッシュからデータを復元:', cache);
         setData(cache.data);
         setTotalPages(cache.totalPages);
         setIsLoading(false);
-        return; // ★ currentPageは更新しない
+        return;
       }
     }
 
-    // APIコール（現在のページ番号を使用）
+    // APIコール（現在のページ番号とpageSizeを使用）
     console.log('[DEBUG] 新しいデータを取得');
     if (Object.keys(filters).length === 0) {
       fetchData(currentPage, {});
@@ -279,7 +286,7 @@ const Dashboard = () => {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [filters, currentPage]);
+  }, [filters, currentPage, pageSize]); // ★ pageSizeも依存配列に追加
 
   // ★ updateTabFiltersを先に定義
   const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>, targetTabKey?: string) => {
