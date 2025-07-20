@@ -187,7 +187,7 @@ const Dashboard = () => {
           ...prev,
           [tabKey]: {
             ...prev[tabKey],
-            [filterHash]: {
+            [`${filterHash}_page${newCurrentPage}`]: { // ★ ページ番号を含むキー
               data: newData,
               currentPage: newCurrentPage,
               totalPages: newTotalPages,
@@ -238,7 +238,7 @@ const Dashboard = () => {
     setCurrentPage(1); // ページもリセット
   }, [isCorporateOnly, isInfluencerOnly, isPrOnly]);
 
-  // ★ フィルタ変更専用のuseEffect
+  // ★ フィルタ変更専用のuseEffect（修正版）
   useEffect(() => {
     const tabKey = getCurrentTabKey();
     const filterHash = generateFilterHash(filters);
@@ -247,31 +247,39 @@ const Dashboard = () => {
       tabKey,
       filterHash,
       filters: filters,
-      filtersCount: Object.keys(filters).length
+      filtersCount: Object.keys(filters).length,
+      currentPage
     });
 
-    // キャッシュチェック
-    if (isCacheValidWithFilters(tabKey, filterHash, filters)) {
-      const cache = dataByTab[tabKey][filterHash];
-      console.log('[DEBUG] キャッシュからデータを復元:', cache);
-      setData(cache.data);
-      setCurrentPage(cache.currentPage);
-      setTotalPages(cache.totalPages);
-      setIsLoading(false);
-      return;
+    // ★ ページ番号を含むキャッシュキーを生成
+    const cacheKey = `${filterHash}_page${currentPage}`;
+    
+    // ★ ページ固有のキャッシュをチェック
+    if (dataByTab[tabKey]?.[cacheKey]) {
+      const cache = dataByTab[tabKey][cacheKey];
+      const now = Date.now();
+      const isExpired = now - cache.lastFetchTime > CACHE_DURATION;
+      
+      if (!isExpired) {
+        console.log('[DEBUG] ページ固有キャッシュからデータを復元:', cache);
+        setData(cache.data);
+        setTotalPages(cache.totalPages);
+        setIsLoading(false);
+        return; // ★ currentPageは更新しない
+      }
     }
 
-    // APIコール
+    // APIコール（現在のページ番号を使用）
     console.log('[DEBUG] 新しいデータを取得');
     if (Object.keys(filters).length === 0) {
-      fetchData(1, {});
+      fetchData(currentPage, {});
     } else {
       const timer = setTimeout(() => {
-        fetchData(1, filters);
+        fetchData(currentPage, filters);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [filters]); // ★ filtersのみに依存
+  }, [filters, currentPage]);
 
   // ★ updateTabFiltersを先に定義
   const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>, targetTabKey?: string) => {
