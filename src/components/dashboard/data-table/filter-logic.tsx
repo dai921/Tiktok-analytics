@@ -85,27 +85,31 @@ export function useFilterLogic(
 
   // ★ 外部フィルター状態との同期を追加
   useEffect(() => {
-    // 外部フィルターが変更された場合、内部状態を同期
-    const convertedFilters: Record<string, FilterValue> = {};
+    // ★ 深い比較で実際に変更があった場合のみ更新
+    const hasChanges = JSON.stringify(externalFilters) !== JSON.stringify(currentFilters);
     
-    Object.entries(externalFilters).forEach(([key, filterQuery]) => {
-      convertedFilters[key] = {
-        field: filterQuery.field,
-        type: filterQuery.type,
-        value: filterQuery.value,
-        active: filterQuery.active,
-        ...(filterQuery.comparison && { comparison: filterQuery.comparison }),
-        ...(filterQuery.isPrimarySort !== undefined && { isPrimarySort: filterQuery.isPrimarySort }),
-        ...(filterQuery.sortField && { sortField: filterQuery.sortField }),
-        ...(filterQuery.isHashtag && { isHashtag: filterQuery.isHashtag }),
-        ...(filterQuery.timestamp !== undefined && { timestamp: filterQuery.timestamp })
-      };
-    });
-    
-    setColumnFilters(convertedFilters);
-    setCurrentFilters(externalFilters);
-    setHasActiveFilters(Object.keys(externalFilters).length > 0);
-  }, [externalFilters]);
+    if (hasChanges) {
+      const convertedFilters: Record<string, FilterValue> = {};
+      
+      Object.entries(externalFilters).forEach(([key, filterQuery]) => {
+        convertedFilters[key] = {
+          field: filterQuery.field,
+          type: filterQuery.type,
+          value: filterQuery.value,
+          active: filterQuery.active,
+          ...(filterQuery.comparison && { comparison: filterQuery.comparison }),
+          ...(filterQuery.isPrimarySort !== undefined && { isPrimarySort: filterQuery.isPrimarySort }),
+          ...(filterQuery.sortField && { sortField: filterQuery.sortField }),
+          ...(filterQuery.isHashtag && { isHashtag: filterQuery.isHashtag }),
+          ...(filterQuery.timestamp !== undefined && { timestamp: filterQuery.timestamp })
+        };
+      });
+      
+      setColumnFilters(convertedFilters);
+      setCurrentFilters(externalFilters);
+      setHasActiveFilters(Object.keys(externalFilters).length > 0);
+    }
+  }, [externalFilters]); // ★ currentFiltersを依存配列から削除
 
   // 初期値が変更された場合の同期
   useEffect(() => {
