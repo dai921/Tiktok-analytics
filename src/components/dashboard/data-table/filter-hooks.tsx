@@ -3,7 +3,18 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { FilterValue, FilterQuery } from '@/types/dashboard';
 import { getFilterOptions } from '@/lib/api';
 
-export const useFilterOptions = (currentFilters: Record<string, FilterQuery>) => {
+export const useFilterOptions = (
+  currentFilters: Record<string, FilterQuery>,
+  onFilterOptionsUpdate?: (options: {
+    categories: string[];
+    accounts: string[];
+    hashtags: string[];
+    music: string[];
+    products: string[];
+    accountTypes: string[];
+    isLoading: boolean;
+  }) => void
+) => {
   const [categoryList, setCategoryList] = useState<string[]>([]);
   const [accountList, setAccountList] = useState<string[]>([]);
   const [hashtagList, setHashtagList] = useState<string[]>([]);
@@ -39,6 +50,19 @@ export const useFilterOptions = (currentFilters: Record<string, FilterQuery>) =>
           setAccountList(result.accounts);
           setHashtagList(result.hashtags);
           setAudioTitleList(result.music);
+          
+          // ★ 修正: 型安全に通知
+          if (onFilterOptionsUpdate) {
+            onFilterOptionsUpdate({
+              categories: result.categories,
+              accounts: result.accounts,
+              hashtags: result.hashtags,
+              music: result.music,
+              products: result.products || [], // ★ 修正: 必須フィールドとして扱う
+              accountTypes: result.accountTypes || [], // ★ 修正: 必須フィールドとして扱う
+              isLoading: false
+            });
+          }
         } else {
           console.error('❌ カテゴリデータ取得失敗:', result.error);
         }
@@ -50,7 +74,7 @@ export const useFilterOptions = (currentFilters: Record<string, FilterQuery>) =>
     };
 
     loadInitialOptions();
-  }, []); // 空の依存配列で初回のみ実行
+  }, [onFilterOptionsUpdate]); // 空の依存配列で初回のみ実行
 
   // ★ フィルター条件変更時の処理（デバウンス付き）
   const loadFilteredOptions = useCallback(async (filters: Record<string, FilterQuery>) => {
@@ -75,13 +99,26 @@ export const useFilterOptions = (currentFilters: Record<string, FilterQuery>) =>
         setAccountList(result.accounts);
         setHashtagList(result.hashtags);
         setAudioTitleList(result.music);
+        
+        // ★ 修正: 親コンポーネントにフィルターオプションを通知
+        if (onFilterOptionsUpdate) {
+          onFilterOptionsUpdate({
+            categories: result.categories,
+            accounts: result.accounts,
+            hashtags: result.hashtags,
+            music: result.music,
+            products: result.products || [], // ★ 修正: 必須フィールドとして扱う
+            accountTypes: result.accountTypes || [], // ★ 修正: 必須フィールドとして扱う
+            isLoading: false
+          });
+        }
       }
     } catch (error) {
       console.error('❌ フィルターデータ取得エラー:', error);
     } finally {
       setIsLoadingFilterOptions(false);
     }
-  }, []);
+  }, [onFilterOptionsUpdate]);
 
   // ★ 手動でフィルターオプションを更新する関数
   const refreshFilterOptions = useCallback((filters: Record<string, FilterQuery>) => {

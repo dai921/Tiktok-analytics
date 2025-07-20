@@ -49,12 +49,25 @@ interface DataTableProps {
     sort: string[];
   };
   currentTabFilters?: Record<string, FilterQuery>;
-  // ★ フィルタ用データを追加
-  filterData?: {
-    products: any[];
-    productCategories: Record<string, string[]>;
+  
+  // ★ 修正: 型の一貫性を保つ
+  onFilterOptionsUpdate?: (options: {
+    categories: string[];
+    accounts: string[];
+    hashtags: string[];
+    music: string[];
+    products: string[];
     accountTypes: string[];
-    isLoadingFilterData: boolean;
+    isLoading: boolean;
+  }) => void;
+  filterOptions?: {
+    categories: string[];
+    accounts: string[];
+    hashtags: string[];
+    music: string[];
+    products: string[];
+    accountTypes: string[];
+    isLoading: boolean;
   };
 }
 
@@ -78,12 +91,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     onColumnSettingsChange,
     tabFilterFields,
     currentTabFilters = {},
-    // ★ フィルタ用データを追加
-    filterData = {
+    onFilterOptionsUpdate, // ★ 追加
+    filterOptions = {      // ★ 追加: デフォルト値を設定
+      categories: [],
+      accounts: [],
+      hashtags: [],
+      music: [],
       products: [],
-      productCategories: {},
       accountTypes: [],
-      isLoadingFilterData: false
+      isLoading: false
     }
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
@@ -154,6 +170,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [isFilterPopupOpen, setFilterPopupOpenState] = useState(false);
     
     // カスタムフックからフィルターオプションを取得
+    // ★ 修正: onFilterOptionsUpdateを渡す
     const {
       categoryList,
       accountList,
@@ -161,10 +178,23 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       audioTitleList,
       isLoadingFilterOptions,
       getFilteredOptions
-    } = useFilterOptions(currentFilters);
+    } = useFilterOptions(currentFilters, onFilterOptionsUpdate);
 
     const { productCategories } = useProductCategories();
 
+    // ★ 追加: productCategoriesを適切な形式に変換
+    const convertedProductCategories = useMemo(() => {
+      const converted: Record<string, string[]> = {};
+      
+      Object.entries(productCategories).forEach(([productName, categoryName]) => {
+        if (!converted[categoryName]) {
+          converted[categoryName] = [];
+        }
+        converted[categoryName].push(productName);
+      });
+      
+      return converted;
+    }, [productCategories]);
 
     // カラム定義を取得
     const columns = useMemo(() => {
@@ -508,11 +538,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             categories={categoryList}
             accounts={accountList}
             hashtags={hashtagList}
-            // ★ 事前取得した商品データを渡す
-            products={filterData.products.map(p => p.name)}
-            productCategories={filterData.productCategories}
-            accountTypes={filterData.accountTypes}
-            isLoading={isLoadingFilterOptions || filterData.isLoadingFilterData}
+            // ★ 修正: filterOptionsはデフォルト値があるのでオプショナルチェイニング不要
+            products={filterOptions.products}
+            // ★ 修正: 変換されたproductCategoriesを渡す
+            productCategories={convertedProductCategories}
+            accountTypes={filterOptions.accountTypes}
+            isLoading={isLoadingFilterOptions || filterOptions.isLoading}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
             accountTypeContext={getAccountTypeContext()}
