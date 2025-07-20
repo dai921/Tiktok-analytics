@@ -66,17 +66,11 @@ async def get_influencer_videos(
 
     try:
         # 基本クエリ構築 - frontend_dataテーブルを使用
-        query = build_video_query("frontend_data")
+        query = build_video_query("frontend_influencer_data")
         params = {}
         where_clauses = []
-
-        # インフルエンサー系動画のフィルタリング条件を追加
-        # is_pr = 0 (非PR動画) かつ個人アカウントやエンターテイメント系
-        where_clauses.append("(is_pr = 0 OR is_pr IS NULL)")
-        where_clauses.append("(account_type IS NOT NULL AND account_type != '' AND (account_type LIKE '%個人%' OR account_type LIKE '%エンタメ%' OR account_type LIKE '%インフルエンサー%' OR account_type LIKE '%クリエイター%'))")
-
         # フィルター適用
-        query, params = apply_filters(query, params, where_clauses, request, "frontend_data")
+        query, params = apply_filters(query, params, where_clauses, request, "frontend_influencer_data")
 
         # ソート適用
         query = apply_sorting(query, sort_by, sort_order, sort_by_secondary, sort_order_secondary)
@@ -104,13 +98,13 @@ async def get_influencer_videos(
         total_result = fetch_one(count_query, params)
         total = total_result["total"] if total_result else 0
 
-        # 最新投稿日を取得 - frontend_dataテーブルを使用
-        latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_data WHERE (is_pr = 0 OR is_pr IS NULL) AND (account_type IS NOT NULL AND account_type != '' AND (account_type LIKE '%個人%' OR account_type LIKE '%エンタメ%' OR account_type LIKE '%インフルエンサー%' OR account_type LIKE '%クリエイター%'))")
-        global_latest_date = latest_date_result["max_date"] if latest_date_result else None
+        # ❌ 削除: 最終更新日取得処理（101-107行）
+        # latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_influencer_data")
+        # global_latest_date = latest_date_result["max_date"] if latest_date_result else None
         
-        filtered_latest_query = f"SELECT MAX(created_at) as max_date FROM ({base_query}) as latest_query"
-        filtered_latest_result = fetch_one(filtered_latest_query, params)
-        filtered_latest_date = filtered_latest_result["max_date"] if filtered_latest_result else None
+        # filtered_latest_query = f"SELECT MAX(created_at) as max_date FROM ({base_query}) as latest_query"
+        # filtered_latest_result = fetch_one(filtered_latest_query, params)
+        # filtered_latest_date = filtered_latest_result["max_date"] if filtered_latest_result else None
 
         logger.info(f"インフルエンサー動画データ取得完了: total={total}, page={page}")
 
@@ -119,12 +113,13 @@ async def get_influencer_videos(
             "total": total,
             "currentPage": page,
             "totalPages": (total + limit - 1) // limit if limit > 0 else 1,
-            "success": True,
-            "lastUpdated": {
-                "date": filtered_latest_date.strftime("%y/%m/%d") if filtered_latest_date else None,
-                "isFiltered": bool(where_clauses),
-                "globalLastUpdated": global_latest_date.strftime("%y/%m/%d") if global_latest_date else None
-            }
+            "success": True
+            # ❌ 削除: lastUpdated フィールド（113-117行）
+            # "lastUpdated": {
+            #     "date": filtered_latest_date.strftime("%y/%m/%d") if filtered_latest_date else None,
+            #     "isFiltered": bool(where_clauses),
+            #     "globalLastUpdated": global_latest_date.strftime("%y/%m/%d") if global_latest_date else None
+            # }
         }
 
     except Exception as e:

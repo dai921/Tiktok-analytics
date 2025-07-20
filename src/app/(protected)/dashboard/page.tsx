@@ -56,8 +56,8 @@ const Dashboard = () => {
     isLoadingFilterData: true
   });
 
-  // ★ prefetch状態を先に定義
-  const [prefetchCompleted, setPrefetchCompleted] = useState(false);
+  // ★ prefetch状態を削除
+  // const [prefetchCompleted, setPrefetchCompleted] = useState(false);
 
   // タブごとの独立したフィルター状態
   const [filtersByTab, setFiltersByTab] = useState<Record<string, Record<string, FilterQuery>>>({
@@ -551,7 +551,8 @@ const Dashboard = () => {
       affiliate: {}
     });
     
-    setPrefetchCompleted(false);
+    // ★ prefetch関連の状態更新を削除
+    // setPrefetchCompleted(false);
     setIsPrOnly(false);
     setIsCorporateOnly(false);
     setIsInfluencerOnly(false);
@@ -623,42 +624,13 @@ const Dashboard = () => {
     loadSettings();
   }, []);
 
-  // ★ prefetch機能
-  useEffect(() => {
-    if (prefetchCompleted || isLoading || data.length === 0) {
-      return;
-    }
-
-    const currentTab = getCurrentTabKey();
-    const currentFilterHash = generateFilterHash(filters);
-    
-    const prefetchOtherTabs = async () => {
-      const tabsToFetch = [
-        { key: 'all', fetcher: () => getDbData(1, {}, pageSize) },
-        { key: 'affiliate', fetcher: () => getAffiliateData(1, {}, pageSize) },
-        { key: 'corporate', fetcher: () => getCorporateData(1, {}, pageSize) },
-        { key: 'influencer', fetcher: () => getInfluencerData(1, {}, pageSize) }
-      ].filter(tab => tab.key !== currentTab);
-
-      console.log(`[Prefetch] ${currentTab}(${currentFilterHash})表示完了、他のタブを事前取得開始`);
-
-      // prefetch間隔を短縮し、並列実行に変更
-      const promises = tabsToFetch.map(async (tab, index) => {
-        return new Promise(resolve => {
-          setTimeout(async () => {
-            // prefetch処理
-            resolve(null);
-          }, index * 200); // 600ms → 200msに短縮
-        });
-      });
-      
-      await Promise.all(promises);
-      setPrefetchCompleted(true);
-    };
-    
-    // すぐに開始
-    prefetchOtherTabs();
-  }, [isLoading, data.length, prefetchCompleted]);
+  // ★ prefetch機能のuseEffectを削除
+  // useEffect(() => {
+  //   if (prefetchCompleted || isLoading || data.length === 0) {
+  //     return;
+  //   }
+  //   // ... prefetch処理 ...
+  // }, [isLoading, data.length, prefetchCompleted]);
 
   // ★ フィルタ用データの事前取得
   useEffect(() => {
