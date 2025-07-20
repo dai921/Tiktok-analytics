@@ -28,6 +28,9 @@ interface FilterPopupProps {
   accounts: string[]
   hashtags: string[]
   products: string[]
+  // ★ 商品カテゴリとアカウントタイプを追加
+  productCategories?: Record<string, string[]>
+  accountTypes?: string[]
   isLoading: boolean
   onClearAll: () => void
   tabFilterFields?: {
@@ -37,7 +40,7 @@ interface FilterPopupProps {
     text: string[];
     sort: string[];
   };
-  accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all' // 追加
+  accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
 }
 
 // フィルターの型定義
@@ -200,6 +203,9 @@ export const FilterPopup = ({
   accounts,
   hashtags,
   products: productsList,
+  // ★ 新しいpropsを追加
+  productCategories = {},
+  accountTypes = [],
   isLoading,
   onClearAll,
   tabFilterFields,
@@ -220,11 +226,6 @@ export const FilterPopup = ({
   const [selectedAccountCategories, setSelectedAccountCategories] = useState<string[]>([])
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
-
-  // ダッシュボードページ
-  const [products, setProducts] = useState<any[]>([])
-  const [productCategories, setProductCategories] = useState<Record<string, string[]>>({})
-  const [accountTypes, setAccountTypes] = useState<string[]>([])
 
   // デバッグ用: currentFiltersの変更を追跡 - 無効化
   // useEffect(() => {
@@ -331,41 +332,6 @@ export const FilterPopup = ({
     }
   }, [isOpen, currentFilters]); // ★★★ currentFiltersを依存配列に追加 ★★★
 
-  // データ取得
-  useEffect(() => {
-    // 商品データを取得
-    const fetchProductData = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/api/products`)
-        const data = await response.json()
-        
-        if (data.success) {
-          setProducts(data.data || [])
-          setProductCategories(data.categories || {})
-        }
-      } catch (error) {
-        console.error('商品データ取得エラー:', error)
-      }
-    }
-    
-    // アカウントタイプを取得
-    const fetchAccountTypes = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/api/account-types`)
-        const data = await response.json()
-        
-        if (data.success) {
-          setAccountTypes(data.data || [])
-        }
-      } catch (error) {
-        console.error('アカウントタイプ取得エラー:', error)
-      }
-    }
-    
-    fetchProductData()
-    fetchAccountTypes()
-  }, [])
-
   // フィルターフィールドの定義を動的に生成
   const getFilterFields = () => {
     // アカウントタイプの選択肢を決定
@@ -379,6 +345,7 @@ export const FilterPopup = ({
           return getAffiliateAccountTypes();
         case 'all':
         default:
+          // ★ propsから受け取ったaccountTypesを使用
           return accountTypes.length > 0 ? accountTypes : getAllAccountTypes();
       }
     };
@@ -404,9 +371,12 @@ export const FilterPopup = ({
       categories: [
         { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect' as FilterType, options: ['video', 'carousel'] },
         { id: 'category', label: 'PR動画ジャンル', type: 'multiselect' as FilterType, options: categories },
-        { id: 'product', label: '商品', type: 'multiselect' as FilterType, options: products.length > 0 
-          ? products.map(p => p.name) 
-          : productsList
+        { 
+          id: 'product', 
+          label: '商品', 
+          type: 'multiselect' as FilterType, 
+          // ★ propsから受け取った商品リストを使用
+          options: productsList
         },
         { 
           id: 'account_type', 
@@ -1310,7 +1280,9 @@ export const FilterPopup = ({
             </div>
           ))}
           {Object.keys(productCategories).length === 0 && (
-            <div className="text-sm text-gray-500 py-2 text-center">商品情報がありません</div>
+            <div className="text-sm text-gray-500 py-2 text-center">
+              {isLoading ? '商品情報を読み込み中...' : '商品情報がありません'}
+            </div>
           )}
         </div>
       </div>

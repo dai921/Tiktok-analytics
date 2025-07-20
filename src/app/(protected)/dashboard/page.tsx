@@ -48,6 +48,14 @@ const Dashboard = () => {
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
 
+  // ★ フィルタポップアップ用のデータ状態を追加
+  const [filterData, setFilterData] = useState({
+    products: [] as any[],
+    productCategories: {} as Record<string, string[]>,
+    accountTypes: [] as string[],
+    isLoadingFilterData: true
+  });
+
   // ★ prefetch状態を先に定義
   const [prefetchCompleted, setPrefetchCompleted] = useState(false);
 
@@ -652,6 +660,43 @@ const Dashboard = () => {
     prefetchOtherTabs();
   }, [isLoading, data.length, prefetchCompleted]);
 
+  // ★ フィルタ用データの事前取得
+  useEffect(() => {
+    const fetchFilterData = async () => {
+      try {
+        setFilterData(prev => ({ ...prev, isLoadingFilterData: true }));
+        
+        // 並列でAPIコールを実行
+        const [productsResponse, accountTypesResponse] = await Promise.all([
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`),
+          fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/account-types`)
+        ]);
+
+        const [productsData, accountTypesData] = await Promise.all([
+          productsResponse.json(),
+          accountTypesResponse.json()
+        ]);
+
+        setFilterData({
+          products: productsData.success ? (productsData.data || []) : [],
+          productCategories: productsData.success ? (productsData.categories || {}) : {},
+          accountTypes: accountTypesData.success ? (accountTypesData.data || []) : [],
+          isLoadingFilterData: false
+        });
+
+        console.log('フィルタ用データ取得完了:', {
+          商品数: productsData.success ? (productsData.data || []).length : 0,
+          アカウントタイプ数: accountTypesData.success ? (accountTypesData.data || []).length : 0
+        });
+      } catch (error) {
+        console.error('フィルタ用データ取得エラー:', error);
+        setFilterData(prev => ({ ...prev, isLoadingFilterData: false }));
+      }
+    };
+
+    fetchFilterData();
+  }, []);
+
   // 現在のタブフィルタ設定を取得
   const currentTabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
   const currentTabFilterFields = getTabFilterFields(currentTabType);
@@ -694,6 +739,8 @@ const Dashboard = () => {
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
           tabFilterFields={currentTabFilterFields}
+          // ★ フィルタ用データを追加
+          filterData={filterData}
         />
       </main>
     </div>

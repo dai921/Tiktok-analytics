@@ -48,7 +48,14 @@ interface DataTableProps {
     text: string[];
     sort: string[];
   };
-  currentTabFilters?: Record<string, FilterQuery>; // ← 追加
+  currentTabFilters?: Record<string, FilterQuery>;
+  // ★ フィルタ用データを追加
+  filterData?: {
+    products: any[];
+    productCategories: Record<string, string[]>;
+    accountTypes: string[];
+    isLoadingFilterData: boolean;
+  };
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -70,7 +77,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     defaultVisibleColumns,
     onColumnSettingsChange,
     tabFilterFields,
-    currentTabFilters = {} // ← 追加
+    currentTabFilters = {},
+    // ★ フィルタ用データを追加
+    filterData = {
+      products: [],
+      productCategories: {},
+      accountTypes: [],
+      isLoadingFilterData: false
+    }
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -484,7 +498,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         </div>
 
         {/* Portalを使用してDOM階層の上位に表示 */}
-        {isFilterPopupOpen && createPortal(
+        {createPortal(
           <FilterPopup
             isOpen={isFilterPopupOpen}
             onClose={() => setFilterPopupOpenState(false)}
@@ -494,8 +508,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             categories={categoryList}
             accounts={accountList}
             hashtags={hashtagList}
-            products={[]}
-            isLoading={isLoadingFilterOptions}
+            // ★ 事前取得した商品データを渡す
+            products={filterData.products.map(p => p.name)}
+            productCategories={filterData.productCategories}
+            accountTypes={filterData.accountTypes}
+            isLoading={isLoadingFilterOptions || filterData.isLoadingFilterData}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
             accountTypeContext={getAccountTypeContext()}
