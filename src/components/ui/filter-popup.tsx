@@ -226,20 +226,6 @@ export const FilterPopup = ({
   const [productCategories, setProductCategories] = useState<Record<string, string[]>>({})
   const [accountTypes, setAccountTypes] = useState<string[]>([])
 
-  // タブごとのフィルター状態を保存するRef
-  const filterStateByContext = useRef<Record<string, {
-    tempFilters: Record<string, FilterValue>;
-    selectedCategories: string[];
-    selectedContentTypes: string[];
-    selectedAccountCategories: string[];
-    selectedProducts: string[];
-    primarySort: {field: string; direction: 'asc' | 'desc'} | null;
-    secondarySort: {field: string; direction: 'asc' | 'desc'} | null;
-  }>>({});
-  
-  // 前回のaccountTypeContextを追跡
-  const prevAccountTypeContext = useRef<string | undefined>(undefined);
-
   // デバッグ用: currentFiltersの変更を追跡 - 無効化
   // useEffect(() => {
   //   console.log('[DEBUG] currentFilters変更:', {
@@ -266,92 +252,10 @@ export const FilterPopup = ({
   //   });
   // }, [selectedCategories, accountTypeContext]);
 
-  // accountTypeContextが変更されたときにフィルター状態を切り替え
+  // ポップアップが開かれたときにcurrentFiltersから状態を初期化
   useEffect(() => {
-    // ★★★ デバッグログを無効化 ★★★
-    // console.log('[DEBUG] accountTypeContext useEffect実行:', {
-    //   accountTypeContext,
-    //   isOpen,
-    //   previousContext: prevAccountTypeContext.current,
-    //   timestamp: new Date().toISOString()
-    // });
-
-    if (!accountTypeContext) return;
-    
-    const currentContext = accountTypeContext;
-    const previousContext = prevAccountTypeContext.current;
-    
-    // コンテキストが実際に変更された場合のみ処理
-    if (previousContext && previousContext !== currentContext) {
-      // console.log('[DEBUG] コンテキスト切り替え検出:', previousContext, '->', currentContext);
-      
-      // 前のコンテキストの現在の状態を保存
-      filterStateByContext.current[previousContext] = {
-        tempFilters: { ...tempFilters },
-        selectedCategories: [...selectedCategories],
-        selectedContentTypes: [...selectedContentTypes],
-        selectedAccountCategories: [...selectedAccountCategories],
-        selectedProducts: [...selectedProducts],
-        primarySort: primarySort ? { ...primarySort } : null,
-        secondarySort: secondarySort ? { ...secondarySort } : null
-      };
-      
-      // console.log('[DEBUG] 前のコンテキストの状態を保存:', previousContext, filterStateByContext.current[previousContext]);
-    }
-    
-    // 新しいコンテキストの状態を復元または初期化
-    if (filterStateByContext.current[currentContext]) {
-      // console.log('[DEBUG] 保存されていた状態を復元:', currentContext);
-      const savedState = filterStateByContext.current[currentContext];
-      
-      setTempFilters(savedState.tempFilters);
-      setSelectedCategories(savedState.selectedCategories);
-      setSelectedContentTypes(savedState.selectedContentTypes);
-      setSelectedAccountCategories(savedState.selectedAccountCategories);
-      setSelectedProducts(savedState.selectedProducts);
-      setPrimarySort(savedState.primarySort);
-      setSecondarySort(savedState.secondarySort);
-    } else if (previousContext !== currentContext) {
-      // console.log('[DEBUG] 新しいコンテキスト、初期状態を設定:', currentContext);
-      
-      const initialState = {
-        tempFilters: {},
-        selectedCategories: [],
-        selectedContentTypes: ['video', 'carousel'],
-        selectedAccountCategories: [],
-        selectedProducts: [],
-        primarySort: null,
-        secondarySort: null
-      };
-      
-      setTempFilters(initialState.tempFilters);
-      setSelectedCategories(initialState.selectedCategories);
-      setSelectedContentTypes(initialState.selectedContentTypes);
-      setSelectedAccountCategories(initialState.selectedAccountCategories);
-      setSelectedProducts(initialState.selectedProducts);
-      setPrimarySort(initialState.primarySort);
-      setSecondarySort(initialState.secondarySort);
-      
-      filterStateByContext.current[currentContext] = initialState;
-    }
-    
-    prevAccountTypeContext.current = currentContext;
-    
-  }, [accountTypeContext]); // ★★★ 他の依存配列を削除
-
-  // 既存の初期化処理を条件付きに変更
-  useEffect(() => {
-    // ★★★ デバッグログを無効化 ★★★
-    // console.log('[DEBUG] isOpen useEffect実行:', {
-    //   isOpen,
-    //   prevAccountTypeContext: prevAccountTypeContext.current,
-    //   currentFilters,
-    //   timestamp: new Date().toISOString()
-    // });
-
-    if (isOpen && !prevAccountTypeContext.current) {
-      // console.log('[DEBUG] 初回オープン時の初期化処理実行');
-      
+    if (isOpen) {
+      // すべてのフィルターをコピー
       setTempFilters({...currentFilters});
       
       // カテゴリ選択の初期化
@@ -365,10 +269,67 @@ export const FilterPopup = ({
       } else {
         setSelectedCategories([]);
       }
+
+      // コンテンツタイプの選択初期化
+      const contentTypeFilter = currentFilters['content_type'];
+      if (contentTypeFilter && contentTypeFilter.value) {
+        if (typeof contentTypeFilter.value === 'string') {
+          setSelectedContentTypes([contentTypeFilter.value]);
+        } else if (Array.isArray(contentTypeFilter.value)) {
+          setSelectedContentTypes(contentTypeFilter.value as string[]);
+        }
+      } else {
+        setSelectedContentTypes(['video', 'carousel']);
+      }
       
-      // 他の初期化処理も同様に実装...
+      // ソート状態の初期化
+      let foundPrimarySort = false;
+      
+      // currentFiltersからソート情報を抽出
+      Object.entries(currentFilters).forEach(([key, filter]) => {
+        if (filter.type === 'sort') {
+          const field = filter.sortField || filter.field;
+          const direction = filter.value as 'asc' | 'desc';
+          
+          if (filter.isPrimarySort || !foundPrimarySort) {
+            setPrimarySort({field, direction});
+            foundPrimarySort = true;
+          } else {
+            setSecondarySort({field, direction});
+          }
+        }
+      });
+      
+      if (!foundPrimarySort) {
+        setPrimarySort(null);
+        setSecondarySort(null);
+      }
+
+      // アカウントジャンルの選択初期化
+      const accountTypeFilter = currentFilters['account_type'];
+      if (accountTypeFilter && accountTypeFilter.value) {
+        if (typeof accountTypeFilter.value === 'string') {
+          setSelectedAccountCategories([accountTypeFilter.value]);
+        } else if (Array.isArray(accountTypeFilter.value)) {
+          setSelectedAccountCategories(accountTypeFilter.value as string[]);
+        }
+      } else {
+        setSelectedAccountCategories([]);
+      }
+      
+      // 商品の選択初期化
+      const productFilter = currentFilters['product'];
+      if (productFilter && productFilter.value) {
+        if (typeof productFilter.value === 'string') {
+          setSelectedProducts([productFilter.value]);
+        } else if (Array.isArray(productFilter.value)) {
+          setSelectedProducts(productFilter.value as string[]);
+        }
+      } else {
+        setSelectedProducts([]);
+      }
     }
-  }, [isOpen]); // currentFiltersの依存関係は削除済み
+  }, [isOpen, currentFilters]); // ★★★ currentFiltersを依存配列に追加 ★★★
 
   // データ取得
   useEffect(() => {
@@ -729,33 +690,17 @@ export const FilterPopup = ({
     }
   }
 
-  // すべてのフィルターをクリア（現在のコンテキストのみ）
+  // すべてのフィルターをクリア（簡素化）
   const handleClearAllFilters = () => {
-    const clearedState = {
-      tempFilters: {},
-      selectedCategories: [],
-      selectedContentTypes: ['video', 'carousel'],
-      selectedAccountCategories: [],
-      selectedProducts: [],
-      primarySort: null,
-      secondarySort: null
-    };
+    setTempFilters({});
+    setSelectedCategories([]);
+    setSelectedContentTypes(['video', 'carousel']);
+    setSelectedAccountCategories([]);
+    setSelectedProducts([]);
+    setPrimarySort(null);
+    setSecondarySort(null);
     
-    // 現在の状態をクリア
-    setTempFilters(clearedState.tempFilters);
-    setSelectedCategories(clearedState.selectedCategories);
-    setSelectedContentTypes(clearedState.selectedContentTypes);
-    setSelectedAccountCategories(clearedState.selectedAccountCategories);
-    setSelectedProducts(clearedState.selectedProducts);
-    setPrimarySort(clearedState.primarySort);
-    setSecondarySort(clearedState.secondarySort);
-    
-    // 現在のコンテキストの保存状態もクリア
-    if (accountTypeContext) {
-      filterStateByContext.current[accountTypeContext] = clearedState;
-    }
-    
-    console.log('現在のコンテキストのフィルターをクリアしました:', accountTypeContext);
+    console.log('フィルターをクリアしました');
   }
 
   // フィルターを適用

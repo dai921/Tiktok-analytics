@@ -239,6 +239,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       onInfluencerOnlyChange(false);
     }, [onPrOnlyChange, onCorporateOnlyChange, onInfluencerOnlyChange]);
 
+    // フィルターポップアップに渡すaccountTypeContextを動的に生成
+    const getAccountTypeContext = (): 'influencer' | 'corporate' | 'affiliate' | 'all' => {
+      if (isCorporateOnly) return 'corporate';
+      if (isInfluencerOnly) return 'influencer';
+      if (isPrOnly) return 'affiliate';
+      return 'all';
+    };
+
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -490,12 +498,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             isLoading={isLoadingFilterOptions}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
-            accountTypeContext={
-              isPrOnly ? 'affiliate' : 
-              isCorporateOnly ? 'corporate' : 
-              isInfluencerOnly ? 'influencer' : 
-              'all'
-            }
+            accountTypeContext={getAccountTypeContext()}
           />,
           document.body
         )}

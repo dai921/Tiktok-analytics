@@ -448,14 +448,13 @@ export function useFilterLogic(
     const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
     setHasActiveFilters(hasFilters);
     
-    // 親コンポーネントに通知 - 状態のみ渡す（フィルターは適用しない）
+    // 親コンポーネントに通知 - タブ状態は渡さない
     onFilterChange(hasFilters, {
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
-      filters: newCurrentFilters,
-      isPrOnly: isPrOnly, // 状態のみ渡す（フィルターは適用しない）
-      isCorporateOnly: isCorporateOnly // 状態のみ渡す（フィルターは適用しない）
+      filters: newCurrentFilters
+      // ★ isPrOnly, isCorporateOnly を削除
     });
     
     // フィルターポップアップを閉じる

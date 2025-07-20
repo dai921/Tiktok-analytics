@@ -274,11 +274,12 @@ const Dashboard = () => {
   }, [filters]); // ★ filtersのみに依存
 
   // ★ updateTabFiltersを先に定義
-  const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>) => {
-    const currentTab = getCurrentTabKey();
+  const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>, targetTabKey?: string) => {
+    const currentTab = targetTabKey || getCurrentTabKey();
     
     console.log('[DEBUG] updateTabFilters:', {
       currentTab,
+      targetTabKey,
       newFilters: JSON.stringify(newFilters),
       beforeUpdate: JSON.stringify(filtersByTab[currentTab])
     });
@@ -366,9 +367,16 @@ const Dashboard = () => {
     console.log('[DEBUG] ========== handleMultipleFilters開始 ==========');
     console.log('[DEBUG] 受信したmultipleFilters:', incomingFilters);
     
+    // ★ フィルター適用時点での正確なタブ状態を取得
+    const currentTab = getCurrentTabKey();
+    console.log('[DEBUG] フィルター適用時のタブ:', currentTab, {
+      isPrOnly,
+      isCorporateOnly, 
+      isInfluencerOnly
+    });
+    
     // ★ リセット処理
     if (incomingFilters.reset && incomingFilters.reset.type === 'clear') {
-      const currentTab = getCurrentTabKey();
       console.log('[DEBUG] multipleFilters: 全クリア');
       setFiltersByTab(prev => ({
         ...prev,
@@ -416,7 +424,6 @@ const Dashboard = () => {
           };
         });
       
-      const currentTab = getCurrentTabKey();
       setFiltersByTab(prev => ({
         ...prev,
         [currentTab]: newFilterSet
@@ -493,15 +500,16 @@ const Dashboard = () => {
     });
     
     console.log('[DEBUG] 処理後のnewFilters:', newFilters);
+    console.log('[DEBUG] 適用対象タブ:', currentTab);
     
-    // ★ 修正: updateTabFilters関数を使用
-    updateTabFilters(newFilters);
+    // ★ 修正: タブキーを明示的に渡す
+    updateTabFilters(newFilters, currentTab);
     
     // ★ 修正: グローバルフィルターも深いコピーを使用
     setFilters(JSON.parse(JSON.stringify(newFilters)));
     setCurrentPage(1);
     console.log('[DEBUG] ========== handleMultipleFilters終了 ==========');
-  }, [updateTabFilters]);
+  }, [updateTabFilters, isPrOnly, isCorporateOnly, isInfluencerOnly]); // ★ 依存配列にタブ状態を追加
 
   const handleClearAllFilters = useCallback(() => {
     if (tableRef.current && tableRef.current.clearAllFilters) {
