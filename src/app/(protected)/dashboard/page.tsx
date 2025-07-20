@@ -82,10 +82,13 @@ const Dashboard = () => {
   };
 
   const getCurrentFilters = () => {
-    if (isCorporateOnly) return filtersByTab.corporate;
-    if (isInfluencerOnly) return filtersByTab.influencer;
-    if (isPrOnly) return filtersByTab.affiliate;
-    return filtersByTab.all;
+    const baseFilters = isCorporateOnly ? filtersByTab.corporate :
+                       isInfluencerOnly ? filtersByTab.influencer :
+                       isPrOnly ? filtersByTab.affiliate :
+                       filtersByTab.all;
+    
+    // 深いコピーを作成して参照共有を防ぐ
+    return JSON.parse(JSON.stringify(baseFilters));
   };
 
   const generateFilterHash = (filters: Record<string, FilterQuery>) => {
@@ -270,15 +273,37 @@ const Dashboard = () => {
     }
   }, [filters]); // ★ filtersのみに依存
 
+  // ★ updateTabFiltersを先に定義
+  const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>) => {
+    const currentTab = getCurrentTabKey();
+    
+    console.log('[DEBUG] updateTabFilters:', {
+      currentTab,
+      newFilters: JSON.stringify(newFilters),
+      beforeUpdate: JSON.stringify(filtersByTab[currentTab])
+    });
+    
+    setFiltersByTab(prev => {
+      const updated = { ...prev };
+      // 深いコピーを作成して状態汚染を防ぐ
+      updated[currentTab] = JSON.parse(JSON.stringify(newFilters));
+      
+      console.log('[DEBUG] filtersByTab更新後:', {
+        currentTab,
+        updatedFilters: JSON.stringify(updated[currentTab]),
+        allFilters: JSON.stringify(updated.all),
+        corporateFilters: JSON.stringify(updated.corporate)
+      });
+      
+      return updated;
+    });
+  }, []);
+
   // ハンドラー関数群
   const handleFilter = useCallback((newFilter: FilterValue) => {
     if (newFilter.type === 'clear') {
       if (newFilter.field === 'reset') {
-        const currentTab = getCurrentTabKey();
-        setFiltersByTab(prev => ({
-          ...prev,
-          [currentTab]: {}
-        }));
+        updateTabFilters({});
         setFilters({});
         setCurrentPage(1);
         return;
@@ -288,13 +313,8 @@ const Dashboard = () => {
         const updatedFilters = { ...filters };
         delete updatedFilters[newFilter.field];
         
-        const currentTab = getCurrentTabKey();
-        setFiltersByTab(prev => ({
-          ...prev,
-          [currentTab]: updatedFilters
-        }));
-        
-        setFilters(updatedFilters);
+        updateTabFilters(updatedFilters);
+        setFilters(JSON.parse(JSON.stringify(updatedFilters)));
         return;
       }
       return;
@@ -338,15 +358,10 @@ const Dashboard = () => {
       };
     }
     
-    const currentTab = getCurrentTabKey();
-    setFiltersByTab(prev => ({
-      ...prev,
-      [currentTab]: updatedFilters
-    }));
-    
-    setFilters(updatedFilters);
-  }, [filters]);
-
+    updateTabFilters(updatedFilters);
+    setFilters(JSON.parse(JSON.stringify(updatedFilters)));
+  }, [filters, updateTabFilters]);
+  
   const handleMultipleFilters = useCallback((incomingFilters: Record<string, FilterQuery>) => {
     console.log('[DEBUG] ========== handleMultipleFilters開始 ==========');
     console.log('[DEBUG] 受信したmultipleFilters:', incomingFilters);
@@ -479,18 +494,14 @@ const Dashboard = () => {
     
     console.log('[DEBUG] 処理後のnewFilters:', newFilters);
     
-    const currentTab = getCurrentTabKey();
-    setFiltersByTab(prev => ({
-      ...prev,
-      [currentTab]: newFilters
-    }));
+    // ★ 修正: updateTabFilters関数を使用
+    updateTabFilters(newFilters);
     
-    console.log('[DEBUG] setFilters実行前');
-    setFilters(newFilters);
-    console.log('[DEBUG] setFilters実行後');
+    // ★ 修正: グローバルフィルターも深いコピーを使用
+    setFilters(JSON.parse(JSON.stringify(newFilters)));
     setCurrentPage(1);
     console.log('[DEBUG] ========== handleMultipleFilters終了 ==========');
-  }, []);
+  }, [updateTabFilters]);
 
   const handleClearAllFilters = useCallback(() => {
     if (tableRef.current && tableRef.current.clearAllFilters) {
