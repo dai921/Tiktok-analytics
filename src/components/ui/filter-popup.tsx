@@ -218,7 +218,7 @@ export const FilterPopup = ({
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   // コンテンツタイプ用の複数選択状態
-  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['video', 'carousel'])
+  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>([]) // ★ デフォルトを空配列に変更
   // ソート用の状態を追加
   const [primarySort, setPrimarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
   const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
@@ -227,110 +227,101 @@ export const FilterPopup = ({
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
 
-  // デバッグ用: currentFiltersの変更を追跡 - 無効化
-  // useEffect(() => {
-  //   console.log('[DEBUG] currentFilters変更:', {
-  //     accountTypeContext,
-  //     currentFilters,
-  //     timestamp: new Date().toISOString()
-  //   });
-  // }, [currentFilters, accountTypeContext]);
-
-  // デバッグ用: 状態変更を追跡 - 無効化
-  // useEffect(() => {
-  //   console.log('[DEBUG] tempFilters変更:', {
-  //     accountTypeContext,
-  //     tempFilters,
-  //     timestamp: new Date().toISOString()
-  //   });
-  // }, [tempFilters, accountTypeContext]);
-
-  // useEffect(() => {
-  //   console.log('[DEBUG] selectedCategories変更:', {
-  //     accountTypeContext,
-  //     selectedCategories,
-  //     timestamp: new Date().toISOString()
-  //   });
-  // }, [selectedCategories, accountTypeContext]);
-
-  // ポップアップが開かれたときにcurrentFiltersから状態を初期化
+  // ★ フィルター状態を復元（初期化ではなく復元）
+  // ポップアップが開かれたときにcurrentFiltersからフィルター状態を復元
   useEffect(() => {
     if (isOpen) {
+      console.log('[FILTER-POPUP] フィルター状態復元開始:', {
+        currentFilters,
+        accountTypeContext,
+        timestamp: new Date().toISOString()
+      });
+
       // すべてのフィルターをコピー
       setTempFilters({...currentFilters});
       
-      // カテゴリ選択の初期化
+      // カテゴリ選択の復元
       const categoryFilter = currentFilters['category'];
+      let initialCategories: string[] = [];
       if (categoryFilter && categoryFilter.value) {
         if (typeof categoryFilter.value === 'string') {
-          setSelectedCategories([categoryFilter.value]);
+          initialCategories = [categoryFilter.value];
         } else if (Array.isArray(categoryFilter.value)) {
-          setSelectedCategories(categoryFilter.value as string[]);
+          initialCategories = categoryFilter.value as string[];
         }
-      } else {
-        setSelectedCategories([]);
       }
+      setSelectedCategories(initialCategories);
+      console.log('[FILTER-POPUP] カテゴリ復元:', { categoryFilter, initialCategories });
 
-      // コンテンツタイプの選択初期化
+      // コンテンツタイプの選択復元
       const contentTypeFilter = currentFilters['content_type'];
+      let initialContentTypes: string[] = []; // ★ デフォルトを空配列に変更
       if (contentTypeFilter && contentTypeFilter.value) {
         if (typeof contentTypeFilter.value === 'string') {
-          setSelectedContentTypes([contentTypeFilter.value]);
+          initialContentTypes = [contentTypeFilter.value];
         } else if (Array.isArray(contentTypeFilter.value)) {
-          setSelectedContentTypes(contentTypeFilter.value as string[]);
+          initialContentTypes = contentTypeFilter.value as string[];
         }
-      } else {
-        setSelectedContentTypes(['video', 'carousel']);
       }
+      setSelectedContentTypes(initialContentTypes);
+      console.log('[FILTER-POPUP] コンテンツタイプ復元:', { contentTypeFilter, initialContentTypes });
       
-      // ソート状態の初期化
+      // ソート状態の復元
       let foundPrimarySort = false;
+      let newPrimarySort = null;
+      let newSecondarySort = null;
       
       // currentFiltersからソート情報を抽出
       Object.entries(currentFilters).forEach(([key, filter]) => {
+        // ソートフィルターを検出
         if (filter.type === 'sort') {
           const field = filter.sortField || filter.field;
           const direction = filter.value as 'asc' | 'desc';
           
+          // プライマリソートとして設定
           if (filter.isPrimarySort || !foundPrimarySort) {
-            setPrimarySort({field, direction});
+            newPrimarySort = {field, direction};
             foundPrimarySort = true;
           } else {
-            setSecondarySort({field, direction});
+            // セカンダリソート
+            newSecondarySort = {field, direction};
           }
         }
       });
       
-      if (!foundPrimarySort) {
-        setPrimarySort(null);
-        setSecondarySort(null);
-      }
+      setPrimarySort(newPrimarySort);
+      setSecondarySort(newSecondarySort);
+      console.log('[FILTER-POPUP] ソート復元:', { newPrimarySort, newSecondarySort });
 
-      // アカウントジャンルの選択初期化
+      // アカウントジャンルの選択復元
       const accountTypeFilter = currentFilters['account_type'];
+      let initialAccountTypes: string[] = [];
       if (accountTypeFilter && accountTypeFilter.value) {
         if (typeof accountTypeFilter.value === 'string') {
-          setSelectedAccountCategories([accountTypeFilter.value]);
+          initialAccountTypes = [accountTypeFilter.value];
         } else if (Array.isArray(accountTypeFilter.value)) {
-          setSelectedAccountCategories(accountTypeFilter.value as string[]);
+          initialAccountTypes = accountTypeFilter.value as string[];
         }
-      } else {
-        setSelectedAccountCategories([]);
       }
+      setSelectedAccountCategories(initialAccountTypes);
+      console.log('[FILTER-POPUP] アカウントタイプ復元:', { accountTypeFilter, initialAccountTypes });
       
-      // 商品の選択初期化
+      // 商品の選択復元
       const productFilter = currentFilters['product'];
+      let initialProducts: string[] = [];
       if (productFilter && productFilter.value) {
         if (typeof productFilter.value === 'string') {
-          setSelectedProducts([productFilter.value]);
+          initialProducts = [productFilter.value];
         } else if (Array.isArray(productFilter.value)) {
-          setSelectedProducts(productFilter.value as string[]);
+          initialProducts = productFilter.value as string[];
         }
-      } else {
-        setSelectedProducts([]);
       }
+      setSelectedProducts(initialProducts);
+      console.log('[FILTER-POPUP] 商品復元:', { productFilter, initialProducts });
+
+      console.log('[FILTER-POPUP] フィルター状態復元完了');
     }
-  }, [isOpen, currentFilters]); // ★★★ currentFiltersを依存配列に追加 ★★★
+  }, [isOpen, currentFilters, accountTypeContext]);
 
   // フィルターフィールドの定義を動的に生成
   const getFilterFields = () => {
@@ -449,7 +440,7 @@ export const FilterPopup = ({
         }
       } else {
         // デフォルトで両方選択された状態に
-        setSelectedContentTypes(['video', 'carousel']);
+        setSelectedContentTypes([]);
       }
       
       // ソート状態の初期化
@@ -664,7 +655,7 @@ export const FilterPopup = ({
   const handleClearAllFilters = () => {
     setTempFilters({});
     setSelectedCategories([]);
-    setSelectedContentTypes(['video', 'carousel']);
+    setSelectedContentTypes([]); // ★ 空配列に変更
     setSelectedAccountCategories([]);
     setSelectedProducts([]);
     setPrimarySort(null);
@@ -725,7 +716,7 @@ export const FilterPopup = ({
     }
     
     // 5. コンテンツタイプフィルターの処理
-    if (selectedContentTypes.length > 0 && selectedContentTypes.length < 3) {
+    if (selectedContentTypes.length > 0) { // ★ 条件を変更（&& selectedContentTypes.length < 3を削除）
       finalFilters['content_type'] = {
         field: 'content_type',
         type: 'multiselect',

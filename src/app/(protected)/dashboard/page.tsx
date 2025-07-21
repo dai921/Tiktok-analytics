@@ -718,6 +718,8 @@ const Dashboard = () => {
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
           tabFilterFields={currentTabFilterFields}
+          // ★ 追加: 現在のタブのフィルター状態を渡す
+          currentTabFilters={getCurrentFilters()}
           // ★ 修正: 両方のpropsを渡す
           onFilterOptionsUpdate={handleFilterOptionsUpdate}
           filterOptions={filterOptions}
