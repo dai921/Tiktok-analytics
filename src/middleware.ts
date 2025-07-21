@@ -6,7 +6,7 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value
   const isAdmin = request.cookies.get('is_admin')?.value === 'true'
   
-  // パス情報
+  
   const path = request.nextUrl.pathname
   
   // 管理者専用ページかどうか（/admin/loginは除外）
