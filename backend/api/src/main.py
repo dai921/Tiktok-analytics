@@ -497,28 +497,12 @@ async def get_videos(
         total_result = fetch_one(count_query, filter_params)
         total = total_result["total"] if total_result else 0
 
-        # 全体の最新投稿日を取得（フィルターに関係なく）
-        latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_data")
-        global_latest_date = latest_date_result["max_date"] if latest_date_result else None
-        global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
-
-        # フィルター適用後の最新投稿日を取得（base_queryを使用）
-        filtered_latest_query = f"SELECT MAX(created_at) as max_date FROM ({base_query}) as latest_query"
-        filtered_latest_result = fetch_one(filtered_latest_query, filter_params)
-        filtered_latest_date = filtered_latest_result["max_date"] if filtered_latest_result else None
-        filtered_last_updated = format_last_updated(filtered_latest_date) if filtered_latest_date else None
-
         return {
             "data": [format_video(row) for row in rows],
             "total": total,
             "currentPage": page,
             "totalPages": (total + limit - 1) // limit if limit > 0 else 1,
-            "success": True,
-            "lastUpdated": {
-                "date": filtered_last_updated,
-                "isFiltered": bool(where_clauses),
-                "globalLastUpdated": global_last_updated
-            }
+            "success": True
         }
 
     except Exception as e:
@@ -584,39 +568,26 @@ async def health_check():
 @app.get("/api/filter-options")
 async def get_filter_options(
     request: Request,
-    filter_type: str = "all",
-    account_name: Optional[str] = None,
+    # 選択肢相互の絞り込み用
     category: Optional[str] = None,
-    hashtags: Optional[str] = None,
-    music_info: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    product: Optional[str] = None,
+    account_type: Optional[str] = None,
+    # 数値フィルターによる絞り込み用（最小限）
     min_play_count: Optional[int] = None,
     min_likes_count: Optional[int] = None,
     created_at: Optional[str] = None,
     created_at_type: Optional[str] = None,
 ):
     """
-    フィルター条件に基づいて選択肢データのみを返すAPIエンドポイント
-    filter_type: 取得する選択肢のタイプ (categories, accounts, hashtags, music, all)
-    その他のパラメータ: 通常のフィルター条件
+    フィルターポップアップで使用する選択肢のみを返す最適化されたAPIエンドポイント
     """
     try:
-        # フィルター条件を構築
+        # 最小限のフィルター条件構築
         params = {}
         where_clauses = []
         
-        # 以下、通常のフィルター条件構築処理と同じ
-        if account_name:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_name LIKE :account_name")
-            params["account_name"] = f"%{escaped_account_name}%"
-        
-        # カテゴリフィルターのOR条件処理
+        # カテゴリフィルター（複数対応）
         category_filters = []
-
-        # category_countパラメータがある場合は複数カテゴリ
         category_count = request.query_params.get('category_count')
         if category_count and category_count.isdigit():
             count = int(category_count)
@@ -627,41 +598,14 @@ async def get_filter_options(
                     category_filters.append(f"category LIKE :category_{i}")
                     params[f"category_{i}"] = f"%{escaped_cat}%"
         
-        # 1つ以上のカテゴリフィルターがある場合は、OR条件で結合
         if category_filters:
             where_clauses.append(f"({' OR '.join(category_filters)})")
-        # 従来の単一カテゴリ処理
         elif category:
             escaped_category = category.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("category LIKE :category")
             params["category"] = f"%{escaped_category}%"
         
-        if hashtags:
-            # exact_hashtags タイプが指定されている場合は完全一致検索
-            exact_hashtags = request.query_params.get('exact_hashtags')
-            if exact_hashtags == 'true':
-                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
-                where_clauses.append("(hashtags = :hashtags OR hashtags LIKE :hashtags_start OR hashtags LIKE :hashtags_middle OR hashtags LIKE :hashtags_end)")
-                hashtags_exact = hashtags
-                params["hashtags"] = hashtags_exact
-                params["hashtags_start"] = f"{hashtags_exact},%"
-                params["hashtags_middle"] = f"%,{hashtags_exact},%"
-                params["hashtags_end"] = f"%,{hashtags_exact}"
-                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
-            else:
-                # 従来の部分一致検索
-                # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-                escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
-                where_clauses.append("hashtags LIKE :hashtags")
-                params["hashtags"] = f"%{escaped_hashtags}%"
-                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
-            
-        if music_info:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
-            escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("music_info LIKE :music_info")
-            params["music_info"] = f"%{escaped_music_info}%"
-        
+        # 数値フィルター（最小限）
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
             params["min_play_count"] = min_play_count
@@ -670,115 +614,74 @@ async def get_filter_options(
             where_clauses.append("likes_count >= :min_likes_count")
             params["min_likes_count"] = min_likes_count
             
-        if start_date and end_date:
-            where_clauses.append("created_at BETWEEN :start_date AND :end_date")
-            params["start_date"] = start_date
-            params["end_date"] = end_date
-        elif start_date:
-            where_clauses.append("created_at >= :start_date")
-            params["start_date"] = start_date
-        elif end_date:
-            where_clauses.append("created_at <= :end_date")
-            params["end_date"] = end_date
-            
         if created_at:
             if created_at_type == "after" or created_at_type == "greater":
                 where_clauses.append("created_at >= :created_at")
             elif created_at_type == "before" or created_at_type == "less":
                 where_clauses.append("created_at <= :created_at")
-            else:  # exact date
-                # 日付が "YYYY-MM-DD" 形式の場合、その日の範囲を指定
+            else:
                 where_clauses.append("DATE(created_at) = DATE(:created_at)")
             params["created_at"] = created_at
         
-        # ベースとなるWHERE句を構築
+        # WHERE句構築
         base_where = ""
         if where_clauses:
             base_where = " WHERE " + " AND ".join(where_clauses)
             
-        # 結果を格納する辞書
-        result = {
-            "success": True,
-            "filter_type": filter_type
-        }
+        # カテゴリ選択肢
+        categories_query = f"SELECT DISTINCT category FROM frontend_data{base_where}"
+        categories_rows = execute_query(categories_query, params)
+        categories = [row['category'] for row in categories_rows if row['category']]
         
-        # filter_typeに基づいて必要なデータのみを取得
-        if filter_type in ["categories", "all"]:
-            # カテゴリ一覧を取得
-            query = f"SELECT DISTINCT category FROM frontend_data{base_where}"
-            categories_rows = execute_query(query, params)
-            categories = [row['category'] for row in categories_rows if row['category']]
-            
-            # カテゴリを分割して処理
-            processed_categories = []
-            for category in categories:
-                if "、" in category or "," in category:
-                    parts = category.replace("、", ",").split(",")
-                    processed_categories.extend([part.strip() for part in parts if part.strip()])
-                else:
-                    processed_categories.append(category)
-            
-            # 重複を削除
-            unique_categories = list(set(processed_categories))
-            result["categories"] = sorted(unique_categories)
-            
-        if filter_type in ["accounts", "all"]:
-            # アカウント一覧を取得
-            query = f"SELECT DISTINCT account_name FROM frontend_data{base_where}"
-            accounts_rows = execute_query(query, params)
-            accounts = [row['account_name'] for row in accounts_rows if row['account_name']]
-            result["accounts"] = sorted(accounts)
-            
-        if filter_type in ["hashtags", "all"]:
-            # ハッシュタグ一覧を取得
-            query = f"SELECT DISTINCT hashtags FROM frontend_data{base_where}"
-            hashtags_rows = execute_query(query, params)
-            
-            # ハッシュタグを処理
-            all_hashtags = []
-            for row in hashtags_rows:
-                if row['hashtags']:
-                    try:
-                        # JSON形式の場合はパース
-                        hashtags_json = json.loads(row['hashtags'])
-                        if isinstance(hashtags_json, list):
-                            all_hashtags.extend(hashtags_json)
-                        else:
-                            hashtags = row['hashtags']
-                            # ハッシュタグを分割して処理
-                            tags = []
-                            if " " in hashtags or "、" in hashtags or "," in hashtags:
-                                # スペース、「、」、「,」で区切られたハッシュタグの場合
-                                tags = [tag.strip() for tag in re.split(r'[\s、,]', hashtags) if tag.strip()]
-                            else:
-                                tags = [hashtags.strip()]
-                            
-                            all_hashtags.extend(tags)
-                    except json.JSONDecodeError:
-                        # JSON形式でない場合
-                        hashtags = row['hashtags']
-                        # ハッシュタグを分割して処理
-                        tags = []
-                        if " " in hashtags or "、" in hashtags or "," in hashtags:
-                            # スペース、「、」、「,」で区切られたハッシュタグの場合
-                            tags = [tag.strip() for tag in re.split(r'[\s、,]', hashtags) if tag.strip()]
-                        else:
-                            tags = [hashtags.strip()]
-                        
-                        all_hashtags.extend(tags)
-            
-            # 重複を削除
-            unique_hashtags = list(set(all_hashtags))
-            result["hashtags"] = sorted(unique_hashtags)
-            
-        if filter_type in ["music", "all"]:
-            # 音声タイトル一覧を取得
-            query = f"SELECT DISTINCT music_info FROM frontend_data{base_where}"
-            music_rows = execute_query(query, params)
-            music_titles = [row['music_info'] for row in music_rows if row['music_info']]
-            result["music"] = sorted(music_titles)
-            
-        return result
+        # カテゴリを分割して処理
+        processed_categories = []
+        for category in categories:
+            if "、" in category or "," in category:
+                parts = category.replace("、", ",").split(",")
+                processed_categories.extend([part.strip() for part in parts if part.strip()])
+            else:
+                processed_categories.append(category)
+        
+        final_categories = sorted(list(set(processed_categories)))
+        
+        # 商品選択肢
+        products_query = f"SELECT DISTINCT product FROM frontend_data{base_where}"
+        products_rows = execute_query(products_query, params)
+        products = [row['product'] for row in products_rows if row['product']]
+        
+        # 商品を分割して処理
+        processed_products = []
+        for product in products:
+            if "、" in product or "," in product:
+                parts = product.replace("、", ",").split(",")
+                processed_products.extend([part.strip() for part in parts if part.strip()])
+            else:
+                processed_products.append(product)
+        
+        final_products = sorted(list(set(processed_products)))
+        
+        # アカウントタイプ選択肢
+        account_types_query = f"SELECT DISTINCT account_type FROM frontend_data{base_where}"
+        account_types_rows = execute_query(account_types_query, params)
+        account_types = [row['account_type'] for row in account_types_rows if row['account_type']]
+        
+        # アカウントタイプを分割して処理
+        processed_account_types = []
+        for account_type in account_types:
+            if "、" in account_type or "," in account_type:
+                parts = account_type.replace("、", ",").split(",")
+                processed_account_types.extend([part.strip() for part in parts if part.strip()])
+            else:
+                processed_account_types.append(account_type)
+        
+        final_account_types = sorted(list(set(processed_account_types)))
+        
+        return {
+            "success": True,
+            "categories": final_categories,
+            "products": final_products,
+            "accountTypes": final_account_types
+        }
         
     except Exception as e:
         print(f"Error in get_filter_options: {str(e)}")

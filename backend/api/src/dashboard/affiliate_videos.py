@@ -28,8 +28,6 @@ async def get_affiliate_videos(
         where_clauses = []
 
         # アフィリエイト系動画のフィルタリング条件を追加
-        # is_pr = 1 (PR動画)
-        where_clauses.append("is_pr = 1")
 
         # フィルター適用
         query, params = apply_filters(query, params, where_clauses, request, "frontend_affiliate_data")
@@ -54,27 +52,12 @@ async def get_affiliate_videos(
         total_result = fetch_one(count_query, params)
         total = total_result["total"] if total_result else 0
 
-        # 最終更新日取得 - frontend_dataテーブルを使用
-        latest_date_result = fetch_one("SELECT MAX(created_at) as max_date FROM frontend_affiliate_data")
-        global_latest_date = latest_date_result["max_date"] if latest_date_result else None
-        global_last_updated = format_last_updated(global_latest_date) if global_latest_date else None
-
-        filtered_latest_query = f"SELECT MAX(created_at) as max_date FROM ({base_query}) as latest_query"
-        filtered_latest_result = fetch_one(filtered_latest_query, params)
-        filtered_latest_date = filtered_latest_result["max_date"] if filtered_latest_result else None
-        filtered_last_updated = format_last_updated(filtered_latest_date) if filtered_latest_date else None
-
         return {
             "data": [format_video(row) for row in rows],
             "total": total,
             "currentPage": page,
             "totalPages": (total + limit - 1) // limit if limit > 0 else 1,
-            "success": True,
-            "lastUpdated": {
-                "date": filtered_last_updated,
-                "isFiltered": bool(where_clauses),
-                "globalLastUpdated": global_last_updated
-            }
+            "success": True
         }
 
     except Exception as e:

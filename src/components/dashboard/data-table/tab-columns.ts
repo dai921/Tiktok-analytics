@@ -3,6 +3,8 @@ export const TAB_DEFAULT_COLUMNS = {
   all: [
     'thumbnail_url',
     'account_type',
+    'category',
+    'product',
     'createdAt',
     'views',
     'viewsIncrease',

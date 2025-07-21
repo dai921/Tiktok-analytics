@@ -333,7 +333,8 @@ def sync_category_spreadsheet():
                         INSERT INTO product_alias (product_name, alias_name, alias_priority)
                         VALUES (%(product_name)s, %(alias_name)s, %(priority)s)
                         ON DUPLICATE KEY UPDATE 
-                            alias_priority = %(priority)s
+                            alias_priority = %(priority)s,
+                            alias_id = LAST_INSERT_ID(alias_id)
                     '''
                     alias_params = {
                         'product_name': product_name,

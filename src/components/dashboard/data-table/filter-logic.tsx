@@ -72,8 +72,9 @@ export function useFilterLogic(
     setPrimarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
     setSecondarySort: (sort: { field: string; direction: 'asc' | 'desc' } | null) => void;
   },
-  initialPrOnly = false, // PR状態の初期値
-  initialCorporateOnly = false // 運用代行用状態の初期値
+  initialPrOnly = false,
+  initialCorporateOnly = false,
+  externalFilters: Record<string, FilterQuery> = {} // ← 外部フィルター状態を追加
 ): [FilterState, FilterHandlers] {
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [columnFilters, setColumnFilters] = useState<Record<string, FilterValue>>({});
@@ -81,6 +82,34 @@ export function useFilterLogic(
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
   const [isPrOnly, setIsPrOnly] = useState(initialPrOnly);
   const [isCorporateOnly, setIsCorporateOnly] = useState(initialCorporateOnly);
+
+  // ★ 外部フィルター状態との同期を追加
+  useEffect(() => {
+    // ★ 深い比較で実際に変更があった場合のみ更新
+    const hasChanges = JSON.stringify(externalFilters) !== JSON.stringify(currentFilters);
+    
+    if (hasChanges) {
+      const convertedFilters: Record<string, FilterValue> = {};
+      
+      Object.entries(externalFilters).forEach(([key, filterQuery]) => {
+        convertedFilters[key] = {
+          field: filterQuery.field,
+          type: filterQuery.type,
+          value: filterQuery.value,
+          active: filterQuery.active,
+          ...(filterQuery.comparison && { comparison: filterQuery.comparison }),
+          ...(filterQuery.isPrimarySort !== undefined && { isPrimarySort: filterQuery.isPrimarySort }),
+          ...(filterQuery.sortField && { sortField: filterQuery.sortField }),
+          ...(filterQuery.isHashtag && { isHashtag: filterQuery.isHashtag }),
+          ...(filterQuery.timestamp !== undefined && { timestamp: filterQuery.timestamp })
+        };
+      });
+      
+      setColumnFilters(convertedFilters);
+      setCurrentFilters(externalFilters);
+      setHasActiveFilters(Object.keys(externalFilters).length > 0);
+    }
+  }, [externalFilters]); // ★ currentFiltersを依存配列から削除
 
   // 初期値が変更された場合の同期
   useEffect(() => {
@@ -419,14 +448,13 @@ export function useFilterLogic(
     const hasFilters = Object.keys(normalFilters).length > 0 || sortUpdated;
     setHasActiveFilters(hasFilters);
     
-    // 親コンポーネントに通知 - 状態のみ渡す（フィルターは適用しない）
+    // 親コンポーネントに通知 - タブ状態は渡さない
     onFilterChange(hasFilters, {
       type: 'multiple',
       field: 'multipleFilters',
       value: Object.values(normalFilters),
-      filters: newCurrentFilters,
-      isPrOnly: isPrOnly, // 状態のみ渡す（フィルターは適用しない）
-      isCorporateOnly: isCorporateOnly // 状態のみ渡す（フィルターは適用しない）
+      filters: newCurrentFilters
+      // ★ isPrOnly, isCorporateOnly を削除
     });
     
     // フィルターポップアップを閉じる

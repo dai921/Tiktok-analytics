@@ -48,6 +48,27 @@ interface DataTableProps {
     text: string[];
     sort: string[];
   };
+  currentTabFilters?: Record<string, FilterQuery>;
+  
+  // ★ 修正: 型の一貫性を保つ
+  onFilterOptionsUpdate?: (options: {
+    categories: string[];
+    accounts: string[];
+    hashtags: string[];
+    music: string[];
+    products: string[];
+    accountTypes: string[];
+    isLoading: boolean;
+  }) => void;
+  filterOptions?: {
+    categories: string[];
+    accounts: string[];
+    hashtags: string[];
+    music: string[];
+    products: string[];
+    accountTypes: string[];
+    isLoading: boolean;
+  };
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -68,7 +89,18 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     onPageSizeChange,
     defaultVisibleColumns,
     onColumnSettingsChange,
-    tabFilterFields
+    tabFilterFields,
+    currentTabFilters = {},
+    onFilterOptionsUpdate, // ★ 追加
+    filterOptions = {      // ★ 追加: デフォルト値を設定
+      categories: [],
+      accounts: [],
+      hashtags: [],
+      music: [],
+      products: [],
+      accountTypes: [],
+      isLoading: false
+    }
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -87,15 +119,21 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSortDirection
     } = sortLogic;
     
-    // フィルターロジック - 初期値を正しく設定
-    const [filterState, filterHandlers] = useFilterLogic(onFilterChange, {
-      primarySort,
-      secondarySort,
-      setPrimarySort,
-      setSecondarySort,
-      setSortField,
-      setSortDirection
-    }, isPrOnly, isCorporateOnly);
+    // フィルターロジック - 外部フィルターを渡す
+    const [filterState, filterHandlers] = useFilterLogic(
+      onFilterChange, 
+      {
+        primarySort,
+        secondarySort,
+        setPrimarySort,
+        setSecondarySort,
+        setSortField,
+        setSortDirection
+      }, 
+      isPrOnly, 
+      isCorporateOnly,
+      currentTabFilters // ← 外部フィルター状態を渡す
+    );
     
     const { 
       columnFilters, 
@@ -132,6 +170,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     const [isFilterPopupOpen, setFilterPopupOpenState] = useState(false);
     
     // カスタムフックからフィルターオプションを取得
+    // ★ 修正: onFilterOptionsUpdateを渡す
     const {
       categoryList,
       accountList,
@@ -139,10 +178,23 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       audioTitleList,
       isLoadingFilterOptions,
       getFilteredOptions
-    } = useFilterOptions(currentFilters);
+    } = useFilterOptions(currentFilters, onFilterOptionsUpdate);
 
     const { productCategories } = useProductCategories();
 
+    // ★ 追加: productCategoriesを適切な形式に変換
+    const convertedProductCategories = useMemo(() => {
+      const converted: Record<string, string[]> = {};
+      
+      Object.entries(productCategories).forEach(([productName, categoryName]) => {
+        if (!converted[categoryName]) {
+          converted[categoryName] = [];
+        }
+        converted[categoryName].push(productName);
+      });
+      
+      return converted;
+    }, [productCategories]);
 
     // カラム定義を取得
     const columns = useMemo(() => {
@@ -230,6 +282,14 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       onCorporateOnlyChange(false);
       onInfluencerOnlyChange(false);
     }, [onPrOnlyChange, onCorporateOnlyChange, onInfluencerOnlyChange]);
+
+    // フィルターポップアップに渡すaccountTypeContextを動的に生成
+    const getAccountTypeContext = (): 'influencer' | 'corporate' | 'affiliate' | 'all' => {
+      if (isCorporateOnly) return 'corporate';
+      if (isInfluencerOnly) return 'influencer';
+      if (isPrOnly) return 'affiliate';
+      return 'all';
+    };
 
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
@@ -468,7 +528,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         </div>
 
         {/* Portalを使用してDOM階層の上位に表示 */}
-        {isFilterPopupOpen && createPortal(
+        {createPortal(
           <FilterPopup
             isOpen={isFilterPopupOpen}
             onClose={() => setFilterPopupOpenState(false)}
@@ -478,11 +538,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             categories={categoryList}
             accounts={accountList}
             hashtags={hashtagList}
-            products={[]}
-            isLoading={isLoadingFilterOptions}
+            // ★ 修正: filterOptionsはデフォルト値があるのでオプショナルチェイニング不要
+            products={filterOptions.products}
+            // ★ 修正: 変換されたproductCategoriesを渡す
+            productCategories={convertedProductCategories}
+            accountTypes={filterOptions.accountTypes}
+            isLoading={isLoadingFilterOptions || filterOptions.isLoading}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
-            accountTypeContext={isCorporateOnly ? 'corporate' : isInfluencerOnly ? 'influencer' : 'all'}
+            accountTypeContext={getAccountTypeContext()}
           />,
           document.body
         )}

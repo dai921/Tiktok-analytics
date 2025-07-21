@@ -5,12 +5,14 @@ import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashbo
 import { 
   TIKTOK_COLORS, 
   GENRE_COLORS, 
-  ACCOUNT_TYPE_COLORS, 
+  AFFILIATE_TYPE_COLORS,      // 新規追加
+  INFLUENCER_TYPE_COLORS,     // 名前変更
   CORPORATE_TYPE_COLORS, 
   DEFAULT_GENRE_COLOR,
-  getInfluencerAccountTypes,  // 追加
-  getCorporateAccountTypes,   // 追加
-  getAllAccountTypes,         // 追加
+  getAffiliateAccountTypes,   // 新規追加
+  getInfluencerAccountTypes,
+  getCorporateAccountTypes,
+  getAllAccountTypes,
   getAccountTypeColor         // 追加
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'
@@ -26,6 +28,9 @@ interface FilterPopupProps {
   accounts: string[]
   hashtags: string[]
   products: string[]
+  // ★ 商品カテゴリとアカウントタイプを追加
+  productCategories?: Record<string, string[]>
+  accountTypes?: string[]
   isLoading: boolean
   onClearAll: () => void
   tabFilterFields?: {
@@ -35,7 +40,7 @@ interface FilterPopupProps {
     text: string[];
     sort: string[];
   };
-  accountTypeContext?: 'influencer' | 'corporate' | 'all' // 追加
+  accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
 }
 
 // フィルターの型定義
@@ -198,6 +203,9 @@ export const FilterPopup = ({
   accounts,
   hashtags,
   products: productsList,
+  // ★ 新しいpropsを追加
+  productCategories = {},
+  accountTypes = [],
   isLoading,
   onClearAll,
   tabFilterFields,
@@ -210,7 +218,7 @@ export const FilterPopup = ({
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   // コンテンツタイプ用の複数選択状態
-  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['video', 'carousel'])
+  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>([]) // ★ デフォルトを空配列に変更
   // ソート用の状態を追加
   const [primarySort, setPrimarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
   const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
@@ -219,45 +227,101 @@ export const FilterPopup = ({
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
 
-  // ダッシュボードページ
-  const [products, setProducts] = useState<any[]>([])
-  const [productCategories, setProductCategories] = useState<Record<string, string[]>>({})
-  const [accountTypes, setAccountTypes] = useState<string[]>([])
-
-  // データ取得
+  // ★ フィルター状態を復元（初期化ではなく復元）
+  // ポップアップが開かれたときにcurrentFiltersからフィルター状態を復元
   useEffect(() => {
-    // 商品データを取得
-    const fetchProductData = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/api/products`)
-        const data = await response.json()
-        
-        if (data.success) {
-          setProducts(data.data || [])
-          setProductCategories(data.categories || {})
+    if (isOpen) {
+      console.log('[FILTER-POPUP] フィルター状態復元開始:', {
+        currentFilters,
+        accountTypeContext,
+        timestamp: new Date().toISOString()
+      });
+
+      // すべてのフィルターをコピー
+      setTempFilters({...currentFilters});
+      
+      // カテゴリ選択の復元
+      const categoryFilter = currentFilters['category'];
+      let initialCategories: string[] = [];
+      if (categoryFilter && categoryFilter.value) {
+        if (typeof categoryFilter.value === 'string') {
+          initialCategories = [categoryFilter.value];
+        } else if (Array.isArray(categoryFilter.value)) {
+          initialCategories = categoryFilter.value as string[];
         }
-      } catch (error) {
-        console.error('商品データ取得エラー:', error)
       }
-    }
-    
-    // アカウントタイプを取得
-    const fetchAccountTypes = async () => {
-      try {
-        const response = await fetch(`${apiUrl}/api/account-types`)
-        const data = await response.json()
-        
-        if (data.success) {
-          setAccountTypes(data.data || [])
+      setSelectedCategories(initialCategories);
+      console.log('[FILTER-POPUP] カテゴリ復元:', { categoryFilter, initialCategories });
+
+      // コンテンツタイプの選択復元
+      const contentTypeFilter = currentFilters['content_type'];
+      let initialContentTypes: string[] = []; // ★ デフォルトを空配列に変更
+      if (contentTypeFilter && contentTypeFilter.value) {
+        if (typeof contentTypeFilter.value === 'string') {
+          initialContentTypes = [contentTypeFilter.value];
+        } else if (Array.isArray(contentTypeFilter.value)) {
+          initialContentTypes = contentTypeFilter.value as string[];
         }
-      } catch (error) {
-        console.error('アカウントタイプ取得エラー:', error)
       }
+      setSelectedContentTypes(initialContentTypes);
+      console.log('[FILTER-POPUP] コンテンツタイプ復元:', { contentTypeFilter, initialContentTypes });
+      
+      // ソート状態の復元
+      let foundPrimarySort = false;
+      let newPrimarySort = null;
+      let newSecondarySort = null;
+      
+      // currentFiltersからソート情報を抽出
+      Object.entries(currentFilters).forEach(([key, filter]) => {
+        // ソートフィルターを検出
+        if (filter.type === 'sort') {
+          const field = filter.sortField || filter.field;
+          const direction = filter.value as 'asc' | 'desc';
+          
+          // プライマリソートとして設定
+          if (filter.isPrimarySort || !foundPrimarySort) {
+            newPrimarySort = {field, direction};
+            foundPrimarySort = true;
+          } else {
+            // セカンダリソート
+            newSecondarySort = {field, direction};
+          }
+        }
+      });
+      
+      setPrimarySort(newPrimarySort);
+      setSecondarySort(newSecondarySort);
+      console.log('[FILTER-POPUP] ソート復元:', { newPrimarySort, newSecondarySort });
+
+      // アカウントジャンルの選択復元
+      const accountTypeFilter = currentFilters['account_type'];
+      let initialAccountTypes: string[] = [];
+      if (accountTypeFilter && accountTypeFilter.value) {
+        if (typeof accountTypeFilter.value === 'string') {
+          initialAccountTypes = [accountTypeFilter.value];
+        } else if (Array.isArray(accountTypeFilter.value)) {
+          initialAccountTypes = accountTypeFilter.value as string[];
+        }
+      }
+      setSelectedAccountCategories(initialAccountTypes);
+      console.log('[FILTER-POPUP] アカウントタイプ復元:', { accountTypeFilter, initialAccountTypes });
+      
+      // 商品の選択復元
+      const productFilter = currentFilters['product'];
+      let initialProducts: string[] = [];
+      if (productFilter && productFilter.value) {
+        if (typeof productFilter.value === 'string') {
+          initialProducts = [productFilter.value];
+        } else if (Array.isArray(productFilter.value)) {
+          initialProducts = productFilter.value as string[];
+        }
+      }
+      setSelectedProducts(initialProducts);
+      console.log('[FILTER-POPUP] 商品復元:', { productFilter, initialProducts });
+
+      console.log('[FILTER-POPUP] フィルター状態復元完了');
     }
-    
-    fetchProductData()
-    fetchAccountTypes()
-  }, [])
+  }, [isOpen, currentFilters, accountTypeContext]);
 
   // フィルターフィールドの定義を動的に生成
   const getFilterFields = () => {
@@ -268,8 +332,11 @@ export const FilterPopup = ({
           return getInfluencerAccountTypes();
         case 'corporate':
           return getCorporateAccountTypes();
+        case 'affiliate':
+          return getAffiliateAccountTypes();
         case 'all':
         default:
+          // ★ propsから受け取ったaccountTypesを使用
           return accountTypes.length > 0 ? accountTypes : getAllAccountTypes();
       }
     };
@@ -295,9 +362,12 @@ export const FilterPopup = ({
       categories: [
         { id: 'content_type', label: 'コンテンツタイプ', type: 'multiselect' as FilterType, options: ['video', 'carousel'] },
         { id: 'category', label: 'PR動画ジャンル', type: 'multiselect' as FilterType, options: categories },
-        { id: 'product', label: '商品', type: 'multiselect' as FilterType, options: products.length > 0 
-          ? products.map(p => p.name) 
-          : productsList
+        { 
+          id: 'product', 
+          label: '商品', 
+          type: 'multiselect' as FilterType, 
+          // ★ propsから受け取った商品リストを使用
+          options: productsList
         },
         { 
           id: 'account_type', 
@@ -370,7 +440,7 @@ export const FilterPopup = ({
         }
       } else {
         // デフォルトで両方選択された状態に
-        setSelectedContentTypes(['video', 'carousel']);
+        setSelectedContentTypes([]);
       }
       
       // ソート状態の初期化
@@ -451,7 +521,7 @@ export const FilterPopup = ({
 
 
   useEffect(() => {
-    console.log('[pos]', popupPosition);   // 位置が変わるたびに確認
+    // console.log('[pos]', popupPosition);
   }, [popupPosition]);
   // 外部クリックでポップアップを閉じる
   useEffect(() => {
@@ -581,22 +651,17 @@ export const FilterPopup = ({
     }
   }
 
-  // すべてのフィルターをクリア
+  // すべてのフィルターをクリア（簡素化）
   const handleClearAllFilters = () => {
-    // ポップアップ内の入力のみをクリア
-    setTempFilters({})
+    setTempFilters({});
     setSelectedCategories([]);
-    setSelectedContentTypes(['video', 'carousel']);
+    setSelectedContentTypes([]); // ★ 空配列に変更
     setSelectedAccountCategories([]);
     setSelectedProducts([]);
     setPrimarySort(null);
     setSecondarySort(null);
     
-    // この時点では親コンポーネントのフィルター状態は変更しない
-    // onClearAll(); -- 削除：これによりAPIリクエストが発生していた
-    
-    // フィルターポップアップは閉じない
-    // onClose(); -- 削除：ユーザーがクリアした後に引き続き操作できるようにする
+    console.log('フィルターをクリアしました');
   }
 
   // フィルターを適用
@@ -651,7 +716,7 @@ export const FilterPopup = ({
     }
     
     // 5. コンテンツタイプフィルターの処理
-    if (selectedContentTypes.length > 0 && selectedContentTypes.length < 3) {
+    if (selectedContentTypes.length > 0) { // ★ 条件を変更（&& selectedContentTypes.length < 3を削除）
       finalFilters['content_type'] = {
         field: 'content_type',
         type: 'multiselect',
@@ -1206,7 +1271,9 @@ export const FilterPopup = ({
             </div>
           ))}
           {Object.keys(productCategories).length === 0 && (
-            <div className="text-sm text-gray-500 py-2 text-center">商品情報がありません</div>
+            <div className="text-sm text-gray-500 py-2 text-center">
+              {isLoading ? '商品情報を読み込み中...' : '商品情報がありません'}
+            </div>
           )}
         </div>
       </div>

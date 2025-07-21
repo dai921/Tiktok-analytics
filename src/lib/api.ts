@@ -1179,7 +1179,10 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       categoryCount: result.categories?.length || 0,
       accountCount: result.accounts?.length || 0,
       hashtagCount: result.hashtags?.length || 0,
-      musicCount: result.music?.length || 0
+      musicCount: result.music?.length || 0,
+      // ★ 追加
+      productCount: result.products?.length || 0,
+      accountTypeCount: result.accountTypes?.length || 0,
     });
     
     if (result.success) {
@@ -1188,7 +1191,10 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         categories: result.categories || [],
         accounts: result.accounts || [],
         hashtags: result.hashtags || [],
-        music: result.music || []
+        music: result.music || [],
+        // ★ 追加: productsとaccountTypesを戻り値に含める
+        products: result.products || [],
+        accountTypes: result.accountTypes || []
       };
     } else {
       console.error('選択肢取得エラー:', result.error || '不明なエラー');
@@ -1198,6 +1204,9 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         accounts: [],
         hashtags: [],
         music: [],
+        // ★ 追加
+        products: [],
+        accountTypes: [],
         error: result.error || '不明なエラー'
       };
     }
@@ -1209,6 +1218,9 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       accounts: [],
       hashtags: [],
       music: [],
+      // ★ 追加
+      products: [],
+      accountTypes: [],
       error: error instanceof Error ? error.message : '不明なエラー'
     };
   }
