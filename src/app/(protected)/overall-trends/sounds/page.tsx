@@ -289,7 +289,7 @@ export default function SoundsPage() {
                         <TableRow>
                           <TableHead className="text-xs py-2 px-2">順位</TableHead>
                           <TableHead className="text-xs py-2 px-2">BGM名</TableHead>
-                          <TableHead className="text-xs py-2 px-2 text-right">{getMetricLabel(metric)}</TableHead>
+                          <TableHead className="text-xs py-2 px-2 text-right whitespace-nowrap">{getMetricLabel(metric)}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
