@@ -1,0 +1,170 @@
+# Cloud Functionsデプロイ用のCloud Build構成
+steps:
+  # 共通ユーティリティファイルのコピー（後続のすべてのデプロイで使用）
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'prepare-environment'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "ENVIRONMENT=production" > .env
+  # frontend-update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend-update'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'frontend-update'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=frontend_update_job'
+      - '--trigger-topic=frontend-data-update-trigger'
+      - '--no-allow-unauthenticated'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # frontend-update-trigger
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend-update-trigger'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'frontend-update-trigger'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=frontend_update_trigger_function'
+      - '--trigger-http'
+      - '--no-allow-unauthenticated'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+# frontend-affiliate-update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - frontend-affiliate-update
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=frontend_affiliate_update_job
+      - --trigger-topic=frontend-affiliate-trigger
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-frontend-affiliate-update'
+
+# frontend-corporate-update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - frontend-corporate-update
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=frontend_corporate_update_job
+      - --trigger-topic=frontend-corporate-trigger
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-frontend-corporate-update'
+
+# frontend-influencer-update
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - frontend-influencer-update
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=frontend_influencer_update_job
+      - --trigger-topic=frontend-influencer-trigger
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-frontend-influencer-update'
+
+# frontend-affiliate-update-schedule  
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - frontend-affiliate-update-schedule
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=frontend_affiliate_update_schedule
+      - --trigger-topic=frontend-affiliate-update-status
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-frontend-affiliate-update-schedule' 
+
+# frontend-corporate-update-schedule
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - frontend-corporate-update-schedule
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=frontend_corporate_update_schedule
+      - --trigger-topic=frontend-corporate-update-status
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-frontend-corporate-update-schedule' 
+
+# frontend-influencer-update-schedule 
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - frontend-influencer-update-schedule
+      - --gen2  
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=frontend_influencer_update_schedule
+      - --trigger-topic=frontend-influencer-update-status
+      - --memory=256MB  
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-frontend-influencer-update-schedule' 
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+

@@ -1,0 +1,192 @@
+# Cloud Functionsデプロイ用のCloud Build構成
+steps:
+  # 共通ユーティリティファイルのコピー（後続のすべてのデプロイで使用）
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'prepare-environment'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "ENVIRONMENT=production" > .env
+
+  # sync-all-trends-manual
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-all-trends-manual'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'sync-all-trends-manual'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_all_trends_manual'
+      - '--trigger-http'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+# sync-summary
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - sync-summary
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=summary_table_sync_function
+      - --trigger-topic=summary-table-sync
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-sync-summary'
+
+  # sync-category-spreadsheet
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-category-spreadsheet'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'sync-category-spreadsheet'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_category_job'
+      - '--trigger-http'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,SPREADSHEET_CATEGORY_ID=1u7Q2HQ0x5KDmuwn3MLFCurXrx-ysWaaD3sSz695tjFk,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # sync-top100
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - sync-top100
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=top100_videos_sync_function
+      - --trigger-topic=top100-videos-sync 
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-sync-top100'
+
+# update-needs-flags-reset
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - update-needs-flags-reset
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=update_needs_flags_function
+      - --trigger-topic=needs-update-flag 
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+    id: 'deploy-update-needs-flags-reset' 
+
+  # sync-video-hashtags-manual
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-sync-video-hashtags-manual'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'sync-video-hashtags-manual'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_video_hashtags_manual'
+      - '--trigger-http'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db' 
+
+  # video-history-sync
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-video-history-sync'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'video-history-sync'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_video_history'
+      - '--trigger-topic=video-history-sync'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # video-master-sync
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-video-master-sync'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'
+      - 'video-master-sync'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=sync_raw_data_to_video_master'
+      - '--trigger-topic=video-master-sync'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,BUCKET_NAME=tiktok-data-bucket,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
+
+  # data-integrity-check
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-data-integrity-check'
+    waitFor: ['prepare-environment']
+    args:
+      - 'gcloud'
+      - 'functions'
+      - 'deploy'  
+      - 'data-integrity-check'
+      - '--gen2'
+      - '--runtime=python310'
+      - '--region=asia-northeast1'
+      - '--source=.'
+      - '--entry-point=data_integrity_check_function'
+      - '--trigger-topic=data-integrity-check'
+      - '--memory=512MB'
+      - '--timeout=540s'
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db,DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1399714205027926099/phaTdzcbCbIfL3sG4pPeWiG6lGL1aemOBYFd6Z9gni-rw15vloVNror7Nj6P9Tj-kDmO,ALERT_THRESHOLD=1'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+
