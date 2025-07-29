@@ -15,11 +15,12 @@ hashtags_daily_summary_top150 テーブル
 | plays_increase | INT unsigned | NO | 0 | 再生増加数 |
 | over_100k | TINYINT | NO | 0 | 10万以上動画数 |
 | post_count | INT | NO | 0 | 投稿数 |
+| parent_account_type | VARCHAR(50) | NO | 0 | 親アカウントタイプ |
 
 ## インデックス
 
 | インデックス名 | カラム | 種類 | 説明 |
 |--------------|-------|------|------|
 | PRIMARY | id,fetch_date | 主キー | 関連付けの一意識別子 |
-| UNIQUE | fetch_date, hashtags | ユニーク | BGMと更新日の組み合わせは一意 |
+| UNIQUE | fetch_date, hashtags, parent_account_type | ユニーク | BGMと更新日と親アカウントタイプの組み合わせは一意 |
 

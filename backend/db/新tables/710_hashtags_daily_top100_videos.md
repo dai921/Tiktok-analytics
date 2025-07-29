@@ -15,6 +15,7 @@ hashtags_daily_top100_videos テーブル
 | likes_increase | INT unsigned | NO | 0 | いいね増加数 |
 | post_time | DATE | NO | - | 投稿日 |
 | thumbnail_url | VARCHAR(100) | NO | - | サムネイルURL |
+| parent_account_type | VARCHAR(50) | NO | 0 | 親アカウントタイプ |
 
 ## インデックス
 

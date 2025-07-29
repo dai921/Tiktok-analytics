@@ -10,11 +10,13 @@ sound_daily_top100_videos テーブル
 | id | INT | NO | AUTO_INCREMENT | 関連付けの一意識別子（主キー） |
 | video_id | VARCHAR(100) | NO | - | 動画id |
 | fetch_date | DATE | NO | - | 更新日 |
-| sound_name | VARCHAR(50) | NO | - | BGM名 |
+| sound_name | VARCHAR(255) | NO | - | BGM名 |
 | plays_increase | INT unsigned | NO | 0 | 再生増加数BGM |
 | likes_increase | INT unsigned | NO | 0 | いいね増加数 |
 | post_time | DATE | NO | - | 投稿日 |
 | thumbnail_url | VARCHAR(100) | NO | - | サムネイルURL |
+| parent_account_type | VARCHAR(50) | NO | 0 | 親アカウントタイプ |
+
 
 ## インデックス
 

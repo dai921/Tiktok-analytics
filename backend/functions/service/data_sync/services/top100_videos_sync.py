@@ -55,14 +55,14 @@ def update_product_top100_videos(event, context):
         
         logger.info(f"商品・ジャンル別TOP100動画更新が完了しました。収集日: {collection_date}")
         
-        # 次の処理（data_integrity_check）にメッセージを送信
-        logger.info("データ整合性チェック処理のトリガーメッセージを送信します")
-        publish_message("data-integrity-check", {
+        # 次の処理（summary_all_trends）にメッセージを送信
+        logger.info("ハッシュタグ・BGM集計処理のトリガーメッセージを送信します")
+        publish_message("summary-all-trends", {
             "status": "success",
             "collection_date": collection_date,
             "execution_time": datetime.now().isoformat(),
             "previous_step": "top100_videos_sync",
-            "message": "TOP100動画更新が完了しました。データ整合性チェック処理を開始します。"
+            "message": "TOP100動画更新が完了しました。ハッシュタグ・BGM集計処理を開始します。"
         })
         
         return {

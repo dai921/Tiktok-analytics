@@ -52,11 +52,11 @@ async def get_sound_stats(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     metric: str = "postCount",
-    video_type: Optional[str] = None
+    parent_account_type: Optional[str] = None  # video_type から変更
 ):
     """サウンド統計情報を取得するAPIエンドポイント"""
-    logger.info(f"sound-stats API called with params: start_date={start_date}, end_date={end_date}, metric={metric}, video_type={video_type}")
-    print(f"sound-stats API called with params: start_date={start_date}, end_date={end_date}, metric={metric}, video_type={video_type}")
+    logger.info(f"sound-stats API called with params: start_date={start_date}, end_date={end_date}, metric={metric}, parent_account_type={parent_account_type}")
+    print(f"sound-stats API called with params: start_date={start_date}, end_date={end_date}, metric={metric}, parent_account_type={parent_account_type}")
     
     # ----- 日付決定 ----- #
     if start_date is None or end_date is None:
@@ -93,11 +93,11 @@ async def get_sound_stats(
 
     params = {"start_date": start_date, "end_date": end_date}
     
-    # video_typeフィルターの追加
-    video_type_filter = ""
-    if video_type and video_type != 'all':
-        video_type_filter = "AND fd.account_type = :video_type"
-        params["video_type"] = video_type
+    # parent_account_typeフィルターの追加（sound_daily_summary_top150用）
+    summary_parent_account_type_filter = ""
+    if parent_account_type:
+        summary_parent_account_type_filter = "AND sds.parent_account_type = :parent_account_type"
+        params["parent_account_type"] = parent_account_type
     
     conn = None
     try:
@@ -116,6 +116,7 @@ async def get_sound_stats(
         WHERE sds.fetch_date BETWEEN :start_date AND :end_date
           AND sds.sound_name IS NOT NULL 
           AND sds.sound_name != ''
+          {summary_parent_account_type_filter}
         GROUP BY sds.sound_name
         ORDER BY {sort_column} DESC
         LIMIT 50
@@ -150,6 +151,11 @@ async def get_sound_stats(
                 sound_placeholders.append(f":{placeholder}")
                 params[placeholder] = sound_name
             
+            # parent_account_typeフィルターの追加（sound_daily_top100_videos用）
+            videos_parent_account_type_filter = ""
+            if parent_account_type:
+                videos_parent_account_type_filter = "AND sdv.parent_account_type = :parent_account_type"
+            
             # サウンド関連動画の詳細情報を取得（期間合計でソート）
             videos_sql = text(f"""
             SELECT 
@@ -170,7 +176,7 @@ async def get_sound_stats(
             JOIN frontend_data fd ON fd.video_id = sdv.video_id
             WHERE sdv.fetch_date BETWEEN :start_date AND :end_date
               AND sdv.sound_name IN ({', '.join(sound_placeholders)})
-              {video_type_filter}
+              {videos_parent_account_type_filter}
             GROUP BY sdv.sound_name, sdv.video_id, fd.url, fd.thumbnail_url, 
                      fd.play_count, fd.ten_days_increase, fd.account_name, 
                      fd.display_name, fd.play_count_increase, fd.account_type
@@ -233,162 +239,3 @@ async def get_sound_stats(
         if conn:
             conn.close()
 
-
-# ---------- /api/sound-trends ---------- #
-
-@router.get("/api/sound-trends")
-async def get_sound_trends(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    metric: str = "postCount",
-    video_type: Optional[str] = None
-):
-    """サウンドトレンド情報を取得するAPIエンドポイント"""
-    logger.info(f"sound-trends API called with params: start_date={start_date}, end_date={end_date}, metric={metric}, video_type={video_type}")
-    print(f"sound-trends API called with params: start_date={start_date}, end_date={end_date}, metric={metric}, video_type={video_type}")
-    
-    # ----- 日付決定 ----- #
-    if start_date is None or end_date is None:
-        conn = None
-        try:
-            conn = get_db_connection()
-            query = text("""
-                SELECT DISTINCT fetch_date
-                FROM sound_daily_summary_top150
-                WHERE fetch_date IS NOT NULL
-                ORDER BY fetch_date DESC
-                LIMIT 7
-            """)
-            result = conn.execute(query)
-            dates = result.fetchall()
-        finally:
-            if conn:
-                conn.close()
-
-        if dates:
-            end_date = dates[0][0].strftime("%Y-%m-%d")
-            start_date = dates[-1][0].strftime("%Y-%m-%d")
-        else:
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            start_date = (datetime.now() - timedelta(days=18)).strftime("%Y-%m-%d")
-        
-        logger.info(f"Calculated date range: start_date={start_date}, end_date={end_date}")
-
-    # メトリックに応じたカラム名を設定
-    metric_column = {
-        "viewsIncrease": "plays_increase",
-        "over100kViews": "over_100k",
-        "postCount": "post_count"
-    }[metric]
-
-    conn = None
-    try:
-        conn = get_db_connection()
-        logger.info(f"Executing sound-trends query with metric: {metric}")
-        print(f"Executing sound-trends query with metric: {metric}")
-
-        # 1. 全サウンドの中からトップ10を取得
-        top_sounds_sql = text(f"""
-        SELECT 
-            sound_name,
-            SUM({metric_column}) AS metric_value
-        FROM sound_daily_summary_top150
-        WHERE fetch_date BETWEEN :start_date AND :end_date
-          AND sound_name IS NOT NULL 
-          AND sound_name != ''
-        GROUP BY sound_name
-        ORDER BY metric_value DESC
-        LIMIT 10
-        """)
-        
-        result = conn.execute(top_sounds_sql, {"start_date": start_date, "end_date": end_date})
-        top_sounds = [row["sound_name"] for row in result.mappings().all()]
-
-        if not top_sounds:
-            return JSONResponse(content=jsonable_encoder({
-                "data": [],
-                "sounds": [],
-                "topSoundsByMetric": {
-                    "viewsIncrease": [],
-                    "over100kViews": [],
-                    "postCount": []
-                },
-                "date_range": {"start_date": start_date, "end_date": end_date}
-            }))
-
-        # 2. 日別・サウンド別のデータを取得
-        trends_sql = text("""
-        SELECT
-            fetch_date AS date,
-            sound_name AS sound,
-            plays_increase AS viewsIncrease,
-            over_100k AS over100kViews,
-            post_count AS postCount
-        FROM sound_daily_summary_top150
-        WHERE fetch_date BETWEEN :start_date AND :end_date
-          AND sound_name IN :sounds
-        ORDER BY fetch_date, sound_name
-        """)
-        
-        result = conn.execute(trends_sql, {
-            "start_date": start_date, 
-            "end_date": end_date, 
-            "sounds": tuple(top_sounds)
-        })
-        rows = result.mappings().all()
-
-        # トレンドデータを整形
-        trend_data = []
-        for row in rows:
-            trend_data.append({
-                "date": row["date"].strftime("%Y-%m-%d"),
-                "sound": row["sound"],
-                "value": int(row[metric]),
-                "metrics": {
-                    "viewsIncrease": int(row["viewsIncrease"]),
-                    "over100kViews": int(row["over100kViews"]),
-                    "postCount": int(row["postCount"])
-                }
-            })
-
-        # 指標別トップサウンドを取得
-        top_sounds_by_metric = {}
-        for metric_key in ["viewsIncrease", "over100kViews", "postCount"]:
-            metric_col = {
-                "viewsIncrease": "plays_increase",
-                "over100kViews": "over_100k", 
-                "postCount": "post_count"
-            }[metric_key]
-            
-            metric_query = text(f"""
-            SELECT sound_name
-            FROM sound_daily_summary_top150
-            WHERE fetch_date BETWEEN :start_date AND :end_date
-              AND sound_name IS NOT NULL AND sound_name != ''
-            GROUP BY sound_name
-            ORDER BY SUM({metric_col}) DESC
-            LIMIT 10
-            """)
-            
-            metric_result = conn.execute(metric_query, {"start_date": start_date, "end_date": end_date})
-            top_sounds_by_metric[metric_key] = [row["sound_name"] for row in metric_result.mappings().all()]
-
-        response_data = {
-            "data": trend_data,
-            "sounds": top_sounds,
-            "topSoundsByMetric": top_sounds_by_metric,
-            "date_range": {"start_date": start_date, "end_date": end_date}
-        }
-        
-        logger.info(f"Returning {len(trend_data)} data points for {len(top_sounds)} sounds")
-        return JSONResponse(content=jsonable_encoder(response_data))
-        
-    except Exception as e:
-        logger.error(f"Error in sound-trends API: {str(e)}", exc_info=True)
-        print(f"Error in sound-trends API: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if conn:
-            conn.close()
-        logger.info("sound-trends database connection closed")
-        print("sound-trends database connection closed") 

@@ -33,9 +33,9 @@ def check_data_integrity(event, context):
             message_data = json.loads(pubsub_message)
             logger.info(f"Pub/Subメッセージを受信: {message_data}")
             
-            # top100_videos_syncからの完了メッセージを確認
+            # summary_all_trendsからの完了メッセージを確認
             if (message_data.get("status") != "success" or 
-                message_data.get("previous_step") != "top100_videos_sync"):
+                message_data.get("previous_step") != "summary_all_trends"):
                 logger.info(f"前の処理が成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 

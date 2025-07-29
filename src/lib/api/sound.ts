@@ -1,5 +1,16 @@
 import { SoundStats, SoundStatsResponse, VideoType } from '../../types/sound';
 
+// VideoTypeをparent_account_typeの値にマッピングする関数
+const mapVideoTypeToParentAccountType = (videoType: VideoType): string | null => {
+  const mapping: Record<VideoType, string | null> = {
+    all: 'All',
+    affiliate: 'アフィ',
+    corporate: '企業アカウント',
+    influencer: 'インフルエンサー'
+  };
+  return mapping[videoType];
+};
+
 export const fetchSoundStats = async (
   startDate?: string | null,
   endDate?: string | null,
@@ -15,8 +26,14 @@ export const fetchSoundStats = async (
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (metric) params.append('metric', metric);
-    if (videoType && videoType !== 'all') params.append('video_type', videoType);
-
+    
+    // VideoTypeをparent_account_typeにマッピングして送信
+    if (videoType) {
+      const parentAccountType = mapVideoTypeToParentAccountType(videoType);
+      if (parentAccountType) {
+        params.append('parent_account_type', parentAccountType);
+      }
+    }
     
     // パラメータがあれば追加
     const queryString = params.toString();
@@ -79,7 +96,14 @@ export const fetchSoundTrends = async (
     if (startDate) queryParams.append('start_date', startDate);
     if (endDate) queryParams.append('end_date', endDate);
     if (metric) queryParams.append('metric', metric);
-    if (videoType && videoType !== 'all') queryParams.append('video_type', videoType);
+    
+    // VideoTypeをparent_account_typeにマッピングして送信
+    if (videoType) {
+      const parentAccountType = mapVideoTypeToParentAccountType(videoType);
+      if (parentAccountType) {
+        queryParams.append('parent_account_type', parentAccountType);
+      }
+    }
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/api/sound-trends?${queryParams.toString()}`;
     console.log('API URL:', url);

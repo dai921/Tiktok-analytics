@@ -37,8 +37,9 @@ def update_all_trends_summary(event, context):
             message_data = json.loads(pubsub_message)
             logger.info(f"Pub/Subメッセージを受信: {message_data}")
             
-            # 前の処理からの完了メッセージを確認
-            if message_data.get("status") != "success":
+            # top100_videos_syncからの完了メッセージを確認
+            if (message_data.get("status") != "success" or 
+                message_data.get("previous_step") != "top100_videos_sync"):
                 logger.info(f"前の処理が成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 
@@ -56,8 +57,15 @@ def update_all_trends_summary(event, context):
         
         logger.info(f"ハッシュタグ・BGM日次集計が完了しました。収集日: {collection_date}")
         
-        # 次の処理にメッセージを送信（必要に応じて）
-        logger.info("全体のトレンド集計処理が完了しました")
+        # 次の処理（data_integrity_check）にメッセージを送信
+        logger.info("データ整合性チェック処理のトリガーメッセージを送信します")
+        publish_message("data-integrity-check", {
+            "status": "success",
+            "collection_date": collection_date,
+            "execution_time": datetime.now().isoformat(),
+            "previous_step": "summary_all_trends",
+            "message": "ハッシュタグ・BGM日次集計が完了しました。データ整合性チェック処理を開始します。"
+        })
         
         return {
             "status": "success",
@@ -95,7 +103,7 @@ def update_hashtags_summary(collection_date):
         execute_write_query(delete_hashtags_query, (collection_date,))
         
         delete_hashtags_videos_query = """
-        DELETE FROM hashtags_daily_top150_videos WHERE fetch_date = %s
+        DELETE FROM hashtags_daily_top100_videos WHERE fetch_date = %s
         """
         execute_write_query(delete_hashtags_videos_query, (collection_date,))
         
@@ -140,9 +148,9 @@ def update_hashtags_summary(collection_date):
         
         execute_write_query(hashtags_summary_query, (collection_date, collection_date, collection_date, collection_date))
         
-        # ハッシュタグTOP150動画の集計
+        # ハッシュタグTOP100動画の集計
         hashtags_videos_query = """
-        INSERT INTO hashtags_daily_top150_videos 
+        INSERT INTO hashtags_daily_top100_videos 
         (video_id, fetch_date, hashtags, plays_increase, likes_increase, post_time, thumbnail_url)
         SELECT 
             hashtag_data.video_id,
@@ -179,7 +187,7 @@ def update_hashtags_summary(collection_date):
         JOIN frontend_data fd ON hashtag_data.video_id = fd.video_id
         JOIN play_count_history pch ON fd.video_id = pch.video_id
         WHERE pch.collection_date = %s
-        AND hashtag_data.rank_num <= 150
+        AND hashtag_data.rank_num <= 100
         """
         
         execute_write_query(hashtags_videos_query, (collection_date, collection_date, collection_date, collection_date))
@@ -215,7 +223,7 @@ def update_sound_summary(collection_date):
         execute_write_query(delete_sound_query, (collection_date,))
         
         delete_sound_videos_query = """
-        DELETE FROM sound_daily_top150_videos WHERE fetch_date = %s
+        DELETE FROM sound_daily_top100_videos WHERE fetch_date = %s
         """
         execute_write_query(delete_sound_videos_query, (collection_date,))
         
@@ -258,7 +266,7 @@ def update_sound_summary(collection_date):
         
         # BGMTOP150動画の集計
         sound_videos_query = """
-        INSERT INTO sound_daily_top150_videos 
+        INSERT INTO sound_daily_top100_videos 
         (video_id, fetch_date, sound_name, plays_increase, likes_increase, post_time, thumbnail_url)
         SELECT 
             sound_data.video_id,
@@ -286,7 +294,7 @@ def update_sound_summary(collection_date):
         JOIN frontend_data fd ON sound_data.video_id = fd.video_id
         JOIN play_count_history pch ON fd.video_id = pch.video_id
         WHERE pch.collection_date = %s
-        AND sound_data.rank_num <= 150
+        AND sound_data.rank_num <= 100
         """
         
         execute_write_query(sound_videos_query, (collection_date, collection_date, collection_date, collection_date))

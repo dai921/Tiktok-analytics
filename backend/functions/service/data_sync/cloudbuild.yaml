@@ -9,21 +9,21 @@ steps:
       - |
         echo "ENVIRONMENT=production" > .env
 
-  # sync-all-trends-manual
+  # sync-all-trends
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-sync-all-trends-manual'
+    id: 'deploy-sync-all-trends'
     waitFor: ['prepare-environment']
     args:
       - 'gcloud'
       - 'functions'
       - 'deploy'
-      - 'sync-all-trends-manual'
+      - 'sync-all-trends'
       - '--gen2'
       - '--runtime=python310'
       - '--region=asia-northeast1'
       - '--source=.'
-      - '--entry-point=sync_all_trends_manual'
-      - '--trigger-http'
+      - '--entry-point=sync_all_trends_function'
+      - '--trigger-topic=summary-all-trends'
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
@@ -106,21 +106,21 @@ steps:
       - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db'
     id: 'deploy-update-needs-flags-reset' 
 
-  # sync-video-hashtags-manual
+  # sync-video-hashtag
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-sync-video-hashtags-manual'
+    id: 'deploy-sync-video-hashtags'
     waitFor: ['prepare-environment']
     args:
       - 'gcloud'
       - 'functions'
       - 'deploy'
-      - 'sync-video-hashtags-manual'
+      - 'sync-video-hashtags'
       - '--gen2'
       - '--runtime=python310'
       - '--region=asia-northeast1'
       - '--source=.'
-      - '--entry-point=sync_video_hashtags_manual'
-      - '--trigger-http'
+      - '--entry-point=sync_video_hashtags'
+      - '--trigger-topic=video-hashtags-sync'
       - '--memory=512MB'
       - '--timeout=540s'
       - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
