@@ -30,7 +30,7 @@ import {
   Legend, 
   ResponsiveContainer 
 } from 'recharts';
-import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants';
+import { GENRE_COLORS, DEFAULT_GENRE_COLOR, getProductColorFromName } from '@/lib/constants';
 
 interface ProductTrend {
   rank: number;
@@ -465,6 +465,24 @@ export default function ProductPage() {
       originalRankMap.set(stat.product, index + 1);
     });
 
+  // ジャンルフィルタがかかっているかどうかを判定する関数
+  const isGenreFiltered = () => {
+    return selectedGenres.length < availableGenres.length;
+  };
+
+  // 商品の色を取得する関数（フィルタ状態に応じて色を決定）
+  const getProductColor = (product: string, productCategory?: string) => {
+    if (isGenreFiltered()) {
+      // ジャンルフィルタがかかっている場合は商品名ベースで色を決定
+      return getProductColorFromName(product).text; // .textを追加
+    } else {
+      // フィルタがかかっていない場合は従来通りカテゴリベースで色を決定
+      const colorKey = productCategory || product;
+      const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+      return colors.text;
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto py-8">
@@ -780,18 +798,19 @@ export default function ProductPage() {
                       {getCurrentTopProducts().map((product, index) => {
                         // 商品カテゴリ情報を取得
                         const productInfo = productStats.find(stat => stat.product === product);
-                        const colorKey = productInfo?.product_category || product;
-                        const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+                        const color = getProductColor(product, productInfo?.product_category);
                         
                         return (
                           <div key={product} className="flex items-center gap-1">
                             <div 
                               className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: colors.text }}
+                              style={{ backgroundColor: color }}
                             />
                             <GenreBadge 
                               genre={product} 
-                              categoryForColor={productInfo?.product_category}
+                              categoryForColor={
+                                isGenreFiltered() ? undefined : productInfo?.product_category
+                              }
                             />
                           </div>
                         );
@@ -828,11 +847,9 @@ export default function ProductPage() {
                         />
                         <Legend />
                         {getCurrentTopProducts().map((product, index) => {
-                          // 商品カテゴリ情報を取得して色を決定
+                          // 商品カテゴリ情報を取得
                           const productInfo = productStats.find(stat => stat.product === product);
-                          const colorKey = productInfo?.product_category || product;
-                          // GenreBadgeと同じロジックでconstants.tsから色を取得
-                          const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+                          const color = getProductColor(product, productInfo?.product_category);
                           
                           return (
                             <Line
@@ -840,7 +857,7 @@ export default function ProductPage() {
                               type="monotone"
                               dataKey={product} // product名をdataKeyに設定
                               name={product}
-                              stroke={colors.text}
+                              stroke={color}
                               activeDot={{ r: 8 }}
                               strokeWidth={2}
                             />

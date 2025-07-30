@@ -170,6 +170,45 @@ export const DEFAULT_ACCOUNT_TYPE_COLOR = { bg: '#F9FAFB', text: '#4B5563', bord
 // デフォルトの企業タイプ色
 export const DEFAULT_CORPORATE_TYPE_COLOR = { bg: '#F9FAFB', text: '#4B5563', border: '#E5E7EB' };
 
+// ジャンルフィルタ時に使用する色パレット（視覚的に区別しやすい色を選択）
+export const FILTER_COLOR_PALETTE = [
+  { bg: '#FEF2F2', text: '#DC2626', border: '#FECACA' }, // 赤
+  { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE' }, // 青
+  { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0' }, // 緑
+  { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A' }, // オレンジ
+  { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE' }, // 紫
+  { bg: '#FCE7F3', text: '#DB2777', border: '#FBCFE8' }, // ピンク
+  { bg: '#F0FDFA', text: '#0D9488', border: '#99F6E4' }, // ティール
+  { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' }, // アンバー
+  { bg: '#EEF2FF', text: '#4F46E5', border: '#C7D2FE' }, // インディゴ
+  { bg: '#FDF2F8', text: '#BE185D', border: '#FBCFE8' }, // ローズ
+  { bg: '#F0FDF4', text: '#047857', border: '#BBF7D0' }, // エメラルド
+  { bg: '#FFF7ED', text: '#C2410C', border: '#FDBA74' }, // オレンジレッド
+  { bg: '#FAF5FF', text: '#5B21B6', border: '#E9D5FF' }, // バイオレット
+  { bg: '#ECFEFF', text: '#0E7490', border: '#A5F3FC' }, // シアン
+  { bg: '#FEFCE8', text: '#A16207', border: '#FEF08A' }, // イエロー
+  { bg: '#F0FDF4', text: '#166534', border: '#BBF7D0' }, // グリーン
+  { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD' }, // ブルー
+  { bg: '#FCE7F3', text: '#BE1E6E', border: '#F9A8D4' }, // マゼンタ
+  { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' }, // ティールダーク
+  { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' }  // ブラウン
+] as const;
+
+// 商品名から色オブジェクトを取得するヘルパー関数
+export const getProductColorFromName = (productName: string) => {
+  // 商品名のハッシュ値を計算
+  let hash = 0;
+  for (let i = 0; i < productName.length; i++) {
+    const char = productName.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // 32bit integer conversion
+  }
+  
+  // ハッシュ値を色パレットのインデックスに変換
+  const index = Math.abs(hash) % FILTER_COLOR_PALETTE.length;
+  return FILTER_COLOR_PALETTE[index];
+};
+
 // その他の定数をここに追加 
 
 // 既存の定数を活用したヘルパー関数
