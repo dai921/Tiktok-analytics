@@ -382,7 +382,7 @@ export default function ProductPage() {
     setTempSelectedGenres(selected);
   };
 
-  // ジャンルフィルターを適用するハンドラを追加
+  // ジャンルフィルターを適用するハンドラを修正
   const handleApplyGenreFilter = () => {
     setSelectedGenres(tempSelectedGenres);
     setDisplayLimit(15);
@@ -399,6 +399,10 @@ export default function ProductPage() {
       over100kViews: [],
       postCount: []
     });
+    
+    // フィルタ状態変更を強制的に反映するためにstateを更新
+    // これによりグラフの色が正しく再計算される
+    setTopProducts([]);
   };
 
   // 指標変更ハンドラを修正
@@ -465,22 +469,43 @@ export default function ProductPage() {
       originalRankMap.set(stat.product, index + 1);
     });
 
-  // ジャンルフィルタがかかっているかどうかを判定する関数
+  // ジャンルフィルタがかかっているかどうかを判定する関数を修正
   const isGenreFiltered = () => {
-    return selectedGenres.length < availableGenres.length;
+    // より明確な判定条件を追加
+    return selectedGenres.length > 0 && selectedGenres.length < availableGenres.length;
   };
 
-  // 商品の色を取得する関数（フィルタ状態に応じて色を決定）
-  const getProductColor = (product: string, productCategory?: string) => {
-    if (isGenreFiltered()) {
-      // ジャンルフィルタがかかっている場合は商品名ベースで色を決定
-      return getProductColorFromName(product).text; // .textを追加
+  // 商品の色を取得する関数を修正（順位を考慮した分散）
+  const getProductColor = (product: string, productCategory?: string, rank?: number) => {
+    const isFiltered = selectedGenres.length > 0 && selectedGenres.length < availableGenres.length;
+    
+    if (isFiltered) {
+      // ジャンルフィルタがかかっている場合、順位を考慮して色を分散
+      if (rank !== undefined) {
+        // 順位に基づいて色パレットから分散して選択
+        const dispersedIndex = getDispersedColorIndex(rank);
+        return FILTER_COLOR_PALETTE[dispersedIndex].text;
+      } else {
+        // 順位がない場合は従来通り
+        return getProductColorFromName(product).text;
+      }
     } else {
       // フィルタがかかっていない場合は従来通りカテゴリベースで色を決定
       const colorKey = productCategory || product;
       const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
       return colors.text;
     }
+  };
+
+  // 順位を色パレットのインデックスに分散マッピングする関数
+  const getDispersedColorIndex = (rank: number) => {
+    const paletteSize = FILTER_COLOR_PALETTE.length;
+    
+    // フィボナッチ数列の黄金比を使用した分散アルゴリズム
+    const goldenRatio = 0.618033988749895;
+    const dispersed = ((rank - 1) * goldenRatio) % 1;
+    
+    return Math.floor(dispersed * paletteSize);
   };
 
   if (isLoading) {
