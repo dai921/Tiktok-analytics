@@ -2,7 +2,7 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from "@/lib/constants"
+import { GENRE_COLORS, DEFAULT_GENRE_COLOR, getProductColorFromName } from "@/lib/constants"
 import { AFFILIATE_TYPE_COLORS, INFLUENCER_TYPE_COLORS, CORPORATE_TYPE_COLORS, DEFAULT_ACCOUNT_TYPE_COLOR } from "@/lib/constants"
 
 const badgeVariants = cva(
@@ -65,9 +65,16 @@ export interface GenreBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
 // ジャンルバッジコンポーネント
 function GenreBadge({ genre, categoryForColor, className, ...props }: GenreBadgeProps) {
   // カテゴリに基づいて色を決定
-  // categoryForColorが指定されている場合はそれを使用し、なければgenreを使用
-  const colorKey = categoryForColor || genre;
-  const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+  let colors;
+  
+  if (categoryForColor === undefined) {
+    // フィルタ時：商品名ベースの色を使用
+    colors = getProductColorFromName(genre); // オブジェクト全体を取得
+  } else {
+    // 従来通り：カテゴリベースの色を使用
+    const colorKey = categoryForColor || genre;
+    colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+  }
   
   return (
     <div 

@@ -6,6 +6,8 @@ from src.auth.router import router as auth_router
 from src.display_settings.router import router as display_settings_router
 from src.product_stats import router as product_stats_router
 from src.genre_stats import router as genre_stats_router
+from src.sound_stats import router as sound_stats_router
+from src.hashtag_stats import router as hashtag_stats_router
 from src.watchlist import router as watchlist_router
 from contextlib import closing
 from fastapi import FastAPI
@@ -75,6 +77,10 @@ app.include_router(display_settings_router)
 app.include_router(product_stats_router)
 # ジャンル統計ルーターの追加
 app.include_router(genre_stats_router)
+# サウンド統計ルーターの追加
+app.include_router(sound_stats_router)
+# ハッシュタグ統計ルーターの追加
+app.include_router(hashtag_stats_router)
 # ウォッチリストルーターの追加
 app.include_router(watchlist_router)
 
