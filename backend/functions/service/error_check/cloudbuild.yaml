@@ -1,0 +1,35 @@
+# Cloud Functionsデプロイ用のCloud Build構成
+steps:
+  # 共通ユーティリティファイルのコピー（後続のすべてのデプロイで使用）
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'prepare-environment'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "ENVIRONMENT=production" > .env
+
+# video-count-check
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - video-count-check
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=video_count_check
+      - --trigger-http
+      - --memory=256MB
+      - --timeout=540s
+      - '--service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com'
+      - '--set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db, DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1400114139308753106/p0oadr68g3hAYMxi7usEbH7JAEJvyE9nDsKZDnsKqA_gwcY6bQwxN_r2kAHEga7MY15W'
+    id: 'deploy-video-count-check'
+
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+
