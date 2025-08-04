@@ -12,7 +12,7 @@ sound_daily_summary_top150 テーブル
 | fetch_date | DATE | NO | - | 更新日 |
 | sound_name | VARCHAR(255) | NO | - | BGM名|
 | plays_increase | INT unsigned | NO | 0 | 再生増加数 |
-| over_100k | TINYINT | NO | 0 | 10万以上動画数 |
+| over_100k | INT | NO | 0 | 10万以上動画数 |
 | post_count | INT | NO | 0 | 投稿数 |
 | parent_account_type | VARCHAR(50) | NO | 0 | 親アカウントタイプ |
 
