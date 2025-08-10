@@ -407,18 +407,12 @@ export default function CorporatePage() {
                           accountName: video.account_name,
                         }}
                       />
-                      {/* ランキング番号 */}
-                      <div className="absolute top-1 right-1 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full font-bold">
-                        #{index + 1}
-                      </div>
-                      {/* 動画時間 */}
-                      <div className="absolute bottom-1 left-1 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                        {video.duration || '06:46'}
-                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
+                  <div className="w-[120px] h-[120px] bg-gray-100 rounded flex items-center justify-center">
+                    <span className="text-gray-400 text-xs">No Image</span>
+                  </div>
                 )}
               </TableCell>
               <TableCell className="text-right">
