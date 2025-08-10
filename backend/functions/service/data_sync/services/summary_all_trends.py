@@ -37,9 +37,9 @@ def update_all_trends_summary(event, context):
             message_data = json.loads(pubsub_message)
             logger.info(f"Pub/Subメッセージを受信: {message_data}")
             
-            # top100_videos_syncからの完了メッセージを確認
+            # summary_all_trendsまたはsync_corporate_dataからの完了メッセージを確認
             if (message_data.get("status") != "success" or 
-                message_data.get("previous_step") != "top100_videos_sync"):
+                message_data.get("previous_step") not in ["summary_all_trends", "sync_corporate_data"]):
                 logger.info(f"前の処理が成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 
@@ -57,14 +57,14 @@ def update_all_trends_summary(event, context):
         
         logger.info(f"ハッシュタグ・BGM日次集計が完了しました。収集日: {collection_date}")
         
-        # 次の処理（data_integrity_check）にメッセージを送信
-        logger.info("データ整合性チェック処理のトリガーメッセージを送信します")
-        publish_message("data-integrity-check", {
+        # 次の処理（企業データ同期）にメッセージを送信
+        logger.info("企業データ同期処理のトリガーメッセージを送信します")
+        publish_message("sync-corporate-data", {
             "status": "success",
             "collection_date": collection_date,
             "execution_time": datetime.now().isoformat(),
             "previous_step": "summary_all_trends",
-            "message": "ハッシュタグ・BGM日次集計が完了しました。データ整合性チェック処理を開始します。"
+            "message": "ハッシュタグ・BGM日次集計が完了しました。企業データ同期処理を開始します。"
         })
         
         return {

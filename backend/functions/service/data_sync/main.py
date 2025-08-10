@@ -11,6 +11,7 @@ from services.video_hashtags_sync import sync_video_hashtags as sync_video_hasht
 from services.video_history_sync import sync_video_history
 from services.video_master_sync import sync_video_master as sync_raw_data_to_video_master
 from services.data_integrity_check import check_data_integrity as data_integrity_check_function
+from services.sync_corporate_data import sync_corporate_data as sync_corporate_data_function
 
 # 環境変数の読み込み
 load_dotenv()
@@ -44,4 +45,7 @@ def video_master_sync_from_raw_data(event,context):
 
 def data_integrity_check(event,context):
     return data_integrity_check_function(event,context)
+
+def sync_corporate_data(event, context):
+    return sync_corporate_data_function(event, context)
 
