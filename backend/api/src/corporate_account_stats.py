@@ -207,41 +207,22 @@ async def get_corporate_genres():
         
         logger.info(f"企業ジャンル統計取得開始: デフォルト期間={start_date}〜{end_date}")
         
-        # 期間フィルターを削除し、全期間で集計（既存のクエリのまま）
+        # corporate_daily_top100_videosテーブルを使ってシンプルに集計
         genres_sql = text("""
         SELECT 
-    account_type,
-    recruitment_count,
-    marketing_count,
-    total_count
-FROM (
-    SELECT
-        TRIM(TRAILING ',' FROM 
-            CASE 
-                WHEN fcd.account_type LIKE '%採用%' THEN TRIM(REPLACE(fcd.account_type, '採用', ''))
-                WHEN fcd.account_type LIKE '%集客%' THEN TRIM(REPLACE(fcd.account_type, '集客', ''))
-                ELSE fcd.account_type
-            END
-        ) as account_type,
-        COUNT(CASE WHEN fcd.account_type LIKE '%採用%' THEN 1 END) AS recruitment_count,
-        COUNT(CASE WHEN fcd.account_type LIKE '%集客%' THEN 1 END) AS marketing_count,
-        COUNT(*) AS total_count
-    FROM frontend_corporate_data fcd
-    WHERE fcd.account_type IS NOT NULL 
-      AND fcd.account_type != ''
-    GROUP BY 
-        TRIM(TRAILING ',' FROM 
-            CASE 
-                WHEN fcd.account_type LIKE '%採用%' THEN TRIM(REPLACE(fcd.account_type, '採用', ''))
-                WHEN fcd.account_type LIKE '%集客%' THEN TRIM(REPLACE(fcd.account_type, '集客', ''))
-                ELSE fcd.account_type
-            END
-        )
-    HAVING total_count > 0
-) AS grouped_data
-ORDER BY 
-    CASE WHEN account_type = 'その他' THEN 1 ELSE 0 END,
-    total_count DESC
+            account_type,
+            COUNT(CASE WHEN second_account_type = '採用' THEN 1 END) AS recruitment_count,
+            COUNT(CASE WHEN second_account_type = '集客' THEN 1 END) AS marketing_count,
+            COUNT(*) AS total_count
+        FROM corporate_daily_top100_videos
+        WHERE account_type IS NOT NULL 
+          AND account_type != ''
+          AND account_type != 'None'
+        GROUP BY account_type
+        HAVING total_count > 0
+        ORDER BY 
+            CASE WHEN account_type = 'その他' THEN 1 ELSE 0 END,
+            total_count DESC
         """)
         
         result = conn.execute(genres_sql)
