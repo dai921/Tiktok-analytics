@@ -3,20 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowUp, Search, ChevronRight, Calendar } from "lucide-react";
+import { ArrowUp, Search, ChevronRight } from "lucide-react";
 import { ImageHover } from '@/components/ui/image-hover';
 import { formatNumber } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 // TikTokカラーの定義
 const TIKTOK_COLORS = {
@@ -53,16 +47,18 @@ interface CorporateVideo {
 
 type PurposeType = 'recruitment' | 'marketing';
 
-// 期間選択の選択肢
-const periodOptions = [
-  { value: '7', label: '直近7日間' },
-  { value: '14', label: '直近14日間' },
-  { value: '30', label: '直近30日間' },
-  { value: '90', label: '直近90日間' }
-];
 
 export default function CorporatePage() {
-  const [selectedPeriod, setSelectedPeriod] = useState('30');
+  // 期間選択関連の状態を追加
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
+    start: new Date(),
+    end: new Date(),
+  });
+  const [userSelectedDate, setUserSelectedDate] = useState(false);
+  const [tempDateRange, setTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  // 既存の状態変数（selectedPeriodを削除）
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -76,6 +72,24 @@ export default function CorporatePage() {
   // 動画関連の状態
   const [videos, setVideos] = useState<CorporateVideo[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+
+  // 期間選択のハンドラを追加
+  const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
+    setTempDateRange(newRange);
+  };
+
+  const handleDateRangeApply = () => {
+    if (tempDateRange) {
+      setDateRange(tempDateRange);
+      setUserSelectedDate(true);
+      setDataLoaded(false); // リセットして再読み込み可能にする
+      
+      // 選択中のジャンルがあれば動画を再取得
+      if (selectedGenre) {
+        loadCorporateVideos(selectedGenre, activePurpose);
+      }
+    }
+  };
 
   // ジャンル検索のフィルタリング処理を修正
   useEffect(() => {
@@ -101,39 +115,52 @@ export default function CorporatePage() {
     setFilteredGenres(sortedGenres);
   }, [searchQuery, genres]);
 
-  // 企業ジャンル一覧を取得
-  const loadCorporateGenres = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/corporate-genres`);
-      const result = await response.json();
-      
-      if (result.success) {
-        // 取得後にソート処理を追加
-        const sortedData = result.data.sort((a: CorporateGenre, b: CorporateGenre) => {
-          // 「その他」は最後に
-          if (a.account_type === 'その他' && b.account_type !== 'その他') return 1;
-          if (b.account_type === 'その他' && a.account_type !== 'その他') return -1;
-          
-          // 両方とも「その他」でない場合は total_count の降順
-          return b.total_count - a.total_count;
-        });
+  // 企業ジャンル一覧を取得し、初回のデフォルト期間も設定
+  useEffect(() => {
+    const loadGenres = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
         
-        setGenres(sortedData);
-      } else {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/corporate-genres`);
+        const result = await response.json();
+        
+        if (result.success) {
+          const sortedData = result.data.sort((a: CorporateGenre, b: CorporateGenre) => {
+            if (a.account_type === 'その他' && b.account_type !== 'その他') return 1;
+            if (b.account_type === 'その他' && a.account_type !== 'その他') return -1;
+            return b.total_count - a.total_count;
+          });
+          
+          setGenres(sortedData);
+          
+          // ユーザーが期間を選択していない場合のみ、バックエンドから返された期間を設定
+          if (!userSelectedDate && !dataLoaded && result.dateRange) {
+            console.log("バックエンドから受け取った日付範囲:", result.dateRange);
+            const start = new Date(result.dateRange.startDate);
+            const end = new Date(result.dateRange.endDate);
+            console.log("変換された日付範囲:", { start, end });
+            setDateRange({
+              start,
+              end
+            });
+            setDataLoaded(true);
+          }
+        } else {
+          setError('企業ジャンル情報の取得に失敗しました');
+        }
+      } catch (err) {
+        console.error("企業ジャンルAPI呼び出しエラー:", err);
         setError('企業ジャンル情報の取得に失敗しました');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error("企業ジャンルAPI呼び出しエラー:", err);
-      setError('企業ジャンル情報の取得に失敗しました');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+    
+    loadGenres();
+  }, []);
 
-  // 企業動画を取得
+  // 企業動画を取得（修正版）
   const loadCorporateVideos = async (genreType: string, purpose: PurposeType) => {
     try {
       setIsLoadingVideos(true);
@@ -141,14 +168,30 @@ export default function CorporatePage() {
       const params = new URLSearchParams();
       params.append('account_type', genreType);
       params.append('purpose', purpose === 'recruitment' ? '採用' : '集客');
-      params.append('limit', '9'); // 3x3グリッド
-      params.append('days', selectedPeriod);
+      params.append('limit', '9');
+      
+      // 期間をパラメータに追加
+      if (userSelectedDate) {
+        params.append('start_date', dateRange.start.toISOString().split('T')[0]);
+        params.append('end_date', dateRange.end.toISOString().split('T')[0]);
+      }
+      // userSelectedDateがfalseの場合はstart_dateとend_dateを送らず、バックエンドにデフォルト期間を任せる
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/corporate-videos-by-genre?${params.toString()}`);
       const result = await response.json();
       
       if (result.success) {
         setVideos(result.data);
+        
+        // この部分は削除（ジャンル取得時に既に期間が設定されているため）
+        // if (!userSelectedDate && result.dateRange && !dataLoaded) {
+        //   setDateRange({
+        //     start: new Date(result.dateRange.startDate),
+        //     end: new Date(result.dateRange.endDate)
+        //   });
+        //   setDataLoaded(true);
+        // }
+        
       } else {
         setError('企業動画の取得に失敗しました');
       }
@@ -160,21 +203,16 @@ export default function CorporatePage() {
     }
   };
 
-  // 期間変更時の処理
-  useEffect(() => {
-    loadCorporateGenres();
-  }, [selectedPeriod]);
-
-  // ジャンル選択時の動画ロード
+  // ジャンル選択時の動画ロード（修正版）
   useEffect(() => {
     if (selectedGenre) {
       loadCorporateVideos(selectedGenre, activePurpose);
     }
-  }, [selectedGenre, activePurpose, selectedPeriod]);
+  }, [selectedGenre, activePurpose]); // dateRangeとuserSelectedDateを削除
 
   const handleGenreSelect = (genreType: string) => {
     setSelectedGenre(genreType);
-    setActivePurpose('marketing'); // デフォルトで集客タブを選択（画像に合わせて）
+    setActivePurpose('marketing');
   };
 
   const handlePurposeChange = (purpose: string) => {
@@ -287,21 +325,13 @@ export default function CorporatePage() {
                 </p>
               </div>
               
-              {/* 期間選択 */}
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-gray-400" />
-                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {periodOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* 期間選択をDateRangePickerに変更 */}
+              <div className="w-[280px]">
+                <DateRangePicker
+                  dateRange={dateRange}
+                  onDateRangeChange={handleDateRangeChange}
+                  onApply={handleDateRangeApply}
+                />
               </div>
             </div>
           </div>

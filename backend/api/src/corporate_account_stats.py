@@ -26,11 +26,28 @@ async def get_corporate_account_stats(
 ):
     """企業アカウントタイプ別統計を取得するエンドポイント"""
     
-    # デフォルトの日付範囲を設定（指定がない場合は直近30日）
+    # corporate-genresとcorporate-videos-by-genreの両方で統一する
     if not start_date or not end_date:
-        today = datetime.now()
-        end_date = today.strftime('%Y-%m-%d')
-        start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+        # 実際のデータ収集日を確認
+        query = text("""
+        SELECT DISTINCT fetch_date
+        FROM corporate_daily_top100_videos
+        WHERE fetch_date IS NOT NULL
+        ORDER BY fetch_date DESC
+        LIMIT 7
+        """)
+        
+        result = conn.execute(query)
+        dates = result.fetchall()
+        
+        if dates:
+            end_date = dates[0][0].strftime('%Y-%m-%d')
+            start_date = dates[-1][0].strftime('%Y-%m-%d')
+        else:
+            # フォールバック
+            today = datetime.now()
+            end_date = today.strftime('%Y-%m-%d')
+            start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
     
     # ソートカラムの決定
     sort_column = get_sort_column(metric)
@@ -160,15 +177,37 @@ async def get_corporate_account_stats(
 
 @router.get("/api/corporate-genres")
 async def get_corporate_genres():
-    """企業アカウントのジャンル別統計を取得するエンドポイント（全期間）"""
+    """企業アカウントのジャンル別統計を取得するエンドポイント（デフォルト期間付き）"""
     
-    logger.info("企業ジャンル統計取得開始（全期間）")
-    
+    # デフォルト期間を設定（fetch_dateベース）
     conn = None
     try:
         conn = get_db_connection()
         
-        # 期間フィルターを削除し、全期間で集計
+        # 実際のデータ収集日を確認
+        query = text("""
+        SELECT DISTINCT fetch_date
+        FROM corporate_daily_top100_videos
+        WHERE fetch_date IS NOT NULL
+        ORDER BY fetch_date DESC
+        LIMIT 7
+        """)
+        
+        result = conn.execute(query)
+        dates = result.fetchall()
+        
+        if dates:
+            end_date = dates[0][0].strftime('%Y-%m-%d')
+            start_date = dates[-1][0].strftime('%Y-%m-%d')
+        else:
+            # フォールバック
+            today = datetime.now()
+            end_date = today.strftime('%Y-%m-%d')
+            start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        logger.info(f"企業ジャンル統計取得開始: デフォルト期間={start_date}〜{end_date}")
+        
+        # 期間フィルターを削除し、全期間で集計（既存のクエリのまま）
         genres_sql = text("""
         SELECT 
     account_type,
@@ -229,8 +268,8 @@ ORDER BY
             "success": True,
             "data": genres_data,
             "dateRange": {
-                "startDate": "全期間",
-                "endDate": "全期間"
+                "startDate": start_date,
+                "endDate": end_date
             }
         }
 
@@ -249,54 +288,82 @@ ORDER BY
 async def get_corporate_videos_by_genre(
     account_type: str,
     purpose: str,  # '採用' または '集客'
-    days: Optional[str] = "30",
+    start_date: Optional[str] = None,  # 追加
+    end_date: Optional[str] = None,    # 追加
     limit: Optional[int] = 9
 ):
-    """ジャンル・目的別の企業動画を取得するエンドポイント（シンプル版）"""
+    """ジャンル・目的別の企業動画を取得するエンドポイント"""
     
     # 期間を計算
-    try:
-        days_int = int(days)
-    except ValueError:
-        days_int = 30
+    if start_date and end_date:
+        # フロントエンドから指定された期間を使用
+        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+    else:
+        # デフォルト期間（fetch_dateベース）
+        conn_temp = get_db_connection()
+        try:
+            # 実際のデータ収集日を確認
+            query = text("""
+            SELECT DISTINCT fetch_date
+            FROM corporate_daily_top100_videos
+            WHERE fetch_date IS NOT NULL
+            ORDER BY fetch_date DESC
+            LIMIT 7
+            """)
+            
+            result = conn_temp.execute(query)
+            dates = result.fetchall()
+            
+            if dates:
+                end_date = dates[0][0].strftime('%Y-%m-%d')
+                start_date = dates[-1][0].strftime('%Y-%m-%d')
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+            else:
+                # フォールバック
+                today = datetime.now()
+                end_date_obj = today
+                start_date_obj = today - timedelta(days=30)
+                start_date = start_date_obj.strftime('%Y-%m-%d')
+                end_date = end_date_obj.strftime('%Y-%m-%d')
+        finally:
+            conn_temp.close()
     
-    today = datetime.now()
-    end_date = today.strftime('%Y-%m-%d')
-    start_date = (today - timedelta(days=days_int)).strftime('%Y-%m-%d')
-    
-    logger.info(f"企業動画取得開始: account_type={account_type}, purpose={purpose}, days={days}")
+    logger.info(f"企業動画取得開始: account_type={account_type}, purpose={purpose}, period={start_date}〜{end_date}")
     
     conn = None
     try:
         conn = get_db_connection()
         
-        # corporate_daily_top100_videosから直接取得（frontend_corporate_dataとJOIN）
+        # corporate_daily_top100_videosから期間合計を取得（frontend_corporate_dataとJOIN）
         videos_sql = text("""
-SELECT 
-    fcd.url,
-    ct.thumbnail_url,
-    fcd.play_count,
-    ct.plays_increase as play_count_increase,
-    ct.likes_increase as likes_count_increase,
-    ct.post_time as created_at,
-    fcd.account_name,
-    fcd.display_name,
-    ct.account_type,
-    ct.second_account_type
-FROM corporate_daily_top100_videos ct
-LEFT JOIN frontend_corporate_data fcd ON ct.video_id COLLATE utf8mb4_unicode_ci = fcd.video_id COLLATE utf8mb4_unicode_ci
-WHERE ct.fetch_date BETWEEN :start_date AND :end_date
-  AND TRIM(TRAILING ',' FROM 
-      CASE 
-          WHEN ct.account_type LIKE '%採用%' THEN TRIM(REPLACE(ct.account_type, '採用', ''))
-          WHEN ct.account_type LIKE '%集客%' THEN TRIM(REPLACE(ct.account_type, '集客', ''))
-          ELSE ct.account_type
-      END
-  ) LIKE :account_type_pattern
-  AND ct.second_account_type = :purpose
-ORDER BY ct.plays_increase DESC
-LIMIT :limit
-""")
+            SELECT 
+                fcd.url,
+                ct.thumbnail_url,
+                fcd.play_count,
+                SUM(ct.plays_increase) as play_count_increase,
+                SUM(ct.likes_increase) as likes_count_increase,
+                MAX(ct.post_time) as created_at,
+                fcd.account_name,
+                fcd.display_name,
+                ct.account_type,
+                ct.second_account_type
+            FROM corporate_daily_top100_videos ct
+            LEFT JOIN frontend_corporate_data fcd ON ct.video_id COLLATE utf8mb4_unicode_ci = fcd.video_id COLLATE utf8mb4_unicode_ci
+            WHERE ct.fetch_date BETWEEN :start_date AND :end_date
+            AND TRIM(TRAILING ',' FROM 
+                CASE 
+                    WHEN ct.account_type LIKE '%採用%' THEN TRIM(REPLACE(ct.account_type, '採用', ''))
+                    WHEN ct.account_type LIKE '%集客%' THEN TRIM(REPLACE(ct.account_type, '集客', ''))
+                    ELSE ct.account_type
+                END
+            ) LIKE :account_type_pattern
+            AND ct.second_account_type = :purpose
+            GROUP BY ct.video_id, fcd.url, ct.thumbnail_url, fcd.play_count, fcd.account_name, fcd.display_name, ct.account_type, ct.second_account_type
+            ORDER BY SUM(ct.plays_increase) DESC
+            LIMIT :limit
+            """)
         
         params = {
             "start_date": start_date,
