@@ -1,19 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { ArrowUp } from "lucide-react";
-import { CorporateAccountStats } from '@/types/corporate';
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowUp, Search, ChevronRight, Calendar } from "lucide-react";
 import { ImageHover } from '@/components/ui/image-hover';
-import { fetchCorporateAccountStats } from '@/lib/api/corporate';
 import { formatNumber } from '@/lib/utils';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { AccountTypeBadge } from '@/components/ui/badge';
-
-type MetricKey = 'viewsIncrease' | 'over100kViews' | 'postCount';
+import { Input } from '@/components/ui/input';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // TikTokカラーの定義
 const TIKTOK_COLORS = {
@@ -23,144 +25,188 @@ const TIKTOK_COLORS = {
   white: '#FFFFFF',
 };
 
-// 指標の表示名を取得する関数
-const getMetricLabel = (metricKey: string) => {
-  const labels: Record<string, string> = {
-    viewsIncrease: '再生増加数',
-    over100kViews: '10万再生以上個数',
-    postCount: '投稿数',
-  };
-  return labels[metricKey] || metricKey;
-};
+// 企業ジャンルの型定義
+interface CorporateGenre {
+  account_type: string;
+  recruitment_count: number;
+  marketing_count: number;
+  total_count: number;
+}
+
+// 動画データの型定義
+interface CorporateVideo {
+  id: string;
+  thumbnail_url: string;
+  url: string;
+  play_count: number;
+  play_count_increase: number;
+  likes_count_increase: number;
+  created_at: string;
+  account_name: string;
+  display_name?: string;
+  account_type: string;
+  second_account_type: string;
+  title?: string;
+  duration?: string;
+}
+
+type PurposeType = 'recruitment' | 'marketing';
+
+// 期間選択の選択肢
+const periodOptions = [
+  { value: '7', label: '直近7日間' },
+  { value: '14', label: '直近14日間' },
+  { value: '30', label: '直近30日間' },
+  { value: '90', label: '直近90日間' }
+];
 
 export default function CorporatePage() {
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(),
-    end: new Date(),
-  });
-  const [userSelectedDate, setUserSelectedDate] = useState(false);
-  const [tempDateRange, setTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [metric, setMetric] = useState<MetricKey>('viewsIncrease');
-  const [selectedAccountType, setSelectedAccountType] = useState<string | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('30');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [corporateAccountStats, setCorporateAccountStats] = useState<CorporateAccountStats[]>([]);
-  const [displayLimit, setDisplayLimit] = useState(15);
   
-  // 指標ごとにデータをキャッシュするための状態
-  const [cachedAccountStats, setCachedAccountStats] = useState<Record<MetricKey, CorporateAccountStats[]>>({
-    viewsIncrease: [],
-    over100kViews: [],
-    postCount: []
-  });
+  // ジャンル関連の状態
+  const [genres, setGenres] = useState<CorporateGenre[]>([]);
+  const [filteredGenres, setFilteredGenres] = useState<CorporateGenre[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
+  const [activePurpose, setActivePurpose] = useState<PurposeType>('marketing');
+  
+  // 動画関連の状態
+  const [videos, setVideos] = useState<CorporateVideo[]>([]);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
 
+  // ジャンル検索のフィルタリング処理を修正
   useEffect(() => {
-    if (!dataLoaded || userSelectedDate) {
-      const loadCorporateAccountStats = async () => {
-        try {
-          console.log("企業アカウント統計API呼び出し開始:", { userSelectedDate, dataLoaded, metric });
-          setIsLoading(true);
-          setError(null);
-          
-          // キャッシュ内にすでにデータがあるか確認
-          if (cachedAccountStats[metric]?.length > 0 && userSelectedDate) {
-            console.log("キャッシュからデータを使用:", metric);
-            setCorporateAccountStats(cachedAccountStats[metric]);
-            setIsLoading(false);
-            return;
-          }
-          
-          const result = await fetchCorporateAccountStats(
-            userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
-            userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
-            metric // 現在選択中の指標を送信
-          );
-
-          console.log("企業アカウント統計APIレスポンス:", result);
-          setCorporateAccountStats(result.data);
-          
-          // 結果をキャッシュに保存
-          setCachedAccountStats(prev => ({
-            ...prev,
-            [metric]: result.data
-          }));
-          
-          // ユーザーが選択していない場合のみ、バックエンドから返された日付範囲を設定
-          if (!userSelectedDate && !dataLoaded) {
-            console.log("ユーザー選択なし、dateRange確認:", result.dateRange);
-            if (result.dateRange) {
-              console.log("バックエンドから受け取った日付範囲:", result.dateRange);
-              const start = new Date(result.dateRange.startDate);
-              const end = new Date(result.dateRange.endDate);
-              console.log("変換された日付範囲:", { start, end });
-              setDateRange({
-                start,
-                end
-              });
-            } else {
-              console.log("dateRangeなし");
-            }
-          }
-          
-          setDataLoaded(true);
-        } catch (err) {
-          console.error("企業アカウント統計API呼び出しエラー:", err);
-          setError('企業アカウント統計情報の取得に失敗しました');
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      loadCorporateAccountStats();
-    } else {
-      console.log("企業アカウント統計API呼び出しがスキップされました:", { userSelectedDate, dataLoaded, metric });
-    }
-  }, [userSelectedDate, dataLoaded, dateRange, metric, cachedAccountStats]);
-
-  const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
-    setTempDateRange(newRange);
-  };
-
-  const handleDateRangeApply = () => {
-    if (tempDateRange) {
-      setDateRange(tempDateRange);
-      setUserSelectedDate(true);
-      setDisplayLimit(15);
-      setCachedAccountStats({
-        viewsIncrease: [],
-        over100kViews: [],
-        postCount: []
-      });
-      setDataLoaded(false);
-    }
-  };
-
-  // 日付フォーマット用の関数
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  };
-
-  // 指標変更ハンドラ
-  const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const oldMetric = metric;
-    const newMetric = e.target.value as MetricKey;
-    console.log(`指標変更: ${oldMetric} → ${newMetric}`);
-    setMetric(newMetric);
-    setDisplayLimit(15);
+    let processedGenres = genres;
     
-    setDataLoaded(false);
+    // 検索フィルタリング
+    if (searchQuery.trim() !== '') {
+      processedGenres = genres.filter(genre => 
+        genre.account_type.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // ソート処理：「その他」を最後に、それ以外は total_count の降順
+    const sortedGenres = processedGenres.sort((a, b) => {
+      // 「その他」は最後に
+      if (a.account_type === 'その他' && b.account_type !== 'その他') return 1;
+      if (b.account_type === 'その他' && a.account_type !== 'その他') return -1;
+      
+      // 両方とも「その他」でない場合は total_count の降順
+      return b.total_count - a.total_count;
+    });
+    
+    setFilteredGenres(sortedGenres);
+  }, [searchQuery, genres]);
+
+  // 企業ジャンル一覧を取得
+  const loadCorporateGenres = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/corporate-genres`);
+      const result = await response.json();
+      
+      if (result.success) {
+        // 取得後にソート処理を追加
+        const sortedData = result.data.sort((a: CorporateGenre, b: CorporateGenre) => {
+          // 「その他」は最後に
+          if (a.account_type === 'その他' && b.account_type !== 'その他') return 1;
+          if (b.account_type === 'その他' && a.account_type !== 'その他') return -1;
+          
+          // 両方とも「その他」でない場合は total_count の降順
+          return b.total_count - a.total_count;
+        });
+        
+        setGenres(sortedData);
+      } else {
+        setError('企業ジャンル情報の取得に失敗しました');
+      }
+    } catch (err) {
+      console.error("企業ジャンルAPI呼び出しエラー:", err);
+      setError('企業ジャンル情報の取得に失敗しました');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 企業動画を取得
+  const loadCorporateVideos = async (genreType: string, purpose: PurposeType) => {
+    try {
+      setIsLoadingVideos(true);
+      
+      const params = new URLSearchParams();
+      params.append('account_type', genreType);
+      params.append('purpose', purpose === 'recruitment' ? '採用' : '集客');
+      params.append('limit', '9'); // 3x3グリッド
+      params.append('days', selectedPeriod);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/corporate-videos-by-genre?${params.toString()}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setVideos(result.data);
+      } else {
+        setError('企業動画の取得に失敗しました');
+      }
+    } catch (err) {
+      console.error("企業動画API呼び出しエラー:", err);
+      setError('企業動画の取得に失敗しました');
+    } finally {
+      setIsLoadingVideos(false);
+    }
+  };
+
+  // 期間変更時の処理
+  useEffect(() => {
+    loadCorporateGenres();
+  }, [selectedPeriod]);
+
+  // ジャンル選択時の動画ロード
+  useEffect(() => {
+    if (selectedGenre) {
+      loadCorporateVideos(selectedGenre, activePurpose);
+    }
+  }, [selectedGenre, activePurpose, selectedPeriod]);
+
+  const handleGenreSelect = (genreType: string) => {
+    setSelectedGenre(genreType);
+    setActivePurpose('marketing'); // デフォルトで集客タブを選択（画像に合わせて）
+  };
+
+  const handlePurposeChange = (purpose: string) => {
+    setActivePurpose(purpose as PurposeType);
+  };
+
+  // 動画時間をフォーマット
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-8">
-        <Skeleton className="h-8 w-[200px] mb-4" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-[200px]" />
-          ))}
+      <div className="min-h-screen bg-gray-50">
+        <div className="flex">
+          <div className="w-80 bg-white border-r">
+            <Skeleton className="h-20 m-4" />
+            <div className="space-y-2 px-4">
+              {[...Array(10)].map((_, i) => (
+                <Skeleton key={i} className="h-12" />
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 p-6">
+            <Skeleton className="h-8 w-[200px] mb-6" />
+            <div className="grid grid-cols-3 gap-4">
+              {[...Array(9)].map((_, i) => (
+                <Skeleton key={i} className="h-[300px]" />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -168,272 +214,243 @@ export default function CorporatePage() {
 
   if (error) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-red-500">{error}</div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">企業アカウント分析</h1>
-
-      <div className="space-y-4">
-        {/* フィルターエリア */}
-        <div className="flex gap-4 items-center">
-          <div className="flex items-center gap-2">
-            <label className="text-sm whitespace-nowrap">表示指標:</label>
-            <select 
-              value={metric}
-              onChange={handleMetricChange}
-              className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
-            >
-              <option value="viewsIncrease">総再生増加数</option>
-              <option value="over100kViews">10万再生以上個数</option>
-              <option value="postCount">投稿数</option>
-            </select>
+    <div className="min-h-screen bg-gray-50">
+      <div className="flex">
+        {/* 左サイドバー */}
+        <div className="w-80 bg-white border-r border-gray-200 min-h-screen">
+          {/* サイドバーヘッダー */}
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">企業アカウントのジャンル</h2>
+              <span className="text-sm text-gray-500">{filteredGenres.length}件</span>
+            </div>
+            
+            {/* 検索ボックス */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="ジャンルを検索..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-10"
+              />
+            </div>
           </div>
-          <div className="w-[280px]">
-            <DateRangePicker
-              dateRange={dateRange}
-              onDateRangeChange={handleDateRangeChange}
-              onApply={handleDateRangeApply}
-            />
+
+          {/* ジャンル一覧 */}
+          <div className="overflow-y-auto max-h-[calc(100vh-140px)]">
+            {filteredGenres.map((genre, index) => {
+              const isSelected = selectedGenre === genre.account_type;
+              
+              return (
+                <div
+                  key={index}
+                  className={cn(
+                    "p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50",
+                    isSelected && "bg-blue-50 border-l-4 border-l-blue-500"
+                  )}
+                  onClick={() => handleGenreSelect(genre.account_type)}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-900">{genre.account_type}</span>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                  </div>
+                </div>
+              );
+            })}
+            
+            {filteredGenres.length === 0 && (
+              <div className="p-4 text-center text-gray-500">
+                {searchQuery ? '検索結果がありません' : 'ジャンルがありません'}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ランキングエリア */}
-        <div className="flex gap-6">
-          {/* 左側: ランキングテーブル */}
-          <div className="w-1/3">
-            <Card>
-              <CardHeader>
-                <CardTitle>アカウントタイプランキング</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table className="w-full">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs py-2 px-2">順位</TableHead>
-                      <TableHead className="text-xs py-2 px-2">アカウントタイプ</TableHead>
-                      <TableHead className="text-xs py-2 px-2 text-right">{getMetricLabel(metric)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {/* その他以外のアカウントタイプを表示 */}
-                    {corporateAccountStats
-                      .filter(stat => stat.account_type && stat.account_type.trim() !== '' && stat.account_type !== 'その他')
-                      .slice(0, displayLimit)
-                      .map((stat, index) => {
-                        const metricValue = {
-                          viewsIncrease: Number(stat.total_play_count_increase) || 0,
-                          over100kViews: Number(stat.videos_over_100k) || 0,
-                          postCount: Number(stat.total_posts) || 0
-                        }[metric];
-                        
-                        const isSelected = selectedAccountType === stat.account_type;
-                        
-                        return (
-                          <TableRow 
-                            key={index} 
-                            className={cn(
-                              "cursor-pointer transition-colors",
-                              isSelected ? "bg-[#25F4EE]/5 hover:bg-[#25F4EE]/10" : "hover:bg-[#25F4EE]/5"
-                            )}
-                            onClick={() => setSelectedAccountType(stat.account_type)}
-                          >
-                            <TableCell className="py-3">
-                              {index + 1}
-                            </TableCell>
-                            <TableCell className="py-3">
-                              <AccountTypeBadge accountType={stat.account_type} />
-                            </TableCell>
-                            <TableCell className="py-3 text-right">{formatNumber(metricValue)}</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    
-                    {/* その他カテゴリが存在する場合、参考記録として表示 */}
-                    {corporateAccountStats.find(stat => stat.account_type === 'その他') && (
-                      <>
-                        {/* 区切り線 */}
-                        <TableRow>
-                          <TableCell colSpan={3} className="py-2">
-                            <div className="border-t border-dashed border-gray-200 my-1"></div>
-                          </TableCell>
-                        </TableRow>
-                        
-                        {/* 参考記録として「その他」を表示 */}
-                        {(() => {
-                          const otherStat = corporateAccountStats.find(stat => stat.account_type === 'その他')!;
-                          const metricValue = {
-                            viewsIncrease: Number(otherStat.total_play_count_increase) || 0,
-                            over100kViews: Number(otherStat.videos_over_100k) || 0,
-                            postCount: Number(otherStat.total_posts) || 0
-                          }[metric];
-                          
-                          const isSelected = selectedAccountType === otherStat.account_type;
-                          
-                          return (
-                            <TableRow 
-                              key="other-reference"
-                              className={cn(
-                                "cursor-pointer transition-colors",
-                                isSelected ? "bg-[#25F4EE]/5 hover:bg-[#25F4EE]/10" : "hover:bg-[#25F4EE]/5"
-                              )}
-                              onClick={() => setSelectedAccountType(otherStat.account_type)}
-                            >
-                              <TableCell className="py-3">
-                                <span className="text-xs"></span>
-                              </TableCell>
-                              <TableCell className="py-3">
-                                <AccountTypeBadge accountType={otherStat.account_type} />
-                              </TableCell>
-                              <TableCell className="py-3 text-right">{formatNumber(metricValue)}</TableCell>
-                            </TableRow>
-                          );
-                        })()}
-                      </>
-                    )}
-                  </TableBody>
-                </Table>
-                
-                {/* さらに読み込むボタン */}
-                {(() => {
-                  const filteredAccountTypes = corporateAccountStats.filter(stat => 
-                    stat.account_type && stat.account_type.trim() !== '' && stat.account_type !== 'その他'
-                  );
-                  return filteredAccountTypes.length > displayLimit ? (
-                    <div className="mt-4 text-center">
-                      <button
-                        onClick={() => setDisplayLimit(prev => prev + 15)}
-                        className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-                      >
-                        さらに15件読み込む
-                      </button>
-                    </div>
-                  ) : null;
-                })()}
-              </CardContent>
-            </Card>
+        {/* メインコンテンツ */}
+        <div className="flex-1">
+          {/* ヘッダー */}
+          <div className="bg-white border-b border-gray-200 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Corporate</h1>
+                <p className="text-gray-600 mt-1">
+                  ジャンルを選択すると「集客」「採用」のタブごとに、指定期間の再生数上位動画が表示されます。
+                </p>
+              </div>
+              
+              {/* 期間選択 */}
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-gray-400" />
+                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {periodOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
-          {/* 右側: 関連動画 */}
-          <div className="w-2/3">
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {selectedAccountType ? (
-                    <div className="flex items-center gap-2">
-                      <span>関連動画:</span>
-                      <AccountTypeBadge accountType={selectedAccountType} />
-                    </div>
-                  ) : 'アカウントタイプを選択してください'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {selectedAccountType ? (
-                  <div data-account-type-videos-table>
-                    <Table className="w-full">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs py-2 px-2">サムネイル</TableHead>
-                          <TableHead className="text-xs py-2 px-2 text-right">再生増加数</TableHead>
-                          <TableHead className="text-xs py-2 px-2 text-right">いいね増加数</TableHead>
-                          <TableHead className="text-xs py-2 px-2 text-right">投稿日</TableHead>
-                          <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {corporateAccountStats.find(stat => stat.account_type === selectedAccountType)?.top_videos
-                          ?.sort((a, b) => Number(b.play_count_increase) - Number(a.play_count_increase))
-                          .map((video, index) => (
-                          <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
-                            <TableCell>
-                              {video.thumbnail_url ? (
-                                <div className="relative w-[120px] h-[120px] my-1 mx-auto">
-                                  <div className="relative w-full h-full overflow-hidden rounded border-2 border-transparent hover:border-[#FE2C55] transition-colors">
-                                    <ImageHover
-                                      src={video.thumbnail_url}
-                                      alt="サムネイル"
-                                      videoUrl={video.url}
-                                      videoData={{
-                                        views: Number(video.play_count) ?? 0,
-                                        viewsIncrease: Number(video.play_count_increase_2d) ?? 0,
-                                        ten_days_increase: Number(video.ten_days_increase) ?? 0,
-                                        createdAt: video.created_at,
-                                        accountName: video.account_name,
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {Number(video.play_count_increase) > 0 ? (
-                                <div className="flex items-center justify-end gap-1 text-green-600">
-                                  <ArrowUp className="h-3 w-3" />
-                                  {formatNumber(video.play_count_increase)}
-                                </div>
-                              ) : (
-                                formatNumber(video.play_count_increase)
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {Number(video.likes_count_increase) > 0 ? (
-                                <div className="flex items-center justify-end gap-1 text-green-600">
-                                  <ArrowUp className="h-3 w-3" />
-                                  {formatNumber(video.likes_count_increase)}
-                                </div>
-                              ) : (
-                                formatNumber(video.likes_count_increase)
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {video.created_at
-                                ? (() => {
-                                    const d = new Date(video.created_at);
-                                    const yy = String(d.getFullYear()).slice(-2);
-                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
-                                    const dd = String(d.getDate()).padStart(2, '0');
-                                    return `${yy}/${mm}/${dd}`;
-                                  })()
-                                : ''}
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <span className="font-bold">{video.account_name}</span>
-                                {video.display_name && (
-                                  <span className="block text-xs text-gray-500">{video.display_name}</span>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {(!corporateAccountStats.find(stat => stat.account_type === selectedAccountType)?.top_videos || 
-                          corporateAccountStats.find(stat => stat.account_type === selectedAccountType)?.top_videos?.length === 0) && (
-                          <TableRow>
-                            <TableCell colSpan={5} className="text-center py-4">
-                              関連動画がありません
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+          {/* コンテンツエリア */}
+          <div className="p-6">
+            {selectedGenre ? (
+              <div>
+                {/* ジャンル表示と再生数表示アイコン */}
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-semibold">ジャンル</span>
+                    <span className="bg-gray-100 px-3 py-1 rounded-full text-sm font-medium">
+                      {selectedGenre}
+                    </span>
                   </div>
-                ) : (
-                  <div className="text-center py-8 border-2 border-dashed border-border rounded-lg">
-                    <p className="text-gray-500">アカウントタイプを選択すると、関連動画が表示されます</p>
-                    <p className="text-[#FE2C55] mt-2">← 左のリストから選択してください</p>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <ArrowUp className="h-4 w-4" />
+                    <span>再生数の上位動画を表示</span>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+
+                {/* タブ */}
+                <Tabs value={activePurpose} onValueChange={handlePurposeChange} className="w-full">
+                  <TabsList className="grid w-48 grid-cols-2 mb-6">
+                    <TabsTrigger value="marketing">集客</TabsTrigger>
+                    <TabsTrigger value="recruitment">採用</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="marketing">
+                    {renderVideoGrid()}
+                  </TabsContent>
+                  
+                  <TabsContent value="recruitment">
+                    {renderVideoGrid()}
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                  <div className="text-gray-400 mb-2">
+                    <ChevronRight className="h-12 w-12 mx-auto" />
+                  </div>
+                  <p className="text-gray-500 text-lg">企業ジャンルを選択してください</p>
+                  <p className="text-gray-400 text-sm mt-1">左のリストから選択すると動画が表示されます</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+
+  // 動画グリッドを描画する関数
+  function renderVideoGrid() {
+    if (isLoadingVideos) {
+      return (
+        <div className="grid grid-cols-3 gap-6">
+          {[...Array(9)].map((_, i) => (
+            <Card key={i} className="overflow-hidden">
+              <Skeleton className="w-full h-48" />
+              <CardContent className="p-4">
+                <Skeleton className="h-4 mb-2" />
+                <Skeleton className="h-3 mb-1" />
+                <Skeleton className="h-3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-3 gap-6">
+        {videos.slice(0, 9).map((video, index) => (
+          <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow">
+            {/* サムネイルエリア */}
+            <div className="relative">
+              {video.thumbnail_url ? (
+                <div className="relative w-full h-48 overflow-hidden">
+                  <ImageHover
+                    src={video.thumbnail_url}
+                    alt="サムネイル"
+                    videoUrl={video.url}
+                    videoData={{
+                      views: Number(video.play_count) ?? 0,
+                      viewsIncrease: Number(video.play_count_increase) ?? 0,
+                      ten_days_increase: 0,
+                      createdAt: video.created_at,
+                      accountName: video.account_name,
+                    }}
+                  />
+                  
+                  {/* 動画時間 */}
+                  <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                    {video.duration || '06:46'}
+                  </div>
+                  
+                  {/* ランキング番号 */}
+                  <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full font-bold">
+                    #{index + 1}
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-48 bg-gray-100 flex items-center justify-center">
+                  <span className="text-gray-400">No Image</span>
+                </div>
+              )}
+            </div>
+
+            {/* カード情報 */}
+            <CardContent className="p-4">
+              <h3 className="font-semibold text-sm mb-2 line-clamp-2">
+                {video.title || `${selectedGenre}の${activePurpose === 'marketing' ? '集客' : '採用'}成功事例 ${index + 1}`}
+              </h3>
+              
+              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                <span className="font-medium">{video.account_name}</span>
+                <span>
+                  {video.created_at
+                    ? (() => {
+                        const d = new Date(video.created_at);
+                        return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
+                      })()
+                    : ''}
+                </span>
+              </div>
+              
+              <div className="text-xs text-gray-600">
+                <div className="flex items-center gap-1">
+                  <span>再生数</span>
+                  <span className="font-semibold text-green-600">
+                    {formatNumber(video.play_count_increase)}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        
+        {videos.length === 0 && (
+          <div className="col-span-3 text-center py-12">
+            <p className="text-gray-500">
+              {activePurpose === 'recruitment' ? '採用' : '集客'}動画がありません
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
 }

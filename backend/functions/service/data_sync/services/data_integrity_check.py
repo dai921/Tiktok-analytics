@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import functions_framework
 import base64
 from core.db_utils import execute_query, execute_write_query
-from core.config import initialize_config
+from core.config import initialize_config, get_secret
 from pytz import timezone
 
 # ログ設定
@@ -151,9 +151,12 @@ def send_discord_alert(anomaly_count, collection_date):
         collection_date (str): 収集日
     """
     try:
-        discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        if not discord_webhook_url:
-            logger.warning("DISCORD_WEBHOOK_URL環境変数が設定されていません")
+        # Cloud SecretからDiscord Webhook URLを取得
+        secret_name = os.getenv('DATA_INTEGRITY_DISCORD_WEBHOOK_SECRET', 'data-integrity-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
             return
         
         # 通知の閾値をチェック（環境変数で設定可能）
@@ -167,8 +170,20 @@ def send_discord_alert(anomaly_count, collection_date):
             "title": "⚠️ データ整合性異常検知",
             "description": f"異常件数: {anomaly_count}件",
             "color": 15158332,  # 赤色
+            "fields": [
+                {
+                    "name": "収集日",
+                    "value": collection_date,
+                    "inline": True
+                },
+                {
+                    "name": "異常件数",
+                    "value": f"{anomaly_count}件",
+                    "inline": True
+                }
+            ],
             "footer": {
-                "text": "TikTok Analytics"
+                "text": "TikTok Analytics - Data Integrity Check"
             }
         }
         
@@ -225,9 +240,12 @@ def send_discord_error(error_message):
         error_message (str): エラーメッセージ
     """
     try:
-        discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        if not discord_webhook_url:
-            logger.warning("DISCORD_WEBHOOK_URL環境変数が設定されていません")
+        # Cloud SecretからDiscord Webhook URLを取得
+        secret_name = os.getenv('DATA_INTEGRITY_DISCORD_WEBHOOK_SECRET', 'data-integrity-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
             return
         
         # Discord webhook エラーメッセージを作成

@@ -54,23 +54,78 @@ def update_needs_flags(event, context):
         logger.info(f"video_light_raw_dataの更新完了: {raw_data_affected_rows}件更新")
         
         # # 2. frontend_dataの増加数カウンタをリセット
-        # logger.info("2. frontend_dataの増加数カウンタのリセットを開始")
-        # reset_frontend_data_query = """
-        # UPDATE frontend_data
-        # SET play_count_increase = 0,
-        #     likes_count_increase = 0,
-        #     comment_count_increase = 0,
-        #     save_count_increase = 0
-        # WHERE video_id IN (
-        #     SELECT video_id 
-        #     FROM video_master 
-        #     WHERE front_needs_update = 0
-        # );
-        # """
+        logger.info("2. frontend_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query = """
+        UPDATE frontend_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
         
-        # frontend_data_affected_rows = execute_write_query(reset_frontend_data_query)
-        # logger.info(f"frontend_dataの更新完了: {frontend_data_affected_rows}件更新")
+        frontend_data_affected_rows = execute_write_query(reset_frontend_data_query)
+        logger.info(f"frontend_dataの更新完了: {frontend_data_affected_rows}件更新")
+
+        logger.info("2_1. frontend_affiliate_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query_1 = """
+        UPDATE frontend_affiliate_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
         
+        frontend_data_affected_rows_1 = execute_write_query(reset_frontend_data_query_1)
+        logger.info(f"frontend_affiliate_dataの更新完了: {frontend_data_affected_rows_1}件更新")
+
+        logger.info("2_2. frontend_corporate_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query_2 = """
+        UPDATE frontend_corporate_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
+        
+        frontend_data_affected_rows_2 = execute_write_query(reset_frontend_data_query_2)
+        logger.info(f"frontend_corporate_dataの更新完了: {frontend_data_affected_rows_2}件更新")
+
+        logger.info("2_3. frontend_influencer_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query_3 = """
+        UPDATE frontend_influencer_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
+        
+        frontend_data_affected_rows_3 = execute_write_query(reset_frontend_data_query_3)
+        logger.info(f"frontend_influencer_dataの更新完了: {frontend_data_affected_rows_3}件更新")
+
         # 3. video_masterのfront_needs_updateを全て0にする
         logger.info("3. video_masterのfront_needs_updateフラグの更新を開始")
         reset_master_flag_query = """

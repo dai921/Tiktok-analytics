@@ -86,8 +86,8 @@ def update_all_trends_summary(event, context):
 
 def update_hashtags_summary(collection_date):
     """
-    ハッシュタグの日次集計処理（カテゴリ別＋総合版）
-    アフィ、企業、インフルエンサー、ALL の4つのカテゴリで集計
+    ハッシュタグの日次集計処理（カテゴリ別のみ）
+    アフィ、企業、インフルエンサーの3つのカテゴリで集計（ALLは除外）
     
     Args:
         collection_date (str): 収集日 (YYYY-MM-DD形式)
@@ -107,7 +107,7 @@ def update_hashtags_summary(collection_date):
         """
         execute_write_query(delete_hashtags_videos_query, (collection_date,))
         
-        # ハッシュタグサマリーの集計（修正版）
+        # ハッシュタグサマリーの集計（カテゴリ別のみ、ALL除外）
         hashtags_summary_query = """
         INSERT INTO hashtags_daily_summary_top150
         (fetch_date, hashtags, plays_increase, over_100k, post_count, parent_account_type)
@@ -130,24 +130,6 @@ def update_hashtags_summary(collection_date):
                 AND pch.play_count_increase IS NOT NULL
             GROUP BY h.hashtag, fd.parent_account_type
         ),
-        cat AS (
-            SELECT * FROM base
-        ),
-        tot AS (
-            SELECT
-                hashtag,
-                'ALL' AS parent_account_type,
-                SUM(plays_increase) AS plays_increase,
-                SUM(over_100k) AS over_100k,
-                SUM(post_count) AS post_count
-            FROM base
-            GROUP BY hashtag
-        ),
-        unioned AS (
-            SELECT * FROM cat
-            UNION ALL
-            SELECT * FROM tot
-        ),
         ranked AS (
             SELECT
                 %s AS fetch_date,
@@ -160,7 +142,7 @@ def update_hashtags_summary(collection_date):
                     PARTITION BY parent_account_type
                     ORDER BY post_count DESC
                 ) AS rn
-            FROM unioned
+            FROM base
         )
         SELECT 
             fetch_date,
@@ -175,7 +157,7 @@ def update_hashtags_summary(collection_date):
         
         execute_write_query(hashtags_summary_query, (collection_date, collection_date, collection_date, collection_date))
         
-        # ハッシュタグリストを取得（カテゴリ別）
+        # ハッシュタグリストを取得（カテゴリ別のみ）
         hashtags_query = """
         SELECT hashtags, parent_account_type 
         FROM hashtags_daily_summary_top150  
@@ -184,23 +166,15 @@ def update_hashtags_summary(collection_date):
         """
         hashtags = execute_query(hashtags_query, (collection_date,))
         
-        # 各ハッシュタグ＋カテゴリごとにTOP100動画を取得
+        # 各ハッシュタグ＋カテゴリごとにTOP100動画を取得（ALLは処理対象外）
         for hashtag_row in hashtags:
             hashtag = hashtag_row['hashtags']
             account_type = hashtag_row['parent_account_type']
             
             logger.info(f"ハッシュタグ '{hashtag}' ({account_type}) のTOP100動画を処理中...")
             
-            # カテゴリ別のWHERE条件を設定
-            if account_type == 'ALL':
-                account_condition = "1=1"  # 全て対象
-                params = (collection_date, hashtag, hashtag, collection_date)
-            else:
-                account_condition = "fd.parent_account_type = %s"
-                params = (collection_date, hashtag, hashtag, collection_date, account_type)
-            
             # 各ハッシュタグ＋カテゴリのTOP100動画を取得・挿入
-            hashtag_videos_query = f"""
+            hashtag_videos_query = """
             INSERT INTO hashtags_daily_top100_videos 
             (video_id, fetch_date, hashtags, plays_increase, likes_increase, post_time, thumbnail_url, parent_account_type)
             SELECT 
@@ -211,7 +185,7 @@ def update_hashtags_summary(collection_date):
                 COALESCE(pch.likes_count_increase, 0) as likes_increase,
                 fd.created_at as post_time,
                 COALESCE(fd.thumbnail_url, '') as thumbnail_url,
-                '{account_type}' as parent_account_type
+                %s as parent_account_type
             FROM video_hashtags h
             JOIN frontend_data fd ON h.video_id = fd.video_id
             JOIN play_count_history pch ON fd.video_id = pch.video_id
@@ -219,13 +193,13 @@ def update_hashtags_summary(collection_date):
                 h.hashtag = %s
                 AND pch.collection_date = %s
                 AND pch.play_count_increase IS NOT NULL
-                AND {account_condition}
+                AND fd.parent_account_type = %s
             ORDER BY 
                 pch.play_count_increase DESC, h.video_id DESC
             LIMIT 100
             """
             
-            execute_write_query(hashtag_videos_query, params)
+            execute_write_query(hashtag_videos_query, (collection_date, hashtag, account_type, hashtag, collection_date, account_type))
         
         logger.info(f"ハッシュタグ日次集計が完了しました。収集日: {collection_date}")
         
@@ -241,8 +215,8 @@ def update_hashtags_summary(collection_date):
 
 def update_sound_summary(collection_date):
     """
-    BGM（サウンド）の日次集計処理（カテゴリ別+総合版）
-    アフィ、企業、インフルエンサー、ALL の4つのカテゴリで集計
+    BGM（サウンド）の日次集計処理（カテゴリ別のみ）
+    アフィ、企業、インフルエンサーの3つのカテゴリで集計（ALLは除外）
     
     Args:
         collection_date (str): 収集日 (YYYY-MM-DD形式)
@@ -262,14 +236,17 @@ def update_sound_summary(collection_date):
         """
         execute_write_query(delete_sound_videos_query, (collection_date,))
         
-        # BGMサマリーの集計（カテゴリ別＋総合版）
+        # BGMサマリーの集計（カテゴリ別のみ、ALL除外）
         sound_summary_query = """
         INSERT INTO sound_daily_summary_top150
         (fetch_date, sound_name, plays_increase, over_100k, post_count, parent_account_type)
         WITH base AS (
             SELECT
                 CASE 
-                    WHEN fd.music_info LIKE 'オリジナル楽曲%%' THEN 'オリジナル楽曲'
+                    WHEN (fd.music_info LIKE 'オリジナル楽曲%%' 
+                          OR fd.music_info LIKE 'original sound%%'
+                          OR fd.music_info LIKE '原声%%'
+                          OR fd.music_info LIKE 'nhạc nền%%') THEN 'オリジナル楽曲'
                     ELSE fd.music_info
                 END as sound_name,
                 fd.parent_account_type,
@@ -289,28 +266,13 @@ def update_sound_summary(collection_date):
                 AND fd.music_info != ''
             GROUP BY 
                 CASE 
-                    WHEN fd.music_info LIKE 'オリジナル楽曲%%' THEN 'オリジナル楽曲'
+                    WHEN (fd.music_info LIKE 'オリジナル楽曲%%' 
+                          OR fd.music_info LIKE 'original sound%%'
+                          OR fd.music_info LIKE '原声%%'
+                          OR fd.music_info LIKE 'nhạc nền%%') THEN 'オリジナル楽曲'
                     ELSE fd.music_info
                 END,
                 fd.parent_account_type
-        ),
-        cat AS (
-            SELECT * FROM base
-        ),
-        tot AS (
-            SELECT
-                sound_name,
-                'ALL' AS parent_account_type,
-                SUM(plays_increase) AS plays_increase,
-                SUM(over_100k) AS over_100k,
-                SUM(post_count) AS post_count
-            FROM base
-            GROUP BY sound_name
-        ),
-        unioned AS (
-            SELECT * FROM cat
-            UNION ALL
-            SELECT * FROM tot
         ),
         ranked AS (
             SELECT
@@ -324,9 +286,8 @@ def update_sound_summary(collection_date):
                     PARTITION BY parent_account_type
                     ORDER BY post_count DESC
                 ) AS rn
-            FROM unioned
+            FROM base
         )
-
         SELECT 
             fetch_date,
             sound_name,
@@ -340,7 +301,7 @@ def update_sound_summary(collection_date):
         
         execute_write_query(sound_summary_query, (collection_date, collection_date, collection_date, collection_date))
         
-        # BGMリストを取得（カテゴリ別）
+        # BGMリストを取得（カテゴリ別のみ）
         sounds_query = """
         SELECT sound_name, parent_account_type 
         FROM sound_daily_summary_top150 
@@ -349,23 +310,15 @@ def update_sound_summary(collection_date):
         """
         sounds = execute_query(sounds_query, (collection_date,))
         
-        # 各BGM＋カテゴリごとにTOP100動画を取得
+        # 各BGM＋カテゴリごとにTOP100動画を取得（ALLは処理対象外）
         for sound_row in sounds:
             sound_name = sound_row['sound_name']
             account_type = sound_row['parent_account_type']
             
             logger.info(f"BGM '{sound_name}' ({account_type}) のTOP100動画を処理中...")
             
-            # カテゴリ別のWHERE条件を設定
-            if account_type == 'ALL':
-                account_condition = "1=1"  # 全て対象
-                params = (collection_date, sound_name, sound_name, sound_name, sound_name, collection_date)
-            else:
-                account_condition = "fd.parent_account_type = %s"
-                params = (collection_date, sound_name, sound_name, sound_name, sound_name, collection_date, account_type)
-            
             # 各BGM＋カテゴリのTOP100動画を取得・挿入
-            sound_videos_query = f"""
+            sound_videos_query = """
             INSERT INTO sound_daily_top100_videos 
             (video_id, fetch_date, sound_name, plays_increase, likes_increase, post_time, thumbnail_url, parent_account_type)
             SELECT 
@@ -376,24 +329,29 @@ def update_sound_summary(collection_date):
                 COALESCE(pch.likes_count_increase, 0) as likes_increase,
                 fd.created_at as post_time,
                 COALESCE(fd.thumbnail_url, '') as thumbnail_url,
-                '{account_type}' as parent_account_type
+                %s as parent_account_type
             FROM frontend_data fd
             JOIN play_count_history pch ON fd.video_id = pch.video_id
             WHERE 
                 (
-                    (%s = 'オリジナル楽曲' AND fd.music_info LIKE 'オリジナル楽曲%%')
+                    (%s = 'オリジナル楽曲' AND (
+                        fd.music_info LIKE 'オリジナル楽曲%%'
+                        OR fd.music_info LIKE 'original sound%%'
+                        OR fd.music_info LIKE '原声%%'
+                        OR fd.music_info LIKE 'nhạc nền%%'
+                    ))
                     OR
                     (%s != 'オリジナル楽曲' AND fd.music_info = %s)
                 )
                 AND pch.collection_date = %s
                 AND pch.play_count_increase IS NOT NULL
-                AND {account_condition}
+                AND fd.parent_account_type = %s
             ORDER BY 
                 pch.play_count_increase DESC
             LIMIT 100
             """
             
-            execute_write_query(sound_videos_query, params)
+            execute_write_query(sound_videos_query, (collection_date, sound_name, account_type, sound_name, sound_name, sound_name, collection_date, account_type))
         
         logger.info(f"BGM日次集計が完了しました。収集日: {collection_date}")
         
