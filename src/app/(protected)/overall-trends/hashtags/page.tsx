@@ -39,7 +39,6 @@ const getMetricLabel = (metricKey: string) => {
 // 動画タイプのラベルを取得する関数
 const getVideoTypeLabel = (videoType: VideoType) => {
   const labels: Record<VideoType, string> = {
-    all: 'すべての動画',
     affiliate: 'アフィ系動画',
     corporate: '企業系動画',
     influencer: 'インフルエンサー系動画',
@@ -71,7 +70,7 @@ const AccountTypeBadge: React.FC<{ accountType: string; videoType: VideoType }> 
 };
 
 export default function HashtagsPage() {
-  const [activeTab, setActiveTab] = useState<VideoType>("all");
+  const [activeTab, setActiveTab] = useState<VideoType>("affiliate");
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
     start: new Date(),
     end: new Date(),
@@ -242,12 +241,6 @@ export default function HashtagsPage() {
         {/* タブエリア */}
         <Tabs value={activeTab} className="w-full" onValueChange={handleTabChange}>
           <TabsList className="border-b border-[#25F4EE]/20">
-            <TabsTrigger 
-              value="all" 
-              className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
-            >
-              すべての動画
-            </TabsTrigger>
             <TabsTrigger 
               value="affiliate" 
               className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
