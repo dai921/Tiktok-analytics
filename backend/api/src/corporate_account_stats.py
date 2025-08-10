@@ -252,7 +252,7 @@ async def get_corporate_videos_by_genre(
     days: Optional[str] = "30",
     limit: Optional[int] = 9
 ):
-    """ジャンル・目的別の企業動画を取得するエンドポイント"""
+    """ジャンル・目的別の企業動画を取得するエンドポイント（シンプル版）"""
     
     # 期間を計算
     try:
@@ -266,44 +266,46 @@ async def get_corporate_videos_by_genre(
     
     logger.info(f"企業動画取得開始: account_type={account_type}, purpose={purpose}, days={days}")
     
-    params = {
-        "start_date": start_date, 
-        "end_date": end_date,
-        "account_type_pattern": f"%{account_type}%",  # '企業' → '%企業%'
-        "purpose_pattern": f"%{purpose}%"             # '採用' → '%採用%'
-    }
-    
     conn = None
     try:
         conn = get_db_connection()
         
-        # 指定されたジャンル・目的の動画を取得
+        # corporate_daily_top100_videosから直接取得（frontend_corporate_dataとJOIN）
         videos_sql = text("""
-        SELECT
-            fcd.url,
-            fcd.thumbnail_url,
-            fcd.play_count,
-            fcd.play_count_increase,
-            fcd.likes_count_increase,
-            fcd.created_at,
-            fcd.account_name,
-            fcd.display_name,
-            fcd.account_type,
-            CASE 
-                WHEN fcd.account_type LIKE '%採用%' THEN '採用'
-                WHEN fcd.account_type LIKE '%集客%' THEN '集客'
-                ELSE NULL
-            END as second_account_type
-        FROM frontend_corporate_data fcd
-        WHERE fcd.created_at BETWEEN :start_date AND :end_date
-          AND fcd.account_type LIKE :account_type_pattern
-          AND fcd.account_type LIKE :purpose_pattern
-          AND fcd.play_count_increase IS NOT NULL
-        ORDER BY fcd.play_count_increase DESC
-        LIMIT :limit
-        """)
+SELECT 
+    fcd.url,
+    ct.thumbnail_url,
+    fcd.play_count,
+    ct.plays_increase as play_count_increase,
+    ct.likes_increase as likes_count_increase,
+    ct.post_time as created_at,
+    fcd.account_name,
+    fcd.display_name,
+    ct.account_type,
+    ct.second_account_type
+FROM corporate_daily_top100_videos ct
+LEFT JOIN frontend_corporate_data fcd ON ct.video_id COLLATE utf8mb4_unicode_ci = fcd.video_id COLLATE utf8mb4_unicode_ci
+WHERE ct.fetch_date BETWEEN :start_date AND :end_date
+  AND TRIM(TRAILING ',' FROM 
+      CASE 
+          WHEN ct.account_type LIKE '%採用%' THEN TRIM(REPLACE(ct.account_type, '採用', ''))
+          WHEN ct.account_type LIKE '%集客%' THEN TRIM(REPLACE(ct.account_type, '集客', ''))
+          ELSE ct.account_type
+      END
+  ) LIKE :account_type_pattern
+  AND ct.second_account_type = :purpose
+ORDER BY ct.plays_increase DESC
+LIMIT :limit
+""")
         
-        params["limit"] = limit
+        params = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "account_type_pattern": f"%{account_type}%",
+            "purpose": purpose,
+            "limit": limit
+        }
+        
         result = conn.execute(videos_sql, params)
         videos_results = result.mappings().all()
         
@@ -311,23 +313,27 @@ async def get_corporate_videos_by_genre(
         videos_data = []
         for row in videos_results:
             videos_data.append({
-                "url": row["url"],
-                "thumbnail_url": row["thumbnail_url"],
+                "url": row["url"] or "",
+                "thumbnail_url": row["thumbnail_url"] or "",
                 "play_count": int(row["play_count"] or 0),
                 "play_count_increase": int(row["play_count_increase"] or 0),
                 "likes_count_increase": int(row["likes_count_increase"] or 0),
                 "created_at": row["created_at"].strftime('%Y-%m-%d') if row["created_at"] else "",
                 "account_name": row["account_name"] or "",
                 "display_name": row["display_name"] or "",
-                "account_type": row["account_type"],
-                "second_account_type": row["second_account_type"]
+                "account_type": row["account_type"] or "",
+                "second_account_type": row["second_account_type"] or purpose
             })
         
         logger.info(f"企業動画取得完了: {len(videos_data)}件の動画")
         
         return {
             "success": True,
-            "data": videos_data
+            "data": videos_data,
+            "dateRange": {
+                "startDate": start_date,
+                "endDate": end_date
+            }
         }
 
     except Exception as e:

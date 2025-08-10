@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowUp, Search, ChevronRight, Calendar } from "lucide-react";
 import { ImageHover } from '@/components/ui/image-hover';
@@ -9,6 +9,7 @@ import { formatNumber } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
   Select,
   SelectContent,
@@ -223,7 +224,7 @@ export default function CorporatePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
-        {/* 左サイドバー */}
+        {/* 左サイドバー（以前の状態を維持） */}
         <div className="w-80 bg-white border-r border-gray-200 min-h-screen">
           {/* サイドバーヘッダー */}
           <div className="p-4 border-b border-gray-200">
@@ -274,7 +275,7 @@ export default function CorporatePage() {
           </div>
         </div>
 
-        {/* メインコンテンツ */}
+        {/* メインコンテンツ（右側をダッシュボード風に変更） */}
         <div className="flex-1">
           {/* ヘッダー */}
           <div className="bg-white border-b border-gray-200 p-6">
@@ -308,37 +309,45 @@ export default function CorporatePage() {
           {/* コンテンツエリア */}
           <div className="p-6">
             {selectedGenre ? (
-              <div>
-                {/* ジャンル表示と再生数表示アイコン */}
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-semibold">ジャンル</span>
-                    <span className="bg-gray-100 px-3 py-1 rounded-full text-sm font-medium">
-                      {selectedGenre}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <ArrowUp className="h-4 w-4" />
-                    <span>再生数の上位動画を表示</span>
-                  </div>
-                </div>
-
-                {/* タブ */}
-                <Tabs value={activePurpose} onValueChange={handlePurposeChange} className="w-full">
-                  <TabsList className="grid w-48 grid-cols-2 mb-6">
-                    <TabsTrigger value="marketing">集客</TabsTrigger>
-                    <TabsTrigger value="recruitment">採用</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="marketing">
-                    {renderVideoGrid()}
-                  </TabsContent>
-                  
-                  <TabsContent value="recruitment">
-                    {renderVideoGrid()}
-                  </TabsContent>
-                </Tabs>
-              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    <div className="flex items-center gap-2">
+                      <span>動画一覧:</span>
+                      <span className="bg-gray-100 px-3 py-1 rounded-full text-sm font-medium">
+                        {selectedGenre}
+                      </span>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* タブ */}
+                  <Tabs value={activePurpose} onValueChange={handlePurposeChange} className="w-full">
+                    <TabsList className="border-b border-[#25F4EE]/20 mb-4">
+                      <TabsTrigger 
+                        value="marketing" 
+                        className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
+                      >
+                        集客
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="recruitment" 
+                        className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
+                      >
+                        採用
+                      </TabsTrigger>
+                    </TabsList>
+                    
+                    <TabsContent value="marketing">
+                      {renderVideoTable()}
+                    </TabsContent>
+                    
+                    <TabsContent value="recruitment">
+                      {renderVideoTable()}
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
             ) : (
               <div className="flex items-center justify-center h-96">
                 <div className="text-center">
@@ -356,101 +365,115 @@ export default function CorporatePage() {
     </div>
   );
 
-  // 動画グリッドを描画する関数
-  function renderVideoGrid() {
+  // 動画テーブルを描画する関数（ダッシュボード風テーブル）
+  function renderVideoTable() {
     if (isLoadingVideos) {
       return (
-        <div className="grid grid-cols-3 gap-6">
+        <div className="space-y-2">
           {[...Array(9)].map((_, i) => (
-            <Card key={i} className="overflow-hidden">
-              <Skeleton className="w-full h-48" />
-              <CardContent className="p-4">
-                <Skeleton className="h-4 mb-2" />
-                <Skeleton className="h-3 mb-1" />
-                <Skeleton className="h-3" />
-              </CardContent>
-            </Card>
+            <Skeleton key={i} className="h-20" />
           ))}
         </div>
       );
     }
 
     return (
-      <div className="grid grid-cols-3 gap-6">
-        {videos.slice(0, 9).map((video, index) => (
-          <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow">
-            {/* サムネイルエリア */}
-            <div className="relative">
-              {video.thumbnail_url ? (
-                <div className="relative w-full h-48 overflow-hidden">
-                  <ImageHover
-                    src={video.thumbnail_url}
-                    alt="サムネイル"
-                    videoUrl={video.url}
-                    videoData={{
-                      views: Number(video.play_count) ?? 0,
-                      viewsIncrease: Number(video.play_count_increase) ?? 0,
-                      ten_days_increase: 0,
-                      createdAt: video.created_at,
-                      accountName: video.account_name,
-                    }}
-                  />
-                  
-                  {/* 動画時間 */}
-                  <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                    {video.duration || '06:46'}
+      <Table className="w-full">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs py-2 px-2">サムネイル</TableHead>
+            <TableHead className="text-xs py-2 px-2 text-right">再生増加数</TableHead>
+            <TableHead className="text-xs py-2 px-2 text-right">いいね増加数</TableHead>
+            <TableHead className="text-xs py-2 px-2 text-right">投稿日</TableHead>
+            <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {videos.slice(0, 9).map((video, index) => (
+            <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
+              <TableCell>
+                {video.thumbnail_url ? (
+                  <div className="relative w-[120px] h-[120px] my-1 mx-auto">
+                    <div className="relative w-full h-full overflow-hidden rounded border-2 border-transparent hover:border-[#FE2C55] transition-colors">
+                      <ImageHover
+                        src={video.thumbnail_url}
+                        alt="サムネイル"
+                        videoUrl={video.url}
+                        videoData={{
+                          views: Number(video.play_count) ?? 0,
+                          viewsIncrease: Number(video.play_count_increase) ?? 0,
+                          ten_days_increase: 0,
+                          createdAt: video.created_at,
+                          accountName: video.account_name,
+                        }}
+                      />
+                      {/* ランキング番号 */}
+                      <div className="absolute top-1 right-1 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full font-bold">
+                        #{index + 1}
+                      </div>
+                      {/* 動画時間 */}
+                      <div className="absolute bottom-1 left-1 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
+                        {video.duration || '06:46'}
+                      </div>
+                    </div>
                   </div>
-                  
-                  {/* ランキング番号 */}
-                  <div className="absolute top-2 right-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded-full font-bold">
-                    #{index + 1}
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-48 bg-gray-100 flex items-center justify-center">
-                  <span className="text-gray-400">No Image</span>
-                </div>
-              )}
-            </div>
-
-            {/* カード情報 */}
-            <CardContent className="p-4">
-              <h3 className="font-semibold text-sm mb-2 line-clamp-2">
-                {video.title || `${selectedGenre}の${activePurpose === 'marketing' ? '集客' : '採用'}成功事例 ${index + 1}`}
-              </h3>
-              
-              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                <span className="font-medium">{video.account_name}</span>
-                <span>
-                  {video.created_at
-                    ? (() => {
-                        const d = new Date(video.created_at);
-                        return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
-                      })()
-                    : ''}
-                </span>
-              </div>
-              
-              <div className="text-xs text-gray-600">
-                <div className="flex items-center gap-1">
-                  <span>再生数</span>
-                  <span className="font-semibold text-green-600">
+                ) : (
+                  <div className="w-[120px] h-[120px] bg-gray-100 rounded" />
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                {Number(video.play_count_increase) > 0 ? (
+                  <div className="flex items-center justify-end gap-1 text-green-600">
+                    <ArrowUp className="h-3 w-3" />
                     {formatNumber(video.play_count_increase)}
-                  </span>
+                  </div>
+                ) : (
+                  formatNumber(video.play_count_increase)
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                {Number(video.likes_count_increase) > 0 ? (
+                  <div className="flex items-center justify-end gap-1 text-green-600">
+                    <ArrowUp className="h-3 w-3" />
+                    {formatNumber(video.likes_count_increase)}
+                  </div>
+                ) : (
+                  formatNumber(video.likes_count_increase)
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                {video.created_at
+                  ? (() => {
+                      const d = new Date(video.created_at);
+                      const yy = String(d.getFullYear()).slice(-2);
+                      const mm = String(d.getMonth() + 1).padStart(2, '0');
+                      const dd = String(d.getDate()).padStart(2, '0');
+                      return `${yy}/${mm}/${dd}`;
+                    })()
+                  : ''}
+              </TableCell>
+              <TableCell>
+                <div>
+                  <span className="font-bold">{video.account_name}</span>
+                  {video.display_name && (
+                    <span className="block text-xs text-gray-500">{video.display_name}</span>
+                  )}
+                  <div className="text-xs text-gray-500 mt-1">
+                    {video.account_type} | {video.second_account_type}
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        
-        {videos.length === 0 && (
-          <div className="col-span-3 text-center py-12">
-            <p className="text-gray-500">
-              {activePurpose === 'recruitment' ? '採用' : '集客'}動画がありません
-            </p>
-          </div>
-        )}
-      </div>
+              </TableCell>
+            </TableRow>
+          ))}
+          {videos.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center py-4">
+                {activePurpose === 'recruitment' ? '採用' : '集客'}動画がありません
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
     );
   }
 }
