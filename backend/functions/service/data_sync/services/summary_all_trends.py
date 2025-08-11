@@ -246,6 +246,7 @@ def update_sound_summary(collection_date):
                     WHEN (fd.music_info LIKE 'オリジナル楽曲%%' 
                           OR fd.music_info LIKE 'original sound%%'
                           OR fd.music_info LIKE '原声%%'
+                          OR fd.music_info LIKE '오리지널 사운드%%'
                           OR fd.music_info LIKE 'nhạc nền%%') THEN 'オリジナル楽曲'
                     ELSE fd.music_info
                 END as sound_name,

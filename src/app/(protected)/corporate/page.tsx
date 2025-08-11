@@ -320,9 +320,8 @@ export default function CorporatePage() {
           <div className="bg-white border-b border-gray-200 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Corporate</h1>
-                <p className="text-gray-600 mt-1">
-                  ジャンルを選択すると「集客」「採用」のタブごとに、指定期間の再生数上位動画が表示されます。
+                <p className="text-gray-600">
+                  ジャンルを選択すると"集客""採用"のタブごとに、指定期間の再生数上位動画が表示されます。
                 </p>
               </div>
               

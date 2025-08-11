@@ -20,10 +20,11 @@ import {
   ChevronDown,
   X,
   Mic,
-  TrendingUp
+  TrendingUp,
+  Music
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp' | 'Music';
 
 type SidebarItemProps = {
   href?: string;
@@ -143,31 +144,37 @@ export function Sidebar() {
               </Link>
             </div>
           </div>
-          {/* <div 
+          <div 
             className="relative group"
             onMouseEnter={() => setIsOverallTrendsOpen(true)}
             onMouseLeave={() => setIsOverallTrendsOpen(false)}
           >
             <SidebarItem
-              icon="TrendingUp"
-              label="TikTok全体トレンド"
+              icon="Music"
+              label="BGM・ハッシュタグトレンド"
               active={pathname.startsWith('/overall-trends')}
             />
             <div 
               className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[180px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
             >
+              <Link href="/overall-trends/sounds">
+                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
+                  BGMトレンド
+                </div>
+              </Link>
               <Link href="/overall-trends/hashtags">
                 <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
                   ハッシュタグトレンド
                 </div>
               </Link>
-              <Link href="/overall-trends/sounds">
-                <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors">
-                  音声トレンド
-                </div>
-              </Link>
             </div>
-          </div> */}
+          </div>
+          <SidebarItem
+            href="/corporate"
+            icon="Users"
+            label="業界別トレンド"
+            active={pathname.startsWith('/corporate')}
+          />
           <div 
             className="relative group"
             onMouseEnter={() => setIsWatchlistOpen(true)}
@@ -318,6 +325,8 @@ function renderIcon(iconName: IconName) {
       return <Mic size={20} />;
     case 'TrendingUp':
       return <TrendingUp size={20} />;
+    case 'Music':
+      return <Music size={20} />;
     default:
       return null;
   }
