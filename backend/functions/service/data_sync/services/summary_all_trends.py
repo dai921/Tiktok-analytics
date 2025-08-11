@@ -39,7 +39,7 @@ def update_all_trends_summary(event, context):
             
             # summary_all_trendsまたはsync_corporate_dataからの完了メッセージを確認
             if (message_data.get("status") != "success" or 
-                message_data.get("previous_step") not in ["summary_all_trends", "sync_corporate_data"]):
+                message_data.get("previous_step") not in ["top100_videos_sync", "sync_corporate_data"]):
                 logger.info(f"前の処理が成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 
