@@ -119,7 +119,7 @@ async def get_sound_stats(
           {summary_parent_account_type_filter}
         GROUP BY sds.sound_name
         ORDER BY {sort_column} DESC
-        LIMIT 50
+        LIMIT 51
         """)
         
         result = conn.execute(stats_sql, params)

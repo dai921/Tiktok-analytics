@@ -40,7 +40,6 @@ const getMetricLabel = (metricKey: string) => {
 // 動画タイプのラベルを取得する関数
 const getVideoTypeLabel = (videoType: VideoType) => {
   const labels: Record<VideoType, string> = {
-    all: 'すべての動画',
     affiliate: 'アフィ系動画',
     corporate: '企業系動画',
     influencer: 'インフルエンサー系動画',
@@ -72,7 +71,7 @@ const AccountTypeBadge: React.FC<{ accountType: string; videoType: VideoType }> 
 };
 
 export default function SoundsPage() {
-  const [activeTab, setActiveTab] = useState<VideoType>("all");
+  const [activeTab, setActiveTab] = useState<VideoType>("affiliate");
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
     start: new Date(),
     end: new Date(),
@@ -244,12 +243,6 @@ export default function SoundsPage() {
         <Tabs value={activeTab} className="w-full" onValueChange={handleTabChange}>
           <TabsList className="border-b border-[#25F4EE]/20">
             <TabsTrigger 
-              value="all" 
-              className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
-            >
-              すべての動画
-            </TabsTrigger>
-            <TabsTrigger 
               value="affiliate" 
               className="data-[state=active]:border-b-2 data-[state=active]:border-[#FE2C55] data-[state=active]:text-[#FE2C55]"
             >
@@ -293,8 +286,9 @@ export default function SoundsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
+                        {/* オリジナル動画以外のサウンドを表示 */}
                         {soundStats
-                          .filter(stat => stat.sound_title && stat.sound_title.trim() !== '')
+                          .filter(stat => stat.sound_title && stat.sound_title.trim() !== '' && stat.sound_title !== 'オリジナル楽曲')
                           .slice(0, displayLimit)
                           .map((stat, index) => {
                             const metricValue = {
@@ -336,18 +330,74 @@ export default function SoundsPage() {
                               </TableRow>
                             );
                           })}
+                        
+                        {/* オリジナル動画が存在する場合、参考記録として表示 */}
+                        {soundStats.find(stat => stat.sound_title === 'オリジナル楽曲') && (
+                          <>
+                            {/* 区切り線 */}
+                            <TableRow>
+                              <TableCell colSpan={3} className="py-2">
+                                <div className="border-t border-dashed border-gray-200 my-1"></div>
+                              </TableCell>
+                            </TableRow>
+                            
+                            {/* 参考記録として「オリジナル動画」を表示 */}
+                            {(() => {
+                              const originalStat = soundStats.find(stat => stat.sound_title === 'オリジナル楽曲')!;
+                              const metricValue = {
+                                viewsIncrease: Number(originalStat.total_play_count_increase) || 0,
+                                over100kViews: Number(originalStat.videos_over_100k) || 0,
+                                postCount: Number(originalStat.total_posts) || 0
+                              }[metric];
+                              
+                              const isSelected = selectedSound === originalStat.sound_title;
+                              
+                              return (
+                                <TableRow 
+                                  key="original-reference"
+                                  className={cn(
+                                    "cursor-pointer transition-colors",
+                                    isSelected ? "bg-[#25F4EE]/5 hover:bg-[#25F4EE]/10" : "hover:bg-[#25F4EE]/5"
+                                  )}
+                                  onClick={() => setSelectedSound(originalStat.sound_title)}
+                                >
+                                  <TableCell className="py-3">
+                                    <span className="text-xs"></span>
+                                  </TableCell>
+                                  <TableCell className="py-3">
+                                    <div className="flex items-center gap-2">
+                                      <Music className="h-4 w-4 text-[#FE2C55]" />
+                                      <div>
+                                        <div className="font-medium text-sm line-clamp-2">
+                                          {originalStat.sound_title}
+                                        </div>
+                                        {originalStat.sound_artist && (
+                                          <div className="text-xs text-gray-500 line-clamp-1">
+                                            {originalStat.sound_artist}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-3 text-right">{formatNumber(metricValue)}</TableCell>
+                                </TableRow>
+                              );
+                            })()}
+                          </>
+                        )}
                       </TableBody>
                     </Table>
                     
-                    {/* さらに読み込むボタン */}
+                    {/* さらに読み込むボタン - オリジナル楽曲除外、最大50件まで */}
                     {(() => {
                       const filteredSounds = soundStats.filter(stat => 
-                        stat.sound_title && stat.sound_title.trim() !== ''
+                        stat.sound_title && stat.sound_title.trim() !== '' && stat.sound_title !== 'オリジナル楽曲'
                       );
-                      return filteredSounds.length > displayLimit ? (
+                      // 通常のBGMが50件を超えている場合で、かつ現在の表示件数が50件未満の場合のみボタンを表示
+                      return filteredSounds.length > displayLimit && displayLimit < 50 ? (
                         <div className="mt-4 text-center">
                           <button
-                            onClick={() => setDisplayLimit(prev => prev + 15)}
+                            onClick={() => setDisplayLimit(prev => Math.min(prev + 15, 50))}
                             className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
                           >
                             さらに15件読み込む

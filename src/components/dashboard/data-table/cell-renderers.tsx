@@ -94,12 +94,12 @@ export const renderCategoryCell = (row: VideoData) => {
             return (
               <div className="flex flex-wrap gap-1 justify-start items-center">
                 {genres.map((genre, idx) => (
-                  <GenreBadge key={idx} genre={genre} />
+                  <GenreBadge key={idx} genre={genre} categoryForColor={genre} />
                 ))}
               </div>
             );
           }
-          return <div className="flex justify-start items-center"><GenreBadge genre={category} /></div>;
+          return <div className="flex justify-start items-center"><GenreBadge genre={category} categoryForColor={category} /></div>;
         }
         
         // カテゴリが配列の場合（複数カテゴリに対応）
@@ -116,10 +116,10 @@ export const renderCategoryCell = (row: VideoData) => {
                 .filter(Boolean);
                 
               subGenres.forEach((genre, subIdx) => {
-                allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} />);
+                allGenreBadges.push(<GenreBadge key={`${idx}-${subIdx}`} genre={genre} categoryForColor={genre} />);
               });
             } else {
-              allGenreBadges.push(<GenreBadge key={idx} genre={cat} />);
+              allGenreBadges.push(<GenreBadge key={idx} genre={cat} categoryForColor={cat} />);
             }
           });
           

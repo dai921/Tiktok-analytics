@@ -15,10 +15,8 @@ export function middleware(request: NextRequest) {
   // レスポンスオブジェクトを作成
   let response = NextResponse.next()
   
-  // ログインページやその他認証関連ページにはX-Robots-Tagを設定
-  if (path === '/login' || path === '/admin/login' || path === '/register') {
-    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
-  }
+  // すべてのページにX-Robots-Tagを設定（検索エンジンからのインデックスを防ぐ）
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow')
   
   // 管理者ログインページへのアクセス
   if (path === '/admin/login') {
@@ -65,6 +63,8 @@ export const config = {
     '/dashboard/:path*',
     '/trends/:path*',
     '/summary/:path*',
+    '/corporate/:path*',
+    '/overall-trends/:path*',
     '/transcription/:path*',
     '/login',
     '/register',

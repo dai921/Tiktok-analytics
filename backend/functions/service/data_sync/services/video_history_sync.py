@@ -352,14 +352,14 @@ def sync_video_history(event, context):
 
         logger.info("全テーブルの10日間の指標更新が完了しました")
 
-        # 次の処理（summary_table_sync）にメッセージを送信
-        logger.info("商品日次集計処理のトリガーメッセージを送信します")
-        publish_message("summary-table-sync", {
+        # 次の処理（play_count_correction）にメッセージを送信
+        logger.info("再生数増加値修正処理のトリガーメッセージを送信します")
+        publish_message("play-count-correction", {
             "status": "success",
             "collection_date": collection_date,
             "execution_time": datetime.now().isoformat(),
             "previous_step": "video_history_sync",
-            "message": "動画履歴同期が完了しました。商品日次集計処理を開始します。"
+            "message": "動画履歴同期が完了しました。再生数増加値修正処理を開始します。"
         })
 
         return {

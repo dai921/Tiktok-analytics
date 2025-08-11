@@ -52,6 +52,21 @@ const nextConfig = {
   //   workerThreads: false,
   //   cpus: 1
   // }
+
+  // セキュリティヘッダーを追加
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-Robots-Tag',
+            value: 'noindex, nofollow',
+          },
+        ],
+      },
+    ]
+  },
 }
 
 console.log("Next.js config:", JSON.stringify(nextConfig, null, 2));

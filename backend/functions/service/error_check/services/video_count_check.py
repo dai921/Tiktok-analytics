@@ -5,7 +5,7 @@ import requests
 from datetime import datetime, timedelta
 import functions_framework
 from core.db_utils import execute_query, execute_write_query
-from core.config import initialize_config
+from core.config import initialize_config, get_secret
 from pytz import timezone
 
 # ログ設定
@@ -206,9 +206,12 @@ def send_discord_notification(video_counts, start_date, end_date):
         end_date (str): 終了日
     """
     try:
-        discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        if not discord_webhook_url:
-            logger.warning("DISCORD_WEBHOOK_URL環境変数が設定されていません")
+        # Cloud SecretからDiscord Webhook URLを取得
+        secret_name = os.getenv('VIDEO_COUNT_CHECK_DISCORD_WEBHOOK_SECRET', 'video-count-check-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
             return
         
         # 結果をフォーマット
@@ -313,9 +316,12 @@ def send_discord_error(error_message):
         error_message (str): エラーメッセージ
     """
     try:
-        discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-        if not discord_webhook_url:
-            logger.warning("DISCORD_WEBHOOK_URL環境変数が設定されていません")
+        # Cloud SecretからDiscord Webhook URLを取得
+        secret_name = os.getenv('VIDEO_COUNT_CHECK_DISCORD_WEBHOOK_SECRET', 'video-count-check-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
             return
         
         # Discord webhook エラーメッセージを作成

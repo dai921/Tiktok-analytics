@@ -48,8 +48,8 @@ export interface HashtagTrendResponse {
   };
 }
 
-// 動画タイプ定義（soundsと同じ）
-export type VideoType = 'all' | 'affiliate' | 'corporate' | 'influencer';
+// 動画タイプ定義（「すべての動画」を削除）
+export type VideoType = 'affiliate' | 'corporate' | 'influencer';
 
 // APIレスポンス型
 export interface HashtagStatsResponse {

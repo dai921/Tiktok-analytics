@@ -17,6 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Buzzmiru",
+  robots: "noindex, nofollow", // この行を追加
   icons: {
     icon: "/images/icon.png",
     apple: "/images/icon.png",
