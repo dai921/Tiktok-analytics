@@ -114,7 +114,7 @@ async def get_corporate_videos_by_genre(
     purpose: str,  # '採用' または '集客'
     start_date: Optional[str] = None,  # 追加
     end_date: Optional[str] = None,    # 追加
-    limit: Optional[int] = 9
+    limit: Optional[int] = 20  # 9 から 20 に変更
 ):
     """ジャンル・目的別の企業動画を取得するエンドポイント"""
     
@@ -205,7 +205,7 @@ async def get_corporate_videos_by_genre(
         for row in videos_results:
             videos_data.append({
                 "url": row["url"] or "",
-                "thumbnail_url": row["thumbnail_url"] or "",
+                "thumbnail_url": convert_gs_to_https(row["thumbnail_url"]) or "",  # ここを修正
                 "play_count": int(row["play_count"] or 0),
                 "play_count_increase": int(row["play_count_increase"] or 0),
                 "likes_count_increase": int(row["likes_count_increase"] or 0),
@@ -237,3 +237,12 @@ async def get_corporate_videos_by_genre(
     finally:
         if conn:
             conn.close() 
+
+# convert_gs_to_https関数を追加（他のAPIファイルと同じように）
+def convert_gs_to_https(url: Optional[str]) -> Optional[str]:
+    if url and url.startswith('gs://'):
+        parts = url.split('/')
+        bucket = parts[2]
+        object_path = '/'.join(parts[3:])
+        return f"https://storage.googleapis.com/{bucket}/{object_path}"
+    return url 

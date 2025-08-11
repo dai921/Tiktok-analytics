@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { AccountTypeBadge } from '@/components/ui/badge';
 
 // TikTokカラーの定義
 const TIKTOK_COLORS = {
@@ -168,7 +169,7 @@ export default function CorporatePage() {
       const params = new URLSearchParams();
       params.append('account_type', genreType);
       params.append('purpose', purpose === 'recruitment' ? '採用' : '集客');
-      params.append('limit', '9');
+      params.append('limit', '20');
       
       // 期間をパラメータに追加
       if (userSelectedDate) {
@@ -344,9 +345,7 @@ export default function CorporatePage() {
                   <CardTitle>
                     <div className="flex items-center gap-2">
                       <span>動画一覧:</span>
-                      <span className="bg-gray-100 px-3 py-1 rounded-full text-sm font-medium">
-                        {selectedGenre}
-                      </span>
+                      <AccountTypeBadge accountType={selectedGenre} />
                     </div>
                   </CardTitle>
                 </CardHeader>
@@ -419,7 +418,7 @@ export default function CorporatePage() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {videos.slice(0, 9).map((video, index) => (
+          {videos.slice(0, 20).map((video, index) => (  // 9 から 20 に変更
             <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
               <TableCell>
                 {video.thumbnail_url ? (
@@ -482,9 +481,6 @@ export default function CorporatePage() {
                   {video.display_name && (
                     <span className="block text-xs text-gray-500">{video.display_name}</span>
                   )}
-                  <div className="text-xs text-gray-500 mt-1">
-                    {video.account_type} | {video.second_account_type}
-                  </div>
                 </div>
               </TableCell>
             </TableRow>
