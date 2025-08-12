@@ -184,9 +184,9 @@ async def get_videos(
 
         # フィルター処理
         if account_name:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ - 大文字小文字を区別しない
             escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_name LIKE :account_name")
+            where_clauses.append("LOWER(account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
             params["account_name"] = f"%{escaped_account_name}%"
         
         # カテゴリフィルターのOR条件処理
@@ -216,27 +216,29 @@ async def get_videos(
             # exact_hashtags タイプが指定されている場合は完全一致検索
             exact_hashtags = request.query_params.get('exact_hashtags')
             if exact_hashtags == 'true':
-                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
-                where_clauses.append("(hashtags = :hashtags OR hashtags LIKE :hashtags_start OR hashtags LIKE :hashtags_middle OR hashtags LIKE :hashtags_end)")
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応） - 大文字小文字を区別しない
+                where_clauses.append("(LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs = LOWER(:hashtags) OR "
+                                   "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_start) OR "
+                                   "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_middle) OR "
+                                   "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_end))")
                 hashtags_exact = hashtags
                 params["hashtags"] = hashtags_exact
                 params["hashtags_start"] = f"{hashtags_exact},%"
                 params["hashtags_middle"] = f"%,{hashtags_exact},%"
                 params["hashtags_end"] = f"%,{hashtags_exact}"
-                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+                print(f"ハッシュタグ完全一致検索を適用（大文字小文字無視）: {hashtags_exact}")
             else:
-                # 従来の部分一致検索
+                # 従来の部分一致検索 - 大文字小文字を区別しない
                 # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
                 escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
-                where_clauses.append("hashtags LIKE :hashtags")
+                where_clauses.append("LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags)")
                 params["hashtags"] = f"%{escaped_hashtags}%"
-                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
+                print(f"ハッシュタグ部分一致検索を適用（大文字小文字無視）: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("music_info LIKE :music_info")
-            params["music_info"] = f"%{escaped_music_info}%"
+            where_clauses.append("LOWER(music_info) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:music_info)")
             
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
@@ -419,8 +421,9 @@ async def get_videos(
             where_clauses.append("product LIKE :product")
             params["product"] = f"%{escaped_product}%"
         
-        # アカウントタイプフィルターの処理
+        # アカウントタイプフィルターの処理 - 集客・採用が絡む場合はAND検索
         account_type_filters = []
+        selected_account_types = []
 
         # account_type_countパラメータがある場合は複数アカウントタイプ
         account_type_count = request.query_params.get('account_type_count')
@@ -429,13 +432,26 @@ async def get_videos(
             for i in range(count):
                 account_param = request.query_params.get(f'account_type_{i}')
                 if account_param:
+                    selected_account_types.append(account_param)
                     escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
                     account_type_filters.append(f"account_type LIKE :account_type_{i}")
                     params[f"account_type_{i}"] = f"%{escaped_account}%"
 
-        # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
+        # 集客・採用が含まれているかチェック
+        has_recruitment_or_marketing = any(
+            type_name in ['集客', '採用'] for type_name in selected_account_types
+        )
+
+        # 1つ以上のアカウントタイプフィルターがある場合
         if account_type_filters:
-            where_clauses.append(f"({' OR '.join(account_type_filters)})")
+            if has_recruitment_or_marketing and len(selected_account_types) > 1:
+                # 集客・採用が絡み、複数選択の場合はAND検索
+                where_clauses.append(f"({' AND '.join(account_type_filters)})")
+                print(f"アカウントタイプAND検索を適用: {selected_account_types}")
+            else:
+                # 通常のOR検索
+                where_clauses.append(f"({' OR '.join(account_type_filters)})")
+                print(f"アカウントタイプOR検索を適用: {selected_account_types}")
         # 従来の単一アカウントタイプ処理
         elif account_type:
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")

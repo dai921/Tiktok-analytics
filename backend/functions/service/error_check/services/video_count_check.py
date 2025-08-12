@@ -43,8 +43,8 @@ def check_execution_time() -> bool:
         current_time = datetime.now()
         time_diff = current_time - last_run
         
-        # 48時間以上経過しているかチェック
-        if time_diff.total_seconds() >= 48 * 3600:
+        # 36時間以上経過しているかチェック
+        if time_diff.total_seconds() >= 36 * 3600:
             # last_runを更新
             update_query = """
                 UPDATE scheduler_job_info 
@@ -173,7 +173,7 @@ def get_video_counts_by_crawler_account(start_date, end_date):
             video_heavy_raw_data AS v
         JOIN
             account_list AS al
-              ON al.favorite_user_username = v.user_username
+              ON al.favorite_user_username COLLATE utf8mb4_0900_ai_ci = v.user_username
         WHERE
            v.post_time >= %s
         and v.post_time < %s

@@ -18,11 +18,11 @@ def build_video_query(table_name: str = "frontend_data") -> str:
 
 def apply_filters(query: str, params: Dict, where_clauses: List[str], request: Request, table_name: str = "frontend_data") -> tuple:
     """フィルター条件を適用"""
-    # アカウント名フィルター
+    # アカウント名フィルター - 大文字小文字を区別しない
     account_name = request.query_params.get('account_name')
     if account_name:
         escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-        where_clauses.append("account_name LIKE :account_name")
+        where_clauses.append("LOWER(account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
         params["account_name"] = f"%{escaped_account_name}%"
     
     # カテゴリフィルター
@@ -71,14 +71,19 @@ def apply_hashtag_filters(request: Request, params: Dict, where_clauses: List[st
     if hashtags:
         exact_hashtags = request.query_params.get('exact_hashtags')
         if exact_hashtags == 'true':
-            where_clauses.append("(hashtags = :hashtags OR hashtags LIKE :hashtags_start OR hashtags LIKE :hashtags_middle OR hashtags LIKE :hashtags_end)")
+            # 完全一致検索 - 大文字小文字を区別しない
+            where_clauses.append("(LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs = LOWER(:hashtags) OR "
+                               "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_start) OR "
+                               "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_middle) OR "
+                               "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_end))")
             params["hashtags"] = hashtags
             params["hashtags_start"] = f"{hashtags},%"
             params["hashtags_middle"] = f"%,{hashtags},%"
             params["hashtags_end"] = f"%,{hashtags}"
         else:
+            # 部分一致検索 - 大文字小文字を区別しない
             escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("hashtags LIKE :hashtags")
+            where_clauses.append("LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags)")
             params["hashtags"] = f"%{escaped_hashtags}%"
 
 def apply_other_filters(request: Request, params: Dict, where_clauses: List[str]):
@@ -301,22 +306,37 @@ def apply_product_filters(request: Request, params: Dict, where_clauses: List[st
             params["product"] = f"%{escaped_product}%"
 
 def apply_account_type_filters(request: Request, params: Dict, where_clauses: List[str]):
-    """アカウントタイプフィルターを適用"""
+    """アカウントタイプフィルターを適用 - 集客・採用が絡む場合はAND検索"""
     account_type_filters = []
     
     # 複数アカウントタイプ処理
     account_type_count = request.query_params.get('account_type_count')
     if account_type_count and account_type_count.isdigit():
         count = int(account_type_count)
+        selected_types = []
+        
         for i in range(count):
             account_param = request.query_params.get(f'account_type_{i}')
             if account_param:
+                selected_types.append(account_param)
                 escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
                 account_type_filters.append(f"account_type LIKE :account_type_{i}")
                 params[f"account_type_{i}"] = f"%{escaped_account}%"
-    
-    if account_type_filters:
-        where_clauses.append(f"({' OR '.join(account_type_filters)})")
+        
+        # 集客・採用が含まれているかチェック
+        has_recruitment_or_marketing = any(
+            type_name in ['集客', '採用'] for type_name in selected_types
+        )
+        
+        if account_type_filters:
+            if has_recruitment_or_marketing and len(selected_types) > 1:
+                # 集客・採用が絡み、複数選択の場合はAND検索
+                where_clauses.append(f"({' AND '.join(account_type_filters)})")
+                print(f"アカウントタイプAND検索を適用: {selected_types}")
+            else:
+                # 通常のOR検索
+                where_clauses.append(f"({' OR '.join(account_type_filters)})")
+                print(f"アカウントタイプOR検索を適用: {selected_types}")
     else:
         # 単一アカウントタイプ処理
         account_type = request.query_params.get('account_type')
@@ -330,7 +350,7 @@ def apply_music_filters(request: Request, params: Dict, where_clauses: List[str]
     music_info = request.query_params.get('music_info')
     if music_info:
         escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-        where_clauses.append("music_info LIKE :music_info")
+        where_clauses.append("LOWER(music_info) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:music_info)")
         params["music_info"] = f"%{escaped_music_info}%"
 
 def apply_sorting(query: str, sort_by: str, sort_order: str, sort_by_secondary: str, sort_order_secondary: str) -> str:
