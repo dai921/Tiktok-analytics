@@ -46,8 +46,11 @@ def update_needs_flags(event, context):
         JOIN   video_master        AS vm ON vm.video_id = vl.video_id
         SET    vl.needs_update = 0
         WHERE  vl.needs_update = 1
-          AND  vm.created_at < DATE_SUB(CURDATE(), INTERVAL 9 DAY)
-          AND  vm.playCountIncrease < 1000;
+          AND  (
+            (vm.created_at < DATE_SUB(CURDATE(), INTERVAL 9 DAY) AND vm.playCountIncrease < 1000)
+            OR 
+            (vm.parent_account_type = 'インフルエンサー' AND vm.created_at < DATE_SUB(CURDATE(), INTERVAL 9 DAY))
+          );
         """
         
         raw_data_affected_rows = execute_write_query(update_raw_data_query)

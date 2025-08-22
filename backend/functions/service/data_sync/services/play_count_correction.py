@@ -82,7 +82,7 @@ def correct_play_count_increase(event, context):
                 video_id = record['video_id']
                 current_play_count = record['play_count']
                 previous_play_count = record['previous_play_count']
-                corrected_increase = current_play_count - previous_play_count
+                corrected_increase = max(0, current_play_count - previous_play_count)
                 
                 logger.info(f"動画ID {video_id}: 現在再生数={current_play_count}, 前回再生数={previous_play_count}, 修正後増加数={corrected_increase}")
                 

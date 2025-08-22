@@ -142,7 +142,7 @@ def sync_corporate_top100_for_date(collection_date):
     
     # 企業系動画の全データを取得するクエリ
     select_query = """
-    SELECT 
+    SELECT DISTINCT
         pch.video_id,
         pch.play_count_increase,
         pch.likes_count_increase,

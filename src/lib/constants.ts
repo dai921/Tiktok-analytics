@@ -25,6 +25,7 @@ export const GENRE_COLORS = {
   
   // ヘアケア・除毛系（緑系）
   'ヘアケア': { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0' },
+  '育毛剤': { bg: '#F6FFED', text: '#52C41A', border: '#B7EB8F' },
   '除毛/脱毛': { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0' },
   
   // 医療・健康系（青系）
@@ -150,7 +151,6 @@ export const CORPORATE_TYPE_COLORS = {
   'メディア・情報サイト': { bg: '#CFFAFE', text: '#0F766E', border: '#5EEAD4' },
   
   // グループ13: スピリチュアル・恋愛系（マゼンタ系）
-  'スピリチュアル・占い': { bg: '#FCE7F3', text: '#BE1E6E', border: '#F9A8D4' },
   '恋愛・婚活系': { bg: '#FDF2F8', text: '#BE185D', border: '#FBCFE8' },
   
   // グループ14: 特殊用途・その他（ニュートラル系）

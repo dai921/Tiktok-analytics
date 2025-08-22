@@ -117,7 +117,7 @@ def update_product_top100_by_date(collection_date):
             insert_query = """
             INSERT INTO product_daily_top100_videos 
             (video_id, fetch_date, product, product_category, plays_increase, likes_increase, post_time, thumbnail_url)
-            SELECT 
+            SELECT DISTINCT
                 fd.video_id,
                 %s as fetch_date,
                 fd.product,
@@ -199,7 +199,7 @@ def update_genre_top100_by_date(collection_date):
             insert_query = """
             INSERT INTO genre_daily_top100_videos 
             (video_id, fetch_date, video_genre, plays_increase, likes_increase, post_time, thumbnail_url)
-            SELECT 
+            SELECT DISTINCT
                 fd.video_id,
                 %s as fetch_date,
                 %s as video_genre,

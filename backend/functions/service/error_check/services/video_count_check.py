@@ -104,9 +104,48 @@ def scheduled_job(request):
             "time": datetime.now().isoformat()
         }
 
+def get_unprocessed_account_counts():
+    """
+    crawler_account_idごとの未処理アカウント数を取得する
+    
+    Returns:
+        List[Dict]: crawler_account_idと未処理アカウント数のリスト
+    """
+    logger.info("==== crawler_account_idごとの未処理アカウント数取得開始 ====")
+    
+    try:
+        # JST時刻で当日の日付を取得
+        jst = timezone('Asia/Tokyo')
+        current_date = datetime.now(jst).strftime('%Y-%m-%d')
+        
+        query = """
+        SELECT 
+            crawler_account_id,
+            COUNT(*) as count
+        FROM account_list
+        WHERE updated_at < %s
+            AND favorite_user_is_alive = 1
+            AND crawler_account_id IS NOT NULL
+        GROUP BY crawler_account_id
+        ORDER BY crawler_account_id
+        """
+        
+        # クエリを実行
+        results = execute_query(query, (current_date,))
+        
+        logger.info(f"未処理アカウント数集計完了: {len(results)}件のcrawler_account_id")
+        return results
+        
+    except Exception as e:
+        error_message = f"未処理アカウント数集計中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise e
+
 def video_count_check():
     """
-    crawler_account_idごとの動画数をチェックしてDiscordに送信する
+    crawler_account_idごとの動画数と未処理アカウント数をチェックしてDiscordに送信する
     """
     logger.info("==== 動画数チェック処理の開始 ====")
     
@@ -122,8 +161,11 @@ def video_count_check():
         # 動画数を集計するクエリを実行
         video_counts = get_video_counts_by_crawler_account(start_date, end_date)
         
+        # 未処理アカウント数を集計するクエリを実行
+        unprocessed_counts = get_unprocessed_account_counts()
+        
         # 結果をDiscordに送信
-        send_discord_notification(video_counts, start_date, end_date)
+        send_discord_notification(video_counts, unprocessed_counts, start_date, end_date)
         
         logger.info(f"動画数チェックが完了しました。対象期間: {start_date} 〜 {end_date}")
         
@@ -133,6 +175,7 @@ def video_count_check():
             "start_date": start_date,
             "end_date": end_date,
             "crawler_account_count": len(video_counts),
+            "unprocessed_account_count": len(unprocessed_counts),
             "execution_time": datetime.now().isoformat()
         }
         
@@ -196,12 +239,13 @@ def get_video_counts_by_crawler_account(start_date, end_date):
         logger.error(traceback.format_exc())
         raise e
 
-def send_discord_notification(video_counts, start_date, end_date):
+def send_discord_notification(video_counts, unprocessed_counts, start_date, end_date):
     """
-    Discordに動画数の集計結果を通知する
+    Discordに動画数と未処理アカウント数の集計結果を通知する
     
     Args:
         video_counts (List[Dict]): 動画数の集計結果
+        unprocessed_counts (List[Dict]): 未処理アカウント数の集計結果
         start_date (str): 開始日
         end_date (str): 終了日
     """
@@ -214,51 +258,88 @@ def send_discord_notification(video_counts, start_date, end_date):
             logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
             return
         
-        # 結果をフォーマット
+        # 動画数の結果をフォーマット
         total_videos = sum(item['video_count'] for item in video_counts)
         total_accounts = len(video_counts)
         
-        # 上位5件のアカウントを取得
-        top_accounts = sorted(video_counts, key=lambda x: x['video_count'], reverse=True)[:5]
+        # 上位5件のアカウントを取得（動画数）
+        top_video_accounts = sorted(video_counts, key=lambda x: x['video_count'], reverse=True)[:5]
         
-        # 詳細データを文字列として作成
-        details_text = ""
+        # 未処理アカウント数の結果をフォーマット
+        total_unprocessed = sum(item['count'] for item in unprocessed_counts)
+        unprocessed_account_count = len(unprocessed_counts)
+        
+        # 動画数詳細データを文字列として作成
+        video_details_text = ""
         for item in video_counts:
-            details_text += f"ID: {item['crawler_account_id']} -> {item['video_count']}件\n"
+            video_details_text += f"ID: {item['crawler_account_id']} -> {item['video_count']}件\n"
+        
+        # 未処理アカウント詳細データを文字列として作成（全件）
+        unprocessed_details_text = ""
+        for item in sorted(unprocessed_counts, key=lambda x: x['crawler_account_id']):
+            unprocessed_details_text += f"ID: {item['crawler_account_id']} -> {item['count']}件\n"
         
         # Discord webhook メッセージを作成
         embed = {
-            "title": "📊 動画数チェック結果",
+            "title": "📊 動画数・未処理アカウント数チェック結果",
             "description": f"期間: {start_date} 〜 {end_date}",
             "color": 3447003,  # 青色
             "fields": [
                 {
-                    "name": "集計概要",
-                    "value": f"対象アカウント数: {total_accounts}件\n総動画数: {total_videos}件",
-                    "inline": False
-                },
-                {
-                    "name": "上位5アカウント",
-                    "value": "\n".join([f"ID: {item['crawler_account_id']} -> {item['video_count']}件" for item in top_accounts]) if top_accounts else "データなし",
+                    "name": "📹 動画数 上位5アカウント",
+                    "value": "\n".join([f"ID: {item['crawler_account_id']} -> {item['video_count']}件" for item in top_video_accounts]) if top_video_accounts else "データなし",
                     "inline": False
                 }
             ],
             "footer": {
-                "text": "TikTok Analytics - Video Count Check"
+                "text": "TikTok Analytics - Video Count & Unprocessed Account Check"
             },
             "timestamp": datetime.now().isoformat()
         }
         
-        # 詳細データが長い場合は、ファイルとして添付するかページ分割を検討
-        if len(details_text) < 1000:
+        # 未処理アカウント数は全件表示（個別データのみ、集計概要なし）
+        if len(unprocessed_details_text) < 1000:
             embed["fields"].append({
-                "name": "全データ",
-                "value": f"```\n{details_text}```",
+                "name": "⏳ 未処理アカウント数（crawler_account_id毎）",
+                "value": f"```\n{unprocessed_details_text}```",
+                "inline": False
+            })
+        else:
+            # データが長すぎる場合は複数のフィールドに分割
+            chunks = []
+            current_chunk = ""
+            for line in unprocessed_details_text.split('\n'):
+                if len(current_chunk + line + '\n') > 950:  # 余裕を持って950文字で区切り
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                        current_chunk = line + '\n'
+                    else:
+                        chunks.append(line[:950])  # 1行が長すぎる場合
+                else:
+                    current_chunk += line + '\n'
+            
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            # 各チャンクをフィールドとして追加
+            for i, chunk in enumerate(chunks):
+                field_name = f"⏳ 未処理アカウント数（{i+1}/{len(chunks)}）"
+                embed["fields"].append({
+                    "name": field_name,
+                    "value": f"```\n{chunk}```",
+                    "inline": False
+                })
+        
+        # 動画数詳細データの追加
+        if len(video_details_text) < 500:
+            embed["fields"].append({
+                "name": "📹 動画数全データ",
+                "value": f"```\n{video_details_text}```",
                 "inline": False
             })
         else:
             embed["fields"].append({
-                "name": "データ詳細",
+                "name": "📹 動画数データ詳細",
                 "value": f"データが多すぎるため、上位5件のみ表示しています。\n総件数: {total_accounts}件",
                 "inline": False
             })
@@ -282,7 +363,7 @@ def send_discord_notification(video_counts, start_date, end_date):
                 )
                 
                 if response.status_code == 204:
-                    logger.info(f"Discordに動画数チェック結果を送信しました: {total_accounts}アカウント, {total_videos}動画")
+                    logger.info(f"Discordに動画数・未処理アカウント数チェック結果を送信しました: 動画数{total_accounts}アカウント({total_videos}動画), 未処理{unprocessed_account_count}クローラー({total_unprocessed}アカウント)")
                     return
                 else:
                     logger.warning(f"Discord通知の送信失敗 (試行{attempt + 1}/{max_retries}): {response.status_code}")
