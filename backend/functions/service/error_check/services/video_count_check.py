@@ -83,11 +83,19 @@ def scheduled_job(request):
 
         # 動画数チェックを実行
         result = video_count_check()
-        
+
+        # 新規: ブランク/Null項目チェックを実行
+        blank_result = blank_field_check()
+
         execution_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"動画数チェック定期実行完了: 実行時間 {execution_time}秒, 結果: {result}")
-        
-        return result
+
+        return {
+            "status": "success",
+            "video_count_check": result,
+            "blank_field_check": blank_result,
+            "execution_time_sec": execution_time
+        }
 
     except Exception as e:
         error_message = f"動画数チェック定期実行中にエラーが発生: {str(e)}"
@@ -445,6 +453,206 @@ def send_discord_error(error_message):
             
     except Exception as e:
         logger.error(f"Discordエラー通知送信中にエラーが発生しました: {str(e)}")
+
+# 追加: 2日前〜当日(既存ロジックと同じ境界)の video_heavy_raw_data から必須項目の空/Null件数を集計してDiscord通知
+
+def blank_field_check():
+    """
+    video_heavy_raw_data と account_list を結合し、
+    2日前から当日までの v.post_time を対象に必須項目のブランク/Null件数を
+    crawler_account_id ごとに集計してDiscordに送信する
+    """
+    logger.info("==== ブランク/Null項目チェック処理の開始 ====")
+    try:
+        jst = timezone('Asia/Tokyo')
+        current_date = datetime.now(jst)
+        start_date = (current_date - timedelta(days=2)).strftime('%Y-%m-%d')
+        end_date = (current_date).strftime('%Y-%m-%d')
+
+        logger.info(f"チェック対象期間(ブランク/Null): {start_date} 〜 {end_date}")
+
+        blank_counts = get_blank_field_counts_by_crawler_account(start_date, end_date)
+        send_discord_blank_field_report(blank_counts, start_date, end_date)
+
+        logger.info("ブランク/Null項目チェックが完了しました")
+        return {
+            "status": "success",
+            "count_groups": len(blank_counts),
+            "start_date": start_date,
+            "end_date": end_date,
+            "time": datetime.now().isoformat()
+        }
+    except Exception as e:
+        error_message = f"ブランク/Null項目チェック処理中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        send_discord_error(error_message)
+        return {"status": "error", "error": error_message, "time": datetime.now().isoformat()}
+    finally:
+        logger.info("==== ブランク/Null項目チェック処理の終了 ====")
+
+
+def get_blank_field_counts_by_crawler_account(start_date: str, end_date: str):
+    """
+    指定期間における必須項目のブランク/Null件数を crawler_account_id ごとに集計
+    """
+    logger.info("==== crawler_account_idごとのブランク/Null件数取得開始 ====")
+    try:
+        query = """
+        SELECT
+            al.crawler_account_id,
+            SUM(CASE WHEN v.user_nickname IS NULL OR TRIM(v.user_nickname) = '' THEN 1 ELSE 0 END) AS user_nickname_blank,
+            SUM(CASE WHEN v.video_thumbnail_url IS NULL OR TRIM(v.video_thumbnail_url) = '' THEN 1 ELSE 0 END) AS video_thumbnail_url_blank,
+            SUM(CASE WHEN v.video_title IS NULL OR TRIM(v.video_title) = '' THEN 1 ELSE 0 END) AS video_title_blank,
+            SUM(CASE WHEN v.post_time_text IS NULL OR TRIM(v.post_time_text) = '' THEN 1 ELSE 0 END) AS post_time_text_blank,
+            SUM(CASE WHEN v.audio_info_text IS NULL OR TRIM(v.audio_info_text) = '' THEN 1 ELSE 0 END) AS audio_info_text_blank,
+            COUNT(v.id) AS total_rows
+        FROM
+            video_heavy_raw_data AS v
+        JOIN
+            account_list AS al
+              ON al.favorite_user_username COLLATE utf8mb4_0900_ai_ci = v.user_username
+        WHERE
+            v.post_time >= %s
+            AND v.post_time < %s
+        GROUP BY
+            al.crawler_account_id
+        ORDER BY
+            al.crawler_account_id
+        """
+        results = execute_query(query, (start_date, end_date))
+        logger.info(f"ブランク/Null件数集計完了: {len(results)}件のcrawler_account_id")
+        return results
+    except Exception as e:
+        error_message = f"ブランク/Null件数集計中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise e
+
+
+def send_discord_blank_field_report(blank_counts, start_date: str, end_date: str):
+    """
+    ブランク/Null件数の集計結果をDiscordに通知
+    """
+    try:
+        # 環境変数があれば専用Webhook、無ければ動画数チェックのWebhookを流用
+        secret_name = os.getenv('VIDEO_FIELD_CHECK_DISCORD_WEBHOOK_SECRET', 'video-count-check-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
+            return
+
+        # 合計サマリ
+        total_user_nickname = sum(item['user_nickname_blank'] for item in blank_counts) if blank_counts else 0
+        total_thumbnail = sum(item['video_thumbnail_url_blank'] for item in blank_counts) if blank_counts else 0
+        total_title = sum(item['video_title_blank'] for item in blank_counts) if blank_counts else 0
+        total_post_text = sum(item['post_time_text_blank'] for item in blank_counts) if blank_counts else 0
+        total_audio = sum(item['audio_info_text_blank'] for item in blank_counts) if blank_counts else 0
+
+        # 詳細行（crawler_account_id毎）
+        details_lines = []
+        for item in sorted(blank_counts, key=lambda x: x['crawler_account_id']):
+            details_lines.append(
+                f"ID:{item['crawler_account_id']} | "
+                f"nickname:{item['user_nickname_blank']} "
+                f"thumb:{item['video_thumbnail_url_blank']} "
+                f"title:{item['video_title_blank']} "
+                f"post_text:{item['post_time_text_blank']} "
+                f"audio:{item['audio_info_text_blank']} "
+                f"/ total:{item['total_rows']}"
+            )
+        details_text = "\n".join(details_lines)
+
+        embed = {
+            "title": "🧪 必須項目の空/Nullチェック結果",
+            "description": f"期間: {start_date} 〜 {end_date}",
+            "color": 15158332,  # 赤系
+            "fields": [
+                {
+                    "name": "合計",
+                    "value": (
+                        f"nickname:{total_user_nickname}, "
+                        f"thumb:{total_thumbnail}, "
+                        f"title:{total_title}, "
+                        f"post_text:{total_post_text}, "
+                        f"audio:{total_audio}"
+                    ),
+                    "inline": False
+                }
+            ],
+            "footer": {"text": "TikTok Analytics - Blank/Null Field Check"},
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # 詳細が長い場合は分割
+        if len(details_text) <= 1000:
+            embed["fields"].append({
+                "name": "明細（crawler_account_id毎）",
+                "value": f"```\n{details_text}```",
+                "inline": False
+            })
+        else:
+            chunk = ""
+            chunks = []
+            for line in details_lines:
+                if len(chunk) + len(line) + 1 > 950:
+                    if chunk:
+                        chunks.append(chunk)
+                        chunk = line + "\n"
+                    else:
+                        chunks.append(line[:950])
+                else:
+                    chunk += line + "\n"
+            if chunk:
+                chunks.append(chunk)
+            for i, c in enumerate(chunks, 1):
+                embed["fields"].append({
+                    "name": f"明細 分割({i}/{len(chunks)})",
+                    "value": f"```\n{c}```",
+                    "inline": False
+                })
+
+        payload = {"embeds": [embed]}
+
+        timeout = int(os.getenv('DISCORD_TIMEOUT', '10'))
+        max_retries = int(os.getenv('DISCORD_MAX_RETRIES', '3'))
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    discord_webhook_url,
+                    json=payload,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=timeout
+                )
+                if response.status_code == 204:
+                    logger.info("Discordにブランク/Null項目チェック結果を送信しました")
+                    return
+                else:
+                    logger.warning(f"Discord通知の送信失敗 (試行{attempt + 1}/{max_retries}): {response.status_code}")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(2 ** attempt)
+            except requests.exceptions.Timeout:
+                logger.warning(f"Discord通知がタイムアウト (試行{attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Discord通知のリクエストエラー (試行{attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+
+        logger.error(f"Discord通知の送信に失敗しました（全{max_retries}回試行）")
+
+    except Exception as e:
+        logger.error(f"Discord通知送信中にエラーが発生しました: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 # ローカルテスト用
 if __name__ == "__main__":
