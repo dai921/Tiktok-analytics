@@ -87,6 +87,8 @@ def scheduled_job(request):
         # 新規: ブランク/Null項目チェックを実行
         blank_result = blank_field_check()
 
+        vm_result =video_count_check_master()
+
         execution_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"動画数チェック定期実行完了: 実行時間 {execution_time}秒, 結果: {result}")
 
@@ -653,6 +655,82 @@ def send_discord_blank_field_report(blank_counts, start_date: str, end_date: str
         logger.error(f"Discord通知送信中にエラーが発生しました: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
+
+def video_count_check_master():
+    """
+    crawler_account_idごとの動画数（video_master, created_at）をチェックしてDiscordに送信する
+    """
+    logger.info("==== 動画数チェック処理の開始 (video_master) ====")
+    try:
+        jst = timezone('Asia/Tokyo')
+        current_date = datetime.now(jst)
+        start_date = (current_date - timedelta(days=2)).strftime('%Y-%m-%d')
+        end_date = (current_date).strftime('%Y-%m-%d')
+
+        logger.info(f"(video_master) チェック対象期間: {start_date} 〜 {end_date}")
+
+        # 動画数（video_master）を集計
+        video_counts = get_video_counts_by_crawler_account_master(start_date, end_date)
+
+        # 未処理アカウント数は既存関数を再利用
+        unprocessed_counts = get_unprocessed_account_counts()
+
+        # Discord送信は既存フォーマッタを再利用
+        send_discord_notification(video_counts, unprocessed_counts, start_date, end_date)
+
+        logger.info(f"(video_master) 動画数チェックが完了しました。対象期間: {start_date} 〜 {end_date}")
+        return {
+            "status": "success",
+            "message": "動画数チェック(video_master)が完了しました",
+            "start_date": start_date,
+            "end_date": end_date,
+            "crawler_account_count": len(video_counts),
+            "unprocessed_account_count": len(unprocessed_counts),
+            "execution_time": datetime.now().isoformat()
+        }
+    except Exception as e:
+        error_message = f"(video_master) 動画数チェック処理中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        send_discord_error(error_message)
+        return {"status": "error", "error": error_message, "time": datetime.now().isoformat()}
+    finally:
+        logger.info("==== 動画数チェック処理の終了 (video_master) ====")
+
+
+def get_video_counts_by_crawler_account_master(start_date: str, end_date: str):
+    """
+    crawler_account_idごとの動画数を取得（video_master, created_atベース）
+    """
+    logger.info("==== crawler_account_idごとの動画数取得開始 (video_master) ====")
+    try:
+        query = """
+        SELECT
+            al.crawler_account_id,
+            COUNT(*) AS video_count
+        FROM
+            video_master AS vm
+        JOIN
+            account_list AS al
+              ON al.favorite_user_username COLLATE utf8mb4_0900_ai_ci = vm.username
+        WHERE
+           vm.created_at >= %s
+        and vm.created_at < %s
+        GROUP BY
+            al.crawler_account_id
+        ORDER BY
+            al.crawler_account_id
+        """
+        results = execute_query(query, (start_date, end_date))
+        logger.info(f"(video_master) 動画数集計完了: {len(results)}件のcrawler_account_id")
+        return results
+    except Exception as e:
+        error_message = f"(video_master) 動画数集計中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise e        
 
 # ローカルテスト用
 if __name__ == "__main__":
