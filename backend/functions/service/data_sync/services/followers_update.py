@@ -55,7 +55,7 @@ def _update_table(table_name: str, collection_date: str, parent_account_type: st
     """
     return execute_write_query(query, params)
 
-def update_frontend_per_follower_metrics(event, context):
+def update_followers(event, context):
     """
     sync_corporate_dataの後に実行され、frontend_data系テーブルへ
     follower/ per-follower指標を更新し、完了後にdata_integrity_checkへPublishする

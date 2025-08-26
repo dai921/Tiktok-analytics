@@ -62,14 +62,14 @@ def sync_corporate_data(event, context):
         
         logger.info(f"企業系動画TOP100ランキング同期が完了しました。収集日: {collection_date}")
         
-        # 次の処理（data_integrity_check）にメッセージを送信
-        logger.info("データ整合性チェック処理のトリガーメッセージを送信します")
-        publish_message("data-integrity-check", {
+        # 次の処理（frontend_per_follower_update）にメッセージを送信
+        logger.info("per-follower指標更新処理のトリガーメッセージを送信します")
+        publish_message("update-followers", {
             "status": "success",
             "collection_date": collection_date,
             "execution_time": datetime.now().isoformat(),
             "previous_step": "sync_corporate_data",
-            "message": "企業系動画TOP100ランキング同期が完了しました。データ整合性チェック処理を開始します。"
+            "message": "企業系動画TOP100ランキング同期が完了しました。per-follower更新処理を開始します。"
         })
         
         return {
@@ -85,9 +85,9 @@ def sync_corporate_data(event, context):
         import traceback
         logger.error(traceback.format_exc())
         
-        # エラーの場合もdata_integrity_checkに通知
+        # エラーの場合もupdate-followersに通知
         try:
-            publish_message("data-integrity-check", {
+            publish_message("update-followers", {
                 "status": "error",
                 "collection_date": collection_date if 'collection_date' in locals() else None,
                 "execution_time": datetime.now().isoformat(),
