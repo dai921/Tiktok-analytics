@@ -133,7 +133,6 @@ def update_frontend_from_master() -> Dict[str, Any]:
             vm.commentCountIncrease,
             vm.saveCountIncrease,
             vm.account_type,
-            vm.is_pr,
             vm.parent_account_type
         FROM 
             video_master vm
@@ -256,12 +255,12 @@ def update_frontend_from_master() -> Dict[str, Any]:
                     id, url, video_id, thumbnail_url, created_at, play_count, 
                     play_count_increase, account_name, likes_count, comment_count, 
                     hashtags, music_info, caption, category, display_name,
-                    content_type, product, save_count, likes_count_increase, comment_count_increase, save_count_increase, account_type, is_pr, parent_account_type
+                    content_type, product, save_count, likes_count_increase, comment_count_increase, save_count_increase, account_type, parent_account_type
                 ) VALUES (
                     %(id)s, %(url)s, %(video_id)s, %(thumbnail_url)s, %(created_at)s, %(play_count)s, 
                     %(play_count_increase)s, %(account_name)s, %(likes_count)s, %(comment_count)s, 
                     %(hashtags)s, %(music_info)s, %(caption)s, %(category)s, %(display_name)s,
-                    %(content_type)s, %(product)s, %(save_count)s, %(likesCountIncrease)s, %(commentCountIncrease)s, %(saveCountIncrease)s, %(account_type)s, %(is_pr)s, %(parent_account_type)s
+                    %(content_type)s, %(product)s, %(save_count)s, %(likesCountIncrease)s, %(commentCountIncrease)s, %(saveCountIncrease)s, %(account_type)s, %(parent_account_type)s
                 )
                 """
                 
@@ -288,7 +287,6 @@ def update_frontend_from_master() -> Dict[str, Any]:
                     'commentCountIncrease': row['commentCountIncrease'],
                     'saveCountIncrease': row['saveCountIncrease'],
                     'account_type': row['account_type'],
-                    'is_pr': row['is_pr'],
                     'parent_account_type': row['parent_account_type']
                 }
                 

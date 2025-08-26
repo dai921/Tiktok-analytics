@@ -34,7 +34,9 @@
 | caption | TEXT | YES | NULL | キャプション |
 | category | VARCHAR(255) | YES | NULL | カテゴリ |
 | product | VARCHAR(255) | YES | NULL | 関連商品 |
-| is_pr | TINYINT | YES | 0 | PRフラグ |
+| follower | INT | YES |  | フォロワー数 |
+| play_count_per_follower | DECIMAL(20,3) | YES |  | 再生数/フォロワー数 |
+| play_cincrease_per_follower | DECIMAL(20,3) | YES |  | 再生増加数/フォロワー数 |
 
 ## インデックス
 
@@ -57,7 +59,8 @@
 | idx_category | category | インデックス | カテゴリ検索用 |
 | idx_product | product | インデックス | 商品検索用 |
 | idx_created_at | created_at | インデックス | 投稿日検索用 |
-| idx_is_pr | is_pr | インデックス | prフラグ検索用 |
+| idx_play_count_per_follower  | play_count_per_follower  | インデックス | 再生数/フォロワー数検索用 |
+| idx_play_increase_per_follower  | play_increase_per_follower  | インデックス | 再生増加数/フォロワー数検索用 |
 
 ## 関連テーブル
 このテーブルは他のテーブルとの直接的な外部キー関連はありませんが、video_idやurlを通じて他のテーブルと関連付けられます。

@@ -35,7 +35,7 @@ def check_data_integrity(event, context):
             
             # summary_all_trendsまたはsync_corporate_dataからの完了メッセージを確認
             if (message_data.get("status") != "success" or 
-                message_data.get("previous_step") not in ["sync_corporate_data"]):
+                message_data.get("previous_step") not in ["sync_corporate_data", "frontend_per_follower_update"]):
                 logger.info(f"前の処理が成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 

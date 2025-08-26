@@ -28,7 +28,6 @@ from services.data_sync.video_history_sync import sync_video_history
 from services.data_sync.video_master_sync import sync_video_master as sync_raw_data_to_video_master
 from services.account_info.sync_account_list import sync_account_list as sync_account
 from services.account_info.sync_crawler_accounts import sync_crawler_accounts as sync_crawler
-from services.data_sync.play_count_correction import correct_play_count_increase
 # 手動実行タスク
 from services.manual_tasks.manual_sync_master import sync_video_master as manual_sync_master_from_raw_data
 from services.manual_tasks.update_all_categories import update_all_categories as update_all_categories_function
@@ -115,8 +114,4 @@ def manual_sync_summary(request):
 
 def manual_top100_sync(request):
     return manual_top100_sync_function(request)
-
-# 新しいエントリーポイント関数を追加
-def play_count_correction(event, context):
-    return correct_play_count_increase(event, context)
 
