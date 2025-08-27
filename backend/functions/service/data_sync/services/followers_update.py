@@ -18,12 +18,12 @@ def _update_table(table_name: str, collection_date: str, parent_account_type: st
     frontend系テーブルに対し、followerとper-follower指標を更新する
     - followerはaccount_follower_historyのfollower_count
     - play_count_per_follower = play_count / max(follower, 1000)
-    - play_cincrease_per_follower = play_count_increase / max(follower, 1000)
+    - play_increase_per_follower = play_count_increase / max(follower, 1000)
     """
     where_parent = " AND f.parent_account_type = %s" if parent_account_type else ""
     params: list = [collection_date] + ([parent_account_type] if parent_account_type else [])
 
-    # 注意: 旧docsでは列名がfollower/ play_count_per_follower / play_cincrease_per_follower と記載
+    # 注意: 旧docsでは列名がfollower/ play_count_per_follower / play_increase_per_follower と記載
     # 実DBに合わせて必要なら列名を調整してください
     query = f"""
     UPDATE {table_name} f
@@ -33,7 +33,7 @@ def _update_table(table_name: str, collection_date: str, parent_account_type: st
         ON afh.account_id = al.id
        AND afh.collection_date = %s
     SET
-        f.follower = afh.follower_count,
+        f.followers = afh.follower_count,
         f.play_count_per_follower =
             ROUND(
                 CASE
@@ -42,7 +42,7 @@ def _update_table(table_name: str, collection_date: str, parent_account_type: st
                     ELSE NULL
                 END, 3
             ),
-        f.play_cincrease_per_follower =
+        f.play_increase_per_follower =
             ROUND(
                 CASE
                     WHEN GREATEST(afh.follower_count, 1000) > 0
@@ -130,3 +130,48 @@ def update_followers(event, context):
         except Exception:
             pass
         return {"status": "error", "error": str(e)}
+
+if __name__ == "__main__":
+    import sys
+    from datetime import datetime, timedelta
+    
+    # 引数から日付を取得（デフォルトは2025-08-25）
+    collection_date = sys.argv[1] if len(sys.argv) > 1 else "2025-08-25"
+    
+    print(f"=== followers_update ローカル実行（直接実行） ===")
+    print(f"対象日付: {collection_date}")
+    print(f"実行時刻: {datetime.now()}")
+    print()
+    
+    try:
+        total_updated = 0
+        
+        # 全体テーブル
+        try:
+            affected = _update_table("frontend_data", collection_date)
+            total_updated += affected
+            print(f"frontend_data 更新件数: {affected}")
+        except Exception as e:
+            print(f"⚠️  frontend_data更新で例外: {e}")
+
+        # 親タイプ別テーブル
+        for table_name, pat in [
+            ("frontend_affiliate_data", "アフィ"),
+            ("frontend_corporate_data", "企業アカウント"),
+            ("frontend_influencer_data", "インフルエンサー"),
+        ]:
+            try:
+                affected = _update_table(table_name, collection_date, pat)
+                total_updated += affected
+                print(f"{table_name} 更新件数: {affected}")
+            except Exception as e:
+                print(f"⚠️  {table_name}更新で例外: {e}")
+
+        print()
+        print(f"✅ 完了: 合計 {total_updated} 件更新")
+        print("📤 次段階への送信はスキップ（ローカル実行のため）")
+        
+    except Exception as e:
+        print(f"❌ エラーが発生しました: {e}")
+        import traceback
+        traceback.print_exc()

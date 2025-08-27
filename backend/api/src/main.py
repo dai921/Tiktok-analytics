@@ -161,6 +161,12 @@ async def get_videos(
     account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
     created_at: Optional[str] = None,  # 作成日フィルターを追加
     created_at_type: Optional[str] = None,  # 作成日の比較演算子
+    followers: Optional[int] = None,
+    followers_type: Optional[str] = None,
+    play_count_per_follower: Optional[int] = None,
+    play_count_per_follower_type: Optional[str] = None,
+    play_increase_per_follower: Optional[int] = None,
+    play_increase_per_follower_type: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
 
@@ -176,7 +182,8 @@ async def get_videos(
                 likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
                 comment_count_increase, ten_days_comment_increase, account_type,
                 hashtags, music_info, caption, category, product, save_count, 
-                save_count_increase, ten_days_save_increase
+                save_count_increase, ten_days_save_increase,
+                followers, play_count_per_follower, play_increase_per_follower
             FROM frontend_data
         """
         params = {}
@@ -382,6 +389,33 @@ async def get_videos(
                 where_clauses.append("ten_days_save_increase = :ten_days_save_increase")
             params["ten_days_save_increase"] = ten_days_save_increase
 
+        # 追加: フォロワー/ per-follower のフィルタリング
+        if followers is not None:
+            if (followers_type == "greater"):
+                where_clauses.append("followers >= :followers")
+            elif (followers_type == "less"):
+                where_clauses.append("followers <= :followers")
+            else:
+                where_clauses.append("followers = :followers")
+            params["followers"] = followers
+
+        if play_count_per_follower is not None:
+            if (play_count_per_follower_type == "greater"):
+                where_clauses.append("play_count_per_follower >= :play_count_per_follower")
+            elif (play_count_per_follower_type == "less"):
+                where_clauses.append("play_count_per_follower <= :play_count_per_follower")
+            else:
+                where_clauses.append("play_count_per_follower = :play_count_per_follower")
+            params["play_count_per_follower"] = play_count_per_follower
+
+        if play_increase_per_follower is not None:
+            if (play_increase_per_follower_type == "greater"):
+                where_clauses.append("play_increase_per_follower >= :play_increase_per_follower")
+            elif (play_increase_per_follower_type == "less"):
+                where_clauses.append("play_increase_per_follower <= :play_increase_per_follower")
+            else:
+                where_clauses.append("play_increase_per_follower = :play_increase_per_follower")
+            params["play_increase_per_follower"] = play_increase_per_follower
         # コンテンツタイプのフィルタリング
         if content_type:
             # カンマ区切りの場合は複数条件のORで処理
@@ -474,7 +508,9 @@ async def get_videos(
             "audioTitle": "music_info",  # フロントエンドのaudioTitleはデータベースではmusic_info
             "saveCount": "save_count",   # 保存数のマッピングを追加
             "saveCountIncrease": "save_count_increase",
-            "tenDaysSaveIncrease": "ten_days_save_increase"
+            "tenDaysSaveIncrease": "ten_days_save_increase",
+            "play_count_per_follower": "play_count_per_follower",
+            "play_increase_per_follower": "play_increase_per_follower",
         }
         
         # ソートカラムのマッピングを適用

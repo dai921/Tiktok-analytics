@@ -496,6 +496,32 @@ export const renderAudioTitleCell = (row: VideoData) => {
  )
 };
 
+// フォロワー系のセルレンダラー（フォロワー数を補足情報として表示）
+export const renderViewsPerFollowerCell = (row: VideoData) => (
+  <div className="text-right font-mono text-sm">
+    <div className={`font-semibold ${row.play_count_per_follower !== null && row.play_count_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
+      {row.play_count_per_follower !== null ? row.play_count_per_follower.toFixed(2) : '-'}
+    </div>
+    {row.followers !== null && (
+      <div className="text-xs text-gray-500 mt-1">
+        フォロワー: {formatNumber(row.followers)}
+      </div>
+    )}
+  </div>
+);
+
+export const renderViewsIncreasePerFollowerCell = (row: VideoData) => (
+  <div className="text-right font-mono text-sm">
+    <div className={`font-semibold ${row.play_increase_per_follower !== null && row.play_increase_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
+      {row.play_increase_per_follower !== null ? row.play_increase_per_follower.toFixed(2) : '-'}
+    </div>
+    {row.followers !== null && (
+      <div className="text-xs text-gray-500 mt-1">
+        フォロワー: {formatNumber(row.followers)}
+      </div>
+    )}
+  </div>
+);
 
 
 

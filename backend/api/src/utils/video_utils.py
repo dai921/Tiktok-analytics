@@ -12,7 +12,8 @@ def build_video_query(table_name: str = "frontend_data") -> str:
             likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
             comment_count_increase, ten_days_comment_increase, account_type,
             hashtags, music_info, caption, category, product, save_count, 
-            save_count_increase, ten_days_save_increase
+            save_count_increase, ten_days_save_increase,
+            followers, play_count_per_follower, play_increase_per_follower
         FROM {table_name}
     """
 
@@ -252,6 +253,40 @@ def apply_numeric_filters(request: Request, params: Dict, where_clauses: List[st
             where_clauses.append("ten_days_save_increase = :ten_days_save_increase")
         params["ten_days_save_increase"] = int(ten_days_save_increase)
 
+    # 追加: フォロワー系のフィルター
+    followers = request.query_params.get('followers')
+    followers_type = request.query_params.get('followers_type')
+    if followers is not None:
+        if followers_type == "greater":
+            where_clauses.append("followers >= :followers")
+        elif followers_type == "less":
+            where_clauses.append("followers <= :followers")
+        else:
+            where_clauses.append("followers = :followers")
+        params["followers"] = int(followers)
+
+    pcpf = request.query_params.get('play_count_per_follower')
+    pcpf_type = request.query_params.get('play_count_per_follower_type')
+    if pcpf is not None:
+        if pcpf_type == "greater":
+            where_clauses.append("play_count_per_follower >= :play_count_per_follower")
+        elif pcpf_type == "less":
+            where_clauses.append("play_count_per_follower <= :play_count_per_follower")
+        else:
+            where_clauses.append("play_count_per_follower = :play_count_per_follower")
+        params["play_count_per_follower"] = float(pcpf)
+
+    pcipf = request.query_params.get('play_increase_per_follower')
+    pcipf_type = request.query_params.get('play_increase_per_follower_type')
+    if pcipf is not None:
+        if pcipf_type == "greater":
+            where_clauses.append("play_increase_per_follower >= :play_increase_per_follower")
+        elif pcipf_type == "less":
+            where_clauses.append("play_increase_per_follower <= :play_increase_per_follower")
+        else:
+            where_clauses.append("play_increase_per_follower = :play_increase_per_follower")
+        params["play_increase_per_follower"] = float(pcipf)
+
 def apply_date_filters(request: Request, params: Dict, where_clauses: List[str]):
     """日付フィルターを適用"""
     created_at = request.query_params.get('created_at')
@@ -359,7 +394,9 @@ def apply_sorting(query: str, sort_by: str, sort_order: str, sort_by_secondary: 
         "audioTitle": "music_info",
         "saveCount": "save_count",
         "saveCountIncrease": "save_count_increase",
-        "tenDaysSaveIncrease": "ten_days_save_increase"
+        "tenDaysSaveIncrease": "ten_days_save_increase",
+        "play_count_per_follower": "play_count_per_follower",
+        "play_increase_per_follower": "play_increase_per_follower",
     }
     
     actual_sort_by = column_mapping.get(sort_by, sort_by)

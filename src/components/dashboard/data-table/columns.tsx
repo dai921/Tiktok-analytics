@@ -381,6 +381,50 @@ export const createColumns = (
         cell: ({ row }) => cellRenderers.renderTenDaysCommentCountIncreaseCell(row)
       },
 
+      // 再生/フォロワーカラム
+      {
+        accessorKey: 'play_count_per_follower',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="再生/フォロワー"
+            type="number"
+            onFilter={(value) => handleFilter('play_count_per_follower')(value)}
+            isActive={Boolean(columnFilters['play_count_per_follower']?.active)}
+            sortDirection={
+              primarySort?.field === 'play_count_per_follower' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'play_count_per_follower' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'play_count_per_follower' ? 1 : secondarySort?.field === 'play_count_per_follower' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderViewsPerFollowerCell(row)
+      },
+
+      // 再生増/フォロワーカラム
+      {
+        accessorKey: 'play_increase_per_follower',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="再生増/フォロワー"
+            type="number"
+            onFilter={(value) => handleFilter('play_increase_per_follower')(value)}
+            isActive={Boolean(columnFilters['play_increase_per_follower']?.active)}
+            sortDirection={
+              primarySort?.field === 'play_increase_per_follower' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'play_increase_per_follower' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'play_increase_per_follower' ? 1 : secondarySort?.field === 'play_increase_per_follower' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderViewsIncreasePerFollowerCell(row)
+      },
+
       // 保存数カラム
       {
         accessorKey: 'save_count',
@@ -511,6 +555,7 @@ export const createColumns = (
         ),
         cell: ({ row }) => cellRenderers.renderAudioTitleCell(row)
       },
+
 
   ];
 };
