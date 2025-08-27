@@ -448,6 +448,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                     column.accessorKey === 'ten_days_likes_increase' ? '140px' :
                                     column.accessorKey === 'comment_count_increase' ? '120px' :
                                     column.accessorKey === 'ten_days_comment_increase' ? '140px' :
+                                    column.accessorKey === 'play_count_per_follower' ? '120px' :
+                                    column.accessorKey === 'play_increase_per_follower' ? '120px' :
+                                    column.accessorKey === 'saves' ? '100px' :
                                     column.accessorKey === 'save_count' ? '100px' :
                                     column.accessorKey === 'save_count_increase' ? '120px' :
                                     column.accessorKey === 'ten_days_save_increase' ? '140px' : undefined,
@@ -466,6 +469,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                        column.accessorKey === 'ten_days_likes_increase' ? '140px' :
                                        column.accessorKey === 'comment_count_increase' ? '120px' :
                                        column.accessorKey === 'ten_days_comment_increase' ? '140px' :
+                                       column.accessorKey === 'play_count_per_follower' ? '120px' :
+                                       column.accessorKey === 'play_increase_per_follower' ? '120px' :
                                        column.accessorKey === 'save_count' ? '100px' :
                                        column.accessorKey === 'save_count_increase' ? '120px' :
                                        column.accessorKey === 'ten_days_save_increase' ? '140px' : undefined,
@@ -484,6 +489,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                        column.accessorKey === 'ten_days_likes_increase' ? '140px' :
                                        column.accessorKey === 'comment_count_increase' ? '120px' :
                                        column.accessorKey === 'ten_days_comment_increase' ? '140px' :
+                                       column.accessorKey === 'play_count_per_follower' ? '120px' :
+                                       column.accessorKey === 'play_increase_per_follower' ? '120px' :
                                        column.accessorKey === 'save_count' ? '100px' :
                                        column.accessorKey === 'save_count_increase' ? '120px' :
                                        column.accessorKey === 'ten_days_save_increase' ? '140px' : undefined,

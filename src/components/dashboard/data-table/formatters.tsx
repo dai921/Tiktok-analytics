@@ -159,3 +159,19 @@ export const formatNumber = (num: number, type?: NumberFormatType): ReactElement
       </div>
     );
   };
+
+// フォロワー数専用のフォーマット関数を追加
+export const formatFollowerCount = (num: number): string => {
+  if (num >= 1000000) {
+    // 100万以上はM表示
+    const millions = num / 1000000;
+    return `${millions.toFixed(1)}M`;
+  } else if (num >= 1000) {
+    // 1000以上はK表示
+    const thousands = num / 1000;
+    return `${thousands.toFixed(1)}K`;
+  } else {
+    // 1000未満はそのまま表示
+    return num.toString();
+  }
+};

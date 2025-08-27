@@ -3,7 +3,7 @@ import { VideoData } from '@/types/dashboard';
 import { VideoTypeIcon, PhotoTypeIcon, MusicNoteIcon } from './icons';
 import { ImageHover } from '@/components/ui/image-hover';
 import { GenreBadge, HashtagBadge, ProductBadge } from '@/components/ui/badge';
-import { formatNumber } from './formatters';
+import { formatNumber, formatFollowerCount } from './formatters';
 import { useState, createContext, useContext } from 'react'
 import { AccountTypeBadge } from '@/components/ui/badge';
 
@@ -498,26 +498,26 @@ export const renderAudioTitleCell = (row: VideoData) => {
 
 // フォロワー系のセルレンダラー（フォロワー数を補足情報として表示）
 export const renderViewsPerFollowerCell = (row: VideoData) => (
-  <div className="text-right font-mono text-sm">
+  <div className="text-right font-mono text-base"> {/* text-sm → text-base (16px) */}
     <div className={`font-semibold ${row.play_count_per_follower !== null && row.play_count_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
       {row.play_count_per_follower !== null ? row.play_count_per_follower.toFixed(2) : '-'}
     </div>
     {row.followers !== null && (
-      <div className="text-xs text-gray-500 mt-1">
-        フォロワー: {formatNumber(row.followers)}
+      <div className="text-[10px] text-gray-500 mt-1">
+        follower: {formatFollowerCount(row.followers)}
       </div>
     )}
   </div>
 );
 
 export const renderViewsIncreasePerFollowerCell = (row: VideoData) => (
-  <div className="text-right font-mono text-sm">
+  <div className="text-right font-mono text-base"> {/* text-sm → text-base (16px) */}
     <div className={`font-semibold ${row.play_increase_per_follower !== null && row.play_increase_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
       {row.play_increase_per_follower !== null ? row.play_increase_per_follower.toFixed(2) : '-'}
     </div>
     {row.followers !== null && (
-      <div className="text-xs text-gray-500 mt-1">
-        フォロワー: {formatNumber(row.followers)}
+      <div className="text-[10px] text-gray-500 mt-1">
+        follower: {formatFollowerCount(row.followers)}
       </div>
     )}
   </div>
