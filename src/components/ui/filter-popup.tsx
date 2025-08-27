@@ -355,6 +355,8 @@ export const FilterPopup = ({
         { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' as FilterType },
         { id: 'comment_count_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">2日コメント増加数</span></span>, type: 'number' as FilterType },
         { id: 'ten_days_comment_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">10日コメント増加数</span></span>, type: 'number' as FilterType },
+        { id: 'play_count_per_follower', label: '再生/フォロワー', type: 'number' as FilterType },
+        { id: 'play_increase_per_follower', label: '再生増/フォロワー', type: 'number' as FilterType },
         { id: 'saves', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">保存数</span></span>, type: 'number' as FilterType },
         { id: 'saves_count_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">2日保存増加数</span></span>, type: 'number' as FilterType },
         { id: 'ten_days_saves_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">10日保存増加数</span></span>, type: 'number' as FilterType }
@@ -391,6 +393,8 @@ export const FilterPopup = ({
         { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' as FilterType },
         { id: 'comment_count_increase', label: '2日コメント増加数', type: 'sort' as FilterType },
         { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'sort' as FilterType },
+        { id: 'play_count_per_follower', label: '再生/フォロワー', type: 'sort' as FilterType },
+        { id: 'play_increase_per_follower', label: '再生増/フォロワー', type: 'sort' as FilterType },
         { id: 'saves', label: '保存数', type: 'sort' as FilterType },
         { id: 'saves_count_increase', label: '2日保存増加数', type: 'sort' as FilterType },
         { id: 'ten_days_saves_increase', label: '10日保存増加数', type: 'sort' as FilterType }

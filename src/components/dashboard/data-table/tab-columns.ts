@@ -11,6 +11,7 @@ export const TAB_DEFAULT_COLUMNS = {
     'ten_days_increase',
     'likes',
     'comments',
+    'play_count_per_follower',
     'account_name',
     'hashtags',
     'audioTitle'
@@ -25,6 +26,7 @@ export const TAB_DEFAULT_COLUMNS = {
     'ten_days_increase',
     'likes',
     'comments',
+    'play_count_per_follower',
     'account_name',
     'hashtags',
     'audioTitle'
@@ -38,6 +40,7 @@ export const TAB_DEFAULT_COLUMNS = {
     'ten_days_increase',
     'likes',
     'comments',
+    'play_count_per_follower',
     'account_name',
     'hashtags',
     'audioTitle'
@@ -51,6 +54,7 @@ export const TAB_DEFAULT_COLUMNS = {
     'ten_days_increase',
     'likes',
     'comments',
+    'play_count_per_follower',
     'account_name',
     'hashtags',
     'audioTitle'
