@@ -411,17 +411,15 @@ export const renderTenDaysSaveIncreaseCell = (row: VideoData) => {
 // アカウント名セルレンダラー
 export const renderAccountNameCell = (row: VideoData) => {
   return (
-    <div className="w-[120px] min-w-[120px]">
-    <div className="flex flex-col">
-      <span className="font-bold truncate text-base">
+    <div className="w-[120px] min-w-[120px] relative h-full flex items-center justify-start"> {/* フォロワーセルと同じ構造、左揃えのみ変更 */}
+      <span className="font-bold text-base"> {/* truncateを一旦削除してサイズを統一 */}
         {row.account_name || '不明'}
       </span>
       {row.display_name && (
-        <span className="text-xs text-gray-500 truncate">
+        <span className="absolute -bottom-3 left-0 text-[10px] text-gray-500"> {/* フォロワーセルと同じ -bottom-3 と text-[10px] */}
           {row.display_name}
         </span>
       )}
-    </div>
     </div>
   )
 };
@@ -498,12 +496,12 @@ export const renderAudioTitleCell = (row: VideoData) => {
 
 // フォロワー系のセルレンダラー（フォロワー数を補足情報として表示）
 export const renderViewsPerFollowerCell = (row: VideoData) => (
-  <div className="text-right font-mono text-base"> {/* text-sm → text-base (16px) */}
-    <div className={`font-semibold ${row.play_count_per_follower !== null && row.play_count_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
+  <div className="text-right font-mono relative h-full flex items-center justify-end"> {/* 相対位置でメイン数値を中央に */}
+    <div className={`font-semibold text-base ${row.play_count_per_follower !== null && row.play_count_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
       {row.play_count_per_follower !== null ? row.play_count_per_follower.toFixed(2) : '-'}
     </div>
     {row.followers !== null && (
-      <div className="text-[10px] text-gray-500 mt-1">
+      <div className="absolute -bottom-3 right-0 text-[10px] text-gray-500"> {/* bottom-1 → bottom-0 でさらに下に */}
         follower: {formatFollowerCount(row.followers)}
       </div>
     )}
@@ -511,12 +509,12 @@ export const renderViewsPerFollowerCell = (row: VideoData) => (
 );
 
 export const renderViewsIncreasePerFollowerCell = (row: VideoData) => (
-  <div className="text-right font-mono text-base"> {/* text-sm → text-base (16px) */}
-    <div className={`font-semibold ${row.play_increase_per_follower !== null && row.play_increase_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
+  <div className="text-right font-mono relative h-full flex items-center justify-end"> {/* 相対位置でメイン数値を中央に */}
+    <div className={`font-semibold text-base ${row.play_increase_per_follower !== null && row.play_increase_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
       {row.play_increase_per_follower !== null ? row.play_increase_per_follower.toFixed(2) : '-'}
     </div>
     {row.followers !== null && (
-      <div className="text-[10px] text-gray-500 mt-1">
+      <div className="absolute -bottom-3 right-0 text-[10px] text-gray-500"> {/* bottom-1 → bottom-0 でさらに下に */}
         follower: {formatFollowerCount(row.followers)}
       </div>
     )}
