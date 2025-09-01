@@ -1,6 +1,6 @@
 import os
 import json
-import logging
+# import logging  # コメントアウト
 from datetime import datetime, timedelta
 import functions_framework
 import base64
@@ -9,9 +9,9 @@ from core.config import initialize_config
 from core.pubsub_utils import publish_message
 from pytz import timezone
 
-# ログ設定
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ログ設定をコメントアウト
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 # 設定の初期化
 initialize_config()
@@ -24,18 +24,18 @@ def correct_play_count_increase(event, context):
         event (dict): Pub/Subイベントデータ
         context (google.cloud.functions.Context): メタデータを含むコンテキスト
     """
-    logger.info("==== 再生数増加値修正処理の開始 ====")
+    print("==== 再生数増加値修正処理の開始 ====")
     
     try:
         # Pub/Subメッセージからデータを取得
         if 'data' in event:
             pubsub_message = base64.b64decode(event['data']).decode('utf-8')
             message_data = json.loads(pubsub_message)
-            logger.info(f"Pub/Subメッセージを受信: {message_data}")
+            print(f"Pub/Subメッセージを受信: {message_data}")
             
             # video_history_syncからの完了メッセージを確認
             if message_data.get("status") != "success":
-                logger.info(f"video_history_syncが成功していないため、処理をスキップします: {message_data.get('status')}")
+                print(f"video_history_syncが成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 
             # 収集日を取得（video_history_syncから受け取る）
@@ -44,14 +44,14 @@ def correct_play_count_increase(event, context):
             # データがない場合は現在日付の前日を使用
             jst = timezone('Asia/Tokyo')
             collection_date = (datetime.now(jst) + timedelta(hours=9) - timedelta(days=2)).strftime('%Y-%m-%d')
-            logger.info(f"データなしのトリガー実行。収集日を{collection_date}に設定します")
+            print(f"データなしのトリガー実行。収集日を{collection_date}に設定します")
 
-        logger.info(f"処理対象の収集日: {collection_date}")
+        print(f"処理対象の収集日: {collection_date}")
 
         # 二日前のcollection_dateを計算
         collection_date_obj = datetime.strptime(collection_date, '%Y-%m-%d')
         previous_collection_date = (collection_date_obj - timedelta(days=2)).strftime('%Y-%m-%d')
-        logger.info(f"前回収集日: {previous_collection_date}")
+        print(f"前回収集日: {previous_collection_date}")
 
         # play_count_increaseとplay_countが一致しているレコードを取得し、
         # 前回のデータが存在するかチェック
@@ -72,10 +72,10 @@ def correct_play_count_increase(event, context):
         """
         
         records_to_update = execute_query(check_query, (previous_collection_date, collection_date))
-        logger.info(f"修正対象のレコード数: {len(records_to_update)}")
+        print(f"修正対象のレコード数: {len(records_to_update)}")
 
         if not records_to_update:
-            logger.info("修正対象のレコードがありません。")
+            print("修正対象のレコードがありません。")
         else:
             # play_count_historyテーブルのplay_count_increaseを修正
             for record in records_to_update:
@@ -84,45 +84,45 @@ def correct_play_count_increase(event, context):
                 previous_play_count = record['previous_play_count']
                 corrected_increase = max(0, current_play_count - previous_play_count)
                 
-                logger.info(f"動画ID {video_id}: 現在再生数={current_play_count}, 前回再生数={previous_play_count}, 修正後増加数={corrected_increase}")
+                print(f"動画ID {video_id}: 現在再生数={current_play_count}, 前回再生数={previous_play_count}, 修正後増加数={corrected_increase}")
                 
-                # play_count_historyの更新
-                update_history_query = """
-                UPDATE play_count_history 
-                SET play_count_increase = %s
-                WHERE video_id = %s AND collection_date = %s
-                """
-                execute_write_query(update_history_query, (corrected_increase, video_id, collection_date))
+                # play_count_historyの更新（コメントアウト）
+                # update_history_query = """
+                # UPDATE play_count_history 
+                # SET play_count_increase = %s
+                # WHERE video_id = %s AND collection_date = %s
+                # """
+                # execute_write_query(update_history_query, (corrected_increase, video_id, collection_date))
 
-            logger.info(f"play_count_historyテーブルの修正が完了しました。修正件数: {len(records_to_update)}")
+            print(f"play_count_historyテーブルの修正が完了しました。修正件数: {len(records_to_update)}")
 
-            # frontendテーブル群のplay_count_increaseも更新
-            frontend_tables = ['frontend_data', 'frontend_affiliate_data', 'frontend_corporate_data', 'frontend_influencer_data']
+            # frontendテーブル群のplay_count_increaseも更新（コメントアウト）
+            # frontend_tables = ['frontend_data', 'frontend_affiliate_data', 'frontend_corporate_data', 'frontend_influencer_data']
             
-            for table_name in frontend_tables:
-                try:
-                    # 各テーブルでの更新
-                    update_frontend_query = f"""
-                    UPDATE {table_name} f
-                    INNER JOIN play_count_history pch 
-                        ON f.video_id = pch.video_id 
-                        AND pch.collection_date = %s
-                    SET f.play_count_increase = pch.play_count_increase
-                    WHERE pch.video_id IN ({','.join(['%s'] * len(records_to_update))})
-                    """
-                    
-                    video_ids = [record['video_id'] for record in records_to_update]
-                    params = [collection_date] + video_ids
-                    
-                    affected_rows = execute_write_query(update_frontend_query, params)
-                    logger.info(f"{table_name}テーブルの更新完了: {affected_rows}件更新")
-                    
-                except Exception as e:
-                    logger.warning(f"{table_name}テーブルの更新中にエラーが発生しました: {str(e)}")
-                    # テーブルが存在しない場合もあるため、警告として処理を続行
+            # for table_name in frontend_tables:
+            #     try:
+            #         # 各テーブルでの更新
+            #         update_frontend_query = f"""
+            #         UPDATE {table_name} f
+            #         INNER JOIN play_count_history pch 
+            #             ON f.video_id = pch.video_id 
+            #             AND pch.collection_date = %s
+            #         SET f.play_count_increase = pch.play_count_increase
+            #         WHERE pch.video_id IN ({','.join(['%s'] * len(records_to_update))})
+            #         """
+            #         
+            #         video_ids = [record['video_id'] for record in records_to_update]
+            #         params = [collection_date] + video_ids
+            #         
+            #         affected_rows = execute_write_query(update_frontend_query, params)
+            #         print(f"{table_name}テーブルの更新完了: {affected_rows}件更新")
+            #         
+            #     except Exception as e:
+            #         print(f"{table_name}テーブルの更新中にエラーが発生しました: {str(e)}")
+            #         # テーブルが存在しない場合もあるため、警告として処理を続行
 
-        # 次の処理（summary_table_sync）にメッセージを送信
-        logger.info("商品日次集計処理のトリガーメッセージを送信します")
+        #次の処理（summary_table_sync）にメッセージを送信
+        print("商品日次集計処理のトリガーメッセージを送信します")
         publish_message("summary-table-sync", {
             "status": "success",
             "collection_date": collection_date,
@@ -142,10 +142,10 @@ def correct_play_count_increase(event, context):
         
     except Exception as e:
         error_message = f"再生数増加値修正処理中にエラーが発生しました: {str(e)}"
-        logger.error(error_message)
+        print(error_message)
         import traceback
-        logger.error(traceback.format_exc())
+        print(traceback.format_exc())
         return {"status": "error", "error": error_message, "time": datetime.now().isoformat()}
     
     finally:
-        logger.info("==== 再生数増加値修正処理の終了 ====")
+        print("==== 再生数増加値修正処理の終了 ====")

@@ -411,12 +411,12 @@ export const renderTenDaysSaveIncreaseCell = (row: VideoData) => {
 // アカウント名セルレンダラー
 export const renderAccountNameCell = (row: VideoData) => {
   return (
-    <div className="w-[120px] min-w-[120px] relative h-full flex items-center justify-start"> {/* フォロワーセルと同じ構造、左揃えのみ変更 */}
-      <span className="font-bold text-base"> {/* truncateを一旦削除してサイズを統一 */}
+    <div className="w-[120px] min-w-[120px] relative h-full flex items-center justify-start">
+      <span className="font-bold text-base leading-tight">
         {row.account_name || '不明'}
       </span>
       {row.display_name && (
-        <span className="absolute -bottom-3 left-0 text-[10px] text-gray-500"> {/* フォロワーセルと同じ -bottom-3 と text-[10px] */}
+        <span className="absolute top-full left-0 text-[10px] text-gray-500 leading-tight max-w-[110px] break-words pt-0.5">
           {row.display_name}
         </span>
       )}

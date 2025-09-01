@@ -22,6 +22,7 @@ export const GENRE_COLORS = {
   'ビタミンC/美白': { bg: '#FCE7F3', text: '#EC4899', border: '#FBCFE8' },
   'ボディケア': { bg: '#FAE8FF', text: '#D946EF', border: '#F5D0FE' },
   '目元': { bg: '#F5EEFF', text: '#A855F7', border: '#E9D5FF' },
+  'メイク':{ bg: '#FFF1F2', text: '#E11D48', border: '#FECDD3' },
   
   // ヘアケア・除毛系（緑系）
   'ヘアケア': { bg: '#F0FDF4', text: '#16A34A', border: '#BBF7D0' },
