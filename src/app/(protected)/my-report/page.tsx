@@ -53,7 +53,7 @@ export default function MyAccountPage() {
   
   const qs = new URLSearchParams({
     client_key: process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'mock-client-key',
-    redirect_uri: `${baseUrl}/api/auth/tiktok/callback`,
+    redirect_uri: `${API_BASE_URL}/api/auth/tiktok/callback`, // バックエンドAPIに変更
     response_type: 'code',
     scope: ['user.info.basic', 'video.list'].join(','),
     state: generateRandomState(),
@@ -129,24 +129,23 @@ export default function MyAccountPage() {
   // TikTokと連携する関数
   const handleConnect = async (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     
     try {
-      // セッション情報を使ってデータを取得
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        setError('認証情報がありません。再ログインしてください。');
+      // 既に連携済みの場合は既存アカウント情報を取得
+      if (connected) {
+        setIsLoading(true);
+        await fetchConnectedAccounts();
+        setIsLoading(false);
         return;
       }
       
-      // 連携状態を設定してDBからデータを取得
-      fetchConnectedAccounts();
+      // 未連携の場合はTikTok認証画面に遷移
+      console.log('[INFO] TikTok認証画面に遷移します:', authorizeUrl);
+      window.location.href = authorizeUrl;
       
     } catch (err) {
       console.error('[ERROR] 連携処理エラー:', err);
-      setError(err instanceof Error ? err.message : 'データの取得に失敗しました。');
-    } finally {
-      setIsLoading(false);
+      setError(err instanceof Error ? err.message : '連携処理に失敗しました。');
     }
   };
 
