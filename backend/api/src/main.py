@@ -27,8 +27,6 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
 from sqlalchemy import text
-
-from src.auth.tiktok import router as auth_tiktok_router
 from src.my_report.routes import router as tiktok_router
 from src.transcription.router import router as transcription_router
 from src.transcription.webhook import router as webhook_router
@@ -88,7 +86,6 @@ app.include_router(corporate_account_stats_router)
 app.include_router(watchlist_router)
 
 # ルーターの登録
-app.include_router(auth_tiktok_router)
 app.include_router(tiktok_router)
 app.include_router(transcription_router)
 app.include_router(webhook_router)

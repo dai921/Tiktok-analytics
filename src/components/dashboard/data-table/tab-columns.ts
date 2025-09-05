@@ -87,7 +87,7 @@ export const TAB_FILTER_FIELDS = {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
     categories: ['content_type', 'category', 'product'], // account_typeを除外
-    text: ['account_name', 'hashtags'],
+    text: ['account_name', 'hashtags', 'audioTitle'],
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   },
   corporate: {

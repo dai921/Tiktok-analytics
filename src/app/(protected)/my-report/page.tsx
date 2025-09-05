@@ -129,24 +129,17 @@ export default function MyAccountPage() {
   // TikTokと連携する関数
   const handleConnect = async (e: React.MouseEvent) => {
     e.preventDefault();
-    
-    try {
-      // 既に連携済みの場合は既存アカウント情報を取得
-      if (connected) {
-        setIsLoading(true);
-        await fetchConnectedAccounts();
-        setIsLoading(false);
-        return;
-      }
-      
-      // 未連携の場合はTikTok認証画面に遷移
-      console.log('[INFO] TikTok認証画面に遷移します:', authorizeUrl);
-      window.location.href = authorizeUrl;
-      
-    } catch (err) {
-      console.error('[ERROR] 連携処理エラー:', err);
-      setError(err instanceof Error ? err.message : '連携処理に失敗しました。');
+
+    // すでに連携済みなら最新状態を再取得
+    if (connected) {
+      setIsLoading(true);
+      await fetchConnectedAccounts();
+      setIsLoading(false);
+      return;
     }
+
+    // バックエンドの認可開始エンドポイントへ遷移（302でTikTokへリダイレクト）
+    window.location.href = `${API_BASE_URL}/api/auth/tiktok/auth`;
   };
 
   // バックエンドAPIからデータを取得する関数

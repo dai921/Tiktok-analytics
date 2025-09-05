@@ -51,9 +51,13 @@ export function DateRangePicker({
 
   // 日付をYYYY-MM-DD形式に変換する関数
   const formatDateForInput = (date: Date) => {
-    console.log('formatDateForInput ->', date);   // ★追加
     if (!date || !isValid(date)) return ""; 
-    return date.toISOString().split('T')[0];
+    try {
+      return date.toISOString().split('T')[0];
+    } catch (error) {
+      console.error('日付フォーマットエラー:', error, date);
+      return "";
+    }
   };
 
   // 開始日付の変更ハンドラー
