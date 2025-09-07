@@ -33,6 +33,7 @@ from src.transcription.webhook import router as webhook_router
 from src.dashboard.affiliate_videos import router as affiliate_videos_router
 from src.dashboard.corporate_videos import router as corporate_videos_router
 from src.dashboard.influencer_videos import router as influencer_videos_router
+from src.filter_presets.router import router as filter_presets_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -84,6 +85,8 @@ app.include_router(hashtag_stats_router)
 app.include_router(corporate_account_stats_router)
 # ウォッチリストルーターの追加
 app.include_router(watchlist_router)
+# フィルタープリセットルーターの追加
+app.include_router(filter_presets_router)
 
 # ルーターの登録
 app.include_router(tiktok_router)

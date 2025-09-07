@@ -1,4 +1,4 @@
-// src/components/dashboard/data-table/DataTable.tsx
+'use client'
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo, useCallback } from 'react';
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard';
 import { Pagination } from '../pagination';
@@ -304,7 +304,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
           >
             <SettingsIcon size={16} />
-            <span className="ml-1">表示設定</span>
+            <span className="ml-1">表示カラム</span>
           </button>
         </div>
         
@@ -535,7 +535,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         </div>
 
         {/* Portalを使用してDOM階層の上位に表示 */}
-        {createPortal(
+        {typeof window !== 'undefined' && createPortal(
           <FilterPopup
             isOpen={isFilterPopupOpen}
             onClose={() => setFilterPopupOpenState(false)}
