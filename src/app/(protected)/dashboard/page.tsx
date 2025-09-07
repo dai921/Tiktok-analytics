@@ -227,7 +227,7 @@ const Dashboard = () => {
 
     setFilters(currentTabFilters);
     setCurrentPage(1);
-  }, [isCorporateOnly, isInfluencerOnly, isPrOnly, isBootstrapped, visibleColumns]);
+  }, [isCorporateOnly, isInfluencerOnly, isPrOnly, isBootstrapped]);
 
   useEffect(() => {
     if (!isBootstrapped) return;
