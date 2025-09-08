@@ -25,11 +25,11 @@ import {
 import type { TabType } from '@/lib/filter_presets_api'
 
 type Preset = {
-  preset_id: string
-  name: string
-  is_default: boolean
-  payload: { currentFilters: Record<string, FilterQuery> }
-}
+    preset_id: string
+    name: string
+    is_default: boolean
+    payload: { currentFilters: Record<string, FilterQuery>; visibleColumns?: string[] } // ← 追加
+  }
 
 export type PresetMenuProps = {
   tabType: TabType
@@ -37,6 +37,8 @@ export type PresetMenuProps = {
   applyFilters: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void
   clearFilters: () => void
   getFiltersByTab?: () => Record<TabType, Record<string, FilterQuery>> // ← 追加
+  getVisibleColumns?: () => string[];        // ← 追加
+  applyVisibleColumns?: (cols: string[]) => void; // ← 追加
 }
 
 const tabFlags = (tabType: TabType) => ({
@@ -50,7 +52,9 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   getFilters,
   applyFilters,
   clearFilters,
-  getFiltersByTab
+  getFiltersByTab,
+  getVisibleColumns,
+  applyVisibleColumns
 }) => {
   const [presets, setPresets] = useState<Preset[]>([])
   const [loading, setLoading] = useState(false)
@@ -79,8 +83,10 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   const handleApply = useCallback((p: Preset) => {
     const incoming = p?.payload?.currentFilters || {}
     applyFilters(incoming, tabType)
+    const cols = p?.payload?.visibleColumns
+    if (Array.isArray(cols) && cols.length) applyVisibleColumns?.(cols) // ← 追加
     toast({ title: '保存した表示設定を適用しました', description: p.name })
-  }, [applyFilters, tabType])
+  }, [applyFilters, applyVisibleColumns, tabType])
 
   const handleSave = useCallback(async () => {
     if (!name.trim()) {
@@ -99,6 +105,7 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
             context_key: ctxEach,
             payload: {
               currentFilters: filtersEach,
+              visibleColumns: getVisibleColumns?.() ?? [], // ← 追加
               tab: {
                 isPrOnly: tab === 'affiliate',
                 isCorporateOnly: tab === 'corporate',
@@ -119,12 +126,15 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
 
       // 従来の単体保存
       const filters = getFilters()
+      const cols = getVisibleColumns?.() ?? []
+      console.log('[DEBUG] save visibleColumns =', cols);
       await createPreset({
         name: name.trim(),
         context_key: ctx,
         payload: {
           currentFilters: filters,
-          tab: tabFlags(tabType)
+          visibleColumns: getVisibleColumns?.() ?? [], // ← 追加
+          tab: tabFlags(tabType),
         },
         is_default: makeDefault
       })
@@ -136,7 +146,7 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
     } catch (e: any) {
       toast({ title: '保存に失敗しました', description: e?.message || String(e) })
     }
-  }, [name, makeDefault, ctx, getFilters, getFiltersByTab, tabType, saveAll, load])
+  }, [name, makeDefault, ctx, getFilters, getFiltersByTab, tabType, saveAll, load, getVisibleColumns])
 
   const handleSetDefault = useCallback(async (p: Preset, e: React.MouseEvent) => {
     e.stopPropagation()

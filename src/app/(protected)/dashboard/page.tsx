@@ -205,8 +205,15 @@ const Dashboard = () => {
     
     const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
     const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-    if (visibleColumns.join('|') !== defaultColumns.join('|')) {
-      setVisibleColumns(defaultColumns);
+    // 変更前
+    // if (visibleColumns.join('|') !== defaultColumns.join('|')) {
+    //   setVisibleColumns(defaultColumns);
+    // }
+    // 変更後（フィルタなしのときのみデフォルト化）
+    if (Object.keys(currentTabFilters).length === 0) {
+      if (visibleColumns.join('|') !== defaultColumns.join('|')) {
+        setVisibleColumns(defaultColumns);
+      }
     }
     
     console.log('[DEBUG] ★★★ タブ切り替え詳細 ★★★:', {
@@ -491,6 +498,7 @@ const Dashboard = () => {
   }, []);
 
   const handleColumnSettingsChange = useCallback((columns: string[]) => {
+    console.log('[DEBUG] handleColumnSettingsChange visibleColumns =', columns);
     setVisibleColumns(columns);
   }, []);
 
@@ -592,9 +600,13 @@ const Dashboard = () => {
       try {
         const res = await getDefaultPreset(ctx);
         const incoming = res?.preset?.payload?.currentFilters;
+        const cols = res?.preset?.payload?.visibleColumns;
         if (res?.success && incoming && typeof incoming === 'object') {
           updateTabFilters(incoming, tabType);
           setFilters(JSON.parse(JSON.stringify(incoming)));
+          if (Array.isArray(cols) && cols.length) {
+            setVisibleColumns(cols);
+          }
         }
       } catch (e) {
         console.warn('bootstrap: default saved filter not found or failed:', e);
@@ -628,6 +640,8 @@ const Dashboard = () => {
               setFilters({})
               setCurrentPage(1)
             }}
+            getVisibleColumns={() => visibleColumns}
+            applyVisibleColumns={(cols) => setVisibleColumns(cols)}
           />
         </div>
 
@@ -639,6 +653,7 @@ const Dashboard = () => {
             setIsPrOnly={setIsPrOnly}
             setIsCorporateOnly={setIsCorporateOnly}
             setIsInfluencerOnly={setIsInfluencerOnly}
+            setVisibleColumns={setVisibleColumns}
           />
         </Suspense>
 
@@ -746,13 +761,15 @@ const UrlPresetApplier: React.FC<{
   setIsPrOnly: React.Dispatch<React.SetStateAction<boolean>>
   setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
   setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
 }> = ({
   updateTabFilters,
   setFilters,
   setCurrentPage,
   setIsPrOnly,
   setIsCorporateOnly,
-  setIsInfluencerOnly
+  setIsInfluencerOnly,
+  setVisibleColumns
 }) => {
   const searchParams = useSearchParams()
   const appliedPresetRef = React.useRef<string | null>(null)
@@ -768,6 +785,7 @@ const UrlPresetApplier: React.FC<{
         if (!p) return
 
         const incoming = p.payload?.currentFilters ?? {}
+        const cols = (p as any)?.payload?.visibleColumns
         const tabFlags = p.payload?.tab || {}
         const targetTab = getCurrentTabType(!!tabFlags.isPrOnly, !!tabFlags.isCorporateOnly, !!tabFlags.isInfluencerOnly)
 
@@ -777,6 +795,9 @@ const UrlPresetApplier: React.FC<{
 
         updateTabFilters(incoming, targetTab)
         setFilters(JSON.parse(JSON.stringify(incoming)))
+        if (Array.isArray(cols) && cols.length) {
+          setVisibleColumns(cols)
+        }
         setCurrentPage(1)
         appliedPresetRef.current = presetId
       } catch (e) {

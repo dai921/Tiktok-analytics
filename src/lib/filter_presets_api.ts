@@ -15,6 +15,7 @@ export const contextKeyFromTab = (tab: TabType): string => `dashboard:v1:${tab}`
 
 export interface FilterPresetPayload {
   currentFilters: Record<string, FilterQuery>;
+  visibleColumns?: string[];                 // ← 追加
   tab?: { isPrOnly?: boolean; isCorporateOnly?: boolean; isInfluencerOnly?: boolean };
   sortMeta?: {
     primary?: { field: string; direction: 'asc' | 'desc' } | null;
