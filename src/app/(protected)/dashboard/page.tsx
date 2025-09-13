@@ -29,6 +29,12 @@ const Dashboard = () => {
   const [isInfluencerOnly, setIsInfluencerOnly] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
   const [isBootstrapped, setIsBootstrapped] = useState(false)
+  const defaultPresetAttemptedRef = useRef<Record<'all' | 'affiliate' | 'corporate' | 'influencer', boolean>>({
+    all: false,
+    affiliate: false,
+    corporate: false,
+    influencer: false
+  });
 
 
   // タブごとの独立したフィルター状態
@@ -310,20 +316,30 @@ const Dashboard = () => {
     const tabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
     const ctx = contextKeyFromTab(tabType as any);
 
+    // 既にこのタブでデフォルト適用を試行済みならスキップ
+    if (defaultPresetAttemptedRef.current[tabType]) return;
+
     const hasExisting = Object.keys(filtersByTab[tabType] || {}).length > 0;
-    if (hasExisting) return;
+    if (hasExisting) {
+      defaultPresetAttemptedRef.current[tabType] = true;
+      return;
+    }
 
     (async () => {
       try {
         const res = await getDefaultPreset(ctx);
         const incoming = res?.preset?.payload?.currentFilters;
-        if (res?.success && incoming && typeof incoming === 'object') {
+        // 試行済みにマーク（空でも一度だけ）
+        defaultPresetAttemptedRef.current[tabType] = true;
+        if (res?.success && incoming && typeof incoming === 'object' && Object.keys(incoming).length > 0) {
           updateTabFilters(incoming, tabType);
           setFilters(JSON.parse(JSON.stringify(incoming)));
           setCurrentPage(1);
         }
       } catch (e) {
         console.warn('Failed to load default saved filter:', e);
+        // 失敗時も試行済みにして再試行ループを防止
+        defaultPresetAttemptedRef.current[tabType] = true;
       }
     })();
   }, [isPrOnly, isCorporateOnly, isInfluencerOnly, filtersByTab, updateTabFilters, isBootstrapped]);
@@ -605,6 +621,7 @@ const Dashboard = () => {
           updateTabFilters(incoming, tabType);
           setFilters(JSON.parse(JSON.stringify(incoming)));
           if (Array.isArray(cols) && cols.length) {
+            console.log('[DEBUG] bootstrap apply visibleColumns =', cols);
             setVisibleColumns(cols);
           }
         }
@@ -796,6 +813,7 @@ const UrlPresetApplier: React.FC<{
         updateTabFilters(incoming, targetTab)
         setFilters(JSON.parse(JSON.stringify(incoming)))
         if (Array.isArray(cols) && cols.length) {
+          console.log('[DEBUG] url apply visibleColumns =', cols);
           setVisibleColumns(cols)
         }
         setCurrentPage(1)

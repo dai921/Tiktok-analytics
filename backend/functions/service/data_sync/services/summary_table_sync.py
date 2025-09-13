@@ -137,10 +137,12 @@ def handle_new_products_backfill(collection_date):
 def backfill_product_historical_data(product_name, product_category, collection_date, days_back=14):
     """指定Productの過去データをバックフィル"""
     logger.info(f"Product '{product_name}' の過去{days_back}日分のデータ処理を開始")
+
+    base_date = datetime.strptime(collection_date, '%Y-%m-%d')
     
     # 過去14日分の日付で処理（直近から遡る）
     for days_ago in range(1, days_back + 1):
-        backfill_date = (collection_date - timedelta(days=days_ago)).strftime('%Y-%m-%d')
+        backfill_date = (base_date - timedelta(days=days_ago)).strftime('%Y-%m-%d')
         
         # play_count_historyに該当日のデータがあるかチェック
         data_check_query = """
