@@ -217,7 +217,9 @@ export const FilterPopup = ({
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
-  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>('video_type')
+  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(
+    accountTypeContext === 'all' ? 'video_type' : 'date'
+  )
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   // コンテンツタイプ用の複数選択状態
@@ -1713,7 +1715,7 @@ export const FilterPopup = ({
       style={{
         top: `${popupPosition.top}px`,
         left: `${popupPosition.left}px`,
-        width: '380px'
+        width: '420px'
       }}
     >
       <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b border-gray-200">
@@ -1737,14 +1739,16 @@ export const FilterPopup = ({
       {/* タブコンテンツ */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex border-b sticky top-0 bg-white z-10">
-          <button
-            className={`px-3 py-2 text-sm font-medium ${
-              activeTab === 'video_type' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-            }`}
-            onClick={() => setActiveTab('video_type')}
-          >
-            動画タイプ
-          </button>
+          {accountTypeContext === 'all' && (
+            <button
+              className={`px-3 py-2 text-sm font-medium ${
+                activeTab === 'video_type' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+              }`}
+              onClick={() => setActiveTab('video_type')}
+            >
+              動画タイプ
+            </button>
+          )}
           <button
             className={`px-3 py-2 text-sm font-medium ${
               activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
