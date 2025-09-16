@@ -41,8 +41,6 @@ interface FilterPopupProps {
     sort: string[];
   };
   accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
-  // 動画タイプ切替用のコールバック
-  onVideoTypeChange?: (type: 'all' | 'affiliate' | 'corporate' | 'influencer') => void
 }
 
 // フィルターの型定義
@@ -212,7 +210,6 @@ export const FilterPopup = ({
   onClearAll,
   tabFilterFields,
   accountTypeContext,
-  onVideoTypeChange,
 }: FilterPopupProps) => {
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
@@ -1467,9 +1464,27 @@ export const FilterPopup = ({
     const handleVideoTypeChange = (newType: 'all' | 'affiliate' | 'corporate' | 'influencer') => {
       setSelectedVideoType(newType);
       
-      // タブ切替コールバックを呼び出す
-      if (onVideoTypeChange) {
-        onVideoTypeChange(newType);
+      // フィルター状態を更新（タブ切り替えではなくフィルターとして設定）
+      if (newType === 'all') {
+        // すべての動画の場合はフィルターを削除
+        setTempFilters(prev => {
+          const { parent_account_type, ...rest } = prev;
+          return rest;
+        });
+      } else {
+        // 特定の動画タイプの場合はフィルターを設定
+        const accountTypeValue = newType === 'affiliate' ? 'アフィ' : 
+                                newType === 'corporate' ? '企業アカウント' : 
+                                newType === 'influencer' ? 'インフルエンサー' : '';
+        
+        setTempFilters(prev => ({
+          ...prev,
+          parent_account_type: {
+            field: 'parent_account_type',
+            type: 'equal',
+            value: accountTypeValue
+          }
+        }));
       }
     };
 

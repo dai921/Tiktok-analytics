@@ -674,32 +674,6 @@ const Dashboard = () => {
           })}
           presetGetVisibleColumns={() => visibleColumns}
           presetApplyVisibleColumns={(cols) => setVisibleColumns(cols)}
-          onVideoTypeChange={(type) => {
-            // 動画タイプに応じてタブを切り替え
-            switch (type) {
-              case 'all':
-                setIsPrOnly(false);
-                setIsCorporateOnly(false);
-                setIsInfluencerOnly(false);
-                break;
-              case 'affiliate':
-                setIsPrOnly(true);
-                setIsCorporateOnly(false);
-                setIsInfluencerOnly(false);
-                break;
-              case 'corporate':
-                setIsPrOnly(false);
-                setIsCorporateOnly(true);
-                setIsInfluencerOnly(false);
-                break;
-              case 'influencer':
-                setIsPrOnly(false);
-                setIsCorporateOnly(false);
-                setIsInfluencerOnly(true);
-                break;
-            }
-            setCurrentPage(1); // ページをリセット
-          }}
           onFilterChange={(hasFilters, filter) => {
             if (!filter) return;
           
@@ -708,65 +682,25 @@ const Dashboard = () => {
               const normalized: Record<string, FilterQuery> = Object.fromEntries(
                 Object.entries((filter as any).filters as Record<string, FilterValue>).map(([k, v]) => [
                   k,
-                  {
-                    field: v.field,
-                    type: v.type,
-                    value: v.value,
-                    active: v.active ?? true,
-                    ...(v.comparison !== undefined && { comparison: v.comparison }),
-                    ...(v.isPrimarySort !== undefined && { isPrimarySort: v.isPrimarySort }),
-                    ...(v.sortField !== undefined && { sortField: v.sortField }),
-                    ...(v.isHashtag !== undefined && { isHashtag: v.isHashtag }),
-                    ...(v.timestamp !== undefined && { timestamp: v.timestamp })
-                  } as FilterQuery
+                  typeof v === 'object' && v !== null && 'value' in (v as any)
+                    ? (v as any)
+                    : {
+                        field: k,
+                        type: 'equal',
+                        value: v,
+                      },
                 ])
-              );
-              handleMultipleFilters(normalized);
-              return;
-            }
-          
-            // 単一フィルタは FilterValue を FilterQuery に変換して state 更新
-            const fv: FilterValue = {
-              field: filter.field,
-              type: filter.type,
-              value: filter.value,
-              active: filter.active ?? true,
-              ...(filter.comparison !== undefined && { comparison: filter.comparison }),
-              ...(filter.isPrimarySort !== undefined && { isPrimarySort: filter.isPrimarySort }),
-              ...(filter.sortField !== undefined && { sortField: filter.sortField }),
-              ...(filter.isHashtag !== undefined && { isHashtag: filter.isHashtag }),
-              ...(filter.timestamp !== undefined && { timestamp: filter.timestamp })
-            };
-          
-            // 表示名→内部名へ
-            let field = '';
-            if (typeof fv.field === 'string' && fv.field) {
-              const mappedField = Object.entries(COLUMN_MAP).find(([_, value]) => value === fv.field)?.[0];
-              field = mappedField || fv.field;
-            }
-            if (fv.field === 'ハッシュタグ') field = 'hashtags';
-          
-            const filterQuery: FilterQuery = convertFilterValueToQuery({ ...fv, field });
-          
-            let updated: Record<string, FilterQuery>;
-            if (fv.type === 'sort') {
-              updated = {
-                ...filters,
-                [`${field}_sort`]: filterQuery,
-                ...(filters[field] && { [field]: filters[field] })
-              };
-            } else if (fv.type === 'multiselect') {
-              updated = {
-                ...filters,
-                [field]: { ...filterQuery, comparison: 'contains' }
-              };
+              )
+              
+              // フィルタをタブに適用
+              updateTabFilters(normalized)
+              setFilters(JSON.parse(JSON.stringify(normalized)))
             } else {
-              updated = { ...filters, [field]: filterQuery };
+              // 通常のフィルタは1件だけ更新
+              updateTabFilters({ [filter.field]: filter as FilterQuery })
+              setFilters((prev) => ({ ...prev, [filter.field]: filter as FilterQuery }))
             }
-          
-            updateTabFilters(updated);
-            setFilters(JSON.parse(JSON.stringify(updated)));
-            setCurrentPage(1);
+            setCurrentPage(1)
           }}
           onPageChange={(page) => setCurrentPage(page)}
           currentPage={currentPage}

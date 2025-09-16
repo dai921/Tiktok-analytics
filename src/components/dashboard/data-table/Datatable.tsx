@@ -33,12 +33,12 @@ interface DataTableProps {
   onPageChange: (page: number) => void;
   currentPage: number;
   totalPages: number;
-  isLoading: boolean;
-  isPrOnly: boolean;
+  isLoading?: boolean;
+  isPrOnly?: boolean;
   onPrOnlyChange: (isPrOnly: boolean) => void;
-  isCorporateOnly: boolean;
+  isCorporateOnly?: boolean;
   onCorporateOnlyChange: (isCorporateOnly: boolean) => void;
-  isInfluencerOnly: boolean;
+  isInfluencerOnly?: boolean;
   onInfluencerOnlyChange: (isInfluencerOnly: boolean) => void;
   pageSize?: number;
   onPageSizeChange?: (pageSize: number) => void;
@@ -79,8 +79,6 @@ interface DataTableProps {
   presetGetFiltersByTab?: () => Record<PresetTabType, Record<string, FilterQuery>>;
   presetGetVisibleColumns?: () => string[];
   presetApplyVisibleColumns?: (cols: string[]) => void;
-  // 動画タイプ切替用のコールバック
-  onVideoTypeChange?: (type: 'all' | 'affiliate' | 'corporate' | 'influencer') => void;
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -117,8 +115,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     presetClearFilters,
     presetGetFiltersByTab,
     presetGetVisibleColumns,
-    presetApplyVisibleColumns,
-    onVideoTypeChange
+    presetApplyVisibleColumns
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -594,8 +591,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
             accountTypeContext={getAccountTypeContext()}
-            onVideoTypeChange={onVideoTypeChange}
-          />,
+          />, 
           document.body
         )}
 

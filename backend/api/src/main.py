@@ -167,6 +167,7 @@ async def get_videos(
     play_count_per_follower_type: Optional[str] = None,
     play_increase_per_follower: Optional[int] = None,
     play_increase_per_follower_type: Optional[str] = None,
+    parent_account_type: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
 
@@ -491,6 +492,11 @@ async def get_videos(
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_type LIKE :account_type")
             params["account_type"] = f"%{escaped_account_type}%"
+
+        # 親アカウントタイプのフィルタリング
+        if parent_account_type:
+            where_clauses.append("parent_account_type = :parent_account_type")
+            params["parent_account_type"] = parent_account_type
 
         # フィルター条件のデバッグログ
         if play_count is not None:
