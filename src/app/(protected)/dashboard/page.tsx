@@ -7,7 +7,6 @@ import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
 import { toast } from "@/hooks/use-toast"
 import { TAB_DEFAULT_COLUMNS, getCurrentTabType, getTabFilterFields } from '@/components/dashboard/data-table/tab-columns'
 import { getDefaultPreset, contextKeyFromTab, getPreset } from '@/lib/filter_presets_api'
-import { PresetMenu } from '@/components/dashboard/preset-menu'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
@@ -637,30 +636,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <main>
-        <div className="flex items-center justify-between mb-3">
-          <PresetMenu
-            tabType={getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly)}
-            getFilters={getCurrentFilters}
-            getFiltersByTab={() => ({
-              all: JSON.parse(JSON.stringify(filtersByTab.all)),
-              affiliate: JSON.parse(JSON.stringify(filtersByTab.affiliate)),
-              corporate: JSON.parse(JSON.stringify(filtersByTab.corporate)),
-              influencer: JSON.parse(JSON.stringify(filtersByTab.influencer)),
-            })}
-            applyFilters={(f, targetTabKey) => {
-              updateTabFilters(f, targetTabKey)
-              setFilters(JSON.parse(JSON.stringify(f)))
-              setCurrentPage(1)
-            }}
-            clearFilters={() => {
-              updateTabFilters({})
-              setFilters({})
-              setCurrentPage(1)
-            }}
-            getVisibleColumns={() => visibleColumns}
-            applyVisibleColumns={(cols) => setVisibleColumns(cols)}
-          />
-        </div>
+        {/* 表示設定メニューはテーブルヘッダー（タイトル横）に移動 */}
 
         <Suspense fallback={null}>
           <UrlPresetApplier
@@ -679,6 +655,51 @@ const Dashboard = () => {
           data={data}
           defaultVisibleColumns={visibleColumns}
           onColumnSettingsChange={handleColumnSettingsChange}
+          // 表示設定メニュー用のコールバックを渡す
+          presetApplyFilters={(f, targetTabKey) => {
+            updateTabFilters(f, targetTabKey)
+            setFilters(JSON.parse(JSON.stringify(f)))
+            setCurrentPage(1)
+          }}
+          presetClearFilters={() => {
+            updateTabFilters({})
+            setFilters({})
+            setCurrentPage(1)
+          }}
+          presetGetFiltersByTab={() => ({
+            all: JSON.parse(JSON.stringify(filtersByTab.all)),
+            affiliate: JSON.parse(JSON.stringify(filtersByTab.affiliate)),
+            corporate: JSON.parse(JSON.stringify(filtersByTab.corporate)),
+            influencer: JSON.parse(JSON.stringify(filtersByTab.influencer)),
+          })}
+          presetGetVisibleColumns={() => visibleColumns}
+          presetApplyVisibleColumns={(cols) => setVisibleColumns(cols)}
+          onVideoTypeChange={(type) => {
+            // 動画タイプに応じてタブを切り替え
+            switch (type) {
+              case 'all':
+                setIsPrOnly(false);
+                setIsCorporateOnly(false);
+                setIsInfluencerOnly(false);
+                break;
+              case 'affiliate':
+                setIsPrOnly(true);
+                setIsCorporateOnly(false);
+                setIsInfluencerOnly(false);
+                break;
+              case 'corporate':
+                setIsPrOnly(false);
+                setIsCorporateOnly(true);
+                setIsInfluencerOnly(false);
+                break;
+              case 'influencer':
+                setIsPrOnly(false);
+                setIsCorporateOnly(false);
+                setIsInfluencerOnly(true);
+                break;
+            }
+            setCurrentPage(1); // ページをリセット
+          }}
           onFilterChange={(hasFilters, filter) => {
             if (!filter) return;
           

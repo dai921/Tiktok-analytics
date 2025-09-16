@@ -41,6 +41,8 @@ interface FilterPopupProps {
     sort: string[];
   };
   accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
+  // 動画タイプ切替用のコールバック
+  onVideoTypeChange?: (type: 'all' | 'affiliate' | 'corporate' | 'influencer') => void
 }
 
 // フィルターの型定義
@@ -210,11 +212,12 @@ export const FilterPopup = ({
   onClearAll,
   tabFilterFields,
   accountTypeContext,
+  onVideoTypeChange,
 }: FilterPopupProps) => {
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
-  const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'text' | 'sort'>('date')
+  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>('video_type')
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   // コンテンツタイプ用の複数選択状態
@@ -226,6 +229,8 @@ export const FilterPopup = ({
   const [selectedAccountCategories, setSelectedAccountCategories] = useState<string[]>([])
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  // 動画タイプ用の状態
+  const [selectedVideoType, setSelectedVideoType] = useState<'all' | 'affiliate' | 'corporate' | 'influencer'>('all')
 
   // ★ フィルター状態を復元（初期化ではなく復元）
   // ポップアップが開かれたときにcurrentFiltersからフィルター状態を復元
@@ -404,13 +409,16 @@ export const FilterPopup = ({
     if (!tabFilterFields) return baseFields;
 
     // タブ設定に基づいてフィールドをフィルタリング
-    return {
+    const filteredFields = {
       date: baseFields.date.filter(field => tabFilterFields.date.includes(field.id)),
       metrics: baseFields.metrics.filter(field => tabFilterFields.metrics.includes(field.id)),
       categories: baseFields.categories.filter(field => tabFilterFields.categories.includes(field.id)),
       text: baseFields.text.filter(field => tabFilterFields.text.includes(field.id)),
       sort: baseFields.sort.filter(field => tabFilterFields.sort.includes(field.id))
     };
+
+
+    return filteredFields;
   };
 
   const filterFields = getFilterFields();
@@ -497,8 +505,19 @@ export const FilterPopup = ({
       } else {
         setSelectedProducts([]);
       }
+
+      // 動画タイプの状態復元（accountTypeContextから判断）
+      if (accountTypeContext === 'affiliate') {
+        setSelectedVideoType('affiliate');
+      } else if (accountTypeContext === 'corporate') {
+        setSelectedVideoType('corporate');
+      } else if (accountTypeContext === 'influencer') {
+        setSelectedVideoType('influencer');
+      } else {
+        setSelectedVideoType('all');
+      }
     }
-  }, [isOpen, currentFilters]);
+  }, [isOpen, currentFilters, accountTypeContext]);
 
   // ポップアップの位置を計算
   // ① 座標計算ユーティリティはそのまま
@@ -1434,6 +1453,53 @@ export const FilterPopup = ({
   }
 
   // ソートタブのレンダリング関数
+  // 動画タイプタブのコンテンツをレンダリング
+  const renderVideoTypeContent = () => {
+    const videoTypes = [
+      { value: 'all', label: 'すべての動画' },
+      { value: 'affiliate', label: 'アフィ系動画' },
+      { value: 'corporate', label: '企業系動画' },
+      { value: 'influencer', label: 'インフルエンサー系動画' }
+    ];
+
+    const handleVideoTypeChange = (newType: 'all' | 'affiliate' | 'corporate' | 'influencer') => {
+      setSelectedVideoType(newType);
+      
+      // タブ切替コールバックを呼び出す
+      if (onVideoTypeChange) {
+        onVideoTypeChange(newType);
+      }
+    };
+
+    return (
+      <div className="space-y-4 p-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            動画タイプを選択
+          </label>
+          <div className="space-y-3">
+            {videoTypes.map((type) => (
+              <div key={type.value} className="flex items-center">
+                <input
+                  id={`video-type-${type.value}`}
+                  type="radio"
+                  name="video_type"
+                  value={type.value}
+                  className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300"
+                  checked={selectedVideoType === type.value}
+                  onChange={() => handleVideoTypeChange(type.value as 'all' | 'affiliate' | 'corporate' | 'influencer')}
+                />
+                <label htmlFor={`video-type-${type.value}`} className="ml-3 text-sm text-gray-700 font-medium">
+                  {type.label}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderSortContent = () => {
     const sortableFields = filterFields['sort'] || []
     
@@ -1598,8 +1664,14 @@ export const FilterPopup = ({
     );
   };
 
+
   // アクティブなタブに応じたフィルター項目を表示
   const renderActiveTabContent = () => {
+    // 動画タイプタブの場合は専用レンダリング
+    if (activeTab === 'video_type') {
+      return renderVideoTypeContent();
+    }
+    
     // ソートタブの場合は専用レンダリング関数を使用
     if (activeTab === 'sort') {
       return renderSortContent();
@@ -1665,6 +1737,14 @@ export const FilterPopup = ({
       {/* タブコンテンツ */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex border-b sticky top-0 bg-white z-10">
+          <button
+            className={`px-3 py-2 text-sm font-medium ${
+              activeTab === 'video_type' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('video_type')}
+          >
+            動画タイプ
+          </button>
           <button
             className={`px-3 py-2 text-sm font-medium ${
               activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'

@@ -20,6 +20,9 @@ import { TableContext } from './cell-renderers';
 import { createProductCellRenderer } from './cell-renderers';
 import { ProductBadge } from '@/components/ui/badge';
 import { createPortal } from 'react-dom'; 
+import { PresetMenu } from '@/components/dashboard/preset-menu';
+import { getCurrentTabType } from './tab-columns';
+import type { TabType as PresetTabType } from '@/lib/filter_presets_api';
 
 // EXCLUDED_COLUMNS をここで定義
 const EXCLUDED_COLUMNS = ['description'];
@@ -69,6 +72,15 @@ interface DataTableProps {
     accountTypes: string[];
     isLoading: boolean;
   };
+
+  // ★ 追加: 表示設定メニュー用（任意）
+  presetApplyFilters?: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void;
+  presetClearFilters?: () => void;
+  presetGetFiltersByTab?: () => Record<PresetTabType, Record<string, FilterQuery>>;
+  presetGetVisibleColumns?: () => string[];
+  presetApplyVisibleColumns?: (cols: string[]) => void;
+  // 動画タイプ切替用のコールバック
+  onVideoTypeChange?: (type: 'all' | 'affiliate' | 'corporate' | 'influencer') => void;
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -100,7 +112,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       products: [],
       accountTypes: [],
       isLoading: false
-    }
+    },
+    presetApplyFilters,
+    presetClearFilters,
+    presetGetFiltersByTab,
+    presetGetVisibleColumns,
+    presetApplyVisibleColumns,
+    onVideoTypeChange
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -291,11 +309,33 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       return 'all';
     };
 
+    // 表示設定用: 現在のタブタイプと可視カラム操作
+    const tabTypeForPreset = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly) as PresetTabType;
+    const getFiltersForPreset = useCallback(() => currentFilters, [currentFilters]);
+    const getVisibleColumnsForPreset = useCallback(() => visibleColumns, [visibleColumns]);
+    const applyVisibleColumnsForPreset = useCallback((cols: string[]) => {
+      // newColumns 経由で一括適用
+      handleColumnVisibilityChange('', false, cols);
+    }, [handleColumnVisibilityChange]);
+
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
         <div className="flex items-center justify-between p-3">
-          <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
+            {presetApplyFilters && (
+              <PresetMenu
+                tabType={tabTypeForPreset}
+                getFilters={getFiltersForPreset}
+                applyFilters={presetApplyFilters}
+                clearFilters={presetClearFilters || handleClearAllFilters}
+                getFiltersByTab={presetGetFiltersByTab}
+                getVisibleColumns={presetGetVisibleColumns || getVisibleColumnsForPreset}
+                applyVisibleColumns={presetApplyVisibleColumns || applyVisibleColumnsForPreset}
+              />
+            )}
+          </div>
           
           {/* 表示設定ボタンをヘッダー右上に移動 */}
           <button
@@ -554,6 +594,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}
             accountTypeContext={getAccountTypeContext()}
+            onVideoTypeChange={onVideoTypeChange}
           />,
           document.body
         )}
