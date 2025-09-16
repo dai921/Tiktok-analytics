@@ -214,9 +214,12 @@ export const FilterPopup = ({
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
-  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(
-    accountTypeContext === 'all' ? 'video_type' : 'date'
-  )
+  // activeTabの初期値をより安全に設定
+  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(() => {
+    // サーバーサイドでは常に'date'をデフォルトに
+    if (typeof window === 'undefined') return 'date'
+    return accountTypeContext === 'all' ? 'video_type' : 'date'
+  })
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   // コンテンツタイプ用の複数選択状態
@@ -231,10 +234,9 @@ export const FilterPopup = ({
   // 動画タイプ用の状態
   const [selectedVideoType, setSelectedVideoType] = useState<'all' | 'affiliate' | 'corporate' | 'influencer'>('all')
 
-  // ★ フィルター状態を復元（初期化ではなく復元）
-  // ポップアップが開かれたときにcurrentFiltersからフィルター状態を復元
+  // useEffectも修正
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && typeof window !== 'undefined') {
       console.log('[FILTER-POPUP] フィルター状態復元開始:', {
         currentFilters,
         accountTypeContext,
@@ -324,6 +326,13 @@ export const FilterPopup = ({
       console.log('[FILTER-POPUP] 商品復元:', { productFilter, initialProducts });
 
       console.log('[FILTER-POPUP] フィルター状態復元完了');
+      
+      // activeTabの更新（クライアントサイドでのみ）
+      if (accountTypeContext === 'all') {
+        setActiveTab('video_type');
+      } else {
+        setActiveTab('date');
+      }
     }
   }, [isOpen, currentFilters, accountTypeContext]);
 
@@ -1756,7 +1765,7 @@ export const FilterPopup = ({
         <div className="flex border-b sticky top-0 bg-white z-10">
           {accountTypeContext === 'all' && (
             <button
-              className={`px-3 py-2 text-sm font-medium ${
+              className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
                 activeTab === 'video_type' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
               }`}
               onClick={() => setActiveTab('video_type')}
@@ -1765,15 +1774,18 @@ export const FilterPopup = ({
             </button>
           )}
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('date')}
           >
-            <span className="flex items-center"><CalendarIcon size={12} /><span className="ml-1">日付</span></span>
+            <span className="flex items-center">
+              <CalendarIcon size={12} />
+              <span className="ml-1">日付</span>
+            </span>
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'metrics' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('metrics')}
@@ -1781,7 +1793,7 @@ export const FilterPopup = ({
             数値
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'categories' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('categories')}
@@ -1789,7 +1801,7 @@ export const FilterPopup = ({
             ジャンル
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('text')}
@@ -1797,12 +1809,12 @@ export const FilterPopup = ({
             テキスト
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'sort' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('sort')}
           >
-            並び替え
+            ソート
           </button>
         </div>
 
