@@ -58,6 +58,14 @@ const Dashboard = () => {
     affiliate: {}
   });
 
+  // タブごとの表示カラム状態を追加
+  const [visibleColumnsByTab, setVisibleColumnsByTab] = useState<Record<string, string[]>>({
+    all: [],
+    corporate: [],
+    influencer: [],
+    affiliate: []
+  });
+
   // 基本関数群
   const getCurrentTabKey = () => {
     if (isCorporateOnly) return 'corporate';
@@ -75,6 +83,21 @@ const Dashboard = () => {
     // 深いコピーを作成して参照共有を防ぐ
     return JSON.parse(JSON.stringify(baseFilters));
   };
+
+  // 現在のタブの表示カラムを取得する関数
+  const getCurrentVisibleColumns = useCallback(() => {
+    const tabKey = getCurrentTabKey();
+    return visibleColumnsByTab[tabKey] || [];
+  }, [visibleColumnsByTab, isPrOnly, isCorporateOnly, isInfluencerOnly]);
+
+  // 表示カラムを更新する関数
+  const updateTabVisibleColumns = useCallback((columns: string[], targetTabKey?: string) => {
+    const tabKey = targetTabKey || getCurrentTabKey();
+    setVisibleColumnsByTab(prev => ({
+          ...prev,
+      [tabKey]: [...columns]
+    }));
+  }, [isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
   const generateFilterHash = (filters: Record<string, FilterQuery>) => {
     if (Object.keys(filters).length === 0) return 'default';
@@ -202,44 +225,29 @@ const Dashboard = () => {
     }
   }, [pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
+  // タブ切り替え時のuseEffectを修正
   useEffect(() => {
     if (!isBootstrapped) return;
 
     const tabKey = getCurrentTabKey();
     const currentTabFilters = getCurrentFilters();
+    const currentTabColumns = visibleColumnsByTab[tabKey];
     
     const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
     const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-    // 変更前
-    // if (visibleColumns.join('|') !== defaultColumns.join('|')) {
-    //   setVisibleColumns(defaultColumns);
-    // }
-    // 変更後（フィルタなしのときのみデフォルト化）
-    if (Object.keys(currentTabFilters).length === 0) {
-      if (visibleColumns.join('|') !== defaultColumns.join('|')) {
-        setVisibleColumns(defaultColumns);
-      }
+    
+    // 表示カラムがまだ設定されていない場合のみデフォルトを適用
+    if (!currentTabColumns || currentTabColumns.length === 0) {
+      updateTabVisibleColumns(defaultColumns, tabKey);
+      setVisibleColumns(defaultColumns);
+    } else {
+      // 既存の設定を維持
+      setVisibleColumns(currentTabColumns);
     }
     
-    console.log('[DEBUG] ★★★ タブ切り替え詳細 ★★★:', {
-      currentTab: tabKey,
-      filtersByTabState: filtersByTab,
-      corporateFilters: filtersByTab.corporate,
-      allFilters: filtersByTab.all,
-      affiliateFilters: filtersByTab.affiliate,
-      influencerFilters: filtersByTab.influencer,
-      currentTabFilters: currentTabFilters,
-      oldFilters: filters,
-      areCurrentTabFiltersEmpty: Object.keys(currentTabFilters).length === 0,
-      areAllAndCorporateSameRef: filtersByTab.all === filtersByTab.corporate,
-      corporateFiltersDetail: JSON.stringify(filtersByTab.corporate),
-      allFiltersDetail: JSON.stringify(filtersByTab.all),
-      currentTabFiltersDetail: JSON.stringify(currentTabFilters)
-    });
-
     setFilters(currentTabFilters);
     setCurrentPage(1);
-  }, [isCorporateOnly, isInfluencerOnly, isPrOnly, isBootstrapped]);
+  }, [isCorporateOnly, isInfluencerOnly, isPrOnly, isBootstrapped, visibleColumnsByTab, updateTabVisibleColumns]);
 
   useEffect(() => {
     if (!isBootstrapped) return;
@@ -328,12 +336,22 @@ const Dashboard = () => {
       try {
         const res = await getDefaultPreset(ctx);
         const incoming = res?.preset?.payload?.currentFilters;
+        const cols = res?.preset?.payload?.visibleColumns; // ★ 追加
+        
         // 試行済みにマーク（空でも一度だけ）
         defaultPresetAttemptedRef.current[tabType] = true;
+        
         if (res?.success && incoming && typeof incoming === 'object' && Object.keys(incoming).length > 0) {
           updateTabFilters(incoming, tabType);
           setFilters(JSON.parse(JSON.stringify(incoming)));
           setCurrentPage(1);
+        }
+        
+        // ★ 表示カラムの適用を追加
+        if (res?.success && Array.isArray(cols) && cols.length > 0) {
+          console.log('[DEBUG] デフォルトプリセットのvisibleColumns適用:', cols);
+          updateTabVisibleColumns(cols, tabType);
+          setVisibleColumns(cols);
         }
       } catch (e) {
         console.warn('Failed to load default saved filter:', e);
@@ -341,7 +359,7 @@ const Dashboard = () => {
         defaultPresetAttemptedRef.current[tabType] = true;
       }
     })();
-  }, [isPrOnly, isCorporateOnly, isInfluencerOnly, filtersByTab, updateTabFilters, isBootstrapped]);
+  }, [isPrOnly, isCorporateOnly, isInfluencerOnly, filtersByTab, updateTabFilters, updateTabVisibleColumns, isBootstrapped]);
 
   const handleMultipleFilters = useCallback((incomingFilters: Record<string, FilterQuery>) => {
     console.log('[DEBUG] ========== handleMultipleFilters開始 ==========');
@@ -512,10 +530,11 @@ const Dashboard = () => {
     setCurrentPage(1);
   }, []);
 
-  const handleColumnSettingsChange = useCallback((columns: string[]) => {
-    console.log('[DEBUG] handleColumnSettingsChange visibleColumns =', columns);
-    setVisibleColumns(columns);
-  }, []);
+  // カラム変更ハンドラーを更新
+  const handleColumnSettingsChange = useCallback((newVisibleColumns: string[]) => {
+    setVisibleColumns(newVisibleColumns);
+    updateTabVisibleColumns(newVisibleColumns);
+  }, [updateTabVisibleColumns]);
 
   const handlePrOnlyChange = useCallback((checked: boolean) => {
     setIsPrOnly(checked);
@@ -621,6 +640,7 @@ const Dashboard = () => {
           setFilters(JSON.parse(JSON.stringify(incoming)));
           if (Array.isArray(cols) && cols.length) {
             console.log('[DEBUG] bootstrap apply visibleColumns =', cols);
+            updateTabVisibleColumns(cols, tabType);
             setVisibleColumns(cols);
           }
         }
@@ -631,7 +651,13 @@ const Dashboard = () => {
         setIsBootstrapped(true);
       }
     })();
-  }, [isBootstrapped, isPrOnly, isCorporateOnly, isInfluencerOnly, updateTabFilters]);
+  }, [isBootstrapped, isPrOnly, isCorporateOnly, isInfluencerOnly, updateTabFilters, updateTabVisibleColumns]);
+
+  // プリセット適用時の表示カラム処理を修正
+  const presetApplyVisibleColumns = useCallback((cols: string[]) => {
+    setVisibleColumns(cols);
+    updateTabVisibleColumns(cols);
+  }, [updateTabVisibleColumns]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -647,6 +673,7 @@ const Dashboard = () => {
             setIsCorporateOnly={setIsCorporateOnly}
             setIsInfluencerOnly={setIsInfluencerOnly}
             setVisibleColumns={setVisibleColumns}
+            updateTabVisibleColumns={updateTabVisibleColumns}
           />
         </Suspense>
 
@@ -673,7 +700,13 @@ const Dashboard = () => {
             influencer: JSON.parse(JSON.stringify(filtersByTab.influencer)),
           })}
           presetGetVisibleColumns={() => visibleColumns}
-          presetApplyVisibleColumns={(cols) => setVisibleColumns(cols)}
+          presetGetVisibleColumnsByTab={() => ({
+            all: [...(visibleColumnsByTab.all ?? [])],
+            affiliate: [...(visibleColumnsByTab.affiliate ?? [])],
+            corporate: [...(visibleColumnsByTab.corporate ?? [])],
+            influencer: [...(visibleColumnsByTab.influencer ?? [])],
+          })}
+          presetApplyVisibleColumns={presetApplyVisibleColumns}
           onFilterChange={(hasFilters, filter) => {
             if (!filter) return;
           
@@ -734,6 +767,7 @@ const UrlPresetApplier: React.FC<{
   setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
   setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
   setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
+  updateTabVisibleColumns: (columns: string[], targetTabKey?: string) => void
 }> = ({
   updateTabFilters,
   setFilters,
@@ -741,7 +775,8 @@ const UrlPresetApplier: React.FC<{
   setIsPrOnly,
   setIsCorporateOnly,
   setIsInfluencerOnly,
-  setVisibleColumns
+  setVisibleColumns,
+  updateTabVisibleColumns
 }) => {
   const searchParams = useSearchParams()
   const appliedPresetRef = React.useRef<string | null>(null)
@@ -769,7 +804,8 @@ const UrlPresetApplier: React.FC<{
         setFilters(JSON.parse(JSON.stringify(incoming)))
         if (Array.isArray(cols) && cols.length) {
           console.log('[DEBUG] url apply visibleColumns =', cols);
-          setVisibleColumns(cols)
+          setVisibleColumns(cols);
+          updateTabVisibleColumns(cols, targetTab);
         }
         setCurrentPage(1)
         appliedPresetRef.current = presetId
@@ -777,7 +813,7 @@ const UrlPresetApplier: React.FC<{
         console.warn('Failed to apply preset from URL:', e)
       }
     })()
-  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly])
+  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly, updateTabVisibleColumns])
 
   return null
 }

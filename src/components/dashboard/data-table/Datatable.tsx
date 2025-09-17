@@ -78,6 +78,7 @@ interface DataTableProps {
   presetClearFilters?: () => void;
   presetGetFiltersByTab?: () => Record<PresetTabType, Record<string, FilterQuery>>;
   presetGetVisibleColumns?: () => string[];
+  presetGetVisibleColumnsByTab?: () => Record<PresetTabType, string[]>;
   presetApplyVisibleColumns?: (cols: string[]) => void;
 }
 
@@ -115,6 +116,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     presetClearFilters,
     presetGetFiltersByTab,
     presetGetVisibleColumns,
+    presetGetVisibleColumnsByTab,
     presetApplyVisibleColumns
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
@@ -329,6 +331,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 clearFilters={presetClearFilters || handleClearAllFilters}
                 getFiltersByTab={presetGetFiltersByTab}
                 getVisibleColumns={presetGetVisibleColumns || getVisibleColumnsForPreset}
+                getVisibleColumnsByTab={presetGetVisibleColumnsByTab}
                 applyVisibleColumns={presetApplyVisibleColumns || applyVisibleColumnsForPreset}
               />
             )}
