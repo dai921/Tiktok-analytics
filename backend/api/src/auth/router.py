@@ -281,11 +281,13 @@ async def tiktok_auth(request: Request):
     # セッションクッキーを設定
     cookie = jwt.encode({"uid": user_id}, os.getenv("JWT_SECRET_KEY"), algorithm="HS256")
     
-    # TikTokの認証URLを生成
+    # コールバック先はフロントの登録済みURLに統一（審査回避のため）
+    callback_base = os.getenv("BASE_URL") or f"https://{request.headers.get('host')}"
+    redirect_uri = f"{callback_base}/api/auth/tiktok/callback"
     auth_url = (
         "https://www.tiktok.com/v2/auth/authorize?"
         f"client_key={os.getenv('TT_CLIENT_KEY')}&"
-        f"redirect_uri={os.getenv('BASE_URL')}/api/auth/tiktok/callback&"
+        f"redirect_uri={redirect_uri}&"
         "response_type=code&"
         f"state={state}&"
         "scope=user.info.basic,video.list"
@@ -296,8 +298,9 @@ async def tiktok_auth(request: Request):
     response.set_cookie(
         key="session", 
         value=cookie, 
-        httponly=True, 
-        secure=True, 
+        httponly=True,
+        secure=True,
+        samesite="none",  # クロスサイトのOAuthリダイレクトで確実に送る
         max_age=3600  # 1時間
     )
     
