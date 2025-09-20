@@ -19,14 +19,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL(`/my-report?error=${msg}`, base))
   }
 
-  const token = req.cookies.get('auth_token')?.value ?? ''
-
   try {
     const res = await fetch(`${api}/api/auth/tiktok/complete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ code, state }),
       cache: 'no-store',

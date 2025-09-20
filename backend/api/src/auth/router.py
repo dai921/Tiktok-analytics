@@ -306,6 +306,31 @@ async def tiktok_auth(request: Request):
     
     return response
 
+@router.get("/tiktok/auth-url")
+async def tiktok_auth_url(current_user: User = Depends(get_current_user)):
+    # state生成・古いもの掃除
+    state = secrets.token_urlsafe(32)
+    execute_update(
+        "DELETE FROM user_oauth_states WHERE user_id = :user_id OR created_at < DATE_SUB(NOW(), INTERVAL 1 HOUR)",
+        {"user_id": current_user.id}
+    )
+    execute_update(
+        "INSERT INTO user_oauth_states (user_id, oauth_state) VALUES (:user_id, :state)",
+        {"user_id": current_user.id, "state": state}
+    )
+
+    # フロントに登録済みのredirect_uriと完全一致
+    redirect_uri = f"{os.getenv('BASE_URL')}/api/auth/tiktok/callback"
+    auth_url = (
+        "https://www.tiktok.com/v2/auth/authorize?"
+        f"client_key={os.getenv('TT_CLIENT_KEY')}&"
+        f"redirect_uri={redirect_uri}&"
+        "response_type=code&"
+        f"state={state}&"
+        "scope=user.info.basic,video.list"
+    )
+    return {"auth_url": auth_url}
+
 @router.get("/tiktok/callback")
 async def tiktok_callback(request: Request, code: str = None, state: str = None):
     """TikTok認証コールバック処理"""
@@ -444,3 +469,71 @@ async def tiktok_callback(request: Request, code: str = None, state: str = None)
     )
     
     return response
+
+@router.post("/tiktok/complete")
+async def tiktok_complete(payload: dict):
+    code = payload.get("code")
+    state = payload.get("state")
+    if not code or not state:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="code/stateが不足しています")
+
+    # stateからユーザーを一意特定（1時間以内、最新を採用）
+    rec = fetch_one(
+        """
+        SELECT user_id FROM user_oauth_states
+        WHERE oauth_state = :state
+          AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        {"state": state}
+    )
+    if not rec:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不正なstateパラメータ")
+    user_id = rec["user_id"]
+
+    # TikTokトークン交換（TikTokに登録済みのredirect_uriと完全一致）
+    redirect_uri = f"{os.getenv('BASE_URL')}/api/auth/tiktok/callback"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            data={
+                "client_key": os.getenv("TT_CLIENT_KEY"),
+                "client_secret": os.getenv("TT_CLIENT_SECRET"),
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            }
+        )
+        r.raise_for_status()
+        token_data = r.json()
+        if "data" not in token_data:
+            raise HTTPException(status_code=500, detail="TikTokレスポンスに必要なデータがありません")
+        data = token_data["data"]
+
+    # 保存
+    enc_access = encrypt_data(data.get("access_token"))
+    enc_refresh = encrypt_data(data.get("refresh_token"))
+    expires_in = int(data.get("expires_in", 0))
+    expires_at = (datetime.now() + timedelta(seconds=expires_in)).strftime("%Y-%m-%d %H:%M:%S")
+
+    execute_update("""
+        INSERT INTO tiktok_tokens (user_id, access_token, refresh_token, expires_in, expires_at)
+        VALUES (:user_id, :access_token, :refresh_token, :expires_in, :expires_at)
+        ON DUPLICATE KEY UPDATE
+          access_token=VALUES(access_token),
+          refresh_token=VALUES(refresh_token),
+          expires_in=VALUES(expires_in),
+          expires_at=VALUES(expires_at),
+          updated_at=NOW()
+    """, {
+        "user_id": user_id,
+        "access_token": enc_access,
+        "refresh_token": enc_refresh,
+        "expires_in": expires_in,
+        "expires_at": expires_at
+    })
+
+    # stateはワンタイム消費
+    execute_update("DELETE FROM user_oauth_states WHERE user_id = :user_id", {"user_id": user_id})
+    return {"ok": True}

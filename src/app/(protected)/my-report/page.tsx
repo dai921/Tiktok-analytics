@@ -138,8 +138,23 @@ export default function MyAccountPage() {
       return;
     }
 
-    // バックエンドの認可開始エンドポイントへ遷移（302でTikTokへリダイレクト）
-    window.location.href = `${API_BASE_URL}/api/auth/tiktok/auth`;
+    // 認可URLをバックエンドから取得して遷移（ユーザーを確実にひも付け）
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setError('認証情報がありません。再ログインしてください。');
+      return;
+    }
+    setIsLoading(true);
+    const res = await fetch(`${API_BASE_URL}/api/auth/tiktok/auth-url`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      setIsLoading(false);
+      setError('認可URLの取得に失敗しました');
+      return;
+    }
+    const { auth_url } = await res.json();
+    window.location.href = auth_url;
   };
 
   // バックエンドAPIからデータを取得する関数
