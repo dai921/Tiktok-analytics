@@ -14,6 +14,12 @@ class TikTokStats(BaseModel):
     account_type: Optional[str] = Field(None, description="アカウントタイプ")
     mainly_video_type: Optional[str] = Field(None, description="主なビデオタイプ（アフィリエイトの場合）")
 
+
+class TikTokThumbnail(BaseModel):
+    """TikTok サムネイルの情報"""
+    valueType: str = Field(..., description="サムネイルのタイプ")
+    url: str = Field(..., description="サムネイルURL")
+
 class TikTokVideo(BaseModel):
     """TikTok 動画情報のモデル"""
     id: str = Field(..., description="動画ID")
@@ -27,7 +33,7 @@ class TikTokVideo(BaseModel):
     commentGrowth: int = Field(..., description="期間内のコメント増加数")
     shareCount: int = Field(..., description="シェア数")
     shareGrowth: int = Field(..., description="期間内のシェア増加数")
-    thumbnailUrl: Optional[str] = Field(None, description="サムネイルURL")
+    thumbnailUrl: Optional[TikTokThumbnail] = Field(None, description="サムネイルのメタ情報")
     videoUrl: Optional[str] = Field(None, description="動画URL")
 
 class TikTokUserConnection(BaseModel):

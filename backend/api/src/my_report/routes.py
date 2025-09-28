@@ -43,10 +43,12 @@ async def get_tiktok_connection_status(user = Depends(get_current_user)):
         return {
             "connected": True,
             "account": {
-                "id": "1",  # 固定ID（必要に応じて変更）
+                "id": tiktok_connection.tiktok_open_id,
                 "openId": tiktok_connection.tiktok_open_id,
                 "displayName": tiktok_connection.display_name or "TikTokアカウント",
-                "linkedAt": tiktok_connection.linked_at.isoformat() if tiktok_connection.linked_at else datetime.now().isoformat()
+                "linkedAt": tiktok_connection.linked_at.isoformat() if tiktok_connection.linked_at else datetime.now().isoformat(),
+                "accountType": tiktok_connection.account_type,
+                "mainlyVideoType": tiktok_connection.mainly_video_type,
             }
         }
     except Exception as e:
@@ -275,6 +277,7 @@ async def get_tiktok_stats(
 @router.get("/videos")
 async def get_tiktok_videos(
     period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
+    limit: int = Query(100, ge=1, le=300, description="取得する動画数"),
     user = Depends(get_current_user)
 ):
     """
@@ -346,14 +349,18 @@ async def get_tiktok_videos(
             v.video_id, v.caption, v.created_at, v.thumbnail_url
         ORDER BY 
             v.created_at DESC
+        LIMIT :result_limit
         """)
         
+        result_limit = max(1, min(limit, 300))
+
         params = {
             "start_date": start_date.strftime('%Y-%m-%d'),
             "start_date_2": start_date.strftime('%Y-%m-%d'),
             "end_date": end_date.strftime('%Y-%m-%d'),
             "tiktok_user_id": tiktok_user_id,
-            "user_number": user_number
+            "user_number": user_number,
+            "result_limit": result_limit
         }
         
         try:
@@ -373,6 +380,8 @@ async def get_tiktok_videos(
                 object_path = '/'.join(parts[3:])
                 thumbnail_url = f"https://storage.googleapis.com/{bucket}/{object_path}"
 
+            thumbnail_payload = {"valueType": "IMAGE", "url": thumbnail_url} if thumbnail_url else None
+
             videos.append(TikTokVideo(
                 id=row['id'],
                 title=row['title'] or "タイトルなし",
@@ -385,7 +394,7 @@ async def get_tiktok_videos(
                 commentGrowth=int(row['comment_growth']) if row['comment_growth'] else 0,
                 shareCount=int(row['share_count']) if row['share_count'] else 0,
                 shareGrowth=int(row['share_growth']) if row['share_growth'] else 0,
-                thumbnailUrl=thumbnail_url or "",
+                thumbnailUrl=thumbnail_payload,
                 videoUrl=f"https://www.tiktok.com/@user/video/{row['id']}"  # 仮のURL
             ))
         
@@ -633,5 +642,6 @@ async def get_video_view_rates(
     except Exception as e:
         print(f"[ERROR] get_video_view_rates 処理エラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"視聴率データの取得に失敗しました: {str(e)}")
+
 
 

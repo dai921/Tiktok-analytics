@@ -12,7 +12,12 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'storage.googleapis.com',
         pathname: '/**',  // すべてのパスを許可
-      }
+      },
+      {
+        protocol: 'https',
+        hostname: '**.tiktokcdn.com',
+        pathname: '/**'
+      },
     ]
   },
 

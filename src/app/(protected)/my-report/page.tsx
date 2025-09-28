@@ -23,13 +23,15 @@ export default function MyAccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [reportPeriod, setReportPeriod] = useState('30d');
-  const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('viewGrowth');
+  const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('createTime');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // desc: 降順, asc: 昇順
   const [activeTab, setActiveTab] = useState<'stats' | 'videos'>('stats'); // 追加：タブUIのstate
   
   // アカウント情報関連の状態
   const [accounts, setAccounts] = useState<TikTokAccount[]>([]);
   const [activeAccount, setActiveAccount] = useState<TikTokAccount | null>(null);
+  const [videoLimit, setVideoLimit] = useState<number>(100);
+  const videoLimitOptions = [50, 100, 150, 200, 250, 300];
   
   // 日付選択用の状態
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
@@ -55,7 +57,7 @@ export default function MyAccountPage() {
     client_key: process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'mock-client-key',
     redirect_uri: `${API_BASE_URL}/api/auth/tiktok/callback`, // バックエンドAPIに変更
     response_type: 'code',
-    scope: ['user.info.basic', 'video.list'].join(','),
+    scope: ['user.info.basic', 'user.info.stats', 'video.list'].join(','),
     state: generateRandomState(),
   });
   const authorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
@@ -107,7 +109,7 @@ export default function MyAccountPage() {
         setConnected(true);
         
         // アカウントの統計データと動画データを取得
-        await fetchApiData(reportPeriod, account.openId);
+        await fetchApiData(reportPeriod, account.openId, videoLimit);
       } else {
         setConnected(false);
       }
@@ -122,7 +124,7 @@ export default function MyAccountPage() {
   const handleAccountChange = async (account: TikTokAccount) => {
     setIsLoading(true);
     setActiveAccount(account);
-    await fetchApiData(reportPeriod, account.openId);
+    await fetchApiData(reportPeriod, account.openId, videoLimit);
     setIsLoading(false);
   };
 
@@ -158,7 +160,7 @@ export default function MyAccountPage() {
   };
 
   // バックエンドAPIからデータを取得する関数
-  const fetchApiData = async (period: string = reportPeriod, openId?: string) => {
+  const fetchApiData = async (period: string = reportPeriod, openId?: string, limit: number = videoLimit) => {
     setIsLoading(true);
     setError(null);
     
@@ -171,6 +173,7 @@ export default function MyAccountPage() {
       
       // openIdパラメータを追加（指定されている場合）
       const openIdParam = openId ? `&open_id=${openId}` : '';
+      const limitParam = limit ? `&limit=${limit}` : '';
       
       console.log(`[DEBUG] 認証トークン: ${token.substring(0, 10)}...（残りは安全のため省略）`);
       console.log(`[DEBUG] API URL: ${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`);
@@ -201,8 +204,8 @@ export default function MyAccountPage() {
       console.log('[DEBUG] 取得した統計データ:', statsData);
       
       // 動画リストの取得
-      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}`);
-      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}`, {
+      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}${limitParam}`);
+      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}${limitParam}`, {
         headers: {
           'Authorization': `Bearer ${token}` // 認証ヘッダーを追加
         }
@@ -227,11 +230,32 @@ export default function MyAccountPage() {
       console.log('[DEBUG] 取得した動画データ:', videosData);
       
       // thumbnailUrlをオブジェクト型に変換
+      const normalizeThumbnail = (thumbnail: any) => {
+        if (!thumbnail) return null;
+
+        if (typeof thumbnail === 'string') {
+          return { valueType: 'IMAGE', url: thumbnail };
+        }
+
+        if (typeof thumbnail === 'object') {
+          const nestedUrl =
+            typeof thumbnail.url === 'string'
+              ? thumbnail.url
+              : typeof thumbnail.url === 'object' && thumbnail.url !== null
+                ? thumbnail.url.url
+                : null;
+
+          if (typeof nestedUrl === 'string' && nestedUrl.length > 0) {
+            return { valueType: thumbnail.valueType ?? 'IMAGE', url: nestedUrl };
+          }
+        }
+
+        return null;
+      };
+
       const videosWithObjThumbnail = videosData.map((video: any) => ({
         ...video,
-        thumbnailUrl: video.thumbnailUrl
-          ? { url: video.thumbnailUrl, valueType: 'IMAGE' }
-          : null,
+        thumbnailUrl: normalizeThumbnail(video.thumbnailUrl),
       }));
       
       // 統計データを計算・拡張
@@ -295,7 +319,7 @@ export default function MyAccountPage() {
             setConnected(true);
             
             // アカウントの統計データと動画データを取得
-            await fetchApiData(reportPeriod, account.openId);
+            await fetchApiData(reportPeriod, account.openId, videoLimit);
           }
         } else {
           console.warn('[WARN] TikTok連携状態取得エラー:', statusResponse.status);
@@ -348,9 +372,15 @@ export default function MyAccountPage() {
       // カスタム期間の場合、APIにstart_dateとend_dateを渡す必要があるかもしれません
       // 現在のAPIが期間のみをサポートしている場合は、最も近い事前定義期間を使用
       setReportPeriod(period);
-      fetchApiData(period, activeAccount.openId);
+      fetchApiData(period, activeAccount.openId, videoLimit);
     }
   }, [connected, dateRange, activeAccount]);
+
+  useEffect(() => {
+    if (connected && activeAccount) {
+      fetchApiData(reportPeriod, activeAccount.openId, videoLimit);
+    }
+  }, [videoLimit]);
 
   // 日付範囲変更ハンドラー
   const handleDateRangeChange = (newDateRange: { start: Date; end: Date }) => {
@@ -939,24 +969,38 @@ export default function MyAccountPage() {
                     {formatDateRange()}
                   </span>
                 </h2>
-                <div className="text-sm text-gray-400 mt-2 sm:mt-0 flex items-center">
-                  ソート: 
-                  <select
-                    value={sortField}
-                    onChange={handleSortSelect}
-                    className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
-                  >
-                    {sortOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
-                    className="ml-2 px-2 py-1 rounded-md bg-gray-700 text-white text-xs border border-gray-600"
-                    title="ソート方向切替"
-                  >
-                    {sortDirection === 'desc' ? '↓' : '↑'}
-                  </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center mt-4 sm:mt-0">
+                  <div className="text-sm text-gray-400 flex items-center">
+                    表示件数:
+                    <select
+                      value={videoLimit}
+                      onChange={(e) => setVideoLimit(Number(e.target.value))}
+                      className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
+                    >
+                      {videoLimitOptions.map((option) => (
+                        <option key={option} value={option}>{option}件</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-sm text-gray-400 flex items-center">
+                    ソート:
+                    <select
+                      value={sortField}
+                      onChange={handleSortSelect}
+                      className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
+                    >
+                      {sortOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
+                      className="ml-2 px-2 py-1 rounded-md bg-gray-700 text-white text-xs border border-gray-600"
+                      title="ソート順の切り替え"
+                    >
+                      {sortDirection === 'desc' ? '降' : '昇'}
+                    </button>
+                  </div>
                 </div>
               </div>
               
@@ -1001,11 +1045,12 @@ export default function MyAccountPage() {
                           <td className="px-6 py-4">
                             {video.thumbnailUrl ? (
                               <Image
-                                src={video.thumbnailUrl.url ?? ""}
+                                src={video.thumbnailUrl.url ?? ''}
                                 alt={video.title}
                                 width={80}
                                 height={45}
                                 className="rounded-md object-cover"
+                                unoptimized
                               />
                             ) : (
                               <div className="w-20 h-12 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
