@@ -33,6 +33,9 @@ export default function MyAccountPage() {
   const [videoLimit, setVideoLimit] = useState<number>(100);
   const videoLimitOptions = [50, 100, 150, 200, 250, 300];
   
+  const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<TikTokAccount | null>(null);
+
   // 日付選択用の状態
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30日前
@@ -63,22 +66,22 @@ export default function MyAccountPage() {
   const authorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
 
   // 連携済みアカウント一覧を取得する関数
-  const fetchConnectedAccounts = async () => {
+  const fetchConnectedAccounts = async (): Promise<TikTokAccount | null> => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
-        return;
+        return null;
       }
-      
+
       // TikTok連携状態を確認
       const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) {
         let errorDetail = '';
         try {
@@ -88,12 +91,12 @@ export default function MyAccountPage() {
           errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
         console.error(`[ERROR] TikTok連携状態取得エラー詳細: ${errorDetail}`);
-        return;
+        return null;
       }
-      
+
       const statusData = await response.json();
       console.log('[INFO] 取得したTikTok連携状態:', statusData);
-      
+
       if (statusData.connected && statusData.account) {
         // アカウント情報を設定
         const account = {
@@ -102,24 +105,33 @@ export default function MyAccountPage() {
           displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
           linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
         };
-        
+
         console.log('[INFO] アカウント情報:', account);
         setAccounts([account]);
         setActiveAccount(account);
         setConnected(true);
-        
+
         // アカウントの統計データと動画データを取得
         await fetchApiData(reportPeriod, account.openId, videoLimit);
-      } else {
-        setConnected(false);
+        return account;
       }
+
+      setAccounts([]);
+      setActiveAccount(null);
+      setConnected(false);
+      setStats(null);
+      setVideos([]);
+      return null;
     } catch (err) {
       console.error('[ERROR] TikTok連携状態取得エラー:', err);
+      return null;
     } finally {
       setIsLoading(false);
     }
   };
 
+  // アカウントを切り替える関数
+  
   // アカウントを切り替える関数
   const handleAccountChange = async (account: TikTokAccount) => {
     setIsLoading(true);
@@ -132,33 +144,51 @@ export default function MyAccountPage() {
   const handleConnect = async (e: React.MouseEvent) => {
     e.preventDefault();
 
-    // すでに連携済みなら最新状態を再取得
-    if (connected) {
-      setIsLoading(true);
-      await fetchConnectedAccounts();
-      setIsLoading(false);
+    if (isLoading) {
       return;
     }
 
-    // 認可URLをバックエンドから取得して遷移（ユーザーを確実にひも付け）
     const token = localStorage.getItem('auth_token');
     if (!token) {
       setError('認証情報がありません。再ログインしてください。');
       return;
     }
-    setIsLoading(true);
-    const res = await fetch(`${API_BASE_URL}/api/auth/tiktok/auth-url`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) {
-      setIsLoading(false);
-      setError('認可URLの取得に失敗しました');
-      return;
+
+    if (connected) {
+      const proceed = confirm('すでにTikTokと連携済みです。別のアカウントを追加しますか？');
+      if (!proceed) {
+        return;
+      }
     }
-    const { auth_url } = await res.json();
-    window.location.href = auth_url;
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/tiktok/auth-url`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        let errorDetail = '';
+        try {
+          const errorData = await res.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (err) {
+          errorDetail = await res.text() || `ステータスコード: ${res.status}`;
+        }
+        throw new Error(`認可URLの取得に失敗しました: ${res.status} - ${errorDetail}`);
+      }
+
+      const { auth_url } = await res.json();
+      window.location.href = auth_url;
+    } catch (err) {
+      console.error('[ERROR] OAuth遷移エラー:', err);
+      setError('TikTok連携画面への遷移に失敗しました。しばらく待ってからもう一度お試しください。');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
+  // バックエンドAPIからデータを取得する関数
   // バックエンドAPIからデータを取得する関数
   const fetchApiData = async (period: string = reportPeriod, openId?: string, limit: number = videoLimit) => {
     setIsLoading(true);
@@ -388,29 +418,22 @@ export default function MyAccountPage() {
   };
 
   // 連携を解除する関数
-  const handleDisconnect = async () => {
-    if (!activeAccount) return;
-    
-    if (!confirm(`本当に「${activeAccount.displayName}」アカウントとの連携を解除しますか？`)) {
-      return;
-    }
-
+  const disconnectAccount = async (account: TikTokAccount): Promise<boolean> => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
-        return;
+        return false;
       }
 
-      // TikTok連携解除APIを呼び出す
       const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/disconnect`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ openId: activeAccount.openId })
+        body: JSON.stringify({ openId: account.openId })
       });
 
       if (!response.ok) {
@@ -421,30 +444,48 @@ export default function MyAccountPage() {
         } catch (e) {
           errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
-        throw new Error(`連携解除に失敗しました: ${response.status} - ${errorDetail}`);
+        throw new Error(`アカウント解除に失敗しました: ${response.status} - ${errorDetail}`);
       }
 
-      // 連携済みアカウント一覧を再取得
-      await fetchConnectedAccounts();
-      
-      // アカウントが残っていなければ、連携解除状態にする
-      if (accounts.length <= 1) {
-        setConnected(false);
+      const latestAccount = await fetchConnectedAccounts();
+
+      if (!latestAccount) {
         setActiveAccount(null);
         setStats(null);
         setVideos([]);
       }
-      
+
       setError(null);
+      return true;
     } catch (err) {
       console.error('[ERROR] TikTok連携解除エラー:', err);
       setError(err instanceof Error ? err.message : '連携解除に失敗しました。再度お試しください。');
+      return false;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // レポートをダウンロードする関数
+  const handleDisconnectClick = () => {
+    if (!activeAccount) return;
+    setDisconnectTarget(activeAccount);
+    setIsDisconnectModalOpen(true);
+  };
+
+  const handleCancelDisconnect = () => {
+    setIsDisconnectModalOpen(false);
+    setDisconnectTarget(null);
+  };
+
+  const handleConfirmDisconnect = async () => {
+    if (!disconnectTarget) return;
+    const succeeded = await disconnectAccount(disconnectTarget);
+    if (succeeded) {
+      setIsDisconnectModalOpen(false);
+      setDisconnectTarget(null);
+    }
+  };
+
   const handleDownloadReport = async () => {
     if (!activeAccount) return;
     
@@ -586,6 +627,43 @@ export default function MyAccountPage() {
     sixSecondRate: 0,
     fullViewRate: 0
   });
+
+  // 連携解除確認用モーダル
+  const DisconnectConfirmModal = ({ isOpen, onClose, onConfirm, accountName }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    accountName?: string | null;
+  }) => {
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="bg-[#1a1a1a] rounded-lg p-6 w-full max-w-md border border-gray-800 shadow-xl">
+          <h3 className="text-lg font-semibold text-white mb-3">連携を解除しますか？</h3>
+          <p className="text-gray-300 text-sm leading-relaxed mb-1">
+            {accountName ? `「${accountName}」との連携を解除すると、これまで取得したデータもすべて削除されます。` : '連携を解除すると、これまで取得したデータもすべて削除されます。'}
+          </p>
+          <p className="text-gray-500 text-xs">※ この操作は取り消せません。</p>
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-500 transition-colors"
+              disabled={isLoading}
+            >
+              連携を解除する
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // モーダルコンポーネント
   const ViewRateModal = ({ isOpen, onClose, video, onSave }: {
@@ -782,7 +860,7 @@ export default function MyAccountPage() {
                   {isLoading ? '処理中...' : '別アカウントを追加'}
                 </button>
                 <button
-                  onClick={handleDisconnect}
+                  onClick={handleDisconnectClick}
                   className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
                   disabled={isLoading || !activeAccount}
                 >
@@ -1108,6 +1186,13 @@ export default function MyAccountPage() {
       )}
 
       {/* モーダルコンポーネント */}
+      <DisconnectConfirmModal
+        isOpen={isDisconnectModalOpen}
+        onClose={handleCancelDisconnect}
+        onConfirm={handleConfirmDisconnect}
+        accountName={disconnectTarget?.displayName}
+      />
+
       <ViewRateModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
