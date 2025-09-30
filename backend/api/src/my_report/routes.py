@@ -92,6 +92,7 @@ async def disconnect_tiktok_account(
 @router.get("/stats")
 async def get_tiktok_stats(
     period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
+    open_id: Optional[str] = Query(None, alias="open_id"),
     user = Depends(get_current_user)
 ):
     """TikTok統計情報を取得します"""
@@ -107,7 +108,10 @@ async def get_tiktok_stats(
     try:
         print(f"[DEBUG] TikTok連携情報取得開始: user_id={user.id}")
         # データベースからTikTokアクセストークンを取得
-        tiktok_connection = await tiktok_repository.get_user_connection(user.id)
+        if open_id:
+            tiktok_connection = await tiktok_repository.get_user_connection_by_open_id(user.id, open_id)
+        else:
+            tiktok_connection = await tiktok_repository.get_user_connection(user.id)
         
         print(f"[DEBUG] TikTok連携情報取得結果: {tiktok_connection}")
         
@@ -278,6 +282,7 @@ async def get_tiktok_stats(
 async def get_tiktok_videos(
     period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
     limit: int = Query(100, ge=1, le=300, description="取得する動画数"),
+    open_id: Optional[str] = Query(None, alias="open_id"),
     user = Depends(get_current_user)
 ):
     """
@@ -288,7 +293,10 @@ async def get_tiktok_videos(
     
     try:
         # データベースからTikTokアクセストークンを取得
-        tiktok_connection = await tiktok_repository.get_user_connection(user.id)
+        if open_id:
+            tiktok_connection = await tiktok_repository.get_user_connection_by_open_id(user.id, open_id)
+        else:
+            tiktok_connection = await tiktok_repository.get_user_connection(user.id)
         
         if not tiktok_connection:
             raise HTTPException(status_code=404, detail="TikTokとの連携が見つかりません")
@@ -423,8 +431,8 @@ async def generate_report(
             raise HTTPException(status_code=404, detail="TikTokとの連携が見つかりません")
         
         # 統計データと動画リストを取得
-        stats = await get_tiktok_stats(period, user)
-        videos = await get_tiktok_videos(period, user)
+        stats = await get_tiktok_stats(period, user=user)
+        videos = await get_tiktok_videos(period, user=user)
         
         # PDF生成処理（実装例）
         try:

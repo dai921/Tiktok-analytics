@@ -1,5 +1,5 @@
 from src.db.database import get_db_connection
-from typing import Optional
+from typing import Optional, List
 import logging
 from sqlalchemy.sql import text
 from src.utils.encryption import encrypt_data, decrypt_data
@@ -72,16 +72,15 @@ class TikTokRepository:
             if conn:
                 conn.close()
 
-    async def get_user_connection(self, user_id: int) -> Optional[TikTokUserConnection]:
-        """ユーザーのTikTok連携情報を取得する"""
-        print(f"[DEBUG] get_user_connection 呼び出し: user_id={user_id}")
+    async def list_user_connections(self, user_id: int) -> List[TikTokUserConnection]:
+        """ユーザーに紐づく全てのTikTok連携情報を取得する"""
+        print(f"[DEBUG] list_user_connections 呼び出し: user_id={user_id}")
+        connections: List[TikTokUserConnection] = []
         conn = None
         try:
             user_number = await self.get_user_id_mapping(user_id)
             if not user_number:
-                return None
-
-            print(f"[DEBUG] ユーザーマッピング: user_id={user_id} -> user_number={user_number}")
+                return []
 
             conn = get_db_connection()
             query = text(
@@ -95,44 +94,116 @@ class TikTokRepository:
                     display_name,
                     linked_at,
                     account_type,
-                    mainly_video_type
+                    mainly_video_type,
+                    NULL AS created_at,
+                    NULL AS updated_at
                 FROM users_tiktok_accounts
                 WHERE user_number = :user_number
-                ORDER BY linked_at DESC
+                ORDER BY linked_at DESC, open_id DESC
+                """
+            )
+            print(f"[DEBUG] list_user_connections SQL実行: {query.text.strip()} [params: {user_number}]")
+            rows = conn.execute(query, {"user_number": user_number}).mappings().all()
+
+            for row in rows:
+                decrypted_access = (
+                    decrypt_data(row.get("access_token")) if row.get("access_token") else None
+                )
+                decrypted_refresh = (
+                    decrypt_data(row.get("refresh_token")) if row.get("refresh_token") else None
+                )
+
+                connections.append(
+                    TikTokUserConnection(
+                        id=None,
+                        user_id=user_id,
+                        user_number=user_number,
+                        tiktok_open_id=row.get("open_id"),
+                        tiktok_access_token=decrypted_access,
+                        tiktok_refresh_token=decrypted_refresh,
+                        expires_at=row.get("expires_at"),
+                        display_name=row.get("display_name"),
+                        linked_at=row.get("linked_at"),
+                        created_at=row.get("created_at"),
+                        updated_at=row.get("updated_at"),
+                        account_type=row.get("account_type"),
+                        mainly_video_type=row.get("mainly_video_type"),
+                    )
+                )
+
+            return connections
+        except Exception as e:
+            print(f"[ERROR] list_user_connections 例外: {str(e)}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    async def get_user_connection(self, user_id: int) -> Optional[TikTokUserConnection]:
+        """ユーザーのTikTokアカウント連携情報を1件取得する"""
+        print(f"[DEBUG] get_user_connection 呼び出し: user_id={user_id}")
+        connections = await self.list_user_connections(user_id)
+        if not connections:
+            print(f"[WARNING] ユーザーID {user_id} の連携情報が見つかりません")
+            return None
+        return connections[0]
+
+    async def get_user_connection_by_open_id(self, user_id: int, open_id: str) -> Optional[TikTokUserConnection]:
+        """ユーザーIDとopen_idを指定してTikTok連携情報を取得する"""
+        print(f"[DEBUG] get_user_connection_by_open_id 呼び出し: user_id={user_id}, open_id={open_id}")
+        conn = None
+        try:
+            user_number = await self.get_user_id_mapping(user_id)
+            if not user_number:
+                return None
+
+            conn = get_db_connection()
+            query = text(
+                """
+                SELECT
+                    user_number,
+                    open_id,
+                    access_token,
+                    refresh_token,
+                    expires_at,
+                    display_name,
+                    linked_at,
+                    account_type,
+                    mainly_video_type,
+                    NULL AS created_at,
+                    NULL AS updated_at
+                FROM users_tiktok_accounts
+                WHERE user_number = :user_number AND open_id = :open_id
                 LIMIT 1
                 """
             )
-            print(f"[DEBUG] SQL実行: {query.text.strip()} [params: {user_number}]")
-            result = conn.execute(query, {"user_number": user_number}).mappings().first()
-            print(f"[DEBUG] 取得結果: {result}")
+            print(f"[DEBUG] get_user_connection_by_open_id SQL実行: {query.text.strip()} [params: user_number={user_number}, open_id={open_id}]")
+            row = conn.execute(query, {"user_number": user_number, "open_id": open_id}).mappings().first()
 
-            if not result:
-                print(f"[WARNING] ユーザー番号 {user_number} の連携情報が見つかりません")
+            if not row:
+                print(f"[WARNING] ユーザー番号 {user_number} / open_id {open_id} の連携情報が見つかりません")
                 return None
 
-            decrypted_access = (
-                decrypt_data(result.get("access_token")) if result.get("access_token") else None
-            )
-            decrypted_refresh = (
-                decrypt_data(result.get("refresh_token")) if result.get("refresh_token") else None
-            )
+            decrypted_access = decrypt_data(row.get("access_token")) if row.get("access_token") else None
+            decrypted_refresh = decrypt_data(row.get("refresh_token")) if row.get("refresh_token") else None
 
             return TikTokUserConnection(
                 id=None,
                 user_id=user_id,
                 user_number=user_number,
-                tiktok_open_id=result.get("open_id"),
+                tiktok_open_id=row.get("open_id"),
                 tiktok_access_token=decrypted_access,
                 tiktok_refresh_token=decrypted_refresh,
-                expires_at=result.get("expires_at"),
-                display_name=result.get("display_name"),
-                linked_at=result.get("linked_at"),
-                updated_at=None,
-                account_type=result.get("account_type"),
-                mainly_video_type=result.get("mainly_video_type"),
+                expires_at=row.get("expires_at"),
+                display_name=row.get("display_name"),
+                linked_at=row.get("linked_at"),
+                created_at=row.get("created_at"),
+                updated_at=row.get("updated_at"),
+                account_type=row.get("account_type"),
+                mainly_video_type=row.get("mainly_video_type"),
             )
         except Exception as e:
-            print(f"[ERROR] get_user_connection 例外: {str(e)}")
+            print(f"[ERROR] get_user_connection_by_open_id 例外: {str(e)}")
             raise
         finally:
             if conn:
@@ -315,3 +386,5 @@ class TikTokRepository:
         finally:
             if conn:
                 conn.close()
+
+

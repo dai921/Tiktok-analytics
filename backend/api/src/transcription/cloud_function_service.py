@@ -4,6 +4,7 @@ from src.utils.logger_config import setup_logger
 import datetime
 import json
 from google.cloud import pubsub_v1
+from typing import Optional
 
 logger = setup_logger()
 
@@ -19,7 +20,7 @@ class CloudFunctionService:
         if not self.transcription_function_url:
             logger.warning("TRANSCRIPTION_FUNCTION_URL環境変数が設定されていません")
     
-    async def start_transcription_job(self, video_id: str, url: str) -> bool:
+    async def start_transcription_job(self, video_id: str, url: str, user_number: Optional[int] = None) -> bool:
         """文字起こし用の動画ダウンロードジョブを開始"""
         try:
             # Pub/Subでメッセージを送信
@@ -27,6 +28,7 @@ class CloudFunctionService:
                 "url": url,
                 "video_id": video_id,
                 "type": "transcription",  # 文字起こし用であることを明示
+                "user_number": user_number,
             }
             
             # Pub/Subトピックに送信

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 import re
 import os
 from typing import Optional
@@ -8,6 +8,8 @@ from src.utils.logger_config import setup_logger
 from .models import TranscriptionRequest, JobResponse, TranscriptionResponse, JobStatus
 from .cloud_function_service import CloudFunctionService
 from .repositories import VideoTranscriptionRepository, TikTokUrlExtractor
+from src.auth.router import get_current_user
+from src.auth.models import User
 
 # ロガーのセットアップ
 logger = setup_logger()
@@ -29,11 +31,17 @@ def get_cloud_function_service():
     return cloud_function_service
 
 @router.post("/start", response_model=JobResponse)
-async def start_transcription(request: TranscriptionRequest):
+async def start_transcription(
+    request: TranscriptionRequest,
+    current_user: User = Depends(get_current_user),
+):
     """文字起こし処理を開始"""
+    return await _start_transcription_impl(request.url, current_user)
+
+
+async def _start_transcription_impl(url: str, current_user: User) -> JobResponse:
     try:
-        url = request.url
-        logger.info(f"文字起こしリクエスト: URL={url}")
+        logger.info(f"文字起こしリクエスト: URL={url}, user_number={current_user.user_number}")
         
         # カルーセル（画像スライドショー）のチェック - 短縮URLにも対応
         if TikTokUrlExtractor.is_carousel_or_photo_url(url):
@@ -75,12 +83,12 @@ async def start_transcription(request: TranscriptionRequest):
             )
         else:
             # 新規処理: Cloud Functionを直接呼び出し
-            logger.info(f"新規文字起こし処理を開始: video_id={video_id}")
+            logger.info(f"新規文字起こし処理を開始: video_id={video_id}, user_number={current_user.user_number}")
             
             cf_service = get_cloud_function_service()
             
-            # Cloud Function呼び出し
-            success = await cf_service.start_transcription_job(video_id, url)
+            # Cloud Function呼び出し（user_numberを付与）
+            success = await cf_service.start_transcription_job(video_id, url, user_number=current_user.user_number)
             
             if success:
                 return JobResponse(
@@ -146,12 +154,15 @@ async def get_transcription_result(video_id: str):
 
 # 既存のエンドポイント（後方互換性のため残しておく）
 @router.post("")
-async def transcribe_video_legacy(request: TranscriptionRequest):
+async def transcribe_video_legacy(
+    request: TranscriptionRequest,
+    current_user: User = Depends(get_current_user),
+):
     """レガシーエンドポイント（後方互換性）"""
     logger.warning("レガシーエンドポイントが使用されました。/startエンドポイントの使用を推奨します。")
     
     # 新しいエンドポイントにリダイレクト
-    job_response = await start_transcription(request)
+    job_response = await _start_transcription_impl(request.url, current_user)
     
     if job_response.success:
         if job_response.status == JobStatus.COMPLETED:
