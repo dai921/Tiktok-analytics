@@ -234,25 +234,27 @@ class VideoTranscriptionRepository:
         return fetch_one(query, {"video_id": video_id})
     
     @staticmethod
-    def save_video_file_path(video_id: str, file_path: str):
-        """動画ファイルパスをテーブルに保存（既存の場合は更新）"""
+    def save_video_file_path(video_id: str, file_path: str, user_number: Optional[int] = None):
+        """動画ファイルパスをテーブルに保存（既存の場合は更新）
+        初回のみ user_number を記録し、既存に値がある場合は上書きしない
+        """
         # まず既存のレコードをチェック
         existing = VideoTranscriptionRepository.find_transcription_by_video_id(video_id)
         
         if existing:
             # 既存の場合はfile_pathのみ更新
             execute_update(
-                "UPDATE video_transcription SET file_path = :file_path WHERE video_id = :video_id",
-                {"video_id": video_id, "file_path": file_path}
+                "UPDATE video_transcription SET file_path = :file_path, user_number = COALESCE(user_number, :user_number) WHERE video_id = :video_id",
+                {"video_id": video_id, "file_path": file_path, "user_number": user_number}
             )
             logger.info(f"既存のレコードを更新: video_id={video_id}")
         else:
             # 新規の場合はINSERT
             execute_update(
-                "INSERT INTO video_transcription (video_id, file_path, transcription) VALUES (:video_id, :file_path, '')",
-                {"video_id": video_id, "file_path": file_path}
+                "INSERT INTO video_transcription (video_id, file_path, transcription, user_number) VALUES (:video_id, :file_path, '', :user_number)",
+                {"video_id": video_id, "file_path": file_path, "user_number": user_number}
             )
-            logger.info(f"新規レコードを挿入: video_id={video_id}")
+            logger.info(f"新規レコードを挿入: video_id={video_id}, user_number={user_number}")
 
     @staticmethod
     def get_video_file_path(video_id: str) -> Optional[str]:
@@ -328,7 +330,7 @@ class VideoStorageService:
             self.video_downloader = TikTokVideoDownloader()
         return self.video_downloader
     
-    def download_and_store_video(self, url: str, video_id: str) -> str:
+    def download_and_store_video(self, url: str, video_id: str, user_number: Optional[int] = None) -> str:
         """動画をダウンロードしてCloud Storageに保存"""
         video_path = None
         
@@ -342,7 +344,7 @@ class VideoStorageService:
             storage_url = storage_manager.upload_video(video_path, video_id)
             
             # 3. テーブルにvideo_idとfile_pathを保存
-            VideoTranscriptionRepository.save_video_file_path(video_id, storage_url)
+            VideoTranscriptionRepository.save_video_file_path(video_id, storage_url, user_number)
             
             logger.info(f"動画保存・テーブル格納完了: video_id={video_id}, url={storage_url}")
             return storage_url
@@ -393,13 +395,14 @@ def download_tiktok_video(event, context):
         url = request_data.get("url")
         video_id = request_data.get("video_id")
         message_type = request_data.get("type") 
+        user_number = request_data.get("user_number")
         
         if not url or not video_id:
             error_msg = "urlとvideo_idは必須です"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
         
-        logger.info(f"動画ダウンロード開始: video_id={video_id}, url={url}, type={message_type}")
+        logger.info(f"動画ダウンロード開始: video_id={video_id}, url={url}, type={message_type}, user_number={user_number}")
         
         # カルーセル（画像）チェック
         if "photo" in url:
@@ -409,7 +412,7 @@ def download_tiktok_video(event, context):
         
         # 1. 動画保存処理
         storage_service = VideoStorageService()
-        storage_url = storage_service.download_and_store_video(url, video_id)
+        storage_url = storage_service.download_and_store_video(url, video_id, user_number)
 
         # 2. 文字起こしタスクをPub/Subに送信（typeも含める）
         transcription_result = publish_transcription_task(video_id, storage_url, message_type)

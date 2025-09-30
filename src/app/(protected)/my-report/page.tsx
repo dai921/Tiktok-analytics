@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, ChangeEvent } from "react";
 import { TikTokStats, TikTokVideo } from "@/types/my-report";
 import Image from "next/image";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -14,6 +14,8 @@ interface TikTokAccount {
   openId: string;
   displayName: string;
   linkedAt: string;
+  accountType?: string;
+  mainlyVideoType?: string;
 }
 
 export default function MyAccountPage() {
@@ -65,17 +67,29 @@ export default function MyAccountPage() {
   });
   const authorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
 
+  const mapAccountResponse = (account: any): TikTokAccount => ({
+    id: account?.id || account?.openId || account?.open_id || '1',
+    openId: account?.openId || account?.open_id || 'unknown',
+    displayName: account?.displayName || account?.display_name || 'TikTokアカウント',
+    linkedAt: account?.linkedAt || account?.linked_at || new Date().toISOString(),
+    accountType: account?.accountType || account?.account_type,
+    mainlyVideoType: account?.mainlyVideoType || account?.mainly_video_type,
+  });
+
   // 連携済みアカウント一覧を取得する関数
-  const fetchConnectedAccounts = async (): Promise<TikTokAccount | null> => {
-    setIsLoading(true);
+  const fetchConnectedAccounts = async (): Promise<void> => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
-        return null;
+        setAccounts([]);
+        setActiveAccount(null);
+        setConnected(false);
+        setStats(null);
+        setVideos([]);
+        return;
       }
 
-      // TikTok連携状態を確認
       const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -91,53 +105,57 @@ export default function MyAccountPage() {
           errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
         console.error(`[ERROR] TikTok連携状態取得エラー詳細: ${errorDetail}`);
-        return null;
+        setError('TikTok連携状態の取得に失敗しました。再度お試しください。');
+        return;
       }
 
       const statusData = await response.json();
       console.log('[INFO] 取得したTikTok連携状態:', statusData);
 
-      if (statusData.connected && statusData.account) {
-        // アカウント情報を設定
-        const account = {
-          id: statusData.account.id || '1',
-          openId: statusData.account.openId || statusData.account.open_id || 'unknown',
-          displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
-          linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
-        };
+      const rawAccounts: any[] = Array.isArray(statusData.accounts)
+        ? statusData.accounts
+        : statusData.account
+          ? [statusData.account]
+          : [];
 
-        console.log('[INFO] アカウント情報:', account);
-        setAccounts([account]);
-        setActiveAccount(account);
-        setConnected(true);
+      const accountsData: TikTokAccount[] = rawAccounts.map(mapAccountResponse);
+      setAccounts(accountsData);
+      setConnected(accountsData.length > 0);
 
-        // アカウントの統計データと動画データを取得
-        await fetchApiData(reportPeriod, account.openId, videoLimit);
-        return account;
+      if (accountsData.length === 0) {
+        setActiveAccount(null);
+        setStats(null);
+        setVideos([]);
+        return;
       }
 
-      setAccounts([]);
-      setActiveAccount(null);
-      setConnected(false);
-      setStats(null);
-      setVideos([]);
-      return null;
+      setActiveAccount((prev) => {
+        if (prev) {
+          const preserved = accountsData.find((account) => account.openId === prev.openId);
+          if (preserved) {
+            return preserved;
+          }
+        }
+        return accountsData[0];
+      });
+      setError(null);
     } catch (err) {
       console.error('[ERROR] TikTok連携状態取得エラー:', err);
-      return null;
-    } finally {
-      setIsLoading(false);
+      setError('TikTok連携状態の取得に失敗しました。再度お試しください。');
     }
   };
 
   // アカウントを切り替える関数
-  
-  // アカウントを切り替える関数
-  const handleAccountChange = async (account: TikTokAccount) => {
-    setIsLoading(true);
+  const handleAccountChange = (account: TikTokAccount) => {
     setActiveAccount(account);
-    await fetchApiData(reportPeriod, account.openId, videoLimit);
-    setIsLoading(false);
+  };
+
+  const handleAccountSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const openId = event.target.value;
+    const account = accounts.find((item) => item.openId === openId);
+    if (account) {
+      handleAccountChange(account);
+    }
   };
 
   // TikTokと連携する関数
@@ -167,17 +185,17 @@ export default function MyAccountPage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
+
       if (!res.ok) {
         let errorDetail = '';
         try {
           const errorData = await res.json();
           errorDetail = JSON.stringify(errorData);
-        } catch (err) {
+        } catch (e) {
           errorDetail = await res.text() || `ステータスコード: ${res.status}`;
         }
         throw new Error(`認可URLの取得に失敗しました: ${res.status} - ${errorDetail}`);
       }
-
       const { auth_url } = await res.json();
       window.location.href = auth_url;
     } catch (err) {
@@ -306,7 +324,6 @@ export default function MyAccountPage() {
       
       setStats(statsData);
       setVideos(videosWithObjThumbnail);
-      
     } catch (err) {
       console.error('[ERROR] APIデータ取得エラー:', err);
       setError(err instanceof Error ? err.message : 'データの取得に失敗しました。再度お試しください。');
@@ -319,46 +336,16 @@ export default function MyAccountPage() {
   useEffect(() => {
     // 初期表示時にデータ取得を実行
     const initializeData = async () => {
+      setIsLoading(true);
       try {
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
-          console.warn('[WARN] 認証トークンがありません');
-          return;
-        }
-        
-        // TikTok連携状態を確認
-        const statusResponse = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-          console.log('[INFO] TikTok連携状態:', statusData);
-          
-          if (statusData.connected && statusData.account) {
-            // アカウント情報を設定
-            const account = {
-              id: statusData.account.id || '1',
-              openId: statusData.account.openId || statusData.account.open_id || 'unknown',
-              displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
-              linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
-            };
-            
-            setAccounts([account]);
-            setActiveAccount(account);
-            setConnected(true);
-            
-            // アカウントの統計データと動画データを取得
-            await fetchApiData(reportPeriod, account.openId, videoLimit);
-          }
-        } else {
-          console.warn('[WARN] TikTok連携状態取得エラー:', statusResponse.status);
-        }
+        await fetchConnectedAccounts();
       } catch (err) {
         console.error('[ERROR] 初期化エラー:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
-    
+
     // URLクエリパラメータからtiktok_connectedを確認
     const params = new URLSearchParams(window.location.search);
     const tiktokConnected = params.get('tiktok_connected');
@@ -444,15 +431,34 @@ export default function MyAccountPage() {
         } catch (e) {
           errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
-        throw new Error(`アカウント解除に失敗しました: ${response.status} - ${errorDetail}`);
+        throw new Error(`アカウント連携解除に失敗しました: ${response.status} - ${errorDetail}`);
       }
 
-      const latestAccount = await fetchConnectedAccounts();
+      let handled = false;
+      try {
+        const result = await response.json();
+        if (result && Array.isArray(result.accounts)) {
+          const normalized = result.accounts.map(mapAccountResponse);
+          setAccounts(normalized);
+          setConnected(normalized.length > 0);
 
-      if (!latestAccount) {
-        setActiveAccount(null);
-        setStats(null);
-        setVideos([]);
+          if (normalized.length === 0) {
+            setActiveAccount(null);
+            setStats(null);
+            setVideos([]);
+          } else {
+            const nextActive = normalized.find((item) => item.openId === activeAccount?.openId && item.openId !== account.openId)
+              || normalized[0];
+            setActiveAccount(nextActive);
+          }
+          handled = true;
+        }
+      } catch (parseError) {
+        console.warn('[WARN] disconnect response parse failed:', parseError);
+      }
+
+      if (!handled) {
+        await fetchConnectedAccounts();
       }
 
       setError(null);
@@ -794,7 +800,6 @@ export default function MyAccountPage() {
           ? { ...video, viewRates: rates }
           : video
       ));
-
     } catch (err) {
       console.error('[ERROR] 視聴率データ保存エラー:', err);
       setError(err instanceof Error ? err.message : '視聴率データの保存に失敗しました');
@@ -851,6 +856,24 @@ export default function MyAccountPage() {
                   </span>
                 )}
               </p>
+
+              {accounts.length > 1 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-3 space-y-2 sm:space-y-0">
+                  <span className="text-sm text-gray-400">表示するアカウント</span>
+                  <select
+                    value={activeAccount?.openId ?? ''}
+                    onChange={handleAccountSelectChange}
+                    className="bg-gray-800 border border-gray-700 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FE2C55]"
+                  >
+                    {accounts.map((accountItem) => (
+                      <option key={accountItem.openId} value={accountItem.openId}>
+                        {accountItem.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={handleConnect}
@@ -966,6 +989,7 @@ export default function MyAccountPage() {
                       <p className="text-sm text-green-400 mt-1">
                         +{formatNumber(stats.followerGrowth)} <span className="text-gray-500 text-xs">期間内</span>
                       </p>
+
                     )}
                   </>
                 )}
@@ -993,6 +1017,7 @@ export default function MyAccountPage() {
                       <p className="text-sm text-green-400 mt-1">
                         +{formatNumber(stats.viewGrowth)} <span className="text-gray-500 text-xs">期間内</span>
                       </p>
+
                     )}
                   </>
                 )}
@@ -1010,6 +1035,7 @@ export default function MyAccountPage() {
                       <p className="text-sm text-green-400 mt-1">
                         +{formatNumber(stats.likeGrowth)} <span className="text-gray-500 text-xs">期間内</span>
                       </p>
+
                     )}
                   </>
                 )}
