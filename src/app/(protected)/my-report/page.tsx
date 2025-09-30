@@ -301,10 +301,18 @@ export default function MyAccountPage() {
         return null;
       };
 
-      const videosWithObjThumbnail = videosData.map((video: any) => ({
-        ...video,
-        thumbnailUrl: normalizeThumbnail(video.thumbnailUrl),
-      }));
+      const videosWithObjThumbnail = videosData.map((video: any) => {
+        const rawThumbnail =
+          video?.thumbnailUrl ??
+          (video as Record<string, any>)?.thumbnail_url ??
+          (video as Record<string, any>)?.coverImageUrl ??
+          (video as Record<string, any>)?.cover_image_url;
+
+        return {
+          ...video,
+          thumbnailUrl: normalizeThumbnail(rawThumbnail),
+        };
+      });
       
       // 統計データを計算・拡張
       if (statsData && videosWithObjThumbnail && videosWithObjThumbnail.length > 0) {
@@ -1147,20 +1155,29 @@ export default function MyAccountPage() {
                             {formatDate(video.createTime)}
                           </td>
                           <td className="px-6 py-4">
-                            {video.thumbnailUrl ? (
-                              <Image
-                                src={video.thumbnailUrl.url ?? ''}
-                                alt={video.title}
-                                width={80}
-                                height={45}
-                                className="rounded-md object-cover"
-                                unoptimized
-                              />
-                            ) : (
-                              <div className="w-20 h-12 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
-                                <span className="text-xs">No Image</span>
-                              </div>
-                            )}
+                            {(() => {
+                              const thumbSrc = video.thumbnailUrl?.url;
+
+                              if (typeof thumbSrc === 'string' && thumbSrc.length > 0) {
+                                return (
+                                  <Image
+                                    src={thumbSrc}
+                                    alt={video.title}
+                                    width={80}
+                                    height={45}
+                                    className="rounded-md object-cover"
+                                    unoptimized
+                                    referrerPolicy="no-referrer"
+                                  />
+                                );
+                              }
+
+                              return (
+                                <div className="w-20 h-12 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
+                                  <span className="text-xs">No Image</span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-white font-medium">

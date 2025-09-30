@@ -51,12 +51,12 @@ class VideoTranscriptionRepository:
             logger.info(f"文字起こしデータ挿入: video_id={video_id}")
     
     @staticmethod
-    def save_video_file_path(video_id: str, file_path: str, user_number: Optional[int] = None):
+    def save_video_file_path(video_id: str, file_path: str, user_number: Optional[int] = None, account_name: Optional[str] = None):
         """動画ファイルパスをテーブルに保存（初回のみuser_numberを記録）"""
         execute_update(
-            "INSERT INTO video_transcription (video_id, file_path, transcription, user_number) VALUES (:video_id, :file_path, '', :user_number) "
-            "ON DUPLICATE KEY UPDATE file_path = VALUES(file_path), user_number = COALESCE(user_number, VALUES(user_number))",
-            {"video_id": video_id, "file_path": file_path, "user_number": user_number}
+            "INSERT INTO video_transcription (video_id, file_path, transcription, user_number, account_name) VALUES (:video_id, :file_path, '', :user_number, :account_name) "
+            "ON DUPLICATE KEY UPDATE file_path = VALUES(file_path), user_number = COALESCE(user_number, VALUES(user_number)), account_name = COALESCE(VALUES(account_name), account_name)",
+            {"video_id": video_id, "file_path": file_path, "user_number": user_number, "account_name": account_name}
         )
 
     @staticmethod
