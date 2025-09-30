@@ -29,30 +29,29 @@ async def get_tiktok_connection_status(user = Depends(get_current_user)):
         raise HTTPException(status_code=401, detail="認証が必要です")
     
     try:
-        print(f"[DEBUG] TikTok連携情報取得開始: user_id={user.id}")
-        # データベースからTikTokアカウント連携情報を取得
-        tiktok_connection = await tiktok_repository.get_user_connection(user.id)
-        
-        print(f"[DEBUG] TikTok連携情報取得結果: {tiktok_connection}")
-        
-        if not tiktok_connection:
+        print(f"[DEBUG] TikTokアカウント取得開始: user_id={user.id}")
+        connections = await tiktok_repository.list_user_connections(user.id)
+
+        if not connections:
             print(f"[INFO] TikTok連携情報が見つかりません: user_id={user.id}")
-            return {"connected": False}
-        
-        # 連携済みの場合はアカウント情報を返す
-        return {
-            "connected": True,
-            "account": {
-                "id": tiktok_connection.tiktok_open_id,
-                "openId": tiktok_connection.tiktok_open_id,
-                "displayName": tiktok_connection.display_name or "TikTokアカウント",
-                "linkedAt": tiktok_connection.linked_at.isoformat() if tiktok_connection.linked_at else datetime.now().isoformat(),
-                "accountType": tiktok_connection.account_type,
-                "mainlyVideoType": tiktok_connection.mainly_video_type,
+            return {"connected": False, "accounts": []}
+
+        def serialize_connection(connection: TikTokUserConnection) -> Dict[str, Any]:
+            return {
+                "id": connection.tiktok_open_id,
+                "openId": connection.tiktok_open_id,
+                "displayName": connection.display_name or "TikTokアカウント",
+                "linkedAt": connection.linked_at.isoformat() if connection.linked_at else datetime.now().isoformat(),
+                "accountType": connection.account_type,
+                "mainlyVideoType": connection.mainly_video_type,
             }
-        }
+
+        accounts_payload = [serialize_connection(conn) for conn in connections]
+        response: Dict[str, Any] = {"connected": True, "accounts": accounts_payload}
+        response["account"] = accounts_payload[0]
+        return response
     except Exception as e:
-        print(f"[ERROR] TikTok連携状態取得エラー: {str(e)}")
+        print(f"[ERROR] TikTokアカウント取得エラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"TikTok連携状態の取得に失敗しました: {str(e)}")
 
 @router.post("/connection/disconnect")
@@ -75,8 +74,6 @@ async def disconnect_tiktok_account(
             print("[ERROR] openIdが提供されていません")
             raise HTTPException(status_code=400, detail="openIdは必須です")
         
-        # リポジトリに連携解除メソッドが実装されていると仮定
-        # 実際の実装に合わせて修正が必要かもしれません
         success = await tiktok_repository.disconnect_user_account(user.id, open_id)
         
         if not success:
@@ -84,7 +81,24 @@ async def disconnect_tiktok_account(
             raise HTTPException(status_code=404, detail="指定されたアカウント連携が見つかりません")
         
         print(f"[DEBUG] TikTok連携解除成功: user_id={user.id}, open_id={open_id}")
-        return {"success": True, "message": "アカウント連携を解除しました"}
+        remaining_connections = await tiktok_repository.list_user_connections(user.id)
+        accounts_payload = [
+            {
+                "id": conn.tiktok_open_id,
+                "openId": conn.tiktok_open_id,
+                "displayName": conn.display_name or "TikTokアカウント",
+                "linkedAt": conn.linked_at.isoformat() if conn.linked_at else datetime.now().isoformat(),
+                "accountType": conn.account_type,
+                "mainlyVideoType": conn.mainly_video_type,
+            }
+            for conn in remaining_connections
+        ]
+        return {
+            "success": True,
+            "message": "アカウント連携を解除しました",
+            "connected": bool(remaining_connections),
+            "accounts": accounts_payload,
+        }
     except Exception as e:
         print(f"[ERROR] TikTok連携解除エラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"TikTok連携解除に失敗しました: {str(e)}")
