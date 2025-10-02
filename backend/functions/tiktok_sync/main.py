@@ -35,7 +35,7 @@ if str(API_SRC) not in sys.path:
 pymysql.install_as_MySQLdb()
 
 from src.my_report.repositories import TikTokRepository, TikTokUserConnection  # noqa: E402
-from src.my_report.tiktok_sync import sync_user_videos  # noqa: E402
+from src.my_report.tiktok_sync import refresh_tokens, sync_user_videos  # noqa: E402
 
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -173,5 +173,9 @@ def sync_tiktok_accounts(event: Optional[Dict[str, Any]], context: Any) -> None:
         # Allow manual invocation by passing a direct payload field.
         payload = event.get("payload", {}) or {}
 
-    logger.info("TikTok sync triggered. payload=%s", payload)
-    asyncio.run(_run_sync(payload))
+    logger.info('TikTok sync triggered. payload=%s', payload)
+    mode = (payload.get('mode') or 'sync').lower()
+    if mode == 'token_refresh':
+        asyncio.run(_run_token_refresh(payload))
+    else:
+        asyncio.run(_run_sync(payload))

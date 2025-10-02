@@ -404,6 +404,41 @@ class TikTokRepository:
             if conn:
                 conn.close()
 
+    async def upsert_token_record(self, user_id: int, access_token: Optional[str], refresh_token: Optional[str], expires_in: int, expires_at: str) -> None:
+        """Upsert tokens into tiktok_tokens for refresh flow."""
+        print(f"[DEBUG] upsert_token_record called: user_id={user_id}")
+        conn = None
+        try:
+            conn = get_db_connection()
+            query = text("""
+                INSERT INTO tiktok_tokens (user_id, access_token, refresh_token, expires_in, expires_at)
+                VALUES (:user_id, :access_token, :refresh_token, :expires_in, :expires_at)
+                ON DUPLICATE KEY UPDATE
+                    access_token = VALUES(access_token),
+                    refresh_token = VALUES(refresh_token),
+                    expires_in = VALUES(expires_in),
+                    expires_at = VALUES(expires_at),
+                    updated_at = NOW()
+            """)
+            params = {
+                "user_id": user_id,
+                "access_token": encrypt_data(access_token) if access_token else None,
+                "refresh_token": encrypt_data(refresh_token) if refresh_token else None,
+                "expires_in": expires_in,
+                "expires_at": expires_at,
+            }
+            print(f"[DEBUG] tiktok_tokens upsert SQL: {query.text.strip()}")
+            conn.execute(query, params)
+            conn.commit()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            print(f"[ERROR] upsert_token_record exception: {str(e)}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
     async def save_user_connection(self, connection: TikTokUserConnection) -> bool:
         """ユーザーのTikTok連携情報をusers_tiktok_accountsテーブルに保存する"""
         print(f"[DEBUG] save_user_connection 開始: user_id={connection.user_id}")

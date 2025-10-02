@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional
 
 import httpx
@@ -40,8 +41,104 @@ VIDEO_QUERY_FIELDS = [
 ]
 VIDEO_QUERY_CHUNK_SIZE = 20
 
+TOKEN_ENDPOINT = "https://open.tiktokapis.com/v2/oauth/token/"
+
 MAX_FETCH_COUNT = 300
 PAGE_SIZE = 20
+
+
+def _extract_token_payload(token_payload: Dict[str, object]) -> Dict[str, object]:
+    if not isinstance(token_payload, dict):
+        raise ValueError('TikTok token response is not a dict')
+
+    data = token_payload.get('data')
+    if isinstance(data, dict):
+        return data
+
+    if all(key in token_payload for key in ("access_token", "refresh_token")):
+        return token_payload
+
+    raise ValueError(f"TikTok token response missing expected fields: {token_payload}")
+
+
+async def _refresh_access_token(connection: TikTokUserConnection, repository: TikTokRepository) -> bool:
+    if not connection.tiktok_refresh_token:
+        logger.warning('Skipping token refresh: missing refresh token for user_id=%s open_id=%s', connection.user_id, connection.tiktok_open_id)
+        return False
+
+    client_key = os.getenv('TT_CLIENT_KEY')
+    client_secret = os.getenv('TT_CLIENT_SECRET')
+    if not client_key or not client_secret:
+        logger.error('TikTok client credentials are not configured. Cannot refresh tokens.')
+        return False
+
+    payload = {
+        'client_key': client_key,
+        'client_secret': client_secret,
+        'grant_type': 'refresh_token',
+        'refresh_token': connection.tiktok_refresh_token,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                TOKEN_ENDPOINT,
+                data=payload,
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            )
+            response.raise_for_status()
+            token_data = _extract_token_payload(response.json() or {})
+    except httpx.HTTPError as exc:
+        logger.exception('TikTok refresh_token request failed: user_id=%s open_id=%s error=%s', connection.user_id, connection.tiktok_open_id, exc)
+        return False
+    except ValueError as exc:
+        logger.exception('TikTok refresh_token response malformed: user_id=%s open_id=%s error=%s', connection.user_id, connection.tiktok_open_id, exc)
+        return False
+
+    access_token = token_data.get('access_token')
+    refresh_token = token_data.get('refresh_token') or connection.tiktok_refresh_token
+    expires_in = int(token_data.get('expires_in') or 0)
+    expires_at_dt = datetime.now(timezone.utc) + timedelta(seconds=expires_in) if expires_in else datetime.now(timezone.utc)
+    expires_at = expires_at_dt.astimezone(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M:%S')
+
+    updated = TikTokUserConnection(
+        id=None,
+        user_id=connection.user_id,
+        user_number=connection.user_number,
+        tiktok_open_id=connection.tiktok_open_id,
+        tiktok_access_token=access_token,
+        tiktok_refresh_token=refresh_token,
+        expires_at=expires_at,
+        display_name=connection.display_name,
+        linked_at=connection.linked_at,
+        account_type=connection.account_type,
+        mainly_video_type=connection.mainly_video_type,
+    )
+
+    try:
+        await repository.save_user_connection(updated)
+        await repository.upsert_token_record(connection.user_id, access_token, refresh_token, expires_in, expires_at)
+        logger.info('Refreshed TikTok token: user_id=%s open_id=%s', connection.user_id, connection.tiktok_open_id)
+        return True
+    except Exception as exc:
+        logger.exception('Failed to persist refreshed TikTok token: user_id=%s open_id=%s error=%s', connection.user_id, connection.tiktok_open_id, exc)
+        return False
+
+
+async def refresh_tokens(connections: List[TikTokUserConnection], repository: TikTokRepository) -> Dict[str, int]:
+    refreshed = 0
+    skipped = 0
+    for connection in connections:
+        success = await _refresh_access_token(connection, repository)
+        if success:
+            refreshed += 1
+        else:
+            skipped += 1
+
+    result = {'refreshed': refreshed, 'skipped': skipped, 'total': len(connections)}
+    logger.info('TikTok token refresh summary: %s', result)
+    return result
+
 
 
 async def _fetch_video_page(access_token: str, cursor: Optional[str]) -> Dict:
