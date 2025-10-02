@@ -72,6 +72,32 @@ class TikTokRepository:
             if conn:
                 conn.close()
 
+    async def get_user_id_by_number(self, user_number: int) -> Optional[int]:
+        """Retrieve user_id from users table by user_number."""
+        print(f"[DEBUG] get_user_id_by_number: user_number={user_number}")
+        conn = None
+        try:
+            conn = get_db_connection()
+            query = text(
+                """
+                SELECT id
+                FROM users
+                WHERE user_number = :user_number
+                LIMIT 1
+                """
+            )
+            row = conn.execute(query, {"user_number": user_number}).first()
+            if row:
+                return row[0]
+            print(f"[WARNING] user_number {user_number} not found in users table")
+            return None
+        except Exception as e:
+            print(f"[ERROR] get_user_id_by_number exception: {str(e)}")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
     async def list_user_connections(self, user_id: int) -> List[TikTokUserConnection]:
         """ユーザーに紐づく全てのTikTok連携情報を取得する"""
         print(f"[DEBUG] list_user_connections 呼び出し: user_id={user_id}")
@@ -148,24 +174,28 @@ class TikTokRepository:
             conn = get_db_connection()
             query = text("""
                 SELECT
-                    u.id AS user_id,
-                    uta.user_number,
-                    uta.open_id,
-                    uta.access_token,
-                    uta.refresh_token,
-                    uta.expires_at,
-                    uta.display_name,
-                    uta.linked_at,
-                    uta.account_type,
-                    uta.mainly_video_type
-                FROM users_tiktok_accounts AS uta
-                INNER JOIN users AS u ON u.user_number = uta.user_number
-                ORDER BY uta.linked_at DESC, uta.open_id DESC
+                    user_number,
+                    open_id,
+                    access_token,
+                    refresh_token,
+                    expires_at,
+                    display_name,
+                    linked_at,
+                    account_type,
+                    mainly_video_type
+                FROM users_tiktok_accounts
+                ORDER BY linked_at DESC, open_id DESC
             """)
             print(f"[DEBUG] list_all_connections SQL: {query.text.strip()}")
             rows = conn.execute(query).mappings().all()
 
             for row in rows:
+                user_number = row.get("user_number")
+                user_id = await self.get_user_id_by_number(user_number) if user_number is not None else None
+                if not user_id:
+                    print(f"[WARNING] Skipping TikTok connection due to missing user_id: user_number={user_number}")
+                    continue
+
                 decrypted_access = (
                     decrypt_data(row.get("access_token")) if row.get("access_token") else None
                 )
@@ -176,8 +206,8 @@ class TikTokRepository:
                 connections.append(
                     TikTokUserConnection(
                         id=None,
-                        user_id=row.get("user_id"),
-                        user_number=row.get("user_number"),
+                        user_id=user_id,
+                        user_number=user_number,
                         tiktok_open_id=row.get("open_id"),
                         tiktok_access_token=decrypted_access,
                         tiktok_refresh_token=decrypted_refresh,

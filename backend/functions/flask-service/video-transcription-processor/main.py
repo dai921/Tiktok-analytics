@@ -149,13 +149,13 @@ class GeminiTranscriptionService:
         if self.api_key:
             genai.configure(api_key=self.api_key)
         else:
-            logger.warning("GEMINI_API_KEY環境変数が設定されていません。文字起こし機能が動作しません。")
+            logger.warning("文字起こし用のAPI_KEY環境変数が設定されていません。文字起こし機能が動作しません。")
     
     async def generate_transcription(self, video_id: str, video_path: str) -> str:
         """GeminiモデルでTikTok動画の文字起こしを生成する"""
         try:
             if not self.api_key:
-                raise Exception("Gemini APIキーが設定されていません")
+                raise Exception("文字起こし用の APIキーが設定されていません")
             
             # 動画ファイルを読み込み
             with open(video_path, 'rb') as f:
@@ -193,7 +193,7 @@ class GeminiTranscriptionService:
             return transcription
             
         except Exception as e:
-            logger.error(f"Geminiによる文字起こし生成エラー: {str(e)}")
+            logger.error(f"文字起こし生成エラー: {str(e)}")
             logger.error(traceback.format_exc())
             raise Exception(f"文字起こし生成中にエラーが発生しました: {str(e)}")
     
@@ -327,7 +327,7 @@ async def analyze_product_content(video_path: str) -> dict:
     # Gemini APIの初期化
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        logger.error("GEMINI_API_KEYが設定されていません")
+        logger.error("文字起こし用の_API_KEYが設定されていません")
         return {
             "is_product": False,
             "confidence": 0.0,
@@ -350,7 +350,7 @@ async def analyze_product_content(video_path: str) -> dict:
             {"mime_type": "video/mp4", "data": video_bytes}
         ])
     else:
-        logger.info("動画ファイルが存在しないためGemini呼び出しをスキップ")
+        logger.info("動画ファイルが存在しないため文字起こし呼び出しをスキップ")
         return {
             "is_product": False,
             "confidence": 0.0,
@@ -362,13 +362,13 @@ async def analyze_product_content(video_path: str) -> dict:
     product_name = ""
     if response is not None:
         if hasattr(response, "candidates") and not response.candidates:
-            logger.info("Gemini応答: candidatesが空のためNFを返却")
+            logger.info("応答: candidatesが空のためNFを返却")
             product_name = "NF"
         elif hasattr(response, "text"):
             product_name = response.text.strip()
-            logger.info(f"Gemini応答: {product_name}")
+            logger.info(f"応答: {product_name}")
         else:
-            logger.info("Gemini応答: 返答なし")
+            logger.info("応答: 返答なし")
             product_name = ""
     else:
         product_name = ""

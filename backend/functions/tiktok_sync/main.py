@@ -81,6 +81,7 @@ async def _collect_target_connections(
     connections: List[TikTokUserConnection] = []
 
     if user_ids:
+        logger.info('Filtering TikTok connections by user_ids=%s open_ids=%s', user_ids, list(open_id_filter) if open_id_filter else None)
         for user_id in user_ids:
             try:
                 user_connections = await repository.list_user_connections(user_id)
@@ -108,7 +109,9 @@ async def _collect_target_connections(
         key = (conn.user_id, conn.tiktok_open_id)
         deduped[key] = conn
 
-    return list(deduped.values())
+    resolved = list(deduped.values())
+    logger.info('Collected %s TikTok connections', len(resolved))
+    return resolved
 
 
 async def _run_sync(payload: Dict[str, Any]) -> Dict[str, Any]:
