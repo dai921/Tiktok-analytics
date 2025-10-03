@@ -3,6 +3,7 @@ import os
 import base64
 
 # 環境変数から暗号化キーを取得
+APP_ENV = os.getenv("ENV") or os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "production"
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 def get_cipher():
@@ -27,6 +28,19 @@ def decrypt_data(encrypted_data):
     """暗号化されたデータを復号化"""
     if not encrypted_data:
         return None
-    
-    cipher = get_cipher()
-    return cipher.decrypt(encrypted_data.encode()).decode()
+
+    is_fernet_token = isinstance(encrypted_data, str) and encrypted_data.startswith("gAAAA")
+
+    try:
+        if is_fernet_token:
+            cipher = get_cipher()
+            return cipher.decrypt(encrypted_data.encode()).decode()
+        # Fernetトークン形式でない → dev のみ平文許可
+        if APP_ENV == "development":
+            return encrypted_data
+        raise ValueError("Token is not Fernet format")
+    except Exception:
+        # 復号失敗 → dev のみ平文許可、prod は例外を伝播
+        if APP_ENV == "development":
+            return encrypted_data
+        raise

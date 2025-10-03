@@ -9,7 +9,7 @@ from ..auth.router import get_current_user
 from .models import TikTokStats, TikTokVideo, TikTokUserConnection
 import os
 from fastapi.responses import StreamingResponse
-from io import BytesIO
+from .report_generator import build_tiktok_report_presentation
 from .repositories import TikTokRepository
 from ..db.database import get_db_connection
 from sqlalchemy.sql import text
@@ -431,107 +431,40 @@ async def generate_report(
     period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
     user = Depends(get_current_user)
 ):
-    """
-    TikTokアカウントレポートを生成します
-    """
+    """TikTokアカウントレポートをPowerPoint形式で生成します"""
     if not user:
         raise HTTPException(status_code=401, detail="認証が必要です")
-    
+
     try:
-        # データベースからTikTokアクセストークンを取得
         tiktok_connection = await tiktok_repository.get_user_connection(user.id)
-        
         if not tiktok_connection:
             raise HTTPException(status_code=404, detail="TikTokとの連携が見つかりません")
-        
-        # 統計データと動画リストを取得
+
+        days = 7 if period == "7d" else 30 if period == "30d" else 90
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+
         stats = await get_tiktok_stats(period, user=user)
-        videos = await get_tiktok_videos(period, user=user)
-        
-        # PDF生成処理（実装例）
-        try:
-            from reportlab.lib.pagesizes import letter
-            from reportlab.pdfgen import canvas
-            from reportlab.lib import colors
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
-            from reportlab.lib.styles import getSampleStyleSheet
-            
-            buffer = BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=letter)
-            elements = []
-            
-            # スタイル設定
-            styles = getSampleStyleSheet()
-            title_style = styles['Title']
-            heading_style = styles['Heading2']
-            normal_style = styles['Normal']
-            
-            # タイトル
-            elements.append(Paragraph(f"TikTok Analytics Report - {period}", title_style))
-            
-            # アカウント概要
-            elements.append(Paragraph("アカウント概要", heading_style))
-            account_data = [
-                ["指標", "数値", "期間内増加"],
-                ["フォロワー数", f"{stats.followerCount:,}", f"+{stats.followerGrowth:,}"],
-                ["いいね総数", f"{stats.likeCount:,}", f"+{stats.likeGrowth:,}"],
-                ["平均視聴回数/動画", f"{stats.avgViewCount:,}", f"+{stats.viewGrowth:,}"],
-                ["エンゲージメント率", f"{stats.engagementRate:.2f}%", ""]
-            ]
-            
-            account_table = Table(account_data, colWidths=[150, 100, 100])
-            account_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            elements.append(account_table)
-            
-            # 動画パフォーマンス
-            if videos:
-                elements.append(Paragraph("投稿パフォーマンス", heading_style))
-                
-                # 最大5件の動画を表示
-                video_data = [["タイトル", "投稿日", "視聴回数", "増加量", "いいね数"]]
-                for video in videos[:5]:
-                    created_date = datetime.fromisoformat(video.createTime.replace('Z', '+00:00')) if 'Z' in video.createTime else datetime.fromisoformat(video.createTime)
-                    video_data.append([
-                        video.title[:30] + ('...' if len(video.title) > 30 else ''),
-                        created_date.strftime('%Y-%m-%d'),
-                        f"{video.viewCount:,}",
-                        f"+{video.viewGrowth:,}",
-                        f"{video.likeCount:,}"
-                    ])
-                
-                video_table = Table(video_data, colWidths=[180, 70, 70, 70, 70])
-                video_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                ]))
-                elements.append(video_table)
-            
-            doc.build(elements)
-            buffer.seek(0)
-            
-            return StreamingResponse(
-                buffer, 
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename=tiktok-report-{period}.pdf"}
-            )
-            
-        except ImportError:
-            # PDFライブラリがない場合はJSONレスポンスを返す
-            return JSONResponse(
-                content={"success": True, "message": f"{period}のレポートが生成されました"},
-                status_code=200
-            )
+        videos = await get_tiktok_videos(period, limit=100, user=user)
+
+        presentation_stream = build_tiktok_report_presentation(
+            stats=stats,
+            videos=videos,
+            account_name=tiktok_connection.display_name or "TikTokアカウント",
+            period_label=period,
+            start_date=start_date,
+            end_date=end_date,
+            generated_at=datetime.now(),
+        )
+
+        filename = f"tiktok-report-{start_date:%Y%m%d}-{end_date:%Y%m%d}.pptx"
+        return StreamingResponse(
+            presentation_stream,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"レポート生成に失敗しました: {str(e)}")
 
