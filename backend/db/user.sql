@@ -177,16 +177,16 @@ CREATE TABLE users_videos (
 -- 5) 動画日次スナップショット
 CREATE TABLE users_video_daily_metrics_new (
   video_id        VARCHAR(255) NOT NULL,
-  colLection_date            DATE        NOT NULL,
+  collection_date            DATE        NOT NULL,
   play_cnt            INT UNSIGNED,
   like_cnt        INT UNSIGNED,
   comment_cnt     INT UNSIGNED,
   share_cnt       INT UNSIGNED,
   save_cnt        INT UNSIGNED,
-  PRIMARY KEY (video_id, date),
-  INDEX ix_vdm_date (date)
+  PRIMARY KEY (video_id, collection_date),
+  INDEX ix_vdm_date (collection_date)
 ) ENGINE=InnoDB
-PARTITION BY RANGE COLUMNS(date) (
+PARTITION BY RANGE COLUMNS(collection_date) (
   PARTITION p2024 VALUES LESS THAN ('2025-01-01'),
   PARTITION p2025 VALUES LESS THAN ('2026-01-01')
 );

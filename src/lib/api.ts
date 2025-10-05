@@ -295,7 +295,10 @@ export const COLUMN_MAP: Record<string, string> = {
   'ten_days_comment_increase': '10日コメント増加数',
   'ten_days_increase': '10日再生増加数',
   'save_count_increase': '2日保存増加数',
-  'ten_days_save_increase': '10日保存増加数'
+  'ten_days_save_increase': '10日保存増加数',
+  'followers': 'フォロワー数',
+  'play_count_per_follower': '再生/フォロワー',
+  'play_increase_per_follower': '2日再生増/フォロワー'
 }
 
 // COLUMN_MAPの逆引きマップを作成
@@ -374,6 +377,9 @@ const mapFieldToApiField = (field: string): string => {
     'save_count_increase': 'save_count_increase',
     'ten_days_save_increase': 'ten_days_save_increase',
     'product': 'product',  // 商品フィルターのマッピングを追加
+    'followers': 'followers',
+    'play_count_per_follower': 'play_count_per_follower',
+    'play_increase_per_follower': 'play_increase_per_follower'
   };
   
   const result = fieldMapping[internalField] || internalField;
@@ -455,7 +461,10 @@ const convertToVideoData = (video: any): VideoData => {
     ten_days_comment_increase: parseNumberSafely(video.ten_days_comment_increase),
     save_count: parseNumberSafely(video.save_count),
     save_count_increase: parseNumberSafely(video.save_count_increase),
-    ten_days_save_increase: parseNumberSafely(video.ten_days_save_increase)
+    ten_days_save_increase: parseNumberSafely(video.ten_days_save_increase),
+    followers: parseNumberSafely(video.followers),
+    play_count_per_follower: parseNumberSafely(video.play_count_per_follower),
+    play_increase_per_follower: parseNumberSafely(video.play_increase_per_follower)
   };
 };
 
@@ -482,7 +491,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
     if (filters) {
       // ソートフィルターの抽出と処理
       const extractedSortFilters = Object.entries(filters)
-        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .filter(([key, filter]) => (key.endsWith('_sort') || key.startsWith('sort_')) && filter?.type === 'sort')
         .map(([key, filter]) => {
           const timestamp = filter.timestamp && filter.timestamp > 0 
             ? Number(filter.timestamp) 
@@ -498,8 +507,8 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
 
           return {
             key,
-            field: key.replace('_sort', ''),
-            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            field: key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, ''),
+            apiField: mapFieldToApiField(key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, '')),
             direction,
             timestamp,
             isPrimarySort: !!filter.isPrimarySort
@@ -535,7 +544,7 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
 
       // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort') || filter.clear === true) return;
+        if (!filter || key.endsWith('_sort') || key.startsWith('sort_') || filter.clear === true) return;
 
         console.log('フィルター処理開始:', {
           key,
@@ -712,7 +721,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
         
       // ソートフィルターを抽出し、主ソートを最優先にする
       const extractedSortFilters = Object.entries(filters)
-        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .filter(([key, filter]) => (key.endsWith('_sort') || key.startsWith('sort_')) && filter?.type === 'sort')
         .map(([key, filter]) => {
           // タイムスタンプが0または未定義の場合は、現在時刻を使用
           const timestamp = filter.timestamp && filter.timestamp > 0 
@@ -726,8 +735,8 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           
           return {
             key,
-            field: key.replace('_sort', ''),
-            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            field: key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, ''),
+            apiField: mapFieldToApiField(key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, '')),
             direction,
             timestamp,
             isPrimarySort: !!filter.isPrimarySort
@@ -795,6 +804,10 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
           sortField = 'save_count_increase';  // 2日保存増加数の対応を追加
         } else if (primarySort.field === 'ten_days_save_increase' || primarySort.field === '10日保存増加数') {
           sortField = 'ten_days_save_increase';  // 10日保存増加数の対応を追加
+        } else if (primarySort.field === 'play_count_per_follower' || primarySort.field === '再生/フォロワー') {
+          sortField = 'play_count_per_follower';  // 再生/フォロワーの対応を追加
+        } else if (primarySort.field === 'play_increase_per_follower' || primarySort.field === '2日再生増/フォロワー') {
+          sortField = 'play_increase_per_follower';  // 2日再生増/フォロワーの対応を追加
         } else {
           sortField = primarySort.apiField;
         }
@@ -838,6 +851,10 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
             secondarySortField = 'save_count_increase';  // 2日保存増加数の対応を追加
           } else if (secondarySort.field === 'ten_days_save_increase' || secondarySort.field === '10日保存増加数') {
             secondarySortField = 'ten_days_save_increase';  // 10日保存増加数の対応を追加
+          } else if (secondarySort.field === 'play_count_per_follower' || secondarySort.field === '再生/フォロワー') {
+            secondarySortField = 'play_count_per_follower';  // 再生/フォロワーの対応を追加
+          } else if (secondarySort.field === 'play_increase_per_follower' || secondarySort.field === '2日再生増/フォロワー') {
+            secondarySortField = 'play_increase_per_follower';  // 2日再生増/フォロワーの対応を追加
           } else {
             secondarySortField = secondarySort.apiField;
           }
@@ -858,7 +875,7 @@ export async function getAllFilteredData(filters?: Record<string, FilterQuery>) 
       
       // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
+        if (!filter || key.endsWith('_sort') || key.startsWith('sort_')) return; // ソートフィルターはスキップ
         
         console.log('API - フィルター処理開始:', {
           key,
@@ -1044,7 +1061,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       
       // 通常のフィルターを処理（ソート以外）
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort')) return; // ソートフィルターはスキップ
+        if (!filter || key.endsWith('_sort') || key.startsWith('sort_')) return; // ソートフィルターはスキップ
         
         console.log('API - フィルター処理開始:', {
           key,
@@ -1251,7 +1268,7 @@ export async function getAffiliateData(page: number = 1, filters?: Record<string
     if (filters) {
       // ソートフィルターの抽出と処理
       const extractedSortFilters = Object.entries(filters)
-        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .filter(([key, filter]) => (key.endsWith('_sort') || key.startsWith('sort_')) && filter?.type === 'sort')
         .map(([key, filter]) => {
           const timestamp = filter.timestamp && filter.timestamp > 0 
             ? Number(filter.timestamp) 
@@ -1265,8 +1282,8 @@ export async function getAffiliateData(page: number = 1, filters?: Record<string
 
           return {
             key,
-            field: key.replace('_sort', ''),
-            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            field: key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, ''),
+            apiField: mapFieldToApiField(key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, '')),
             direction,
             timestamp,
             isPrimarySort: !!filter.isPrimarySort
@@ -1300,7 +1317,7 @@ export async function getAffiliateData(page: number = 1, filters?: Record<string
 
       // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort') || filter.clear === true) return;
+        if (!filter || key.endsWith('_sort') || key.startsWith('sort_') || filter.clear === true) return;
 
         console.log('アフィリエイトフィルター処理開始:', {
           key,
@@ -1471,7 +1488,7 @@ export async function getCorporateData(page: number = 1, filters?: Record<string
     if (filters) {
       // ソートフィルターの抽出と処理
       const extractedSortFilters = Object.entries(filters)
-        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .filter(([key, filter]) => (key.endsWith('_sort') || key.startsWith('sort_')) && filter?.type === 'sort')
         .map(([key, filter]) => {
           const timestamp = filter.timestamp && filter.timestamp > 0 
             ? Number(filter.timestamp) 
@@ -1485,8 +1502,8 @@ export async function getCorporateData(page: number = 1, filters?: Record<string
 
           return {
             key,
-            field: key.replace('_sort', ''),
-            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            field: key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, ''),
+            apiField: mapFieldToApiField(key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, '')),
             direction,
             timestamp,
             isPrimarySort: !!filter.isPrimarySort
@@ -1529,7 +1546,7 @@ export async function getCorporateData(page: number = 1, filters?: Record<string
 
       // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort') || filter.clear === true) return;
+        if (!filter || key.endsWith('_sort') || key.startsWith('sort_') || filter.clear === true) return;
 
         console.log('運用代行用フィルター処理開始:', {
           key,
@@ -1896,7 +1913,7 @@ export async function getInfluencerData(page: number = 1, filters?: Record<strin
     if (filters) {
       // ソートフィルターの抽出と処理
       const extractedSortFilters = Object.entries(filters)
-        .filter(([key, filter]) => key.endsWith('_sort') && filter?.type === 'sort')
+        .filter(([key, filter]) => (key.endsWith('_sort') || key.startsWith('sort_')) && filter?.type === 'sort')
         .map(([key, filter]) => {
           const timestamp = filter.timestamp && filter.timestamp > 0 
             ? Number(filter.timestamp) 
@@ -1910,8 +1927,8 @@ export async function getInfluencerData(page: number = 1, filters?: Record<strin
 
           return {
             key,
-            field: key.replace('_sort', ''),
-            apiField: mapFieldToApiField(key.replace('_sort', '')),
+            field: key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, ''),
+            apiField: mapFieldToApiField(key.endsWith('_sort') ? key.replace(/_sort$/, '') : key.replace(/^sort_/, '')),
             direction,
             timestamp,
             isPrimarySort: !!filter.isPrimarySort
@@ -1941,7 +1958,7 @@ export async function getInfluencerData(page: number = 1, filters?: Record<strin
 
       // 通常のフィルターの処理
       Object.entries(filters).forEach(([key, filter]) => {
-        if (!filter || key.endsWith('_sort') || filter.clear === true) return;
+        if (!filter || key.endsWith('_sort') || key.startsWith('sort_') || filter.clear === true) return;
 
         console.log('インフルエンサーフィルター処理開始:', {
           key,

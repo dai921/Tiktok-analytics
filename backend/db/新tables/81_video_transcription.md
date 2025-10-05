@@ -9,6 +9,8 @@ Tiktok動画の文字起こしデータを管理するテーブルです。
 | video_id | VARCHAR(50) | NO | - | ビデオid |
 | file_path | VARCHAR(255)  | NO | - | 保存先のURL |
 | transcription | TEXT | NO | - | 動画の文字起こしデータ|
+| user_number | INT | YES | NULL | 初回実行ユーザーの番号（初回のみ保存） |
+| account_name | VARCHAR(100) | YES | NULL | TikTokのアカウント名 |
 
 ## インデックス
 
@@ -17,6 +19,8 @@ Tiktok動画の文字起こしデータを管理するテーブルです。
 | PRIMARY | id | 主キー | 関連付けの一意識別子 |
 | UNIQUE | video_id | ユニーク | video_idは一個 |
 | idx_file_path | file_path | INDEX | URLでの検索も高速化 |
+| idx_user_number | user_number | INDEX | 実行ユーザーで絞り込み |
+| idx_account_name | account_name | INDEX | 対象アカウントで絞り込み |
 
 ## 関連Function
 ### Backend API

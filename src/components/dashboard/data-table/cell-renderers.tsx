@@ -3,7 +3,7 @@ import { VideoData } from '@/types/dashboard';
 import { VideoTypeIcon, PhotoTypeIcon, MusicNoteIcon } from './icons';
 import { ImageHover } from '@/components/ui/image-hover';
 import { GenreBadge, HashtagBadge, ProductBadge } from '@/components/ui/badge';
-import { formatNumber } from './formatters';
+import { formatNumber, formatFollowerCount } from './formatters';
 import { useState, createContext, useContext } from 'react'
 import { AccountTypeBadge } from '@/components/ui/badge';
 
@@ -411,17 +411,15 @@ export const renderTenDaysSaveIncreaseCell = (row: VideoData) => {
 // アカウント名セルレンダラー
 export const renderAccountNameCell = (row: VideoData) => {
   return (
-    <div className="w-[120px] min-w-[120px]">
-    <div className="flex flex-col">
-      <span className="font-bold truncate text-base">
+    <div className="w-[120px] min-w-[120px] relative h-full flex items-center justify-start">
+      <span className="font-bold text-base leading-tight">
         {row.account_name || '不明'}
       </span>
       {row.display_name && (
-        <span className="text-xs text-gray-500 truncate">
+        <span className="absolute top-full left-0 text-[10px] text-gray-500 leading-tight max-w-[110px] break-words pt-0.5">
           {row.display_name}
         </span>
       )}
-    </div>
     </div>
   )
 };
@@ -496,6 +494,32 @@ export const renderAudioTitleCell = (row: VideoData) => {
  )
 };
 
+// フォロワー系のセルレンダラー（フォロワー数を補足情報として表示）
+export const renderViewsPerFollowerCell = (row: VideoData) => (
+  <div className="text-right font-mono relative h-full flex items-center justify-end"> {/* 相対位置でメイン数値を中央に */}
+    <div className={`font-semibold text-base ${row.play_count_per_follower !== null && row.play_count_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
+      {row.play_count_per_follower !== null ? row.play_count_per_follower.toFixed(2) : '-'}
+    </div>
+    {row.followers !== null && (
+      <div className="absolute -bottom-3 right-0 text-[10px] text-gray-500"> {/* bottom-1 → bottom-0 でさらに下に */}
+        follower: {formatFollowerCount(row.followers)}
+      </div>
+    )}
+  </div>
+);
+
+export const renderViewsIncreasePerFollowerCell = (row: VideoData) => (
+  <div className="text-right font-mono relative h-full flex items-center justify-end"> {/* 相対位置でメイン数値を中央に */}
+    <div className={`font-semibold text-base ${row.play_increase_per_follower !== null && row.play_increase_per_follower >= 1 ? 'text-green-600' : 'text-gray-700'}`}>
+      {row.play_increase_per_follower !== null ? row.play_increase_per_follower.toFixed(2) : '-'}
+    </div>
+    {row.followers !== null && (
+      <div className="absolute -bottom-3 right-0 text-[10px] text-gray-500"> {/* bottom-1 → bottom-0 でさらに下に */}
+        follower: {formatFollowerCount(row.followers)}
+      </div>
+    )}
+  </div>
+);
 
 
 

@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import functions_framework
 from typing import List, Dict, Any, Optional
 import base64
@@ -275,9 +275,10 @@ def sync_category_spreadsheet():
                     # product_masterへの挿入/更新
                     if product_name not in existing_products:
                         product_query = '''
-                            INSERT INTO product_master (product_name, product_category)
-                            VALUES (%(product_name)s, %(product_category)s)
-                            ON DUPLICATE KEY UPDATE product_category = %(product_category)s
+                            INSERT INTO product_master (product_name, product_category, is_new)
+                            VALUES (%(product_name)s, %(product_category)s, 1)
+                            ON DUPLICATE KEY UPDATE 
+                                product_category = %(product_category)s
                         '''
                         product_params = {
                             'product_name': product_name,

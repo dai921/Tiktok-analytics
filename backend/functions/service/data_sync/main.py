@@ -13,6 +13,7 @@ from services.video_master_sync import sync_video_master as sync_raw_data_to_vid
 from services.data_integrity_check import check_data_integrity as data_integrity_check_function
 from services.sync_corporate_data import sync_corporate_data as sync_corporate_data_function
 from services.play_count_correction import correct_play_count_increase as play_count_correction_function
+from services.followers_update import update_followers as update_followers_function
 
 # 環境変数の読み込み
 load_dotenv()
@@ -52,3 +53,6 @@ def sync_corporate_data(event, context):
 
 def play_count_correction(event, context):
     return play_count_correction_function(event, context)
+
+def update_followers(event, context):
+    return update_followers_function(event, context)

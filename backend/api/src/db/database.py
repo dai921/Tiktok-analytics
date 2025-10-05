@@ -100,10 +100,15 @@ def format_video(row):
             except json.JSONDecodeError:
                 music_info = {"title": str(music_raw)}
 
-        # 保存数データを取得（キー名に基づいてアクセス）
+        # 保存数データ
         save_count = int(row['save_count']) if 'save_count' in row and row['save_count'] is not None else 0
         save_count_increase = int(row['save_count_increase']) if 'save_count_increase' in row and row['save_count_increase'] is not None else 0
         ten_days_save_increase = int(row['ten_days_save_increase']) if 'ten_days_save_increase' in row and row['ten_days_save_increase'] is not None else 0
+
+        # 追加: フォロワー/per-follower 指標
+        followers = int(row['followers']) if 'followers' in row and row['followers'] is not None else None
+        play_count_per_follower = float(row['play_count_per_follower']) if 'play_count_per_follower' in row and row['play_count_per_follower'] is not None else None
+        play_increase_per_follower = float(row['play_increase_per_follower']) if 'play_increase_per_follower' in row and row['play_increase_per_follower'] is not None else None
 
         return {
             "url": row['url'],
@@ -130,7 +135,10 @@ def format_video(row):
             "product": row['product'] if row['product'] else None,
             "save_count": save_count,
             "save_count_increase": save_count_increase,
-            "ten_days_save_increase": ten_days_save_increase
+            "ten_days_save_increase": ten_days_save_increase,
+            "followers": followers,
+            "play_count_per_follower": play_count_per_follower,
+            "play_increase_per_follower": play_increase_per_follower
         }
     except Exception as e:
         logger.error(f"Error formatting video: {e}")

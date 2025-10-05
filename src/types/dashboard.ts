@@ -76,6 +76,9 @@ export interface VideoData {
   save_count: number
   save_count_increase: number
   ten_days_save_increase: number
+  followers: number
+  play_count_per_follower: number
+  play_increase_per_follower: number
 }
 
 // 数値フォーマット用の型定義を追加
@@ -92,12 +95,18 @@ export type NumberFormatType =
   | 'saves'
   | 'save_count_increase'
   | 'ten_days_save_increase'
+  | 'followers'
+  | 'play_count_per_follower'
+  | 'play_increase_per_follower'
 
 // テーブル関連の型
 export interface Column {
   accessorKey: keyof VideoData
   header: ({ column }: { column: Column }) => ReactElement
   cell?: ({ row }: { row: VideoData }) => ReactElement | null
+  size?: number        // カラム幅
+  minSize?: number     // 最小幅
+  maxSize?: number     // 最大幅
 }
 
 export interface PaginatedResponse {
@@ -168,6 +177,9 @@ export interface TikTokVideo {
   comment_count_increase: number;
   ten_days_comment_increase: number;
   ten_days_increase: number;
+  followers: number;
+  play_count_per_follower: number;
+  play_increase_per_follower: number;
 }
 
 export interface AccountData {

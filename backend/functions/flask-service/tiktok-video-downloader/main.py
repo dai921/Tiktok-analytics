@@ -22,6 +22,15 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+ACCOUNT_NAME_REGEX = re.compile(r"tiktok\.com/@([A-Za-z0-9._-]+)")
+
+def extract_account_name_from_url(url: str) -> Optional[str]:
+    try:
+        m = ACCOUNT_NAME_REGEX.search(url or "")
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
 # 既存のdb_utils.pyを使用
 import sys
 import os
@@ -170,7 +179,7 @@ class TikTokVideoDownloader:
             logger.warning(f"プロキシ取得エラー: {str(e)}")
             return None
     
-    def download_video(self, url: str, video_id: str) -> str:
+    def download_video(self, url: str, video_id: str) -> tuple:
         """yt-dlpのみで動画をダウンロード"""
         try:
             temp_dir = tempfile.mkdtemp()
@@ -188,12 +197,14 @@ class TikTokVideoDownloader:
             logger.info(f"使用プロキシ: {self.proxy or 'なし'}")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # 動画情報を事前取得
+                # 動画情報を事前取得（正規化URLを利用）
                 try:
                     info = ydl.extract_info(url, download=False)
                     title = info.get('title', 'N/A')
                     duration = info.get('duration', 'N/A')
-                    logger.info(f"動画情報取得成功: title={title}, duration={duration}秒")
+                    normalized_url = info.get('webpage_url') or url
+                    account_name = extract_account_name_from_url(normalized_url) or info.get('uploader_id') or info.get('uploader')
+                    logger.info(f"動画情報取得成功: title={title}, duration={duration}秒, account_name={account_name or '不明'}")
                 except Exception as e:
                     logger.error(f"動画情報取得失敗: {str(e)}")
                     raise Exception(f"動画にアクセスできません: {str(e)}")
@@ -206,7 +217,6 @@ class TikTokVideoDownloader:
                 video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
                 
                 if not os.path.exists(video_path):
-                    # 拡張子が異なる可能性があるため、ディレクトリ内を検索
                     files = os.listdir(temp_dir)
                     if files:
                         actual_file = files[0]
@@ -217,8 +227,7 @@ class TikTokVideoDownloader:
                 
                 file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
                 logger.info(f"動画ダウンロード完了: {video_path} ({file_size:.2f}MB)")
-                return video_path
-                
+                return video_path, account_name
         except Exception as e:
             logger.error(f"動画ダウンロードエラー: {str(e)}")
             logger.error(traceback.format_exc())
@@ -234,25 +243,27 @@ class VideoTranscriptionRepository:
         return fetch_one(query, {"video_id": video_id})
     
     @staticmethod
-    def save_video_file_path(video_id: str, file_path: str):
-        """動画ファイルパスをテーブルに保存（既存の場合は更新）"""
+    def save_video_file_path(video_id: str, file_path: str, user_number: Optional[int] = None, account_name: Optional[str] = None):
+        """動画ファイルパスをテーブルに保存（既存の場合は更新）
+        初回のみ user_number を記録し、account_name は取得できた場合に更新
+        """
         # まず既存のレコードをチェック
         existing = VideoTranscriptionRepository.find_transcription_by_video_id(video_id)
         
         if existing:
-            # 既存の場合はfile_pathのみ更新
+            # 既存の場合はfile_pathを更新、account_nameは取得できたら上書き
             execute_update(
-                "UPDATE video_transcription SET file_path = :file_path WHERE video_id = :video_id",
-                {"video_id": video_id, "file_path": file_path}
+                "UPDATE video_transcription SET file_path = :file_path, user_number = COALESCE(user_number, :user_number), account_name = COALESCE(:account_name, account_name) WHERE video_id = :video_id",
+                {"video_id": video_id, "file_path": file_path, "user_number": user_number, "account_name": account_name}
             )
             logger.info(f"既存のレコードを更新: video_id={video_id}")
         else:
             # 新規の場合はINSERT
             execute_update(
-                "INSERT INTO video_transcription (video_id, file_path, transcription) VALUES (:video_id, :file_path, '')",
-                {"video_id": video_id, "file_path": file_path}
+                "INSERT INTO video_transcription (video_id, file_path, transcription, user_number, account_name) VALUES (:video_id, :file_path, '', :user_number, :account_name)",
+                {"video_id": video_id, "file_path": file_path, "user_number": user_number, "account_name": account_name}
             )
-            logger.info(f"新規レコードを挿入: video_id={video_id}")
+            logger.info(f"新規レコードを挿入: video_id={video_id}, user_number={user_number}, account_name={account_name}")
 
     @staticmethod
     def get_video_file_path(video_id: str) -> Optional[str]:
@@ -328,23 +339,23 @@ class VideoStorageService:
             self.video_downloader = TikTokVideoDownloader()
         return self.video_downloader
     
-    def download_and_store_video(self, url: str, video_id: str) -> str:
+    def download_and_store_video(self, url: str, video_id: str, user_number: Optional[int] = None) -> str:
         """動画をダウンロードしてCloud Storageに保存"""
         video_path = None
         
         try:
             # 1. 動画をダウンロード（yt-dlpのみ）
             video_downloader = self._get_video_downloader()
-            video_path = video_downloader.download_video(url, video_id)
+            video_path, account_name = video_downloader.download_video(url, video_id)
             
             # 2. Cloud Storageにアップロード
             storage_manager = self._get_storage_manager()
             storage_url = storage_manager.upload_video(video_path, video_id)
             
-            # 3. テーブルにvideo_idとfile_pathを保存
-            VideoTranscriptionRepository.save_video_file_path(video_id, storage_url)
+            # 3. テーブルにvideo_idとfile_path、account_nameを保存
+            VideoTranscriptionRepository.save_video_file_path(video_id, storage_url, user_number, account_name)
             
-            logger.info(f"動画保存・テーブル格納完了: video_id={video_id}, url={storage_url}")
+            logger.info(f"動画保存・テーブル格納完了: video_id={video_id}, url={storage_url}, account_name={account_name or '不明'}")
             return storage_url
             
         except Exception as e:
@@ -393,13 +404,14 @@ def download_tiktok_video(event, context):
         url = request_data.get("url")
         video_id = request_data.get("video_id")
         message_type = request_data.get("type") 
+        user_number = request_data.get("user_number")
         
         if not url or not video_id:
             error_msg = "urlとvideo_idは必須です"
             logger.error(error_msg)
             return {"success": False, "error": error_msg}
         
-        logger.info(f"動画ダウンロード開始: video_id={video_id}, url={url}, type={message_type}")
+        logger.info(f"動画ダウンロード開始: video_id={video_id}, url={url}, type={message_type}, user_number={user_number}")
         
         # カルーセル（画像）チェック
         if "photo" in url:
@@ -409,7 +421,7 @@ def download_tiktok_video(event, context):
         
         # 1. 動画保存処理
         storage_service = VideoStorageService()
-        storage_url = storage_service.download_and_store_video(url, video_id)
+        storage_url = storage_service.download_and_store_video(url, video_id, user_number)
 
         # 2. 文字起こしタスクをPub/Subに送信（typeも含める）
         transcription_result = publish_transcription_task(video_id, storage_url, message_type)

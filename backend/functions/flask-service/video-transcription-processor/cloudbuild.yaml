@@ -1,0 +1,25 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-video-transcription-processor
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        gcloud functions deploy video-transcription-processor \
+          --gen2 \
+          --runtime=python311 \
+          --region=asia-northeast1 \
+          --source=. \
+          --entry-point=transcribe_video \
+          --trigger-topic=transcription-tasks \
+          --allow-unauthenticated \
+          --memory=2048MB \
+          --timeout=540s \
+          --service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com \
+          --set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,CLOUD_STORAGE_BUCKET=tiktok-videos-storage,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db \
+          --set-secrets=GEMINI_API_KEY=projects/tiktok-analytics-prod-451609/secrets/gemini-api-key/versions/latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s

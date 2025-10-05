@@ -177,7 +177,7 @@ def update_hashtags_summary(collection_date):
             hashtag_videos_query = """
             INSERT INTO hashtags_daily_top100_videos 
             (video_id, fetch_date, hashtags, plays_increase, likes_increase, post_time, thumbnail_url, parent_account_type)
-            SELECT 
+            SELECT DISTINCT
                 h.video_id,
                 %s as fetch_date,
                 %s as hashtags,
@@ -237,65 +237,76 @@ def update_sound_summary(collection_date):
         execute_write_query(delete_sound_videos_query, (collection_date,))
         
         # BGMサマリーの集計（カテゴリ別のみ、ALL除外）
+        # DUPLICATE対応：INSERT を REPLACE INTO に変更
         sound_summary_query = """
-        INSERT INTO sound_daily_summary_top150
+        REPLACE INTO sound_daily_summary_top150
         (fetch_date, sound_name, plays_increase, over_100k, post_count, parent_account_type)
-        WITH base AS (
-            SELECT
-                CASE 
-                    WHEN (fd.music_info LIKE 'オリジナル楽曲%%' 
-                          OR fd.music_info LIKE 'original sound%%'
-                          OR fd.music_info LIKE '原声%%'
-                          OR fd.music_info LIKE '오리지널 사운드%%'
-                          OR fd.music_info LIKE 'nhạc nền%%') THEN 'オリジナル楽曲'
-                    ELSE fd.music_info
-                END as sound_name,
-                fd.parent_account_type,
-                COALESCE(SUM(pch.play_count_increase), 0) as plays_increase,
-                COUNT(CASE WHEN pch.play_count_increase >= 100000 THEN 1 END) as over_100k,
-                COUNT(DISTINCT CASE 
-                    WHEN fd.created_at BETWEEN DATE_SUB(%s, INTERVAL 1 DAY) AND %s 
-                    THEN fd.video_id 
-                    ELSE NULL 
-                END) as post_count
-            FROM play_count_history pch
-            JOIN frontend_data fd ON pch.video_id = fd.video_id
-            WHERE 
-                pch.collection_date = %s
-                AND pch.play_count_increase IS NOT NULL
-                AND fd.music_info IS NOT NULL
-                AND fd.music_info != ''
-            GROUP BY 
-                CASE 
-                    WHEN (fd.music_info LIKE 'オリジナル楽曲%%' 
-                          OR fd.music_info LIKE 'original sound%%'
-                          OR fd.music_info LIKE '原声%%'
-                          OR fd.music_info LIKE 'nhạc nền%%') THEN 'オリジナル楽曲'
-                    ELSE fd.music_info
-                END,
-                fd.parent_account_type
+        WITH popular_original AS (
+            SELECT music_info
+            FROM frontend_data
+            WHERE music_info is not null and music_info <> ''
+            and (
+                music_info LIKE 'オリジナル楽曲%%'
+                OR music_info LIKE 'original sound%%'
+                OR music_info LIKE '原声%%'
+                OR music_info LIKE '오리지널 사운드%%'
+                OR music_info LIKE 'nhạc nền%%'
+            )
+            group by music_info
+            having count(distinct account_name) >= 3
+        ),
+        labeled AS (
+        SELECT
+            CASE 
+            WHEN (fd.music_info LIKE 'オリジナル楽曲%%' 
+                    OR fd.music_info LIKE 'original sound%%'
+                    OR fd.music_info LIKE '原声%%'
+                    OR fd.music_info LIKE '오리지널 사운드%%'
+                    OR fd.music_info LIKE 'nhạc nền%%')
+                THEN CASE WHEN po.music_info IS NOT NULL THEN fd.music_info ELSE 'オリジナル楽曲' END
+            ELSE fd.music_info
+            END AS sound_name,
+            fd.parent_account_type,
+            pch.play_count_increase,
+            fd.created_at,
+            fd.video_id
+        FROM play_count_history pch
+        JOIN frontend_data fd ON pch.video_id = fd.video_id
+        LEFT JOIN popular_original po ON fd.music_info = po.music_info
+        WHERE 
+            pch.collection_date = %s
+            AND pch.play_count_increase IS NOT NULL
+            AND fd.music_info IS NOT NULL
+            AND fd.music_info != ''
+        ),
+        base AS (
+        SELECT
+            sound_name,
+            parent_account_type,
+            COALESCE(SUM(play_count_increase), 0) AS plays_increase,
+            SUM(play_count_increase >= 100000) AS over_100k,
+            COUNT(DISTINCT CASE
+            WHEN created_at BETWEEN DATE_SUB(%s, INTERVAL 1 DAY) AND %s
+            THEN video_id END) AS post_count
+        FROM labeled
+        GROUP BY sound_name, parent_account_type
         ),
         ranked AS (
-            SELECT
-                %s AS fetch_date,
-                sound_name,
-                plays_increase,
-                over_100k,
-                post_count,
-                parent_account_type,
-                ROW_NUMBER() OVER (
-                    PARTITION BY parent_account_type
-                    ORDER BY post_count DESC
-                ) AS rn
-            FROM base
-        )
-        SELECT 
-            fetch_date,
+        SELECT
+            %s AS fetch_date,
             sound_name,
             plays_increase,
             over_100k,
             post_count,
-            parent_account_type
+            parent_account_type,
+            ROW_NUMBER() OVER (
+            PARTITION BY parent_account_type
+            ORDER BY post_count DESC
+            ) AS rn
+        FROM base
+        )
+        SELECT 
+        fetch_date, sound_name, plays_increase, over_100k, post_count, parent_account_type
         FROM ranked
         WHERE rn <= 150
         """
@@ -319,10 +330,11 @@ def update_sound_summary(collection_date):
             logger.info(f"BGM '{sound_name}' ({account_type}) のTOP100動画を処理中...")
             
             # 各BGM＋カテゴリのTOP100動画を取得・挿入
+            # DUPLICATE対応：INSERT を REPLACE INTO に変更
             sound_videos_query = """
-            INSERT INTO sound_daily_top100_videos 
+            REPLACE INTO sound_daily_top100_videos 
             (video_id, fetch_date, sound_name, plays_increase, likes_increase, post_time, thumbnail_url, parent_account_type)
-            SELECT 
+            SELECT DISTINCT
                 fd.video_id,
                 %s as fetch_date,
                 %s as sound_name,
@@ -333,13 +345,31 @@ def update_sound_summary(collection_date):
                 %s as parent_account_type
             FROM frontend_data fd
             JOIN play_count_history pch ON fd.video_id = pch.video_id
+            LEFT JOIN (
+                SELECT music_info
+                FROM frontend_data
+                WHERE music_info IS NOT NULL AND music_info <> ''
+                 AND (
+                   music_info LIKE 'オリジナル楽曲%%'
+                   OR music_info LIKE 'original sound%%'
+                   OR music_info LIKE '原声%%'
+                   OR music_info LIKE 'nhạc nền%%'
+                   OR music_info LIKE '오리지널 사운드%%'
+                 )
+                GROUP BY music_info
+                HAVING COUNT(DISTINCT account_name) >= 3
+            ) po ON fd.music_info = po.music_info
             WHERE 
                 (
                     (%s = 'オリジナル楽曲' AND (
+                      (
                         fd.music_info LIKE 'オリジナル楽曲%%'
                         OR fd.music_info LIKE 'original sound%%'
                         OR fd.music_info LIKE '原声%%'
+                        OR fd.music_info LIKE '오리지널 사운드%%'
                         OR fd.music_info LIKE 'nhạc nền%%'
+                       )
+                       AND po.music_info IS NULL
                     ))
                     OR
                     (%s != 'オリジナル楽曲' AND fd.music_info = %s)
@@ -357,7 +387,7 @@ def update_sound_summary(collection_date):
         logger.info(f"BGM日次集計が完了しました。収集日: {collection_date}")
         
     except Exception as e:
-        error_message = f"BGM日次集計処理中にエラーが発生しました: {str(e)}"
+        error_message = f"ハッシュタグ・BGM日次集計処理中にエラーが発生しました: {str(e)}"
         logger.error(error_message)
         import traceback
         logger.error(traceback.format_exc())

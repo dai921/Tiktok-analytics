@@ -1,0 +1,20 @@
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - functions
+      - deploy
+      - tiktok-daily-sync
+      - --gen2
+      - --runtime=python310
+      - --region=asia-northeast1
+      - --source=.
+      - --entry-point=sync_tiktok_accounts
+      - --trigger-topic=tiktok-daily-sync
+      - --memory=512MB
+      - --timeout=540s
+      - --service-account=cloudbuild@tiktok-analytics-prod-451609.iam.gserviceaccount.com
+      - --set-env-vars=ENVIRONMENT=production,PROJECT_ID=tiktok-analytics-prod-451609,MYSQL_USER=tiktok-user,MYSQL_PASSWORD=tiktok_pass,MYSQL_DATABASE=tiktok_data,INSTANCE_CONNECTION_NAME=tiktok-analytics-prod-451609:asia-northeast1:tiktok-analytics-db
+      - --set-secrets=ENCRYPTION_KEY=projects/tiktok-analytics-prod-451609/secrets/ENCRYPTION_KEY:latest,TT_CLIENT_KEY=projects/tiktok-analytics-prod-451609/secrets/TT_CLIENT_KEY:latest,TT_CLIENT_SECRET=projects/tiktok-analytics-prod-451609/secrets/TT_CLIENT_SECRET:latest
+options:
+  logging: CLOUD_LOGGING_ONLY

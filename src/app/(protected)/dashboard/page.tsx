@@ -4,33 +4,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { DataTable } from '@/components/dashboard/data-table/Datatable'
 import { getDbData, getAffiliateData, getCorporateData, getInfluencerData, COLUMN_MAP } from '@/lib/api'
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard'
-import { displaySettingsApi } from '@/lib/display_settings_api'
 import { toast } from "@/hooks/use-toast"
-import { TAB_DEFAULT_COLUMNS, TAB_FILTER_FIELDS, getCurrentTabType, getTabFilterFields } from '@/components/dashboard/data-table/tab-columns'
+import { TAB_DEFAULT_COLUMNS, getCurrentTabType, getTabFilterFields } from '@/components/dashboard/data-table/tab-columns'
+import { getDefaultPreset, contextKeyFromTab, getPreset } from '@/lib/filter_presets_api'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-const headers = [
-  { key: 'createdAt', title: '作成日時', type: 'date' as const },
-  { key: 'views', title: '再生数', type: 'number' as const },
-  { key: 'viewsIncrease', title: '再生増加数', type: 'number' as const },
-  { key: 'ten_days_increase', title: '10日間再生増加数', type: 'number' as const },
-  { key: 'category', title: 'ジャンル' },
-  { key: 'product', title: '商材' },
-  { key: 'account_name', title: 'アカウント名' },
-  { key: 'account_type', title: 'アカウントジャンル' },
-  { key: 'description', title: '説明' },
-  { key: 'hashtags', title: 'ハッシュタグ' },
-  { key: 'likes', title: 'いいね数', type: 'number' as const },
-  { key: 'likes_count_increase', title: 'いいね増加数', type: 'number' as const },
-  { key: 'ten_days_likes_increase', title: '10日間いいね増加数', type: 'number' as const },
-  { key: 'comments', title: 'コメント数', type: 'number' as const },
-  { key: 'comment_count_increase', title: 'コメント増加数', type: 'number' as const },
-  { key: 'ten_days_comment_increase', title: '10日間コメント増加数', type: 'number' as const },
-  { key: 'shares', title: '共有数', type: 'number' as const },
-  { key: 'saves', title: '保存数', type: 'number' as const },
-  { key: 'duration', title: '動画時間(秒)', type: 'number' as const },
-  { key: 'audioTitle', title: '音声タイトル' },
-  { key: 'artist', title: 'アーティスト' }
-] as const
+
+// headers: 未使用のため削除
 
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
@@ -46,18 +27,14 @@ const Dashboard = () => {
   const [isCorporateOnly, setIsCorporateOnly] = useState(false)
   const [isInfluencerOnly, setIsInfluencerOnly] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
-  const [isSettingsLoaded, setIsSettingsLoaded] = useState(false)
+  const [isBootstrapped, setIsBootstrapped] = useState(false)
+  const defaultPresetAttemptedRef = useRef<Record<'all' | 'affiliate' | 'corporate' | 'influencer', boolean>>({
+    all: false,
+    affiliate: false,
+    corporate: false,
+    influencer: false
+  });
 
-  // ★ フィルタポップアップ用のデータ状態を追加
-  // const [filterData, setFilterData] = useState({
-  //   products: [] as any[],
-  //   productCategories: {} as Record<string, string[]>,
-  //   accountTypes: [] as string[],
-  //   isLoadingFilterData: true
-  // });
-
-  // ★ prefetch状態を削除
-  // const [prefetchCompleted, setPrefetchCompleted] = useState(false);
 
   // タブごとの独立したフィルター状態
   const [filtersByTab, setFiltersByTab] = useState<Record<string, Record<string, FilterQuery>>>({
@@ -81,6 +58,14 @@ const Dashboard = () => {
     affiliate: {}
   });
 
+  // タブごとの表示カラム状態を追加
+  const [visibleColumnsByTab, setVisibleColumnsByTab] = useState<Record<string, string[]>>({
+    all: [],
+    corporate: [],
+    influencer: [],
+    affiliate: []
+  });
+
   // 基本関数群
   const getCurrentTabKey = () => {
     if (isCorporateOnly) return 'corporate';
@@ -98,6 +83,21 @@ const Dashboard = () => {
     // 深いコピーを作成して参照共有を防ぐ
     return JSON.parse(JSON.stringify(baseFilters));
   };
+
+  // 現在のタブの表示カラムを取得する関数
+  const getCurrentVisibleColumns = useCallback(() => {
+    const tabKey = getCurrentTabKey();
+    return visibleColumnsByTab[tabKey] || [];
+  }, [visibleColumnsByTab, isPrOnly, isCorporateOnly, isInfluencerOnly]);
+
+  // 表示カラムを更新する関数
+  const updateTabVisibleColumns = useCallback((columns: string[], targetTabKey?: string) => {
+    const tabKey = targetTabKey || getCurrentTabKey();
+    setVisibleColumnsByTab(prev => ({
+          ...prev,
+      [tabKey]: [...columns]
+    }));
+  }, [isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
   const generateFilterHash = (filters: Record<string, FilterQuery>) => {
     if (Object.keys(filters).length === 0) return 'default';
@@ -225,40 +225,33 @@ const Dashboard = () => {
     }
   }, [pageSize, isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
-  // ★ タブ切り替え専用のuseEffect
+  // タブ切り替え時のuseEffectを修正
   useEffect(() => {
+    if (!isBootstrapped) return;
+
     const tabKey = getCurrentTabKey();
     const currentTabFilters = getCurrentFilters();
+    const currentTabColumns = visibleColumnsByTab[tabKey];
     
-    // ★ 【追加】タブに応じたデフォルトカラムを即座に設定
     const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
     const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-    setVisibleColumns(defaultColumns);
     
-    console.log('[DEBUG] ★★★ タブ切り替え詳細 ★★★:', {
-      currentTab: tabKey,
-      filtersByTabState: filtersByTab,
-      corporateFilters: filtersByTab.corporate,
-      allFilters: filtersByTab.all,
-      affiliateFilters: filtersByTab.affiliate,
-      influencerFilters: filtersByTab.influencer,
-      currentTabFilters: currentTabFilters,
-      oldFilters: filters,
-      areCurrentTabFiltersEmpty: Object.keys(currentTabFilters).length === 0,
-      areAllAndCorporateSameRef: filtersByTab.all === filtersByTab.corporate,
-      // ★ 詳細な中身を確認
-      corporateFiltersDetail: JSON.stringify(filtersByTab.corporate),
-      allFiltersDetail: JSON.stringify(filtersByTab.all),
-      currentTabFiltersDetail: JSON.stringify(currentTabFilters)
-    });
-
-    // フィルター状態を復元（データ復元はしない）
+    // 表示カラムがまだ設定されていない場合のみデフォルトを適用
+    if (!currentTabColumns || currentTabColumns.length === 0) {
+      updateTabVisibleColumns(defaultColumns, tabKey);
+      setVisibleColumns(defaultColumns);
+    } else {
+      // 既存の設定を維持
+      setVisibleColumns(currentTabColumns);
+    }
+    
     setFilters(currentTabFilters);
-    setCurrentPage(1); // ページもリセット
-  }, [isCorporateOnly, isInfluencerOnly, isPrOnly]);
+    setCurrentPage(1);
+  }, [isCorporateOnly, isInfluencerOnly, isPrOnly, isBootstrapped, visibleColumnsByTab, updateTabVisibleColumns]);
 
-  // ★ フィルタ変更専用のuseEffect（修正版）
   useEffect(() => {
+    if (!isBootstrapped) return;
+
     const tabKey = getCurrentTabKey();
     const filterHash = generateFilterHash(filters);
 
@@ -268,13 +261,10 @@ const Dashboard = () => {
       filters: filters,
       filtersCount: Object.keys(filters).length,
       currentPage,
-      pageSize // ← pageSizeもログに追加
+      pageSize
     });
 
-    // ★ pageSize込みのキャッシュキーを生成
     const cacheKey = generateCacheKey(filterHash, currentPage, pageSize);
-    
-    // ★ pageSize固有のキャッシュをチェック
     if (dataByTab[tabKey]?.[cacheKey]) {
       const cache = dataByTab[tabKey][cacheKey];
       const now = Date.now();
@@ -284,12 +274,11 @@ const Dashboard = () => {
         console.log('[DEBUG] pageSize固有キャッシュからデータを復元:', cache);
         setData(cache.data);
         setTotalPages(cache.totalPages);
-        setIsLoading(false); // ← キャッシュがある場合のみisLoadingがfalseになる
+        setIsLoading(false);
         return;
       }
     }
 
-    // APIコール（現在のページ番号とpageSizeを使用）
     console.log('[DEBUG] 新しいデータを取得');
     if (Object.keys(filters).length === 0) {
       fetchData(currentPage, {});
@@ -299,7 +288,7 @@ const Dashboard = () => {
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [filters, currentPage, pageSize]); // ★ pageSizeも依存配列に追加
+  }, [filters, currentPage, pageSize, isBootstrapped]);
 
   // ★ updateTabFiltersを先に定義
   const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>, targetTabKey?: string) => {
@@ -328,69 +317,50 @@ const Dashboard = () => {
     });
   }, []);
 
-  // ハンドラー関数群
-  const handleFilter = useCallback((newFilter: FilterValue) => {
-    if (newFilter.type === 'clear') {
-      if (newFilter.field === 'reset') {
-        updateTabFilters({});
-        setFilters({});
-        setCurrentPage(1);
-        return;
-      }
-      
-      if (newFilter.field && filters[newFilter.field]) {
-        const updatedFilters = { ...filters };
-        delete updatedFilters[newFilter.field];
-        
-        updateTabFilters(updatedFilters);
-        setFilters(JSON.parse(JSON.stringify(updatedFilters)));
-        return;
-      }
+  useEffect(() => {
+    if (!isBootstrapped) return;
+
+    const tabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+    const ctx = contextKeyFromTab(tabType as any);
+
+    // 既にこのタブでデフォルト適用を試行済みならスキップ
+    if (defaultPresetAttemptedRef.current[tabType]) return;
+
+    const hasExisting = Object.keys(filtersByTab[tabType] || {}).length > 0;
+    if (hasExisting) {
+      defaultPresetAttemptedRef.current[tabType] = true;
       return;
     }
-    
-    let field = '';
-    if (typeof newFilter.field === 'string' && newFilter.field) {
-      const mappedField = Object.entries(COLUMN_MAP).find(([_, value]) => value === newFilter.field)?.[0];
-      field = mappedField || newFilter.field;
-    }
-    
-    if (newFilter.field === 'ハッシュタグ') {
-      field = 'hashtags';
-    }
 
-    const filterQuery: FilterQuery = convertFilterValueToQuery({
-      ...newFilter,
-      field: field
-    });
-    
-    let updatedFilters: Record<string, FilterQuery>;
-    
-    if (newFilter.type === 'sort') {
-      updatedFilters = {
-        ...filters,
-        [`${field}_sort`]: filterQuery,
-        ...(filters[field] && { [field]: filters[field] })
-      };
-    } else if (newFilter.type === 'multiselect') {
-      updatedFilters = {
-        ...filters,
-        [field]: {
-          ...filterQuery,
-          comparison: 'contains'
+    (async () => {
+      try {
+        const res = await getDefaultPreset(ctx);
+        const incoming = res?.preset?.payload?.currentFilters;
+        const cols = res?.preset?.payload?.visibleColumns; // ★ 追加
+        
+        // 試行済みにマーク（空でも一度だけ）
+        defaultPresetAttemptedRef.current[tabType] = true;
+        
+        if (res?.success && incoming && typeof incoming === 'object' && Object.keys(incoming).length > 0) {
+          updateTabFilters(incoming, tabType);
+          setFilters(JSON.parse(JSON.stringify(incoming)));
+          setCurrentPage(1);
         }
-      };
-    } else {
-      updatedFilters = {
-        ...filters,
-        [field]: filterQuery
-      };
-    }
-    
-    updateTabFilters(updatedFilters);
-    setFilters(JSON.parse(JSON.stringify(updatedFilters)));
-  }, [filters, updateTabFilters]);
-  
+        
+        // ★ 表示カラムの適用を追加
+        if (res?.success && Array.isArray(cols) && cols.length > 0) {
+          console.log('[DEBUG] デフォルトプリセットのvisibleColumns適用:', cols);
+          updateTabVisibleColumns(cols, tabType);
+          setVisibleColumns(cols);
+        }
+      } catch (e) {
+        console.warn('Failed to load default saved filter:', e);
+        // 失敗時も試行済みにして再試行ループを防止
+        defaultPresetAttemptedRef.current[tabType] = true;
+      }
+    })();
+  }, [isPrOnly, isCorporateOnly, isInfluencerOnly, filtersByTab, updateTabFilters, updateTabVisibleColumns, isBootstrapped]);
+
   const handleMultipleFilters = useCallback((incomingFilters: Record<string, FilterQuery>) => {
     console.log('[DEBUG] ========== handleMultipleFilters開始 ==========');
     console.log('[DEBUG] 受信したmultipleFilters:', incomingFilters);
@@ -560,9 +530,11 @@ const Dashboard = () => {
     setCurrentPage(1);
   }, []);
 
-  const handleColumnSettingsChange = useCallback((columns: string[]) => {
-    setVisibleColumns(columns);
-  }, []);
+  // カラム変更ハンドラーを更新
+  const handleColumnSettingsChange = useCallback((newVisibleColumns: string[]) => {
+    setVisibleColumns(newVisibleColumns);
+    updateTabVisibleColumns(newVisibleColumns);
+  }, [updateTabVisibleColumns]);
 
   const handlePrOnlyChange = useCallback((checked: boolean) => {
     setIsPrOnly(checked);
@@ -590,39 +562,7 @@ const Dashboard = () => {
     setCurrentPage(1);
   }, []);
 
-  // 設定読み込み
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const response = await displaySettingsApi.getSettings();
-        
-        if (response.success && response.settings && response.settings.columns && response.settings.columns.length > 0) {
-          const visibleColumnNames = response.settings.columns
-            .filter(col => col.is_visible)
-            .map(col => col.column_name);
-          
-          if (visibleColumnNames.length === 0) {
-            // ★ 【削除】以下4行を削除
-            // const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
-            // const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-            // setVisibleColumns(defaultColumns);
-          } else {
-            setVisibleColumns(visibleColumnNames);
-          }
-        }
-        setIsSettingsLoaded(true);
-      } catch (error) {
-        console.error('設定読み込みエラー:', error);
-        // ★ 【削除】以下3行を削除
-        // const currentTab = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
-        // const defaultColumns = TAB_DEFAULT_COLUMNS[currentTab];
-        // setVisibleColumns(defaultColumns);
-        setIsSettingsLoaded(true);
-      }
-    };
-
-    loadSettings();
-  }, []);
+  // 表示設定APIは未使用。可視カラムはブートストラップでタブに応じて設定します。
 
   // ★ prefetch機能のuseEffectを削除
   // useEffect(() => {
@@ -680,30 +620,120 @@ const Dashboard = () => {
   const currentTabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
   const currentTabFilterFields = getTabFilterFields(currentTabType);
 
-  if (!isSettingsLoaded) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500" />
-      </div>
-    );
-  }
+  // defaultPresetAppliedRef: 未使用のため削除
+
+  // 初回ブートストラップ: タブのデフォルト列設定 → 保存したフィルタ（デフォルト）適用 → 完了フラグ
+  useEffect(() => {
+    if (isBootstrapped) return;
+
+    const tabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
+    setVisibleColumns(TAB_DEFAULT_COLUMNS[tabType]);
+
+    const ctx = contextKeyFromTab(tabType as any);
+    (async () => {
+      try {
+        const res = await getDefaultPreset(ctx);
+        const incoming = res?.preset?.payload?.currentFilters;
+        const cols = res?.preset?.payload?.visibleColumns;
+        if (res?.success && incoming && typeof incoming === 'object') {
+          updateTabFilters(incoming, tabType);
+          setFilters(JSON.parse(JSON.stringify(incoming)));
+          if (Array.isArray(cols) && cols.length) {
+            console.log('[DEBUG] bootstrap apply visibleColumns =', cols);
+            updateTabVisibleColumns(cols, tabType);
+            setVisibleColumns(cols);
+          }
+        }
+      } catch (e) {
+        console.warn('bootstrap: default saved filter not found or failed:', e);
+      } finally {
+        setCurrentPage(1);
+        setIsBootstrapped(true);
+      }
+    })();
+  }, [isBootstrapped, isPrOnly, isCorporateOnly, isInfluencerOnly, updateTabFilters, updateTabVisibleColumns]);
+
+  // プリセット適用時の表示カラム処理を修正
+  const presetApplyVisibleColumns = useCallback((cols: string[]) => {
+    setVisibleColumns(cols);
+    updateTabVisibleColumns(cols);
+  }, [updateTabVisibleColumns]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <main>
+        {/* 表示設定メニューはテーブルヘッダー（タイトル横）に移動 */}
+
+        <Suspense fallback={null}>
+          <UrlPresetApplier
+            updateTabFilters={updateTabFilters}
+            setFilters={setFilters}
+            setCurrentPage={setCurrentPage}
+            setIsPrOnly={setIsPrOnly}
+            setIsCorporateOnly={setIsCorporateOnly}
+            setIsInfluencerOnly={setIsInfluencerOnly}
+            setVisibleColumns={setVisibleColumns}
+            updateTabVisibleColumns={updateTabVisibleColumns}
+          />
+        </Suspense>
+
         <DataTable 
           ref={tableRef}
           data={data}
           defaultVisibleColumns={visibleColumns}
           onColumnSettingsChange={handleColumnSettingsChange}
+          // 表示設定メニュー用のコールバックを渡す
+          presetApplyFilters={(f, targetTabKey) => {
+            updateTabFilters(f, targetTabKey)
+            setFilters(JSON.parse(JSON.stringify(f)))
+            setCurrentPage(1)
+          }}
+          presetClearFilters={() => {
+            updateTabFilters({})
+            setFilters({})
+            setCurrentPage(1)
+          }}
+          presetGetFiltersByTab={() => ({
+            all: JSON.parse(JSON.stringify(filtersByTab.all)),
+            affiliate: JSON.parse(JSON.stringify(filtersByTab.affiliate)),
+            corporate: JSON.parse(JSON.stringify(filtersByTab.corporate)),
+            influencer: JSON.parse(JSON.stringify(filtersByTab.influencer)),
+          })}
+          presetGetVisibleColumns={() => visibleColumns}
+          presetGetVisibleColumnsByTab={() => ({
+            all: [...(visibleColumnsByTab.all ?? [])],
+            affiliate: [...(visibleColumnsByTab.affiliate ?? [])],
+            corporate: [...(visibleColumnsByTab.corporate ?? [])],
+            influencer: [...(visibleColumnsByTab.influencer ?? [])],
+          })}
+          presetApplyVisibleColumns={presetApplyVisibleColumns}
           onFilterChange={(hasFilters, filter) => {
-            if (filter) {
-              if (filter.type === 'multiple' && filter.field === 'multipleFilters' && filter.filters) {
-                handleMultipleFilters(filter.filters);
-              } else {
-                handleFilter(filter);
-              }
+            if (!filter) return;
+          
+            // multiple（複数フィルタ）は FilterValue -> FilterQuery に正規化してから渡す
+            if (filter.type === 'multiple' && filter.field === 'multipleFilters' && (filter as any).filters) {
+              const normalized: Record<string, FilterQuery> = Object.fromEntries(
+                Object.entries((filter as any).filters as Record<string, FilterValue>).map(([k, v]) => [
+                  k,
+                  typeof v === 'object' && v !== null && 'value' in (v as any)
+                    ? (v as any)
+                    : {
+                        field: k,
+                        type: 'equal',
+                        value: v,
+                      },
+                ])
+              )
+              
+              // フィルタをタブに適用
+              updateTabFilters(normalized)
+              setFilters(JSON.parse(JSON.stringify(normalized)))
+            } else {
+              // 通常のフィルタは1件だけ更新
+              updateTabFilters({ [filter.field]: filter as FilterQuery })
+              setFilters((prev) => ({ ...prev, [filter.field]: filter as FilterQuery }))
             }
+            setCurrentPage(1)
           }}
           onPageChange={(page) => setCurrentPage(page)}
           currentPage={currentPage}
@@ -727,6 +757,65 @@ const Dashboard = () => {
       </main>
     </div>
   )
+}
+
+const UrlPresetApplier: React.FC<{
+  updateTabFilters: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void
+  setFilters: React.Dispatch<React.SetStateAction<Record<string, FilterQuery>>>
+  setCurrentPage: React.Dispatch<React.SetStateAction<number>>
+  setIsPrOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
+  updateTabVisibleColumns: (columns: string[], targetTabKey?: string) => void
+}> = ({
+  updateTabFilters,
+  setFilters,
+  setCurrentPage,
+  setIsPrOnly,
+  setIsCorporateOnly,
+  setIsInfluencerOnly,
+  setVisibleColumns,
+  updateTabVisibleColumns
+}) => {
+  const searchParams = useSearchParams()
+  const appliedPresetRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    const presetId = searchParams.get('preset')
+    if (!presetId || appliedPresetRef.current === presetId) return
+
+    ;(async () => {
+      try {
+        const res = await getPreset(presetId)
+        const p = res?.preset
+        if (!p) return
+
+        const incoming = p.payload?.currentFilters ?? {}
+        const cols = (p as any)?.payload?.visibleColumns
+        const tabFlags = p.payload?.tab || {}
+        const targetTab = getCurrentTabType(!!tabFlags.isPrOnly, !!tabFlags.isCorporateOnly, !!tabFlags.isInfluencerOnly)
+
+        setIsPrOnly(!!tabFlags.isPrOnly)
+        setIsCorporateOnly(!!tabFlags.isCorporateOnly)
+        setIsInfluencerOnly(!!tabFlags.isInfluencerOnly)
+
+        updateTabFilters(incoming, targetTab)
+        setFilters(JSON.parse(JSON.stringify(incoming)))
+        if (Array.isArray(cols) && cols.length) {
+          console.log('[DEBUG] url apply visibleColumns =', cols);
+          setVisibleColumns(cols);
+          updateTabVisibleColumns(cols, targetTab);
+        }
+        setCurrentPage(1)
+        appliedPresetRef.current = presetId
+      } catch (e) {
+        console.warn('Failed to apply preset from URL:', e)
+      }
+    })()
+  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly, updateTabVisibleColumns])
+
+  return null
 }
 
 export default Dashboard

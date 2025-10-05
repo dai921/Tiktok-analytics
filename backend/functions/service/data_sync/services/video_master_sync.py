@@ -302,6 +302,76 @@ def extract_hashtags(title: str) -> Tuple[str, bool]:
     
     return hashtags_str, is_pr
 
+
+def find_music_title_from_alt(alt_text: Optional[str]) -> Optional[str]:
+    """
+    alt_text の「を使用して」より左側を対象に、右端の「の」から遡って
+    候補を作りつつ music_info を逐次照会。最初にヒットした楽曲名を返す。
+    見つからなければ None。
+    """
+    if not alt_text:
+        return None
+    end = alt_text.find('を使用して')
+    if end == -1:
+        return None
+    before = alt_text[:end]
+
+    positions = [i for i, ch in enumerate(before) if ch == 'の']
+    if not positions:
+        return None
+
+    exists_query = """
+        SELECT music_title
+        FROM music_info
+        WHERE music_title = %s
+        LIMIT 1
+    """
+    # 右端（最後の「の」）から先頭方向に遡る
+    for pos in reversed(positions):
+        title = before[pos + 1:].strip(' 　「」『』"\'#[]()（）')
+        if len(title) < 2:
+            continue
+        exists = execute_query(exists_query, (title,))
+        if exists:
+            return title
+    return None
+
+def find_music_title_from_alt_fast(alt_text: Optional[str]) -> Optional[str]:
+    """
+    「の」出現位置から右側の候補を短い→長い順にすべて列挙し、
+    1回の IN 句 + ORDER BY FIELD で優先順に照会して最初のヒットを返す。
+    見つからなければ None。
+    """
+    if not alt_text:
+        return None
+    end = alt_text.find('を使用して')
+    if end == -1:
+        return None
+    before = alt_text[:end]
+
+    positions = [i for i, ch in enumerate(before) if ch == 'の']
+    if not positions:
+        return None
+
+    candidates: List[str] = []
+    for pos in reversed(positions):
+        title = before[pos + 1:].strip(' 　「」『』"\'#[]()（）')
+        if len(title) >= 2:
+            candidates.append(title)
+    if not candidates:
+        return None
+
+    placeholders = ','.join(['%s'] * len(candidates))
+    sql = f"""
+        SELECT music_title
+        FROM music_info
+        WHERE music_title IN ({placeholders})
+        ORDER BY FIELD(music_title, {placeholders})
+        LIMIT 1
+    """
+    rows = execute_query(sql, tuple(candidates + candidates))
+    return rows[0]['music_title'] if rows else None
+
 def sync_video_data(video_data: Dict) -> Dict[str, str]:
     """
     Pub/Subメッセージから受け取ったデータを処理し、
@@ -314,13 +384,38 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # ①対象のvideo_idのログ
         print(f"[LOG] 処理対象のvideo_id: {video_id}")
 
-        # play_countとaudio_titleの値チェック
-        if video_data.get('audio_title') is None:
-            logger.warning(f"必須データが不足しています。video_id: {video_id}")
-            return {
-                'status': 'error',
-                'message': f'Required data missing for video {video_id}'
-            }
+        # audio_title フォールバック処理（欠損でも処理は継続）
+        audio_title = video_data.get('audio_title')
+        music_title: Optional[str] = None
+
+        if audio_title is not None and str(audio_title).strip() != '':
+            music_title = str(audio_title).strip()
+        else:
+            try:
+                alt_query = """
+                    SELECT video_alt_info_text
+                    FROM video_light_raw_data
+                    WHERE video_id = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                """
+                alt_result = execute_query(alt_query, (video_id,))
+                alt_text = alt_result[0]['video_alt_info_text'] if alt_result else None
+
+                # 高速版（IN句+ORDER BY FIELD）でまず試す
+                found = find_music_title_from_alt_fast(alt_text)
+                if not found:
+                    # 念のため逐次版でもう一度試す（表記揺れ等の保険）
+                    found = find_music_title_from_alt(alt_text)
+                if found:
+                    music_title = found
+                    logger.info(f"audio_title欠損 → music_infoでヒット: {music_title}, video_id: {video_id}")
+                else:
+                    music_title = ''
+                    logger.warning(f"music_infoでヒットせず空文字採用。video_id: {video_id}")
+            except Exception as e:
+                music_title = ''
+                logger.error(f"alt/music_info参照エラー: {str(e)}; video_id: {video_id}")
 
         # 前回のデータを取得（MySQL用のクエリ）
         prev_data_query = """
@@ -440,7 +535,7 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
             'likesCountIncrease': likes_count_increase,
             'commentCountIncrease': comment_count_increase,
             'saveCountIncrease': save_count_increase,
-            'music_title': video_data['audio_title'],
+            'music_title': music_title or '',
             'likes_count': video_data['like_count'],
             'comment_count': video_data['comment_count'],
             'save_count': video_data['save_count'],

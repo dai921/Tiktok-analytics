@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, ChangeEvent } from "react";
 import { TikTokStats, TikTokVideo } from "@/types/my-report";
 import Image from "next/image";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -14,7 +14,27 @@ interface TikTokAccount {
   openId: string;
   displayName: string;
   linkedAt: string;
+  accountType?: string;
+  mainlyVideoType?: string;
 }
+const toStartOfDay = (date: Date): Date => {
+  const clone = new Date(date);
+  clone.setHours(0, 0, 0, 0);
+  return clone;
+};
+
+const toEndOfDay = (date: Date): Date => {
+  const clone = new Date(date);
+  clone.setHours(23, 59, 59, 999);
+  return clone;
+};
+
+const formatDateForFileName = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function MyAccountPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -22,26 +42,47 @@ export default function MyAccountPage() {
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
-  const [reportPeriod, setReportPeriod] = useState('30d');
-  const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('viewGrowth');
+  const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('createTime');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // desc: 降順, asc: 昇順
   const [activeTab, setActiveTab] = useState<'stats' | 'videos'>('stats'); // 追加：タブUIのstate
   
   // アカウント情報関連の状態
   const [accounts, setAccounts] = useState<TikTokAccount[]>([]);
   const [activeAccount, setActiveAccount] = useState<TikTokAccount | null>(null);
+  const [videoLimit, setVideoLimit] = useState<number>(100);
+  const videoLimitOptions = [50, 100, 150, 200, 250, 300];
   
-  // 日付選択用の状態
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30日前
-    end: new Date() // 今日
-  });
+  const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<TikTokAccount | null>(null);
+  const [isCsvExporting, setIsCsvExporting] = useState(false);
   
+  const monthPresets = useMemo(() => {
+    const presets: { key: string; label: string; range: { start: Date; end: Date } }[] = [];
+    const today = new Date();
+    for (let i = 0; i < 6; i += 1) {
+      const base = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const startDate = toStartOfDay(base);
+      const endDate = toEndOfDay(new Date(base.getFullYear(), base.getMonth() + 1, 0));
+      const key = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${startDate.getFullYear()}年${startDate.getMonth() + 1}月`;
+      presets.push({ key, label, range: { start: startDate, end: endDate } });
+    }
+    return presets;
+  }, []);
+
+  const fallbackEnd = toEndOfDay(new Date());
+  const fallbackStart = toStartOfDay(new Date(fallbackEnd));
+  fallbackStart.setDate(fallbackStart.getDate() - 29);
+  const defaultRange = { start: fallbackStart, end: fallbackEnd };
+  const initialRange = monthPresets[0]?.range ?? defaultRange;
+
+  const [reportMode, setReportMode] = useState<'monthly' | 'custom'>('monthly');
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(monthPresets[0]?.key ?? '');
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(initialRange);
+  const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date }>(initialRange);
+
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
   /** ---------- 認可 URL ---------- */
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-    (typeof window !== 'undefined' ? window.location.origin : '');
-    
   // ランダムな文字列を生成（ブラウザのcrypto APIを使用）
   const generateRandomState = () => {
     if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -53,30 +94,42 @@ export default function MyAccountPage() {
   
   const qs = new URLSearchParams({
     client_key: process.env.NEXT_PUBLIC_TT_CLIENT_KEY || 'mock-client-key',
-    redirect_uri: `${baseUrl}/api/auth/tiktok/callback`,
+    redirect_uri: `${API_BASE_URL}/api/auth/tiktok/callback`, // バックエンドAPIに変更
     response_type: 'code',
-    scope: ['user.info.basic', 'video.list'].join(','),
+    scope: ['user.info.basic', 'user.info.stats', 'video.list'].join(','),
     state: generateRandomState(),
   });
   const authorizeUrl = `https://www.tiktok.com/v2/auth/authorize?${qs.toString()}`;
 
+  const mapAccountResponse = (account: any): TikTokAccount => ({
+    id: account?.id || account?.openId || account?.open_id || '1',
+    openId: account?.openId || account?.open_id || 'unknown',
+    displayName: account?.displayName || account?.display_name || 'TikTokアカウント',
+    linkedAt: account?.linkedAt || account?.linked_at || new Date().toISOString(),
+    accountType: account?.accountType || account?.account_type,
+    mainlyVideoType: account?.mainlyVideoType || account?.mainly_video_type,
+  });
+
   // 連携済みアカウント一覧を取得する関数
-  const fetchConnectedAccounts = async () => {
-    setIsLoading(true);
+  const fetchConnectedAccounts = async (): Promise<void> => {
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
+        setAccounts([]);
+        setActiveAccount(null);
+        setConnected(false);
+        setStats(null);
+        setVideos([]);
         return;
       }
-      
-      // TikTok連携状態を確認
+
       const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) {
         let errorDetail = '';
         try {
@@ -86,99 +139,157 @@ export default function MyAccountPage() {
           errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
         console.error(`[ERROR] TikTok連携状態取得エラー詳細: ${errorDetail}`);
+        setError('TikTok連携状態の取得に失敗しました。再度お試しください。');
         return;
       }
-      
+
       const statusData = await response.json();
       console.log('[INFO] 取得したTikTok連携状態:', statusData);
-      
-      if (statusData.connected && statusData.account) {
-        // アカウント情報を設定
-        const account = {
-          id: statusData.account.id || '1',
-          openId: statusData.account.openId || statusData.account.open_id || 'unknown',
-          displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
-          linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
-        };
-        
-        console.log('[INFO] アカウント情報:', account);
-        setAccounts([account]);
-        setActiveAccount(account);
-        setConnected(true);
-        
-        // アカウントの統計データと動画データを取得
-        await fetchApiData(reportPeriod, account.openId);
-      } else {
-        setConnected(false);
+
+      const rawAccounts: any[] = Array.isArray(statusData.accounts)
+        ? statusData.accounts
+        : statusData.account
+          ? [statusData.account]
+          : [];
+
+      const accountsData: TikTokAccount[] = rawAccounts.map(mapAccountResponse);
+      setAccounts(accountsData);
+      setConnected(accountsData.length > 0);
+
+      if (accountsData.length === 0) {
+        setActiveAccount(null);
+        setStats(null);
+        setVideos([]);
+        return;
       }
+
+      setActiveAccount((prev) => {
+        if (prev) {
+          const preserved = accountsData.find((account) => account.openId === prev.openId);
+          if (preserved) {
+            return preserved;
+          }
+        }
+        return accountsData[0];
+      });
+      setError(null);
     } catch (err) {
       console.error('[ERROR] TikTok連携状態取得エラー:', err);
-    } finally {
-      setIsLoading(false);
+      setError('TikTok連携状態の取得に失敗しました。再度お試しください。');
     }
   };
 
   // アカウントを切り替える関数
-  const handleAccountChange = async (account: TikTokAccount) => {
-    setIsLoading(true);
+  const handleAccountChange = (account: TikTokAccount) => {
     setActiveAccount(account);
-    await fetchApiData(reportPeriod, account.openId);
-    setIsLoading(false);
+  };
+
+  const handleAccountSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const openId = event.target.value;
+    const account = accounts.find((item) => item.openId === openId);
+    if (account) {
+      handleAccountChange(account);
+    }
   };
 
   // TikTokと連携する関数
   const handleConnect = async (e: React.MouseEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    
-    try {
-      // セッション情報を使ってデータを取得
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        setError('認証情報がありません。再ログインしてください。');
+
+    if (isLoading) {
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setError('認証情報がありません。再ログインしてください。');
+      return;
+    }
+
+    if (connected) {
+      const proceed = confirm('すでにTikTokと連携済みです。別のアカウントを追加しますか？');
+      if (!proceed) {
         return;
       }
-      
-      // 連携状態を設定してDBからデータを取得
-      fetchConnectedAccounts();
-      
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/tiktok/auth-url`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+
+      if (!res.ok) {
+        let errorDetail = '';
+        try {
+          const errorData = await res.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await res.text() || `ステータスコード: ${res.status}`;
+        }
+        throw new Error(`認可URLの取得に失敗しました: ${res.status} - ${errorDetail}`);
+      }
+      const { auth_url } = await res.json();
+      window.location.href = auth_url;
     } catch (err) {
-      console.error('[ERROR] 連携処理エラー:', err);
-      setError(err instanceof Error ? err.message : 'データの取得に失敗しました。');
+      console.error('[ERROR] OAuth遷移エラー:', err);
+      setError('TikTok連携画面への遷移に失敗しました。しばらく待ってからもう一度お試しください。');
     } finally {
       setIsLoading(false);
     }
   };
 
   // バックエンドAPIからデータを取得する関数
-  const fetchApiData = async (period: string = reportPeriod, openId?: string) => {
+  // バックエンドAPIからデータを取得する関数
+  const fetchApiData = async (
+    openId?: string,
+    limit: number = videoLimit,
+  ) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
         return;
       }
-      
-      // openIdパラメータを追加（指定されている場合）
-      const openIdParam = openId ? `&open_id=${openId}` : '';
-      
-      console.log(`[DEBUG] 認証トークン: ${token.substring(0, 10)}...（残りは安全のため省略）`);
-      console.log(`[DEBUG] API URL: ${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`);
-      
-      // アカウント統計情報の取得
-      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`, {
+
+      if (!API_BASE_URL) {
+        setError('APIのエンドポイントが設定されていません。');
+        return;
+      }
+
+      const activeRange = dateRange;
+      const startIso = formatDateForFileName(toStartOfDay(activeRange.start));
+      const endIso = formatDateForFileName(toEndOfDay(activeRange.end));
+      const periodParam = reportMode === 'custom' ? 'custom' : 'monthly';
+
+      const statsUrl = new URL(`${API_BASE_URL}/api/tiktok/stats`);
+      statsUrl.searchParams.set('period', periodParam);
+      statsUrl.searchParams.set('start_date', startIso);
+      statsUrl.searchParams.set('end_date', endIso);
+      if (openId) statsUrl.searchParams.set('open_id', openId);
+
+      const videosUrl = new URL(`${API_BASE_URL}/api/tiktok/videos`);
+      videosUrl.searchParams.set('period', periodParam);
+      videosUrl.searchParams.set('start_date', startIso);
+      videosUrl.searchParams.set('end_date', endIso);
+      if (openId) videosUrl.searchParams.set('open_id', openId);
+      videosUrl.searchParams.set('limit', String(limit));
+
+      console.log('[DEBUG] 統計情報取得 URL:', statsUrl.toString());
+
+      const statsResponse = await fetch(statsUrl.toString(), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       console.log(`[DEBUG] 統計情報レスポンスステータス: ${statsResponse.status} ${statsResponse.statusText}`);
-      
+
       if (!statsResponse.ok) {
-        // レスポンスの詳細を取得
         let errorDetail = '';
         try {
           const errorData = await statsResponse.json();
@@ -189,22 +300,20 @@ export default function MyAccountPage() {
         console.error(`[ERROR] 統計情報取得エラー詳細: ${errorDetail}`);
         throw new Error(`統計情報の取得に失敗しました: ${statsResponse.status} - ${errorDetail}`);
       }
-      
+
       const statsData = await statsResponse.json();
       console.log('[DEBUG] 取得した統計データ:', statsData);
-      
-      // 動画リストの取得
-      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}`);
-      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}`, {
+
+      console.log('[DEBUG] 動画リスト取得 URL:', videosUrl.toString());
+      const videosResponse = await fetch(videosUrl.toString(), {
         headers: {
-          'Authorization': `Bearer ${token}` // 認証ヘッダーを追加
+          'Authorization': `Bearer ${token}`
         }
       });
-      
+
       console.log(`[DEBUG] 動画リストレスポンスステータス: ${videosResponse.status} ${videosResponse.statusText}`);
-      
+
       if (!videosResponse.ok) {
-        // レスポンスの詳細を取得
         let errorDetail = '';
         try {
           const errorData = await videosResponse.json();
@@ -215,37 +324,59 @@ export default function MyAccountPage() {
         console.error(`[ERROR] 動画リスト取得エラー詳細: ${errorDetail}`);
         throw new Error(`動画情報の取得に失敗しました: ${videosResponse.status} - ${errorDetail}`);
       }
-      
+
       const videosData = await videosResponse.json();
       console.log('[DEBUG] 取得した動画データ:', videosData);
-      
-      // thumbnailUrlをオブジェクト型に変換
-      const videosWithObjThumbnail = videosData.map((video: any) => ({
-        ...video,
-        thumbnailUrl: video.thumbnailUrl
-          ? { url: video.thumbnailUrl, valueType: 'IMAGE' }
-          : null,
-      }));
-      
-      // 統計データを計算・拡張
+
+      const normalizeThumbnail = (thumbnail: any) => {
+        if (!thumbnail) return null;
+
+        if (typeof thumbnail === 'string') {
+          return { valueType: 'IMAGE', url: thumbnail };
+        }
+
+        if (typeof thumbnail === 'object') {
+          const nestedUrl =
+            typeof thumbnail.url === 'string'
+              ? thumbnail.url
+              : typeof thumbnail.url === 'object' && thumbnail.url !== null
+                ? thumbnail.url.url
+                : null;
+
+          if (typeof nestedUrl === 'string' && nestedUrl.length > 0) {
+            return { valueType: thumbnail.valueType ?? 'IMAGE', url: nestedUrl };
+          }
+        }
+
+        return null;
+      };
+
+      const videosWithObjThumbnail = videosData.map((video: any) => {
+        const rawThumbnail =
+          video?.thumbnailUrl ??
+          (video as Record<string, any>)?.thumbnail_url ??
+          (video as Record<string, any>)?.coverImageUrl ??
+          (video as Record<string, any>)?.cover_image_url;
+
+        return {
+          ...video,
+          thumbnailUrl: normalizeThumbnail(rawThumbnail),
+        };
+      });
+
       if (statsData && videosWithObjThumbnail && videosWithObjThumbnail.length > 0) {
-        // 総再生数を計算
         const totalPlayCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
-        // 総コメント数を計算
         const commentCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
-        // 総シェア数を計算（保存数として代用）
         const saveCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
-        
-        // statsDataに拡張データを追加
+
         statsData.totalPlayCount = totalPlayCount;
         statsData.commentCount = commentCount;
         statsData.saveCount = saveCount;
         statsData.videosCount = videosWithObjThumbnail.length;
       }
-      
+
       setStats(statsData);
       setVideos(videosWithObjThumbnail);
-      
     } catch (err) {
       console.error('[ERROR] APIデータ取得エラー:', err);
       setError(err instanceof Error ? err.message : 'データの取得に失敗しました。再度お試しください。');
@@ -254,50 +385,21 @@ export default function MyAccountPage() {
     }
   };
 
+
   // TikTok連携状態を確認するuseEffect
   useEffect(() => {
     // 初期表示時にデータ取得を実行
     const initializeData = async () => {
+      setIsLoading(true);
       try {
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
-          console.warn('[WARN] 認証トークンがありません');
-          return;
-        }
-        
-        // TikTok連携状態を確認
-        const statusResponse = await fetch(`${API_BASE_URL}/api/tiktok/connection/status`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-          console.log('[INFO] TikTok連携状態:', statusData);
-          
-          if (statusData.connected && statusData.account) {
-            // アカウント情報を設定
-            const account = {
-              id: statusData.account.id || '1',
-              openId: statusData.account.openId || statusData.account.open_id || 'unknown',
-              displayName: statusData.account.displayName || statusData.account.display_name || 'TikTokアカウント',
-              linkedAt: statusData.account.linkedAt || statusData.account.linked_at || new Date().toISOString()
-            };
-            
-            setAccounts([account]);
-            setActiveAccount(account);
-            setConnected(true);
-            
-            // アカウントの統計データと動画データを取得
-            await fetchApiData(reportPeriod, account.openId);
-          }
-        } else {
-          console.warn('[WARN] TikTok連携状態取得エラー:', statusResponse.status);
-        }
+        await fetchConnectedAccounts();
       } catch (err) {
         console.error('[ERROR] 初期化エラー:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
-    
+
     // URLクエリパラメータからtiktok_connectedを確認
     const params = new URLSearchParams(window.location.search);
     const tiktokConnected = params.get('tiktok_connected');
@@ -323,57 +425,38 @@ export default function MyAccountPage() {
 
   // 日付範囲が変わったときにデータを再取得
   useEffect(() => {
-    if (connected && dateRange.start && dateRange.end && activeAccount) {
-      // 日付範囲から期間を計算
-      const diffTime = Math.abs(dateRange.end.getTime() - dateRange.start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      // 期間に近い事前定義された期間を使用するか、カスタム期間を使用
-      let period = 'custom';
-      if (diffDays <= 7) {
-        period = '7d';
-      } else if (diffDays <= 30) {
-        period = '30d';
-      } else if (diffDays <= 90) {
-        period = '90d';
-      }
-      
-      // カスタム期間の場合、APIにstart_dateとend_dateを渡す必要があるかもしれません
-      // 現在のAPIが期間のみをサポートしている場合は、最も近い事前定義期間を使用
-      setReportPeriod(period);
-      fetchApiData(period, activeAccount.openId);
+    if (!connected || !activeAccount) {
+      return;
     }
-  }, [connected, dateRange, activeAccount]);
+
+    fetchApiData(activeAccount.openId, videoLimit);
+  }, [connected, activeAccount, dateRange, reportMode, videoLimit, selectedMonthKey]);
 
   // 日付範囲変更ハンドラー
+  // 日付範囲変更ハンドラー
   const handleDateRangeChange = (newDateRange: { start: Date; end: Date }) => {
+    setReportMode('custom');
+    setCustomDateRange(newDateRange);
     setDateRange(newDateRange);
   };
 
   // 連携を解除する関数
-  const handleDisconnect = async () => {
-    if (!activeAccount) return;
-    
-    if (!confirm(`本当に「${activeAccount.displayName}」アカウントとの連携を解除しますか？`)) {
-      return;
-    }
-
+  const disconnectAccount = async (account: TikTokAccount): Promise<boolean> => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
-        return;
+        return false;
       }
 
-      // TikTok連携解除APIを呼び出す
       const response = await fetch(`${API_BASE_URL}/api/tiktok/connection/disconnect`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ openId: activeAccount.openId })
+        body: JSON.stringify({ openId: account.openId })
       });
 
       if (!response.ok) {
@@ -384,60 +467,107 @@ export default function MyAccountPage() {
         } catch (e) {
           errorDetail = await response.text() || `ステータスコード: ${response.status}`;
         }
-        throw new Error(`連携解除に失敗しました: ${response.status} - ${errorDetail}`);
+        throw new Error(`アカウント連携解除に失敗しました: ${response.status} - ${errorDetail}`);
       }
 
-      // 連携済みアカウント一覧を再取得
-      await fetchConnectedAccounts();
-      
-      // アカウントが残っていなければ、連携解除状態にする
-      if (accounts.length <= 1) {
-        setConnected(false);
-        setActiveAccount(null);
-        setStats(null);
-        setVideos([]);
+      let handled = false;
+      try {
+        const result = await response.json();
+        if (result && Array.isArray(result.accounts)) {
+          const normalized = result.accounts.map(mapAccountResponse);
+          setAccounts(normalized);
+          setConnected(normalized.length > 0);
+
+          if (normalized.length === 0) {
+            setActiveAccount(null);
+            setStats(null);
+            setVideos([]);
+          } else {
+            const nextActive = normalized.find((item) => item.openId === activeAccount?.openId && item.openId !== account.openId)
+              || normalized[0];
+            setActiveAccount(nextActive);
+          }
+          handled = true;
+        }
+      } catch (parseError) {
+        console.warn('[WARN] disconnect response parse failed:', parseError);
       }
-      
+
+      if (!handled) {
+        await fetchConnectedAccounts();
+      }
+
       setError(null);
+      return true;
     } catch (err) {
       console.error('[ERROR] TikTok連携解除エラー:', err);
       setError(err instanceof Error ? err.message : '連携解除に失敗しました。再度お試しください。');
+      return false;
     } finally {
       setIsLoading(false);
     }
   };
 
-  // レポートをダウンロードする関数
+  const handleDisconnectClick = () => {
+    if (!activeAccount) return;
+    setDisconnectTarget(activeAccount);
+    setIsDisconnectModalOpen(true);
+  };
+
+  const handleCancelDisconnect = () => {
+    setIsDisconnectModalOpen(false);
+    setDisconnectTarget(null);
+  };
+
+  const handleConfirmDisconnect = async () => {
+    if (!disconnectTarget) return;
+    const succeeded = await disconnectAccount(disconnectTarget);
+    if (succeeded) {
+      setIsDisconnectModalOpen(false);
+      setDisconnectTarget(null);
+    }
+  };
+
   const handleDownloadReport = async () => {
     if (!activeAccount) return;
-    
+
     setIsLoading(true);
+    setError(null);
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
         return;
       }
-      
-      // 日付範囲をクエリパラメータとして追加
-      const startDateParam = dateRange.start.toISOString().split('T')[0];
-      const endDateParam = dateRange.end.toISOString().split('T')[0];
-      const openIdParam = `&open_id=${activeAccount.openId}`;
-      
-      console.log(`[DEBUG] レポート生成 URL: ${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}&start_date=${startDateParam}&end_date=${endDateParam}${openIdParam}`);
-      
-      // PDFレポート生成APIを呼び出し
-      const response = await fetch(`${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}&start_date=${startDateParam}&end_date=${endDateParam}${openIdParam}`, {
+
+      if (!API_BASE_URL) {
+        setError('APIのエンドポイントが設定されていません。');
+        return;
+      }
+
+      const activeRange = dateRange;
+      const startIso = formatDateForFileName(toStartOfDay(activeRange.start));
+      const endIso = formatDateForFileName(toEndOfDay(activeRange.end));
+      const periodParam = reportMode === 'custom' ? 'custom' : 'monthly';
+
+      const url = new URL(`${API_BASE_URL}/api/tiktok/report`);
+      url.searchParams.set('period', periodParam);
+      url.searchParams.set('start_date', startIso);
+      url.searchParams.set('end_date', endIso);
+      url.searchParams.set('open_id', activeAccount.openId);
+
+      console.log(`[DEBUG] レポート生成 URL: ${url.toString()}`);
+
+      const response = await fetch(url.toString(), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       console.log(`[DEBUG] レポート生成レスポンスステータス: ${response.status} ${response.statusText}`);
-      
+
       if (!response.ok) {
-        // レスポンスの詳細を取得
         let errorDetail = '';
         try {
           const errorData = await response.json();
@@ -448,27 +578,93 @@ export default function MyAccountPage() {
         console.error(`[ERROR] レポート生成エラー詳細: ${errorDetail}`);
         throw new Error(`レポート生成に失敗しました: ${response.status} - ${errorDetail}`);
       }
-      
-      // Blobとしてレスポンスを取得
+
       const blob = await response.blob();
       console.log(`[DEBUG] レポートBlobサイズ: ${blob.size} bytes`);
-      
-      // ダウンロードリンクを作成
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tiktok-report-${activeAccount.displayName}-${startDateParam}-to-${endDateParam}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      
-      // クリーンアップ
-      window.URL.revokeObjectURL(url);
-      a.remove();
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `tiktok-report-${activeAccount.displayName}-${startIso}-to-${endIso}.pptx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(objectUrl);
     } catch (err) {
       console.error('[ERROR] レポートダウンロードエラー:', err);
       setError(err instanceof Error ? err.message : 'レポートの生成に失敗しました。再度お試しください。');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDownloadCsv = async () => {
+    if (!activeAccount) return;
+
+    setIsCsvExporting(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+
+      if (!API_BASE_URL) {
+        setError('APIのエンドポイントが設定されていません。');
+        return;
+      }
+
+      const activeRange = dateRange;
+      const startIso = formatDateForFileName(toStartOfDay(activeRange.start));
+      const endIso = formatDateForFileName(toEndOfDay(activeRange.end));
+      const periodParam = reportMode === 'custom' ? 'custom' : 'monthly';
+
+      const url = new URL(`${API_BASE_URL}/api/tiktok/videos/export`);
+      url.searchParams.set('period', periodParam);
+      url.searchParams.set('start_date', startIso);
+      url.searchParams.set('end_date', endIso);
+      url.searchParams.set('open_id', activeAccount.openId);
+      url.searchParams.set('limit', String(videoLimit));
+
+      console.log('[DEBUG] CSVエクスポート URL:', url.toString());
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      console.log(`[DEBUG] CSVエクスポートレスポンス: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        let errorDetail = '';
+        try {
+          const errorData = await response.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await response.text() || `ステータスコード: ${response.status}`;
+        }
+        console.error(`[ERROR] CSVエクスポートエラー詳細: ${errorDetail}`);
+        throw new Error(`CSVのダウンロードに失敗しました: ${response.status} - ${errorDetail}`);
+      }
+
+      const blob = await response.blob();
+      console.log(`[DEBUG] CSVエクスポートBlobサイズ: ${blob.size} bytes`);
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `tiktok-videos-${activeAccount.displayName}-${startIso}-to-${endIso}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error('[ERROR] CSVダウンロードエラー:', err);
+      setError(err instanceof Error ? err.message : 'CSVのダウンロードに失敗しました。再度お試しください。');
+    } finally {
+      setIsCsvExporting(false);
     }
   };
 
@@ -549,6 +745,43 @@ export default function MyAccountPage() {
     sixSecondRate: 0,
     fullViewRate: 0
   });
+
+  // 連携解除確認用モーダル
+  const DisconnectConfirmModal = ({ isOpen, onClose, onConfirm, accountName }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    accountName?: string | null;
+  }) => {
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="bg-[#1a1a1a] rounded-lg p-6 w-full max-w-md border border-gray-800 shadow-xl">
+          <h3 className="text-lg font-semibold text-white mb-3">連携を解除しますか？</h3>
+          <p className="text-gray-300 text-sm leading-relaxed mb-1">
+            {accountName ? `「${accountName}」との連携を解除すると、これまで取得したデータもすべて削除されます。` : '連携を解除すると、これまで取得したデータもすべて削除されます。'}
+          </p>
+          <p className="text-gray-500 text-xs">※ この操作は取り消せません。</p>
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-500 transition-colors"
+              disabled={isLoading}
+            >
+              連携を解除する
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // モーダルコンポーネント
   const ViewRateModal = ({ isOpen, onClose, video, onSave }: {
@@ -679,7 +912,6 @@ export default function MyAccountPage() {
           ? { ...video, viewRates: rates }
           : video
       ));
-
     } catch (err) {
       console.error('[ERROR] 視聴率データ保存エラー:', err);
       setError(err instanceof Error ? err.message : '視聴率データの保存に失敗しました');
@@ -736,6 +968,24 @@ export default function MyAccountPage() {
                   </span>
                 )}
               </p>
+
+              {accounts.length > 1 && (
+                <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-3 space-y-2 sm:space-y-0">
+                  <span className="text-sm text-gray-400">表示するアカウント</span>
+                  <select
+                    value={activeAccount?.openId ?? ''}
+                    onChange={handleAccountSelectChange}
+                    className="bg-gray-800 border border-gray-700 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FE2C55]"
+                  >
+                    {accounts.map((accountItem) => (
+                      <option key={accountItem.openId} value={accountItem.openId}>
+                        {accountItem.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={handleConnect}
@@ -745,7 +995,7 @@ export default function MyAccountPage() {
                   {isLoading ? '処理中...' : '別アカウントを追加'}
                 </button>
                 <button
-                  onClick={handleDisconnect}
+                  onClick={handleDisconnectClick}
                   className="bg-gray-700 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors"
                   disabled={isLoading || !activeAccount}
                 >
@@ -774,24 +1024,90 @@ export default function MyAccountPage() {
           </p>
 
           <div className="flex flex-col space-y-4">
-            <div className="w-full">
-              <DateRangePicker 
-                dateRange={dateRange}
-                onDateRangeChange={handleDateRangeChange}
-              />
+            <div className="space-y-3">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  checked={reportMode === 'monthly'}
+                  onChange={() => {
+                    setReportMode('monthly');
+                    const preset = monthPresets.find((item) => item.key === selectedMonthKey);
+                    if (preset) {
+                      setDateRange(preset.range);
+                    }
+                  }}
+                />
+                <span className="text-sm text-gray-300">月次レポート</span>
+              </label>
+              {reportMode === 'monthly' && (
+                <select
+                  value={selectedMonthKey}
+                  onChange={(event) => {
+                    const key = event.target.value;
+                    setSelectedMonthKey(key);
+                    const preset = monthPresets.find((item) => item.key === key);
+                    if (preset) {
+                      setDateRange(preset.range);
+                    }
+                  }}
+                  className="w-full bg-gray-900 border border-gray-700 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FE2C55]"
+                >
+                  {monthPresets.map((preset) => (
+                    <option key={preset.key} value={preset.key}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-            
-            <button
-              disabled={!connected || isLoading || !activeAccount}
-              onClick={handleDownloadReport}
-              className={`py-2 px-4 rounded-md transition-colors ${
-                connected && !isLoading && activeAccount
-                  ? 'bg-[#FE2C55] text-white hover:bg-[#FE2C55]/90'
-                  : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {isLoading ? '読み込み中...' : 'レポート生成'}
-            </button>
+
+            <div className="space-y-3">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  checked={reportMode === 'custom'}
+                  onChange={() => {
+                    setReportMode('custom');
+                    setDateRange(customDateRange);
+                  }}
+                />
+                <span className="text-sm text-gray-300">カスタム期間レポート</span>
+              </label>
+              {reportMode === 'custom' && (
+                <div className="w-full">
+                  <DateRangePicker
+                    dateRange={customDateRange}
+                    onDateRangeChange={handleDateRangeChange}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                disabled={!connected || isLoading || !activeAccount || isCsvExporting}
+                onClick={handleDownloadReport}
+                className={`py-2 px-4 rounded-md transition-colors ${
+                  connected && !isLoading && !isCsvExporting && activeAccount
+                    ? 'bg-[#FE2C55] text-white hover:bg-[#FE2C55]/90'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {isLoading ? '読み込み中...' : 'レポート生成'}
+              </button>
+
+              <button
+                disabled={!connected || isCsvExporting || !activeAccount || isLoading}
+                onClick={handleDownloadCsv}
+                className={`py-2 px-4 rounded-md transition-colors ${
+                  connected && !isCsvExporting && !isLoading && activeAccount
+                    ? 'bg-[#66E6D7] text-[#14373F] hover:bg-[#5fd7c9]'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {isCsvExporting ? 'CSV出力中...' : 'CSVをダウンロード'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -851,6 +1167,7 @@ export default function MyAccountPage() {
                       <p className="text-sm text-green-400 mt-1">
                         +{formatNumber(stats.followerGrowth)} <span className="text-gray-500 text-xs">期間内</span>
                       </p>
+
                     )}
                   </>
                 )}
@@ -878,6 +1195,7 @@ export default function MyAccountPage() {
                       <p className="text-sm text-green-400 mt-1">
                         +{formatNumber(stats.viewGrowth)} <span className="text-gray-500 text-xs">期間内</span>
                       </p>
+
                     )}
                   </>
                 )}
@@ -895,6 +1213,7 @@ export default function MyAccountPage() {
                       <p className="text-sm text-green-400 mt-1">
                         +{formatNumber(stats.likeGrowth)} <span className="text-gray-500 text-xs">期間内</span>
                       </p>
+
                     )}
                   </>
                 )}
@@ -932,24 +1251,38 @@ export default function MyAccountPage() {
                     {formatDateRange()}
                   </span>
                 </h2>
-                <div className="text-sm text-gray-400 mt-2 sm:mt-0 flex items-center">
-                  ソート: 
-                  <select
-                    value={sortField}
-                    onChange={handleSortSelect}
-                    className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
-                  >
-                    {sortOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
-                    className="ml-2 px-2 py-1 rounded-md bg-gray-700 text-white text-xs border border-gray-600"
-                    title="ソート方向切替"
-                  >
-                    {sortDirection === 'desc' ? '↓' : '↑'}
-                  </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center mt-4 sm:mt-0">
+                  <div className="text-sm text-gray-400 flex items-center">
+                    表示件数:
+                    <select
+                      value={videoLimit}
+                      onChange={(e) => setVideoLimit(Number(e.target.value))}
+                      className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
+                    >
+                      {videoLimitOptions.map((option) => (
+                        <option key={option} value={option}>{option}件</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-sm text-gray-400 flex items-center">
+                    ソート:
+                    <select
+                      value={sortField}
+                      onChange={handleSortSelect}
+                      className="ml-2 px-2 py-1 rounded-md bg-gray-800 text-white text-sm border border-gray-700"
+                    >
+                      {sortOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
+                      className="ml-2 px-2 py-1 rounded-md bg-gray-700 text-white text-xs border border-gray-600"
+                      title="ソート順の切り替え"
+                    >
+                      {sortDirection === 'desc' ? '降' : '昇'}
+                    </button>
+                  </div>
                 </div>
               </div>
               
@@ -973,8 +1306,6 @@ export default function MyAccountPage() {
                   <tbody className="divide-y divide-gray-800">
                     {getSortedVideos().map((video, index) => {
                       // ここでログ出力
-                      console.log('thumbnailUrl.url:', video.thumbnailUrl?.url);
-
                       // 伸び率による視覚効果は一律で緑色の矢印に統一
                       const growthClass = 'text-green-500';
                       const growthIcon = '↑';
@@ -992,19 +1323,29 @@ export default function MyAccountPage() {
                             {formatDate(video.createTime)}
                           </td>
                           <td className="px-6 py-4">
-                            {video.thumbnailUrl ? (
-                              <Image
-                                src={video.thumbnailUrl.url ?? ""}
-                                alt={video.title}
-                                width={80}
-                                height={45}
-                                className="rounded-md object-cover"
-                              />
-                            ) : (
-                              <div className="w-20 h-12 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
-                                <span className="text-xs">No Image</span>
-                              </div>
-                            )}
+                            {(() => {
+                              const thumbSrc = video.thumbnailUrl?.url;
+
+                              if (typeof thumbSrc === 'string' && thumbSrc.length > 0) {
+                                return (
+                                  <Image
+                                    src={thumbSrc}
+                                    alt={video.title}
+                                    width={80}
+                                    height={45}
+                                    className="rounded-md object-cover"
+                                    unoptimized
+                                    referrerPolicy="no-referrer"
+                                  />
+                                );
+                              }
+
+                              return (
+                                <div className="w-20 h-12 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
+                                  <span className="text-xs">No Image</span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-white font-medium">
@@ -1056,6 +1397,13 @@ export default function MyAccountPage() {
       )}
 
       {/* モーダルコンポーネント */}
+      <DisconnectConfirmModal
+        isOpen={isDisconnectModalOpen}
+        onClose={handleCancelDisconnect}
+        onConfirm={handleConfirmDisconnect}
+        accountName={disconnectTarget?.displayName}
+      />
+
       <ViewRateModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

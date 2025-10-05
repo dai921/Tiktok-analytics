@@ -88,7 +88,7 @@ export const TableHeaderCell = forwardRef<TableHeaderCellRef, TableHeaderCellPro
 
     // 数値カラムかどうかを判定する関数
     const isNumericColumn = (title: string): boolean => {
-      return ['再生数', 'いいね数', 'コメント数', '2日再生増加数', '10日再生増加数', '2日いいね増加数', '10日いいね増加数', '2日コメント増加数', '10日コメント増加数', '投稿日', '保存数', '2日保存増加数', '10日保存増加数'].includes(title);
+      return ['再生数', 'いいね数', 'コメント数', '2日再生増加数', '10日再生増加数', '2日いいね増加数', '10日いいね増加数', '2日コメント増加数', '10日コメント増加数', '投稿日', '保存数', '2日保存増加数', '10日保存増加数', '再生/フォロワー', '再生増/フォロワー'].includes(title);
     }
 
     const [isFilterOpen, setIsFilterOpen] = useState(false)

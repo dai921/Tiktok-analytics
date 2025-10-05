@@ -42,7 +42,7 @@ def check_execution_time() -> bool:
         time_diff = current_time - last_run
         
         # 36時間以上経過しているかチェック
-        if time_diff.total_seconds() >= 36 * 3600:
+        if time_diff.total_seconds() >= 30 * 3600:
             # last_runを更新
             update_query = """
                 UPDATE scheduler_job_info 

@@ -17,7 +17,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 43200  # 30日
 VERIFICATION_TOKEN_EXPIRE_MINUTES = 60  # 1時間
 SESSION_TOKEN_EXPIRE_DAYS = 30  # 30日
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["bcrypt_sha256", "bcrypt"],  # 新規は bcrypt_sha256、旧 bcrypt も検証OK
+    deprecated="auto",
+)
 
 def generate_uuid() -> str:
     """UUIDを生成"""

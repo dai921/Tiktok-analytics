@@ -26,6 +26,10 @@ export const fetchTranscription = async (url: string): Promise<TranscriptionResp
       throw new Error('API URLが設定されていません');
     }
 
+    // 認証トークンを付与（存在すれば）
+    const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+    const tokenType = typeof window !== 'undefined' ? localStorage.getItem('auth_token_type') : null;
+
     const requestUrl = `${apiUrl}/api/transcription`;
     const requestBody = { url: url.trim() };
     
@@ -37,6 +41,7 @@ export const fetchTranscription = async (url: string): Promise<TranscriptionResp
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `${tokenType ?? 'Bearer'} ${token}` } : {})
       },
       body: JSON.stringify(requestBody),
     });

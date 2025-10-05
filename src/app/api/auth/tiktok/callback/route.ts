@@ -1,92 +1,42 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
-  const stateParam = searchParams.get('state');
-  
-  if (!code) {
-    return NextResponse.redirect('/my-report?error=no_code');
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const code = url.searchParams.get('code')
+  const state = url.searchParams.get('state')
+  const error = url.searchParams.get('error')
+
+  const base = process.env.NEXT_PUBLIC_BASE_URL || url.origin
+
+  if (error || !code) {
+    const msg = encodeURIComponent(error || '認証に失敗しました')
+    return NextResponse.redirect(new URL(`/my-report?error=${msg}`, base))
   }
-  
-  // 環境変数がundefinedの場合を考慮
-  let redirectBase = process.env.NEXT_PUBLIC_BASE_URL || '';
-  
+
+  const api = process.env.NEXT_PUBLIC_API_URL
+  if (!api) {
+    const msg = encodeURIComponent('APIの設定が未設定です')
+    return NextResponse.redirect(new URL(`/my-report?error=${msg}`, base))
+  }
+
   try {
-    // stateからリダイレクトベースURLを取得
-    const state = JSON.parse(stateParam || '{}');
-    if (state.redirectBase) {
-      redirectBase = state.redirectBase;
-    }
-    
-    // URL APIを使って正しいURLを構築
-    const redirectUrl = new URL('/api/auth/tiktok/callback', redirectBase).toString();
-    
-    // TikTok APIと直接トークン交換
-    const tokenResponse = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+    const res = await fetch(`${api}/api/auth/tiktok/complete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_key: process.env.NEXT_PUBLIC_TT_CLIENT_KEY!,
-        client_secret: process.env.TT_CLIENT_SECRET!, // ⚠️注意: これは保護する必要があります
-        code,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUrl,
-      }),
-    });
-    
-    
-    // レスポンスのステータスをチェック
-    if (!tokenResponse.ok) {
-      // レスポンスがOKでない場合、テキストとして読み込んでログ出力
-      const responseText = await tokenResponse.text();
-      console.error('TikTok APIエラーレスポンス:', {
-        status: tokenResponse.status,
-        statusText: tokenResponse.statusText,
-        responseText
-      });
-      
-      // エラーがあってもユーザー体験のために成功扱いとしてリダイレクト
-      console.log('APIエラーですが、モックデータ表示のためにsuccessとしてリダイレクトします');
-      return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code, state }),
+      cache: 'no-store',
+    })
+
+    if (!res.ok) {
+      const msg = encodeURIComponent('認証の完了に失敗しました')
+      return NextResponse.redirect(new URL(`/my-report?error=${msg}`, base))
     }
-    
-    try {
-      const tokenData = await tokenResponse.json();
-      console.log('トークンレスポンス:', JSON.stringify(tokenData));
-      
-      // トークンをセッションまたはCookieに保存
-      // ※セキュリティ上の考慮が必要
-      
-      // 絶対URLでリダイレクト
-      return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
-    } catch (jsonError) {
-      console.error('JSONパースエラー:', jsonError);
-      
-      // テキストとしてレスポンスを読み込んでログ出力
-      try {
-        const responseText = await tokenResponse.text();
-        console.error('パース不可能なレスポンス:', responseText);
-      } catch (textError) {
-        console.error('レスポンステキスト取得エラー:', textError);
-      }
-      
-      // JSONパースエラーがあっても、モックデータ表示のために成功扱いとしてリダイレクト
-      return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
-    }
-  } catch (error) {
-    console.error('Token exchange error:', error);
-    
-    // エラーの詳細情報をログに出力
-    if (error instanceof Error) {
-      console.error('エラー詳細:', {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      });
-    }
-    
-    // エラーがあってもモックデータ表示のためにsuccessとしてリダイレクト
-    return NextResponse.redirect(`${redirectBase}/my-report?tiktok_connected=true`);
+
+    return NextResponse.redirect(new URL('/my-report?tiktok_connected=true', base))
+  } catch (e) {
+    const msg = encodeURIComponent('認証通信でエラーが発生しました')
+    return NextResponse.redirect(new URL(`/my-report?error=${msg}`, base))
   }
 }

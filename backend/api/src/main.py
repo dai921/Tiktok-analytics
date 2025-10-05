@@ -27,14 +27,13 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
 from sqlalchemy import text
-
-from src.auth.tiktok import router as auth_tiktok_router
 from src.my_report.routes import router as tiktok_router
 from src.transcription.router import router as transcription_router
 from src.transcription.webhook import router as webhook_router
 from src.dashboard.affiliate_videos import router as affiliate_videos_router
 from src.dashboard.corporate_videos import router as corporate_videos_router
 from src.dashboard.influencer_videos import router as influencer_videos_router
+from src.filter_presets.router import router as filter_presets_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -86,9 +85,10 @@ app.include_router(hashtag_stats_router)
 app.include_router(corporate_account_stats_router)
 # ウォッチリストルーターの追加
 app.include_router(watchlist_router)
+# フィルタープリセットルーターの追加
+app.include_router(filter_presets_router)
 
 # ルーターの登録
-app.include_router(auth_tiktok_router)
 app.include_router(tiktok_router)
 app.include_router(transcription_router)
 app.include_router(webhook_router)
@@ -161,6 +161,13 @@ async def get_videos(
     account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
     created_at: Optional[str] = None,  # 作成日フィルターを追加
     created_at_type: Optional[str] = None,  # 作成日の比較演算子
+    followers: Optional[int] = None,
+    followers_type: Optional[str] = None,
+    play_count_per_follower: Optional[int] = None,
+    play_count_per_follower_type: Optional[str] = None,
+    play_increase_per_follower: Optional[int] = None,
+    play_increase_per_follower_type: Optional[str] = None,
+    parent_account_type: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
 
@@ -176,7 +183,8 @@ async def get_videos(
                 likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
                 comment_count_increase, ten_days_comment_increase, account_type,
                 hashtags, music_info, caption, category, product, save_count, 
-                save_count_increase, ten_days_save_increase
+                save_count_increase, ten_days_save_increase,
+                followers, play_count_per_follower, play_increase_per_follower
             FROM frontend_data
         """
         params = {}
@@ -184,9 +192,9 @@ async def get_videos(
 
         # フィルター処理
         if account_name:
-            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
+            # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ - 大文字小文字を区別しない
             escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("account_name LIKE :account_name")
+            where_clauses.append("LOWER(account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
             params["account_name"] = f"%{escaped_account_name}%"
         
         # カテゴリフィルターのOR条件処理
@@ -216,27 +224,29 @@ async def get_videos(
             # exact_hashtags タイプが指定されている場合は完全一致検索
             exact_hashtags = request.query_params.get('exact_hashtags')
             if exact_hashtags == 'true':
-                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応）
-                where_clauses.append("(hashtags = :hashtags OR hashtags LIKE :hashtags_start OR hashtags LIKE :hashtags_middle OR hashtags LIKE :hashtags_end)")
+                # 完全一致検索の実装（カンマ区切りのハッシュタグに対応） - 大文字小文字を区別しない
+                where_clauses.append("(LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs = LOWER(:hashtags) OR "
+                                   "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_start) OR "
+                                   "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_middle) OR "
+                                   "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags_end))")
                 hashtags_exact = hashtags
                 params["hashtags"] = hashtags_exact
                 params["hashtags_start"] = f"{hashtags_exact},%"
                 params["hashtags_middle"] = f"%,{hashtags_exact},%"
                 params["hashtags_end"] = f"%,{hashtags_exact}"
-                print(f"ハッシュタグ完全一致検索を適用: {hashtags_exact}")
+                print(f"ハッシュタグ完全一致検索を適用（大文字小文字無視）: {hashtags_exact}")
             else:
-                # 従来の部分一致検索
+                # 従来の部分一致検索 - 大文字小文字を区別しない
                 # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
                 escaped_hashtags = hashtags.replace("_", r"\_").replace("%", r"\%")
-                where_clauses.append("hashtags LIKE :hashtags")
+                where_clauses.append("LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags)")
                 params["hashtags"] = f"%{escaped_hashtags}%"
-                print(f"ハッシュタグ部分一致検索を適用: {escaped_hashtags}")
+                print(f"ハッシュタグ部分一致検索を適用（大文字小文字無視）: {escaped_hashtags}")
             
         if music_info:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("music_info LIKE :music_info")
-            params["music_info"] = f"%{escaped_music_info}%"
+            where_clauses.append("LOWER(music_info) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:music_info)")
             
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
@@ -380,6 +390,33 @@ async def get_videos(
                 where_clauses.append("ten_days_save_increase = :ten_days_save_increase")
             params["ten_days_save_increase"] = ten_days_save_increase
 
+        # 追加: フォロワー/ per-follower のフィルタリング
+        if followers is not None:
+            if (followers_type == "greater"):
+                where_clauses.append("followers >= :followers")
+            elif (followers_type == "less"):
+                where_clauses.append("followers <= :followers")
+            else:
+                where_clauses.append("followers = :followers")
+            params["followers"] = followers
+
+        if play_count_per_follower is not None:
+            if (play_count_per_follower_type == "greater"):
+                where_clauses.append("play_count_per_follower >= :play_count_per_follower")
+            elif (play_count_per_follower_type == "less"):
+                where_clauses.append("play_count_per_follower <= :play_count_per_follower")
+            else:
+                where_clauses.append("play_count_per_follower = :play_count_per_follower")
+            params["play_count_per_follower"] = play_count_per_follower
+
+        if play_increase_per_follower is not None:
+            if (play_increase_per_follower_type == "greater"):
+                where_clauses.append("play_increase_per_follower >= :play_increase_per_follower")
+            elif (play_increase_per_follower_type == "less"):
+                where_clauses.append("play_increase_per_follower <= :play_increase_per_follower")
+            else:
+                where_clauses.append("play_increase_per_follower = :play_increase_per_follower")
+            params["play_increase_per_follower"] = play_increase_per_follower
         # コンテンツタイプのフィルタリング
         if content_type:
             # カンマ区切りの場合は複数条件のORで処理
@@ -419,8 +456,9 @@ async def get_videos(
             where_clauses.append("product LIKE :product")
             params["product"] = f"%{escaped_product}%"
         
-        # アカウントタイプフィルターの処理
+        # アカウントタイプフィルターの処理 - 集客・採用が絡む場合はAND検索
         account_type_filters = []
+        selected_account_types = []
 
         # account_type_countパラメータがある場合は複数アカウントタイプ
         account_type_count = request.query_params.get('account_type_count')
@@ -429,18 +467,36 @@ async def get_videos(
             for i in range(count):
                 account_param = request.query_params.get(f'account_type_{i}')
                 if account_param:
+                    selected_account_types.append(account_param)
                     escaped_account = account_param.replace("_", r"\_").replace("%", r"\%")
                     account_type_filters.append(f"account_type LIKE :account_type_{i}")
                     params[f"account_type_{i}"] = f"%{escaped_account}%"
 
-        # 1つ以上のアカウントタイプフィルターがある場合は、OR条件で結合
+        # 集客・採用が含まれているかチェック
+        has_recruitment_or_marketing = any(
+            type_name in ['集客', '採用'] for type_name in selected_account_types
+        )
+
+        # 1つ以上のアカウントタイプフィルターがある場合
         if account_type_filters:
-            where_clauses.append(f"({' OR '.join(account_type_filters)})")
+            if has_recruitment_or_marketing and len(selected_account_types) > 1:
+                # 集客・採用が絡み、複数選択の場合はAND検索
+                where_clauses.append(f"({' AND '.join(account_type_filters)})")
+                print(f"アカウントタイプAND検索を適用: {selected_account_types}")
+            else:
+                # 通常のOR検索
+                where_clauses.append(f"({' OR '.join(account_type_filters)})")
+                print(f"アカウントタイプOR検索を適用: {selected_account_types}")
         # 従来の単一アカウントタイプ処理
         elif account_type:
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_type LIKE :account_type")
             params["account_type"] = f"%{escaped_account_type}%"
+
+        # 親アカウントタイプのフィルタリング
+        if parent_account_type:
+            where_clauses.append("parent_account_type = :parent_account_type")
+            params["parent_account_type"] = parent_account_type
 
         # フィルター条件のデバッグログ
         if play_count is not None:
@@ -458,7 +514,9 @@ async def get_videos(
             "audioTitle": "music_info",  # フロントエンドのaudioTitleはデータベースではmusic_info
             "saveCount": "save_count",   # 保存数のマッピングを追加
             "saveCountIncrease": "save_count_increase",
-            "tenDaysSaveIncrease": "ten_days_save_increase"
+            "tenDaysSaveIncrease": "ten_days_save_increase",
+            "play_count_per_follower": "play_count_per_follower",
+            "play_increase_per_follower": "play_increase_per_follower",
         }
         
         # ソートカラムのマッピングを適用

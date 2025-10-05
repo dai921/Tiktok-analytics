@@ -1,0 +1,16 @@
+// 1. activeTabの初期値を条件付きに変更（220行目）
+const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(
+  accountTypeContext === 'all' ? 'video_type' : 'date'
+)
+
+// 2. 動画タイプタブボタンを条件付きで表示（1740-1747行目）
+{accountTypeContext === 'all' && (
+  <button
+    className={`px-3 py-2 text-sm font-medium ${
+      activeTab === 'video_type' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+    }`}
+    onClick={() => setActiveTab('video_type')}
+  >
+    動画タイプ
+  </button>
+)}

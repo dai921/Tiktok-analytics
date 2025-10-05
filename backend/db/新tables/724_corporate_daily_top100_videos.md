@@ -27,5 +27,6 @@ corporate_daily_top100_videos テーブル
 | UNIQUE | video_id,fetch_date | 主キー | 動画は収集日に対して必ず一つ |
 | idx_day_accounttype_post | fetch_date, account_type, second_account_type, video_id | インデックス | 特定日・アカウントタイプ・セカンドタイプでの検索を高速化 |
 | idx_plays_desc | fetch_date, account_type,second_account_type, plays_increase(DESC) | インデックス | 再生数順でのソート・検索を高速化 |
+| uq_fetch_video | fetch_date, video_id | ユニーク | 同一日付、動画データは必ず一つ |
 
 

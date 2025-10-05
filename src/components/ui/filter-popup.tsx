@@ -214,7 +214,12 @@ export const FilterPopup = ({
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 })
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
-  const [activeTab, setActiveTab] = useState<'date' | 'metrics' | 'categories' | 'text' | 'sort'>('date')
+  // activeTabの初期値をより安全に設定
+  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(() => {
+    // サーバーサイドでは常に'date'をデフォルトに
+    if (typeof window === 'undefined') return 'date'
+    return accountTypeContext === 'all' ? 'video_type' : 'date'
+  })
   // ジャンル用の複数選択状態
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   // コンテンツタイプ用の複数選択状態
@@ -226,11 +231,12 @@ export const FilterPopup = ({
   const [selectedAccountCategories, setSelectedAccountCategories] = useState<string[]>([])
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  // 動画タイプ用の状態
+  const [selectedVideoType, setSelectedVideoType] = useState<'all' | 'affiliate' | 'corporate' | 'influencer'>('all')
 
-  // ★ フィルター状態を復元（初期化ではなく復元）
-  // ポップアップが開かれたときにcurrentFiltersからフィルター状態を復元
+  // useEffectも修正
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && typeof window !== 'undefined') {
       console.log('[FILTER-POPUP] フィルター状態復元開始:', {
         currentFilters,
         accountTypeContext,
@@ -320,6 +326,13 @@ export const FilterPopup = ({
       console.log('[FILTER-POPUP] 商品復元:', { productFilter, initialProducts });
 
       console.log('[FILTER-POPUP] フィルター状態復元完了');
+      
+      // activeTabの更新（クライアントサイドでのみ）
+      if (accountTypeContext === 'all') {
+        setActiveTab('video_type');
+      } else {
+        setActiveTab('date');
+      }
     }
   }, [isOpen, currentFilters, accountTypeContext]);
 
@@ -355,6 +368,8 @@ export const FilterPopup = ({
         { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'number' as FilterType },
         { id: 'comment_count_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">2日コメント増加数</span></span>, type: 'number' as FilterType },
         { id: 'ten_days_comment_increase', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">10日コメント増加数</span></span>, type: 'number' as FilterType },
+        { id: 'play_count_per_follower', label: '再生/フォロワー', type: 'number' as FilterType },
+        { id: 'play_increase_per_follower', label: '再生増/フォロワー', type: 'number' as FilterType },
         { id: 'saves', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">保存数</span></span>, type: 'number' as FilterType },
         { id: 'saves_count_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">2日保存増加数</span></span>, type: 'number' as FilterType },
         { id: 'ten_days_saves_increase', label: <span className="flex items-center"><SaveIcon size={14} /><span className="ml-1">10日保存増加数</span></span>, type: 'number' as FilterType }
@@ -391,6 +406,8 @@ export const FilterPopup = ({
         { id: 'comments', label: <span className="flex items-center"><CommentIcon size={14} /><span className="ml-1">コメント数</span></span>, type: 'sort' as FilterType },
         { id: 'comment_count_increase', label: '2日コメント増加数', type: 'sort' as FilterType },
         { id: 'ten_days_comment_increase', label: '10日コメント増加数', type: 'sort' as FilterType },
+        { id: 'play_count_per_follower', label: '再生/フォロワー', type: 'sort' as FilterType },
+        { id: 'play_increase_per_follower', label: '再生増/フォロワー', type: 'sort' as FilterType },
         { id: 'saves', label: '保存数', type: 'sort' as FilterType },
         { id: 'saves_count_increase', label: '2日保存増加数', type: 'sort' as FilterType },
         { id: 'ten_days_saves_increase', label: '10日保存増加数', type: 'sort' as FilterType }
@@ -400,13 +417,16 @@ export const FilterPopup = ({
     if (!tabFilterFields) return baseFields;
 
     // タブ設定に基づいてフィールドをフィルタリング
-    return {
+    const filteredFields = {
       date: baseFields.date.filter(field => tabFilterFields.date.includes(field.id)),
       metrics: baseFields.metrics.filter(field => tabFilterFields.metrics.includes(field.id)),
       categories: baseFields.categories.filter(field => tabFilterFields.categories.includes(field.id)),
       text: baseFields.text.filter(field => tabFilterFields.text.includes(field.id)),
       sort: baseFields.sort.filter(field => tabFilterFields.sort.includes(field.id))
     };
+
+
+    return filteredFields;
   };
 
   const filterFields = getFilterFields();
@@ -493,8 +513,19 @@ export const FilterPopup = ({
       } else {
         setSelectedProducts([]);
       }
+
+      // 動画タイプの状態復元（accountTypeContextから判断）
+      if (accountTypeContext === 'affiliate') {
+        setSelectedVideoType('affiliate');
+      } else if (accountTypeContext === 'corporate') {
+        setSelectedVideoType('corporate');
+      } else if (accountTypeContext === 'influencer') {
+        setSelectedVideoType('influencer');
+      } else {
+        setSelectedVideoType('all');
+      }
     }
-  }, [isOpen, currentFilters]);
+  }, [isOpen, currentFilters, accountTypeContext]);
 
   // ポップアップの位置を計算
   // ① 座標計算ユーティリティはそのまま
@@ -1430,6 +1461,71 @@ export const FilterPopup = ({
   }
 
   // ソートタブのレンダリング関数
+  // 動画タイプタブのコンテンツをレンダリング
+  const renderVideoTypeContent = () => {
+    const videoTypes = [
+      { value: 'all', label: 'すべての動画' },
+      { value: 'affiliate', label: 'アフィ系動画' },
+      { value: 'corporate', label: '企業系動画' },
+      { value: 'influencer', label: 'インフルエンサー系動画' }
+    ];
+
+    const handleVideoTypeChange = (newType: 'all' | 'affiliate' | 'corporate' | 'influencer') => {
+      setSelectedVideoType(newType);
+      
+      // フィルター状態を更新（タブ切り替えではなくフィルターとして設定）
+      if (newType === 'all') {
+        // すべての動画の場合はフィルターを削除
+        setTempFilters(prev => {
+          const { parent_account_type, ...rest } = prev;
+          return rest;
+        });
+      } else {
+        // 特定の動画タイプの場合はフィルターを設定
+        const accountTypeValue = newType === 'affiliate' ? 'アフィ' : 
+                                newType === 'corporate' ? '企業アカウント' : 
+                                newType === 'influencer' ? 'インフルエンサー' : '';
+        
+        setTempFilters(prev => ({
+          ...prev,
+          parent_account_type: {
+            field: 'parent_account_type',
+            type: 'equal',
+            value: accountTypeValue
+          }
+        }));
+      }
+    };
+
+    return (
+      <div className="space-y-4 p-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            動画タイプを選択
+          </label>
+          <div className="space-y-3">
+            {videoTypes.map((type) => (
+              <div key={type.value} className="flex items-center">
+                <input
+                  id={`video-type-${type.value}`}
+                  type="radio"
+                  name="video_type"
+                  value={type.value}
+                  className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300"
+                  checked={selectedVideoType === type.value}
+                  onChange={() => handleVideoTypeChange(type.value as 'all' | 'affiliate' | 'corporate' | 'influencer')}
+                />
+                <label htmlFor={`video-type-${type.value}`} className="ml-3 text-sm text-gray-700 font-medium">
+                  {type.label}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderSortContent = () => {
     const sortableFields = filterFields['sort'] || []
     
@@ -1594,8 +1690,14 @@ export const FilterPopup = ({
     );
   };
 
+
   // アクティブなタブに応じたフィルター項目を表示
   const renderActiveTabContent = () => {
+    // 動画タイプタブの場合は専用レンダリング
+    if (activeTab === 'video_type') {
+      return renderVideoTypeContent();
+    }
+    
     // ソートタブの場合は専用レンダリング関数を使用
     if (activeTab === 'sort') {
       return renderSortContent();
@@ -1637,7 +1739,7 @@ export const FilterPopup = ({
       style={{
         top: `${popupPosition.top}px`,
         left: `${popupPosition.left}px`,
-        width: '380px'
+        width: '420px'
       }}
     >
       <div className="flex justify-between items-center px-4 py-3 bg-gray-50 border-b border-gray-200">
@@ -1661,16 +1763,29 @@ export const FilterPopup = ({
       {/* タブコンテンツ */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex border-b sticky top-0 bg-white z-10">
+          {accountTypeContext === 'all' && (
+            <button
+              className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
+                activeTab === 'video_type' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+              }`}
+              onClick={() => setActiveTab('video_type')}
+            >
+              動画タイプ
+            </button>
+          )}
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'date' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('date')}
           >
-            <span className="flex items-center"><CalendarIcon size={12} /><span className="ml-1">日付</span></span>
+            <span className="flex items-center">
+              <CalendarIcon size={12} />
+              <span className="ml-1">日付</span>
+            </span>
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'metrics' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('metrics')}
@@ -1678,7 +1793,7 @@ export const FilterPopup = ({
             数値
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'categories' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('categories')}
@@ -1686,7 +1801,7 @@ export const FilterPopup = ({
             ジャンル
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('text')}
@@ -1694,12 +1809,12 @@ export const FilterPopup = ({
             テキスト
           </button>
           <button
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
               activeTab === 'sort' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
             }`}
             onClick={() => setActiveTab('sort')}
           >
-            並び替え
+            ソート
           </button>
         </div>
 

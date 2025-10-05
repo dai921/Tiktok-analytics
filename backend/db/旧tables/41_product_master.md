@@ -10,6 +10,7 @@
 | product_id | INT | NO | AUTO_INCREMENT | 商品の一意識別子（主キー） |
 | product_name | VARCHAR(255) | NO | - | 商品名 |
 | product_category | VARCHAR(255) | NO | - | 商品カテゴリー |
+| is_new | TINYINT | NO | 1 | 新商品 |
 
 ## インデックス
 
@@ -18,6 +19,7 @@
 | PRIMARY | product_id | 主キー | 商品の一意識別子 |
 | product_name | product_name | ユニーク | 商品名は一意 |
 | idx_product_category | product_category | インデックス | 商品カテゴリー検索用 |
+| idx_is_new | is_new | インデックス | 最新追加商材の判定検索用 |
 
 ## 関連テーブル
 

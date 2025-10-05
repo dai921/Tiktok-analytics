@@ -1,12 +1,8 @@
 functions-framework
 google-cloud-storage
-google-cloud-logging
-selenium
-webdriver-manager
 yt-dlp
 requests
 pymysql
 python-dotenv
 google-cloud-secret-manager
 google-cloud-pubsub
-google-generativeai

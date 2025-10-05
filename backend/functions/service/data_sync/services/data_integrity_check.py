@@ -35,7 +35,7 @@ def check_data_integrity(event, context):
             
             # summary_all_trendsまたはsync_corporate_dataからの完了メッセージを確認
             if (message_data.get("status") != "success" or 
-                message_data.get("previous_step") not in ["sync_corporate_data"]):
+                message_data.get("previous_step") not in ["sync_corporate_data", "frontend_per_follower_update"]):
                 logger.info(f"前の処理が成功していないため、処理をスキップします: {message_data.get('status')}")
                 return {"status": "skipped", "reason": "Previous step not successful"}
                 
@@ -57,6 +57,18 @@ def check_data_integrity(event, context):
         else:
             logger.info("データ整合性チェック完了: 異常なし")
         
+        # 追加: 4テーブル結合の件数集計とDiscord通知
+        jst = timezone('Asia/Tokyo')
+        now_jst = datetime.now(jst)
+        since_dt = (now_jst - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        since_dt_str = since_dt.strftime('%Y-%m-%d %H:%M:%S')
+        try:
+            join_count = count_master_gt_frontend_with_recent_crawls(since_dt_str)
+            send_discord_join_count(join_count, since_dt_str)
+            logger.info(f"結合件数の集計と通知が完了しました: {join_count}件, 基準(JST): {since_dt_str}")
+        except Exception as e:
+            logger.error(f"結合件数の集計/通知中にエラー: {str(e)}")
+        
         logger.info(f"データ整合性チェックが完了しました。収集日: {collection_date}")
         
         return {
@@ -64,6 +76,7 @@ def check_data_integrity(event, context):
             "message": "データ整合性チェックが完了しました",
             "collection_date": collection_date,
             "anomaly_count": anomaly_count,
+            "join_count": join_count if 'join_count' in locals() else None,
             "execution_time": datetime.now().isoformat()
         }
         
@@ -288,3 +301,154 @@ def send_discord_error(error_message):
             
     except Exception as e:
         logger.error(f"Discordエラー通知送信中にエラーが発生しました: {str(e)}") 
+
+def send_discord_error(error_message):
+    """
+    Discordにエラーを通知する
+    
+    Args:
+        error_message (str): エラーメッセージ
+    """
+    try:
+        # Cloud SecretからDiscord Webhook URLを取得
+        secret_name = os.getenv('DATA_INTEGRITY_DISCORD_WEBHOOK_SECRET', 'data-integrity-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
+            return
+        
+        # Discord webhook エラーメッセージを作成
+        embed = {
+            "title": "🚨 データ整合性チェック処理エラー",
+            "description": "データ整合性チェック処理中にエラーが発生しました",
+            "color": 15548997,  # ダークレッド
+            "fields": [
+                {
+                    "name": "エラー内容",
+                    "value": error_message[:1024],  # Discordの制限に合わせて切り詰め
+                    "inline": False
+                },
+                {
+                    "name": "発生時刻",
+                    "value": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "inline": True
+                }
+            ],
+            "footer": {
+                "text": "TikTok Analytics - Data Integrity Check"
+            }
+        }
+        
+        payload = {
+            "embeds": [embed]
+        }
+        
+        # Discord webhookに送信
+        response = requests.post(
+            discord_webhook_url,
+            json=payload,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 204:
+            logger.info("Discordにエラー通知を送信しました")
+        else:
+            logger.error(f"Discordエラー通知の送信に失敗しました: {response.status_code}, {response.text}")
+            
+    except Exception as e:
+        logger.error(f"Discordエラー通知送信中にエラーが発生しました: {str(e)}")
+
+def count_master_gt_frontend_with_recent_crawls(since_datetime: str) -> int:
+    """
+    video_idでfrontend_data, video_master, video_heavy_raw_data, video_play_count_raw_dataを接続し、
+    - video_master.play_count > frontend_data.play_count
+    - video_heavy_raw_data と video_play_count_raw_data の最新 crawled_at が since_datetime 以降
+    の件数を返す
+    """
+    try:
+        query = """
+        SELECT COUNT(DISTINCT vm.video_id) AS join_count
+        FROM video_master vm
+        INNER JOIN frontend_data fd ON fd.video_id = vm.video_id
+        INNER JOIN (
+            SELECT video_id, MAX(crawled_at) AS last_heavy_crawled
+            FROM video_heavy_raw_data
+            GROUP BY video_id
+        ) vh ON vh.video_id = vm.video_id
+        INNER JOIN (
+            SELECT video_id, MAX(crawled_at) AS last_play_crawled
+            FROM video_play_count_raw_data
+            GROUP BY video_id
+        ) vp ON vp.video_id = vm.video_id
+        WHERE vm.play_count > fd.play_count
+          AND vh.last_heavy_crawled >= %s
+          AND vp.last_play_crawled >= %s
+        """
+        rows = execute_query(query, (since_datetime, since_datetime))
+        return rows[0]['join_count'] if rows else 0
+    except Exception as e:
+        logger.error(f"4テーブル結合の件数集計に失敗: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
+
+def send_discord_join_count(join_count: int, since_datetime: str) -> None:
+    """
+    4テーブル結合の条件を満たす件数をDiscordに送信する
+    """
+    try:
+        secret_name = os.getenv('DATA_INTEGRITY_DISCORD_WEBHOOK_SECRET', 'data-integrity-discord-webhook')
+        try:
+            discord_webhook_url = get_secret(secret_name)
+        except Exception as e:
+            logger.warning(f"Discord Webhook URLのSecret取得に失敗しました ({secret_name}): {str(e)}")
+            return
+
+        embed = {
+            "title": "ℹ️ フロント未反映の再生数件数",
+            "description": "video_masterのplay_countがfrontend_dataのplay_countを上回り、かつ生データの最新crawled_atが基準以降の件数",
+            "color": 3447003,
+            "fields": [
+                {"name": "基準(JST)", "value": since_datetime, "inline": True},
+                {"name": "件数", "value": f"{join_count}件", "inline": True},
+            ],
+            "footer": {"text": "TikTok Analytics - Data Integrity Check"}
+        }
+
+        payload = {"embeds": [embed]}
+        timeout = int(os.getenv('DISCORD_TIMEOUT', '10'))
+        max_retries = int(os.getenv('DISCORD_MAX_RETRIES', '3'))
+
+        for attempt in range(max_retries):
+            try:
+                resp = requests.post(
+                    discord_webhook_url,
+                    json=payload,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=timeout
+                )
+                if resp.status_code == 204:
+                    logger.info(f"Discordに4テーブル結合の件数通知を送信しました: {join_count}件")
+                    return
+                else:
+                    logger.warning(f"Discord通知の送信失敗 (試行{attempt + 1}/{max_retries}): {resp.status_code}")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(2 ** attempt)
+            except requests.exceptions.Timeout:
+                logger.warning(f"Discord通知がタイムアウト (試行{attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Discord通知のリクエストエラー (試行{attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+
+        logger.error(f"Discord通知の送信に失敗しました（全{max_retries}回試行）")
+    except Exception as e:
+        logger.error(f"4テーブル件数通知送信中にエラー: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())

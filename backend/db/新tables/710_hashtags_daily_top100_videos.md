@@ -24,4 +24,5 @@ hashtags_daily_top100_videos テーブル
 | PRIMARY | id,fetch_date | 主キー | 関連付けの一意識別子 |
 | idx_day_sound_post | fetch_date, hashtags,video_id | インデックス | 特定日・ハッシュタグ・動画での検索を高速化 |
 | idx_plays_desc | fetch_date, hashtags ,plays_increase(DESC) | インデックス | 再生数順でのソート・検索を高速化 |
+| uq_fetch_video | fetch_date, video_id,hashtags | ユニーク | 同一日付、動画データは必ず一つ |
 

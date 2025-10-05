@@ -164,7 +164,7 @@ async def get_corporate_videos_by_genre(
         videos_sql = text("""
             SELECT 
                 fcd.url,
-                ct.thumbnail_url,
+                fcd.thumbnail_url,
                 fcd.play_count,
                 SUM(ct.plays_increase) as play_count_increase,
                 SUM(ct.likes_increase) as likes_count_increase,
@@ -184,7 +184,7 @@ async def get_corporate_videos_by_genre(
                 END
             ) LIKE :account_type_pattern
             AND ct.second_account_type = :purpose
-            GROUP BY ct.video_id, fcd.url, ct.thumbnail_url, fcd.play_count, fcd.account_name, fcd.display_name, ct.account_type, ct.second_account_type
+            GROUP BY ct.video_id, fcd.url, fcd.thumbnail_url, fcd.play_count, fcd.account_name, fcd.display_name, ct.account_type, ct.second_account_type
             ORDER BY SUM(ct.plays_increase) DESC
             LIMIT :limit
             """)
