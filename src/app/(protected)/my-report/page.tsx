@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, ChangeEvent } from "react";
+import { useEffect, useMemo, useState, ChangeEvent } from "react";
 import { TikTokStats, TikTokVideo } from "@/types/my-report";
 import Image from "next/image";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -17,6 +17,24 @@ interface TikTokAccount {
   accountType?: string;
   mainlyVideoType?: string;
 }
+const toStartOfDay = (date: Date): Date => {
+  const clone = new Date(date);
+  clone.setHours(0, 0, 0, 0);
+  return clone;
+};
+
+const toEndOfDay = (date: Date): Date => {
+  const clone = new Date(date);
+  clone.setHours(23, 59, 59, 999);
+  return clone;
+};
+
+const formatDateForFileName = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function MyAccountPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +42,6 @@ export default function MyAccountPage() {
   const [videos, setVideos] = useState<TikTokVideo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
-  const [reportPeriod, setReportPeriod] = useState('30d');
   const [sortField, setSortField] = useState<'viewCount' | 'viewGrowth' | 'createTime'>('createTime');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // desc: 降順, asc: 昇順
   const [activeTab, setActiveTab] = useState<'stats' | 'videos'>('stats'); // 追加：タブUIのstate
@@ -37,18 +54,35 @@ export default function MyAccountPage() {
   
   const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<TikTokAccount | null>(null);
-
-  // 日付選択用の状態
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30日前
-    end: new Date() // 今日
-  });
+  const [isCsvExporting, setIsCsvExporting] = useState(false);
   
+  const monthPresets = useMemo(() => {
+    const presets: { key: string; label: string; range: { start: Date; end: Date } }[] = [];
+    const today = new Date();
+    for (let i = 0; i < 6; i += 1) {
+      const base = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      const startDate = toStartOfDay(base);
+      const endDate = toEndOfDay(new Date(base.getFullYear(), base.getMonth() + 1, 0));
+      const key = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${startDate.getFullYear()}年${startDate.getMonth() + 1}月`;
+      presets.push({ key, label, range: { start: startDate, end: endDate } });
+    }
+    return presets;
+  }, []);
+
+  const fallbackEnd = toEndOfDay(new Date());
+  const fallbackStart = toStartOfDay(new Date(fallbackEnd));
+  fallbackStart.setDate(fallbackStart.getDate() - 29);
+  const defaultRange = { start: fallbackStart, end: fallbackEnd };
+  const initialRange = monthPresets[0]?.range ?? defaultRange;
+
+  const [reportMode, setReportMode] = useState<'monthly' | 'custom'>('monthly');
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(monthPresets[0]?.key ?? '');
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(initialRange);
+  const [customDateRange, setCustomDateRange] = useState<{ start: Date; end: Date }>(initialRange);
+
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
   /** ---------- 認可 URL ---------- */
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-    (typeof window !== 'undefined' ? window.location.origin : '');
-    
   // ランダムな文字列を生成（ブラウザのcrypto APIを使用）
   const generateRandomState = () => {
     if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -208,35 +242,54 @@ export default function MyAccountPage() {
 
   // バックエンドAPIからデータを取得する関数
   // バックエンドAPIからデータを取得する関数
-  const fetchApiData = async (period: string = reportPeriod, openId?: string, limit: number = videoLimit) => {
+  const fetchApiData = async (
+    openId?: string,
+    limit: number = videoLimit,
+  ) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
         return;
       }
-      
-      // openIdパラメータを追加（指定されている場合）
-      const openIdParam = openId ? `&open_id=${openId}` : '';
-      const limitParam = limit ? `&limit=${limit}` : '';
-      
-      console.log(`[DEBUG] 認証トークン: ${token.substring(0, 10)}...（残りは安全のため省略）`);
-      console.log(`[DEBUG] API URL: ${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`);
-      
-      // アカウント統計情報の取得
-      const statsResponse = await fetch(`${API_BASE_URL}/api/tiktok/stats?period=${period}${openIdParam}`, {
+
+      if (!API_BASE_URL) {
+        setError('APIのエンドポイントが設定されていません。');
+        return;
+      }
+
+      const activeRange = dateRange;
+      const startIso = formatDateForFileName(toStartOfDay(activeRange.start));
+      const endIso = formatDateForFileName(toEndOfDay(activeRange.end));
+      const periodParam = reportMode === 'custom' ? 'custom' : 'monthly';
+
+      const statsUrl = new URL(`${API_BASE_URL}/api/tiktok/stats`);
+      statsUrl.searchParams.set('period', periodParam);
+      statsUrl.searchParams.set('start_date', startIso);
+      statsUrl.searchParams.set('end_date', endIso);
+      if (openId) statsUrl.searchParams.set('open_id', openId);
+
+      const videosUrl = new URL(`${API_BASE_URL}/api/tiktok/videos`);
+      videosUrl.searchParams.set('period', periodParam);
+      videosUrl.searchParams.set('start_date', startIso);
+      videosUrl.searchParams.set('end_date', endIso);
+      if (openId) videosUrl.searchParams.set('open_id', openId);
+      videosUrl.searchParams.set('limit', String(limit));
+
+      console.log('[DEBUG] 統計情報取得 URL:', statsUrl.toString());
+
+      const statsResponse = await fetch(statsUrl.toString(), {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       console.log(`[DEBUG] 統計情報レスポンスステータス: ${statsResponse.status} ${statsResponse.statusText}`);
-      
+
       if (!statsResponse.ok) {
-        // レスポンスの詳細を取得
         let errorDetail = '';
         try {
           const errorData = await statsResponse.json();
@@ -247,22 +300,20 @@ export default function MyAccountPage() {
         console.error(`[ERROR] 統計情報取得エラー詳細: ${errorDetail}`);
         throw new Error(`統計情報の取得に失敗しました: ${statsResponse.status} - ${errorDetail}`);
       }
-      
+
       const statsData = await statsResponse.json();
       console.log('[DEBUG] 取得した統計データ:', statsData);
-      
-      // 動画リストの取得
-      console.log(`[DEBUG] 動画リスト取得 URL: ${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}${limitParam}`);
-      const videosResponse = await fetch(`${API_BASE_URL}/api/tiktok/videos?period=${period}${openIdParam}${limitParam}`, {
+
+      console.log('[DEBUG] 動画リスト取得 URL:', videosUrl.toString());
+      const videosResponse = await fetch(videosUrl.toString(), {
         headers: {
-          'Authorization': `Bearer ${token}` // 認証ヘッダーを追加
+          'Authorization': `Bearer ${token}`
         }
       });
-      
+
       console.log(`[DEBUG] 動画リストレスポンスステータス: ${videosResponse.status} ${videosResponse.statusText}`);
-      
+
       if (!videosResponse.ok) {
-        // レスポンスの詳細を取得
         let errorDetail = '';
         try {
           const errorData = await videosResponse.json();
@@ -273,11 +324,10 @@ export default function MyAccountPage() {
         console.error(`[ERROR] 動画リスト取得エラー詳細: ${errorDetail}`);
         throw new Error(`動画情報の取得に失敗しました: ${videosResponse.status} - ${errorDetail}`);
       }
-      
+
       const videosData = await videosResponse.json();
       console.log('[DEBUG] 取得した動画データ:', videosData);
-      
-      // thumbnailUrlをオブジェクト型に変換
+
       const normalizeThumbnail = (thumbnail: any) => {
         if (!thumbnail) return null;
 
@@ -313,23 +363,18 @@ export default function MyAccountPage() {
           thumbnailUrl: normalizeThumbnail(rawThumbnail),
         };
       });
-      
-      // 統計データを計算・拡張
+
       if (statsData && videosWithObjThumbnail && videosWithObjThumbnail.length > 0) {
-        // 総再生数を計算
         const totalPlayCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.viewCount || 0), 0);
-        // 総コメント数を計算
         const commentCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.commentCount || 0), 0);
-        // 総シェア数を計算（保存数として代用）
         const saveCount = videosWithObjThumbnail.reduce((sum: number, video: TikTokVideo) => sum + (video.shareCount || 0), 0);
-        
-        // statsDataに拡張データを追加
+
         statsData.totalPlayCount = totalPlayCount;
         statsData.commentCount = commentCount;
         statsData.saveCount = saveCount;
         statsData.videosCount = videosWithObjThumbnail.length;
       }
-      
+
       setStats(statsData);
       setVideos(videosWithObjThumbnail);
     } catch (err) {
@@ -339,6 +384,7 @@ export default function MyAccountPage() {
       setIsLoading(false);
     }
   };
+
 
   // TikTok連携状態を確認するuseEffect
   useEffect(() => {
@@ -379,36 +425,18 @@ export default function MyAccountPage() {
 
   // 日付範囲が変わったときにデータを再取得
   useEffect(() => {
-    if (connected && dateRange.start && dateRange.end && activeAccount) {
-      // 日付範囲から期間を計算
-      const diffTime = Math.abs(dateRange.end.getTime() - dateRange.start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      // 期間に近い事前定義された期間を使用するか、カスタム期間を使用
-      let period = 'custom';
-      if (diffDays <= 7) {
-        period = '7d';
-      } else if (diffDays <= 30) {
-        period = '30d';
-      } else if (diffDays <= 90) {
-        period = '90d';
-      }
-      
-      // カスタム期間の場合、APIにstart_dateとend_dateを渡す必要があるかもしれません
-      // 現在のAPIが期間のみをサポートしている場合は、最も近い事前定義期間を使用
-      setReportPeriod(period);
-      fetchApiData(period, activeAccount.openId, videoLimit);
+    if (!connected || !activeAccount) {
+      return;
     }
-  }, [connected, dateRange, activeAccount]);
 
-  useEffect(() => {
-    if (connected && activeAccount) {
-      fetchApiData(reportPeriod, activeAccount.openId, videoLimit);
-    }
-  }, [videoLimit]);
+    fetchApiData(activeAccount.openId, videoLimit);
+  }, [connected, activeAccount, dateRange, reportMode, videoLimit, selectedMonthKey]);
 
   // 日付範囲変更ハンドラー
+  // 日付範囲変更ハンドラー
   const handleDateRangeChange = (newDateRange: { start: Date; end: Date }) => {
+    setReportMode('custom');
+    setCustomDateRange(newDateRange);
     setDateRange(newDateRange);
   };
 
@@ -502,34 +530,44 @@ export default function MyAccountPage() {
 
   const handleDownloadReport = async () => {
     if (!activeAccount) return;
-    
+
     setIsLoading(true);
+    setError(null);
     try {
       const token = localStorage.getItem('auth_token');
       if (!token) {
         setError('認証情報がありません。再ログインしてください。');
         return;
       }
-      
-      // 日付範囲をクエリパラメータとして追加
-      const startDateParam = dateRange.start.toISOString().split('T')[0];
-      const endDateParam = dateRange.end.toISOString().split('T')[0];
-      const openIdParam = `&open_id=${activeAccount.openId}`;
-      
-      console.log(`[DEBUG] レポート生成 URL: ${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}&start_date=${startDateParam}&end_date=${endDateParam}${openIdParam}`);
-      
-      // PDFレポート生成APIを呼び出し
-      const response = await fetch(`${API_BASE_URL}/api/tiktok/report?period=${reportPeriod}&start_date=${startDateParam}&end_date=${endDateParam}${openIdParam}`, {
+
+      if (!API_BASE_URL) {
+        setError('APIのエンドポイントが設定されていません。');
+        return;
+      }
+
+      const activeRange = dateRange;
+      const startIso = formatDateForFileName(toStartOfDay(activeRange.start));
+      const endIso = formatDateForFileName(toEndOfDay(activeRange.end));
+      const periodParam = reportMode === 'custom' ? 'custom' : 'monthly';
+
+      const url = new URL(`${API_BASE_URL}/api/tiktok/report`);
+      url.searchParams.set('period', periodParam);
+      url.searchParams.set('start_date', startIso);
+      url.searchParams.set('end_date', endIso);
+      url.searchParams.set('open_id', activeAccount.openId);
+
+      console.log(`[DEBUG] レポート生成 URL: ${url.toString()}`);
+
+      const response = await fetch(url.toString(), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       console.log(`[DEBUG] レポート生成レスポンスステータス: ${response.status} ${response.statusText}`);
-      
+
       if (!response.ok) {
-        // レスポンスの詳細を取得
         let errorDetail = '';
         try {
           const errorData = await response.json();
@@ -540,27 +578,93 @@ export default function MyAccountPage() {
         console.error(`[ERROR] レポート生成エラー詳細: ${errorDetail}`);
         throw new Error(`レポート生成に失敗しました: ${response.status} - ${errorDetail}`);
       }
-      
-      // Blobとしてレスポンスを取得
+
       const blob = await response.blob();
       console.log(`[DEBUG] レポートBlobサイズ: ${blob.size} bytes`);
-      
-      // ダウンロードリンクを作成
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tiktok-report-${activeAccount.displayName}-${startDateParam}-to-${endDateParam}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      
-      // クリーンアップ
-      window.URL.revokeObjectURL(url);
-      a.remove();
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `tiktok-report-${activeAccount.displayName}-${startIso}-to-${endIso}.pptx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(objectUrl);
     } catch (err) {
       console.error('[ERROR] レポートダウンロードエラー:', err);
       setError(err instanceof Error ? err.message : 'レポートの生成に失敗しました。再度お試しください。');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDownloadCsv = async () => {
+    if (!activeAccount) return;
+
+    setIsCsvExporting(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        setError('認証情報がありません。再ログインしてください。');
+        return;
+      }
+
+      if (!API_BASE_URL) {
+        setError('APIのエンドポイントが設定されていません。');
+        return;
+      }
+
+      const activeRange = dateRange;
+      const startIso = formatDateForFileName(toStartOfDay(activeRange.start));
+      const endIso = formatDateForFileName(toEndOfDay(activeRange.end));
+      const periodParam = reportMode === 'custom' ? 'custom' : 'monthly';
+
+      const url = new URL(`${API_BASE_URL}/api/tiktok/videos/export`);
+      url.searchParams.set('period', periodParam);
+      url.searchParams.set('start_date', startIso);
+      url.searchParams.set('end_date', endIso);
+      url.searchParams.set('open_id', activeAccount.openId);
+      url.searchParams.set('limit', String(videoLimit));
+
+      console.log('[DEBUG] CSVエクスポート URL:', url.toString());
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      console.log(`[DEBUG] CSVエクスポートレスポンス: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        let errorDetail = '';
+        try {
+          const errorData = await response.json();
+          errorDetail = JSON.stringify(errorData);
+        } catch (e) {
+          errorDetail = await response.text() || `ステータスコード: ${response.status}`;
+        }
+        console.error(`[ERROR] CSVエクスポートエラー詳細: ${errorDetail}`);
+        throw new Error(`CSVのダウンロードに失敗しました: ${response.status} - ${errorDetail}`);
+      }
+
+      const blob = await response.blob();
+      console.log(`[DEBUG] CSVエクスポートBlobサイズ: ${blob.size} bytes`);
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = `tiktok-videos-${activeAccount.displayName}-${startIso}-to-${endIso}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error('[ERROR] CSVダウンロードエラー:', err);
+      setError(err instanceof Error ? err.message : 'CSVのダウンロードに失敗しました。再度お試しください。');
+    } finally {
+      setIsCsvExporting(false);
     }
   };
 
@@ -920,24 +1024,90 @@ export default function MyAccountPage() {
           </p>
 
           <div className="flex flex-col space-y-4">
-            <div className="w-full">
-              <DateRangePicker 
-                dateRange={dateRange}
-                onDateRangeChange={handleDateRangeChange}
-              />
+            <div className="space-y-3">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  checked={reportMode === 'monthly'}
+                  onChange={() => {
+                    setReportMode('monthly');
+                    const preset = monthPresets.find((item) => item.key === selectedMonthKey);
+                    if (preset) {
+                      setDateRange(preset.range);
+                    }
+                  }}
+                />
+                <span className="text-sm text-gray-300">月次レポート</span>
+              </label>
+              {reportMode === 'monthly' && (
+                <select
+                  value={selectedMonthKey}
+                  onChange={(event) => {
+                    const key = event.target.value;
+                    setSelectedMonthKey(key);
+                    const preset = monthPresets.find((item) => item.key === key);
+                    if (preset) {
+                      setDateRange(preset.range);
+                    }
+                  }}
+                  className="w-full bg-gray-900 border border-gray-700 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FE2C55]"
+                >
+                  {monthPresets.map((preset) => (
+                    <option key={preset.key} value={preset.key}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-            
-            <button
-              disabled={!connected || isLoading || !activeAccount}
-              onClick={handleDownloadReport}
-              className={`py-2 px-4 rounded-md transition-colors ${
-                connected && !isLoading && activeAccount
-                  ? 'bg-[#FE2C55] text-white hover:bg-[#FE2C55]/90'
-                  : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              {isLoading ? '読み込み中...' : 'レポート生成'}
-            </button>
+
+            <div className="space-y-3">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  checked={reportMode === 'custom'}
+                  onChange={() => {
+                    setReportMode('custom');
+                    setDateRange(customDateRange);
+                  }}
+                />
+                <span className="text-sm text-gray-300">カスタム期間レポート</span>
+              </label>
+              {reportMode === 'custom' && (
+                <div className="w-full">
+                  <DateRangePicker
+                    dateRange={customDateRange}
+                    onDateRangeChange={handleDateRangeChange}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                disabled={!connected || isLoading || !activeAccount || isCsvExporting}
+                onClick={handleDownloadReport}
+                className={`py-2 px-4 rounded-md transition-colors ${
+                  connected && !isLoading && !isCsvExporting && activeAccount
+                    ? 'bg-[#FE2C55] text-white hover:bg-[#FE2C55]/90'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {isLoading ? '読み込み中...' : 'レポート生成'}
+              </button>
+
+              <button
+                disabled={!connected || isCsvExporting || !activeAccount || isLoading}
+                onClick={handleDownloadCsv}
+                className={`py-2 px-4 rounded-md transition-colors ${
+                  connected && !isCsvExporting && !isLoading && activeAccount
+                    ? 'bg-[#66E6D7] text-[#14373F] hover:bg-[#5fd7c9]'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {isCsvExporting ? 'CSV出力中...' : 'CSVをダウンロード'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1136,8 +1306,6 @@ export default function MyAccountPage() {
                   <tbody className="divide-y divide-gray-800">
                     {getSortedVideos().map((video, index) => {
                       // ここでログ出力
-                      console.log('thumbnailUrl.url:', video.thumbnailUrl?.url);
-
                       // 伸び率による視覚効果は一律で緑色の矢印に統一
                       const growthClass = 'text-green-500';
                       const growthIcon = '↑';

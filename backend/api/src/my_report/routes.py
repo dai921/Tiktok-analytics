@@ -3,11 +3,13 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 import random
 import json
+import csv
 from typing import List, Optional, Dict, Any
 import requests
 from ..auth.router import get_current_user
 from .models import TikTokStats, TikTokVideo, TikTokUserConnection
 import os
+from io import StringIO, BytesIO
 from fastapi.responses import StreamingResponse
 from .report_generator import build_tiktok_report_presentation
 from .repositories import TikTokRepository
@@ -107,6 +109,8 @@ async def disconnect_tiktok_account(
 async def get_tiktok_stats(
     period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
     open_id: Optional[str] = Query(None, alias="open_id"),
+    start_date: Optional[str] = Query(None, alias="start_date"),
+    end_date: Optional[str] = Query(None, alias="end_date"),
     user = Depends(get_current_user)
 ):
     """TikTok統計情報を取得します"""
@@ -152,9 +156,27 @@ async def get_tiktok_stats(
         print(f"[DEBUG] TikTokユーザーID: {tiktok_user_id}, ユーザー番号: {user_number}")
 
         # 集計期間の開始日と終了日を計算
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        print(f"[DEBUG] 集計期間: {start_date.strftime('%Y-%m-%d')} から {end_date.strftime('%Y-%m-%d')}")
+        end_date_dt = datetime.now()
+        if end_date:
+            try:
+                end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="end_date は YYYY-MM-DD 形式で指定してください")
+
+        if start_date:
+            try:
+                start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="start_date は YYYY-MM-DD 形式で指定してください")
+        else:
+            start_date_dt = end_date_dt - timedelta(days=days)
+
+        if start_date_dt > end_date_dt:
+            raise HTTPException(status_code=400, detail="start_date は end_date より前の日付を指定してください")
+
+        start_date_str = start_date_dt.strftime('%Y-%m-%d')
+        end_date_str = end_date_dt.strftime('%Y-%m-%d')
+        print(f"[DEBUG] 集計期間: {start_date_str} から {end_date_str}")
         
         # データベースから統計情報を取得
         # 既存のテーブル構造（users_account_daily_metrics）に合わせたクエリ
@@ -186,15 +208,15 @@ async def get_tiktok_stats(
         """)
         
         print("[DEBUG] クエリ実行開始")
-        print(f"[DEBUG] クエリパラメータ: start_date={start_date.strftime('%Y-%m-%d')}, tiktok_user_id={tiktok_user_id}, user_number={user_number}")
+        print(f"[DEBUG] クエリパラメータ: start_date={start_date_str}, tiktok_user_id={tiktok_user_id}, user_number={user_number}")
         
         try:
             params = {
-                "start_date": start_date.strftime('%Y-%m-%d'),
-                "start_date_2": start_date.strftime('%Y-%m-%d'),
-                "start_date_3": start_date.strftime('%Y-%m-%d'),
+                "start_date": start_date_str,
+                "start_date_2": start_date_str,
+                "start_date_3": start_date_str,
                 "tiktok_user_id": tiktok_user_id,
-                "end_date": end_date.strftime('%Y-%m-%d'),
+                "end_date": end_date_str,
                 "user_number": user_number
             }
             result = conn.execute(query, params).mappings().first()
@@ -297,6 +319,8 @@ async def get_tiktok_videos(
     period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
     limit: int = Query(100, ge=1, le=300, description="取得する動画数"),
     open_id: Optional[str] = Query(None, alias="open_id"),
+    start_date: Optional[str] = Query(None, alias="start_date"),
+    end_date: Optional[str] = Query(None, alias="end_date"),
     user = Depends(get_current_user)
 ):
     """
@@ -324,12 +348,31 @@ async def get_tiktok_videos(
         # TikTokユーザーIDを取得
         tiktok_user_id = tiktok_connection.tiktok_open_id
         user_number = user.user_number  # ユーザー番号
-        
-        # 集計期間の開始日と終了日を計算
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        
-        print(f"[DEBUG] 動画取得: period={period}, start_date={start_date}, end_date={end_date}")
+
+        # 集計期間の開始日と終了日を計算（このブロックは try の中）
+        end_date_dt = datetime.now()
+        if end_date:
+            try:
+                end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="end_date は YYYY-MM-DD 形式で指定してください")
+
+        if start_date:
+            try:
+                start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="start_date は YYYY-MM-DD 形式で指定してください")
+        else:
+            start_date_dt = end_date_dt - timedelta(days=days)
+
+        if start_date_dt > end_date_dt:
+            raise HTTPException(status_code=400, detail="start_date は end_date より前の日付を指定してください")
+
+        start_date_str = start_date_dt.strftime('%Y-%m-%d')
+        end_date_str = end_date_dt.strftime('%Y-%m-%d')
+
+        print(f"[DEBUG] 動画取得: period={period}, start_date={start_date_str}, end_date={end_date_str}")
+
         
         # データベースから動画情報を取得
         # 既存のテーブル構造（users_videos と users_video_daily_metrics_new）に合わせたクエリ
@@ -377,9 +420,9 @@ async def get_tiktok_videos(
         result_limit = max(1, min(limit, 300))
 
         params = {
-            "start_date": start_date.strftime('%Y-%m-%d'),
-            "start_date_2": start_date.strftime('%Y-%m-%d'),
-            "end_date": end_date.strftime('%Y-%m-%d'),
+            "start_date": start_date_str,
+            "start_date_2": start_date_str,
+            "end_date": end_date_str,
             "tiktok_user_id": tiktok_user_id,
             "user_number": user_number,
             "result_limit": result_limit
@@ -426,38 +469,173 @@ async def get_tiktok_videos(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"動画リストの取得に失敗しました: {str(e)}")
 
+@router.get("/videos/export")
+async def export_tiktok_videos_csv(
+    period: str = Query("30d", description="期間 (7d, 30d, 90d, custom)"),
+    limit: int = Query(100, ge=1, le=300, description="CSVに含める動画数"),
+    open_id: Optional[str] = Query(None, alias="open_id"),
+    start_date: Optional[str] = Query(None, alias="start_date"),
+    end_date: Optional[str] = Query(None, alias="end_date"),
+    user = Depends(get_current_user)
+):
+    """TikTok動画データをCSVとしてエクスポートします"""
+    if not user:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    try:
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="end_date は YYYY-MM-DD 形式で指定してください")
+        else:
+            end_dt = datetime.now()
+
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="start_date は YYYY-MM-DD 形式で指定してください")
+        else:
+            days = 7 if period == "7d" else 30 if period == "30d" else 90
+            start_dt = end_dt - timedelta(days=days)
+
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="start_date は end_date より前の日付を指定してください")
+
+        start_date_str = start_dt.strftime("%Y-%m-%d")
+        end_date_str = end_dt.strftime("%Y-%m-%d")
+
+        videos = await get_tiktok_videos(
+            period=period,
+            limit=limit,
+            open_id=open_id,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            user=user,
+        )
+
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "video_id",
+            "title",
+            "create_time",
+            "view_count",
+            "view_growth",
+            "like_count",
+            "like_growth",
+            "comment_count",
+            "comment_growth",
+            "share_count",
+            "share_growth",
+            "thumbnail_url",
+            "video_url",
+        ])
+
+        for video in videos:
+            thumbnail_data = getattr(video, "thumbnailUrl", None)
+            thumbnail_url = ""
+            if thumbnail_data:
+                thumbnail_url = getattr(thumbnail_data, "url", "") or ""
+
+            writer.writerow([
+                video.id,
+                video.title,
+                str(video.createTime),
+                video.viewCount,
+                video.viewGrowth,
+                video.likeCount,
+                video.likeGrowth,
+                video.commentCount,
+                video.commentGrowth,
+                video.shareCount,
+                video.shareGrowth,
+                thumbnail_url,
+                getattr(video, "videoUrl", "") or "",
+            ])
+
+        output.seek(0)
+        csv_bytes = output.getvalue().encode("utf-8-sig")
+        stream = BytesIO(csv_bytes)
+        stream.seek(0)
+
+        filename = f"tiktok-videos-{start_dt:%Y%m%d}-{end_dt:%Y%m%d}.csv"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+
+        return StreamingResponse(stream, media_type="text/csv", headers=headers)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"CSVの生成に失敗しました: {str(exc)}")
+
 @router.post("/report")
 async def generate_report(
-    period: str = Query("30d", description="期間 (7d, 30d, 90d)"),
+    period: str = Query("monthly", description="期間 (monthly, long_term, custom)"),
+    open_id: Optional[str] = Query(None, alias="open_id"),
+    start_date: Optional[str] = Query(None, alias="start_date"),
+    end_date: Optional[str] = Query(None, alias="end_date"),
     user = Depends(get_current_user)
 ):
     """TikTokアカウントレポートをPowerPoint形式で生成します"""
     if not user:
         raise HTTPException(status_code=401, detail="認証が必要です")
 
+    if not start_date or not end_date:
+        raise HTTPException(status_code=400, detail="start_date と end_date は必須です")
+
     try:
-        tiktok_connection = await tiktok_repository.get_user_connection(user.id)
+        if open_id:
+            tiktok_connection = await tiktok_repository.get_user_connection_by_open_id(user.id, open_id)
+        else:
+            tiktok_connection = await tiktok_repository.get_user_connection(user.id)
         if not tiktok_connection:
             raise HTTPException(status_code=404, detail="TikTokとの連携が見つかりません")
 
-        days = 7 if period == "7d" else 30 if period == "30d" else 90
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="start_date / end_date は YYYY-MM-DD 形式で指定してください")
 
-        stats = await get_tiktok_stats(period, user=user)
-        videos = await get_tiktok_videos(period, limit=100, user=user)
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="start_date は end_date より前の日付を指定してください")
+
+        period_label = (
+            f"{start_dt:%Y年%m月}" if period == "monthly"
+            else "直近90日" if period == "long_term"
+            else f"{start_dt:%Y/%m/%d} – {end_dt:%Y/%m/%d}"
+        )
+
+        stats = await get_tiktok_stats(
+            period="custom",
+            open_id=open_id,
+            start_date=start_date,
+            end_date=end_date,
+            user=user,
+        )
+        videos = await get_tiktok_videos(
+            period="custom",
+            limit=100,
+            open_id=open_id,
+            start_date=start_date,
+            end_date=end_date,
+            user=user,
+        )
 
         presentation_stream = build_tiktok_report_presentation(
             stats=stats,
             videos=videos,
             account_name=tiktok_connection.display_name or "TikTokアカウント",
-            period_label=period,
-            start_date=start_date,
-            end_date=end_date,
+            period_label=period_label,
+            start_date=start_dt,
+            end_date=end_dt,
             generated_at=datetime.now(),
         )
 
-        filename = f"tiktok-report-{start_date:%Y%m%d}-{end_date:%Y%m%d}.pptx"
+        filename = f"tiktok-report-{start_dt:%Y%m%d}-{end_dt:%Y%m%d}.pptx"
         return StreamingResponse(
             presentation_stream,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -597,6 +775,7 @@ async def get_video_view_rates(
     except Exception as e:
         print(f"[ERROR] get_video_view_rates 処理エラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"視聴率データの取得に失敗しました: {str(e)}")
+
 
 
 
