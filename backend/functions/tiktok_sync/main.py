@@ -166,6 +166,33 @@ async def _run_sync(payload: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+async def _run_token_refresh(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Refresh TikTok access tokens for resolved connections."""
+    repository = TikTokRepository()
+    connections = await _collect_target_connections(repository, payload)
+
+    dry_run = bool(payload.get("dry_run"))
+
+    if not connections:
+        logger.info("No TikTok connections resolved for token refresh. payload=%s", payload)
+        return {"refreshed": 0, "skipped": 0, "total": 0, "dry_run": dry_run}
+
+    if dry_run:
+        logger.info("[DRY-RUN] Would refresh tokens for %s TikTok connections", len(connections))
+        return {"refreshed": 0, "skipped": len(connections), "total": len(connections), "dry_run": True}
+
+    try:
+        result = await refresh_tokens(connections, repository)
+    except Exception as exc:
+        logger.exception("TikTok token refresh batch failed: payload=%s error=%s", payload, exc)
+        raise
+
+    result = dict(result)
+    result.setdefault("total", len(connections))
+    result["dry_run"] = False
+    return result
+
+
 def sync_tiktok_accounts(event: Optional[Dict[str, Any]], context: Any) -> None:
     """Pub/Sub entry point for the daily TikTok data synchronisation."""
     payload = _decode_pubsub_message(event)
@@ -179,3 +206,4 @@ def sync_tiktok_accounts(event: Optional[Dict[str, Any]], context: Any) -> None:
         asyncio.run(_run_token_refresh(payload))
     else:
         asyncio.run(_run_sync(payload))
+
