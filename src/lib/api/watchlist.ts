@@ -53,6 +53,16 @@ export interface TrendDataPoint {
   save_count_increase: number;
 }
 
+// シンプルなウォッチリスト行の型定義
+export interface WatchlistRow {
+  id: number;
+  email: string;
+  video_id: string;
+  video_watchlist_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // アカウント動画の型定義
 export interface AccountVideo {
   video_id: string;
@@ -374,6 +384,36 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
     }
   }
 
+  // シンプルなウォッチリスト一覧（存在判定用）
+  export async function getVideoWatchlistSimple(): Promise<ApiResponse<WatchlistRow[]>> {
+    try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('認証情報がありません');
+      }
+
+      const response = await fetch(`${apiUrl}/api/watchlist/videos`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'ウォッチリスト取得に失敗しました');
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: (data || []) as WatchlistRow[]
+      };
+    } catch (error) {
+      console.error('ウォッチリスト取得エラー:', error);
+      return handleApiError(error) as unknown as ApiResponse<WatchlistRow[]>;
+    }
+  }
+
   /**
    * アカウントブックマーク一覧を詳細情報付きで取得する
    */
@@ -516,16 +556,13 @@ export async function addVideoToWatchlist(url: string, watchlistName?: string) {
    */
   export async function checkVideoInWatchlist(url: string) {
     try {
-      const result = await getVideoWatchlist();
-      if (!result.success) {
-        return { success: false, exists: false };
-      }
-      
-      // URLからvideo_idを抽出して比較する場合に備えて
-      const videoId = extractVideoIdFromUrl(url);
-      const exists = result.data.some((item: any) => 
-        item.url === url || item.video_id === videoId
-      );
+    // 存在判定は期間に依存しないシンプル一覧を利用
+    const result = await getVideoWatchlistSimple();
+    if (!result.success) return { success: false, exists: false };
+
+    const videoId = extractVideoIdFromUrl(url);
+    const items = (result.data ?? []) as WatchlistRow[];
+    const exists = items.some((item) => item.video_id === videoId);
       
       return { success: true, exists };
     } catch (error) {

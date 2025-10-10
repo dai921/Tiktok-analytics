@@ -2,6 +2,10 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
+class TikTokViewRates(BaseModel):
+    twoSecondRate: Optional[float] = Field(None, description="2秒視聴率(%)")
+    sixSecondRate: Optional[float] = Field(None, description="6秒視聴率(%)")
+    fullViewRate: Optional[float] = Field(None, description="フル視聴率(%)")
 class TikTokStats(BaseModel):
     """TikTok アカウント統計情報のモデル"""
     followerCount: int = Field(..., description="フォロワー総数")
@@ -35,6 +39,7 @@ class TikTokVideo(BaseModel):
     shareGrowth: int = Field(..., description="期間内のシェア増加数")
     thumbnailUrl: Optional[TikTokThumbnail] = Field(None, description="サムネイルのメタ情報")
     videoUrl: Optional[str] = Field(None, description="動画URL")
+    viewRates: Optional[TikTokViewRates] = Field(None, description="視聴率データ")
 
 class TikTokUserConnection(BaseModel):
     """ユーザーとTikTokアカウントの連携情報モデル"""

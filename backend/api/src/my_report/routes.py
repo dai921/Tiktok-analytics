@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Body, UploadFile, File
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 import random
@@ -7,14 +7,14 @@ import csv
 from typing import List, Optional, Dict, Any
 import requests
 from ..auth.router import get_current_user
-from .models import TikTokStats, TikTokVideo, TikTokUserConnection
+from .models import TikTokStats, TikTokVideo, TikTokUserConnection, TikTokViewRates
 import os
 from io import StringIO, BytesIO
 from fastapi.responses import StreamingResponse
 from .report_generator import build_tiktok_report_presentation
 from .repositories import TikTokRepository
 from ..db.database import get_db_connection
-from sqlalchemy.sql import text
+from sqlalchemy.sql import text, bindparam
 
 router = APIRouter(prefix="/api/tiktok", tags=["tiktok"])
 
@@ -437,6 +437,27 @@ async def get_tiktok_videos(
             raise
         
         videos = []
+        video_ids = [row['id'] for row in results]
+        view_rates_map: Dict[str, Dict[str, Any]] = {}
+        if video_ids:
+            rates_query = text('''
+                SELECT
+                    video_id,
+                    two_second_rate,
+                    six_second_rate,
+                    full_view_rate
+                FROM users_video_view_rates
+                WHERE user_number = :user_number
+                  AND video_id IN :video_ids
+            ''')
+            rate_params = {"user_number": user_number, "video_ids": list(video_ids)}
+            try:
+                rate_rows = conn.execute(rates_query.bindparams(bindparam("video_ids", expanding=True)), rate_params).mappings().all()
+                for rate_row in rate_rows:
+                    view_rates_map[rate_row['video_id']] = rate_row
+            except Exception as rate_err:
+                print(f"[ERROR] 視聴率データ取得エラー: {rate_err}")
+
         for row in results:
             thumbnail_url = row['thumbnail_url']
             if thumbnail_url and isinstance(thumbnail_url, str) and thumbnail_url.startswith('gs://'):
@@ -446,6 +467,15 @@ async def get_tiktok_videos(
                 thumbnail_url = f"https://storage.googleapis.com/{bucket}/{object_path}"
 
             thumbnail_payload = {"valueType": "IMAGE", "url": thumbnail_url} if thumbnail_url else None
+
+            view_rate_source = view_rates_map.get(row['id'])
+            view_rates = None
+            if view_rate_source:
+                view_rates = TikTokViewRates(
+                    twoSecondRate=float(view_rate_source['two_second_rate']) if view_rate_source['two_second_rate'] is not None else None,
+                    sixSecondRate=float(view_rate_source['six_second_rate']) if view_rate_source['six_second_rate'] is not None else None,
+                    fullViewRate=float(view_rate_source['full_view_rate']) if view_rate_source['full_view_rate'] is not None else None,
+                )
 
             videos.append(TikTokVideo(
                 id=row['id'],
@@ -460,11 +490,12 @@ async def get_tiktok_videos(
                 shareCount=int(row['share_count']) if row['share_count'] else 0,
                 shareGrowth=int(row['share_growth']) if row['share_growth'] else 0,
                 thumbnailUrl=thumbnail_payload,
-                videoUrl=f"https://www.tiktok.com/@user/video/{row['id']}"  # 仮のURL
+                videoUrl=f"https://www.tiktok.com/@user/video/{row['id']}",  # 仮のURL
+                viewRates=view_rates
             ))
-        
+
         conn.close()
-        
+
         return videos
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"動画リストの取得に失敗しました: {str(e)}")
@@ -529,6 +560,9 @@ async def export_tiktok_videos_csv(
             "comment_growth",
             "share_count",
             "share_growth",
+            "two_second_rate",
+            "six_second_rate",
+            "full_view_rate",
             "thumbnail_url",
             "video_url",
         ])
@@ -538,6 +572,11 @@ async def export_tiktok_videos_csv(
             thumbnail_url = ""
             if thumbnail_data:
                 thumbnail_url = getattr(thumbnail_data, "url", "") or ""
+
+            view_rates = getattr(video, "viewRates", None)
+            two_second_rate = getattr(view_rates, "twoSecondRate", None) if view_rates else None
+            six_second_rate = getattr(view_rates, "sixSecondRate", None) if view_rates else None
+            full_view_rate = getattr(view_rates, "fullViewRate", None) if view_rates else None
 
             writer.writerow([
                 video.id,
@@ -551,6 +590,9 @@ async def export_tiktok_videos_csv(
                 video.commentGrowth,
                 video.shareCount,
                 video.shareGrowth,
+                two_second_rate if two_second_rate is not None else "",
+                six_second_rate if six_second_rate is not None else "",
+                full_view_rate if full_view_rate is not None else "",
                 thumbnail_url,
                 getattr(video, "videoUrl", "") or "",
             ])
@@ -570,6 +612,218 @@ async def export_tiktok_videos_csv(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"CSVの生成に失敗しました: {str(exc)}")
+
+@router.get("/videos/view-rates/template")
+async def download_view_rate_template(
+    period: str = Query("30d", description="期間 (7d, 30d, 90d, custom)"),
+    limit: int = Query(300, ge=1, le=300, description="テンプレートに含める動画数"),
+    open_id: Optional[str] = Query(None, alias="open_id"),
+    start_date: Optional[str] = Query(None, alias="start_date"),
+    end_date: Optional[str] = Query(None, alias="end_date"),
+    user = Depends(get_current_user)
+):
+    if not user:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    try:
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="end_date は YYYY-MM-DD 形式で指定してください")
+        else:
+            end_dt = datetime.now()
+
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="start_date は YYYY-MM-DD 形式で指定してください")
+        else:
+            days = 7 if period == "7d" else 30 if period == "30d" else 90
+            start_dt = end_dt - timedelta(days=days)
+
+        if start_dt > end_dt:
+            raise HTTPException(status_code=400, detail="start_date は end_date より前の日付を指定してください")
+
+        start_str = start_dt.strftime("%Y-%m-%d")
+        end_str = end_dt.strftime("%Y-%m-%d")
+
+        videos = await get_tiktok_videos(
+            period="custom",
+            limit=limit,
+            open_id=open_id,
+            start_date=start_str,
+            end_date=end_str,
+            user=user,
+        )
+
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "video_id",
+            "title",
+            "create_time",
+            "two_second_rate",
+            "six_second_rate",
+            "full_view_rate",
+        ])
+
+        for video in videos:
+            view_rates = getattr(video, "viewRates", None)
+            writer.writerow([
+                video.id,
+                video.title,
+                str(video.createTime),
+                getattr(view_rates, "twoSecondRate", None) if view_rates else None,
+                getattr(view_rates, "sixSecondRate", None) if view_rates else None,
+                getattr(view_rates, "fullViewRate", None) if view_rates else None,
+            ])
+
+        output.seek(0)
+        stream = BytesIO(output.getvalue().encode("utf-8-sig"))
+        stream.seek(0)
+
+        filename = f"view-rate-template-{start_dt:%Y%m%d}-{end_dt:%Y%m%d}.csv"
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+
+        return StreamingResponse(stream, media_type="text/csv", headers=headers)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"視聴率テンプレートの生成に失敗しました: {str(exc)}")
+
+
+@router.post("/videos/view-rates/batch")
+async def upload_view_rates_batch(
+    file: UploadFile = File(..., description="視聴率CSVファイル"),
+    open_id: Optional[str] = Query(None, alias="open_id"),
+    user = Depends(get_current_user)
+):
+    if not user:
+        raise HTTPException(status_code=401, detail="認証が必要です")
+
+    try:
+        raw = await file.read()
+        try:
+            decoded = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="CSVはUTF-8でアップロードしてください")
+
+        reader = csv.DictReader(StringIO(decoded))
+        if not reader.fieldnames:
+            raise HTTPException(status_code=400, detail="CSVにヘッダー行がありません")
+
+        normalized_headers = {field.strip() for field in reader.fieldnames}
+        if "video_id" not in normalized_headers:
+            raise HTTPException(status_code=400, detail="CSVにvideo_id列が含まれていません")
+
+        conn = get_db_connection()
+        try:
+            video_query = """
+                SELECT video_id
+                FROM users_videos
+                WHERE user_number = :user_number
+            """
+            params = {"user_number": user.user_number}
+            if open_id:
+                video_query += " AND open_id = :open_id"
+                params["open_id"] = open_id
+            rows = conn.execute(text(video_query), params).mappings().all()
+            allowed_ids = {row["video_id"] for row in rows}
+
+            if not allowed_ids:
+                raise HTTPException(status_code=400, detail="対象となる動画が見つかりませんでした")
+
+            def normalize_rate(value):
+                if value is None:
+                    return None
+                if isinstance(value, (int, float)):
+                    return float(value)
+                stripped = str(value).strip()
+                if stripped == "":
+                    return None
+                try:
+                    return float(stripped)
+                except ValueError as err:
+                    raise ValueError("数値に変換できません") from err
+
+            updates = []
+            errors: List[str] = []
+            seen_ids = set()
+            for index, row in enumerate(reader, start=2):
+                video_id = (row.get("video_id") or "").strip()
+                if not video_id:
+                    errors.append(f"{index}行目: video_id が空です")
+                    continue
+                if video_id in seen_ids:
+                    errors.append(f"{index}行目: video_id {video_id} が重複しています")
+                    continue
+                seen_ids.add(video_id)
+
+                if video_id not in allowed_ids:
+                    errors.append(f"{index}行目: video_id {video_id} はこのアカウントの動画ではありません")
+                    continue
+
+                try:
+                    two_second = normalize_rate(row.get("two_second_rate"))
+                    six_second = normalize_rate(row.get("six_second_rate"))
+                    full_view = normalize_rate(row.get("full_view_rate"))
+                except ValueError as rate_err:
+                    errors.append(f"{index}行目: {rate_err}")
+                    continue
+
+                updates.append({
+                    "video_id": video_id,
+                    "user_number": user.user_number,
+                    "two_second_rate": two_second,
+                    "six_second_rate": six_second,
+                    "full_view_rate": full_view,
+                })
+
+            if not updates:
+                detail = {"message": "有効なデータが見つかりませんでした", "errors": errors}
+                raise HTTPException(status_code=400, detail=detail)
+
+            insert_query = text("""
+                INSERT INTO users_video_view_rates (
+                    video_id,
+                    user_number,
+                    two_second_rate,
+                    six_second_rate,
+                    full_view_rate,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    :video_id,
+                    :user_number,
+                    :two_second_rate,
+                    :six_second_rate,
+                    :full_view_rate,
+                    NOW(),
+                    NOW()
+                ) ON DUPLICATE KEY UPDATE
+                    two_second_rate = VALUES(two_second_rate),
+                    six_second_rate = VALUES(six_second_rate),
+                    full_view_rate = VALUES(full_view_rate),
+                    updated_at = NOW()
+            """)
+
+            try:
+                for record in updates:
+                    conn.execute(insert_query, record)
+                conn.commit()
+            except Exception as exec_err:
+                conn.rollback()
+                raise HTTPException(status_code=500, detail=f"視聴率データの一括更新に失敗しました: {str(exec_err)}")
+        finally:
+            conn.close()
+
+        return {"success": True, "updated": len(updates), "errors": errors}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"視聴率CSVの処理に失敗しました: {str(exc)}")
 
 @router.post("/report")
 async def generate_report(
@@ -688,12 +942,27 @@ async def save_video_view_rates(
                 updated_at = NOW()
         """)
         
+        def normalize_rate(value):
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped == "":
+                    return None
+                try:
+                    return float(stripped)
+                except ValueError:
+                    return None
+            return None
+
         params = {
             "video_id": video_id,
             "user_number": user.user_number,
-            "two_second_rate": view_rates.get("twoSecondRate", 0),
-            "six_second_rate": view_rates.get("sixSecondRate", 0),
-            "full_view_rate": view_rates.get("fullViewRate", 0)
+            "two_second_rate": normalize_rate(view_rates.get("twoSecondRate")),
+            "six_second_rate": normalize_rate(view_rates.get("sixSecondRate")),
+            "full_view_rate": normalize_rate(view_rates.get("fullViewRate"))
         }
         
         try:
@@ -775,6 +1044,9 @@ async def get_video_view_rates(
     except Exception as e:
         print(f"[ERROR] get_video_view_rates 処理エラー: {str(e)}")
         raise HTTPException(status_code=500, detail=f"視聴率データの取得に失敗しました: {str(e)}")
+
+
+
 
 
 
