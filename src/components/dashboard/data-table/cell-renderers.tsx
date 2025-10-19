@@ -219,6 +219,37 @@ export const renderDateCell = (row: VideoData) => {
     }
 };
 
+// 目的・中ジャンルカラム共通のバッジ描画
+const normalizeAccountSubtypeValues = (value?: string | string[] | null): string[] => {
+  if (!value) return [];
+
+  const values = Array.isArray(value) ? value : [value];
+  const splitter = /[,、、，､･・\s]+/;
+
+  const normalized = values
+    .flatMap((item) => (item ?? '')
+      .split(splitter)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    );
+
+  return Array.from(new Set(normalized));
+};
+
+const renderAdditionalAccountTypeCell = (value?: string | string[] | null) => {
+  const types = normalizeAccountSubtypeValues(value);
+
+  return (
+    <div className="w-[150px] min-w-[150px]">
+      <div className="flex flex-wrap gap-1 justify-start items-center">
+        {types.map((type, idx) => (
+          <AccountTypeBadge key={`${type}-${idx}`} accountType={type} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // アカウントジャンルセルレンダラー
 export const renderAccountTypeCell = (row: VideoData) => { 
   const accountType = row.account_type;
@@ -298,6 +329,14 @@ export const renderAccountTypeCell = (row: VideoData) => {
       </div>
     </div>
   );
+};
+
+export const renderSecondAccountTypeCell = (row: VideoData) => {
+  return renderAdditionalAccountTypeCell(row.second_account_type ?? null);
+};
+
+export const renderThirdAccountTypeCell = (row: VideoData) => {
+  return renderAdditionalAccountTypeCell(row.third_account_type ?? null);
 };
 
 // 再生数セルレンダラー

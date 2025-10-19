@@ -597,9 +597,10 @@ const Dashboard = () => {
     accounts: [] as string[],
     hashtags: [] as string[],
     music: [] as string[],
-    // 商品データとアカウントタイプはfilter-optionsから取得
     products: [] as string[],
     accountTypes: [] as string[],
+    secondAccountTypes: [] as string[],
+    thirdAccountTypes: [] as string[],
     isLoading: false
   });
 
@@ -609,8 +610,10 @@ const Dashboard = () => {
     accounts: string[];
     hashtags: string[];
     music: string[];
-    products: string[];      // ★ 修正: 必須
-    accountTypes: string[];  // ★ 修正: 必須
+    products: string[];
+    accountTypes: string[];
+    secondAccountTypes: string[];
+    thirdAccountTypes: string[];
     isLoading: boolean;
   }) => {
     setFilterOptions(options);

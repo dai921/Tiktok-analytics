@@ -61,6 +61,8 @@ interface DataTableProps {
     music: string[];
     products: string[];
     accountTypes: string[];
+    secondAccountTypes: string[];
+    thirdAccountTypes: string[];
     isLoading: boolean;
   }) => void;
   filterOptions?: {
@@ -70,6 +72,8 @@ interface DataTableProps {
     music: string[];
     products: string[];
     accountTypes: string[];
+    secondAccountTypes: string[];
+    thirdAccountTypes: string[];
     isLoading: boolean;
   };
 
@@ -110,6 +114,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       music: [],
       products: [],
       accountTypes: [],
+      secondAccountTypes: [],
+      thirdAccountTypes: [],
       isLoading: false
     },
     presetApplyFilters,
@@ -482,6 +488,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                     column.accessorKey === 'comments' ? '100px' :
                                     column.accessorKey === 'product' ? '150px' :
                                     column.accessorKey === 'account_type' ? '150px' :
+                                       column.accessorKey === 'second_account_type' ? '150px' :
+                                       column.accessorKey === 'third_account_type' ? '150px' :
                                     column.accessorKey === 'hashtags' ? '150px' :
                                     column.accessorKey === 'ten_days_increase' ? '120px' :
                                     column.accessorKey === 'likes_count_increase' ? '120px' :
@@ -503,6 +511,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                        column.accessorKey === 'comments' ? '100px' :
                                        column.accessorKey === 'product' ? '150px' :
                                        column.accessorKey === 'account_type' ? '150px' :
+                                       column.accessorKey === 'second_account_type' ? '150px' :
+                                       column.accessorKey === 'third_account_type' ? '150px' :
                                        column.accessorKey === 'hashtags' ? '150px' :
                                        column.accessorKey === 'ten_days_increase' ? '120px' :
                                        column.accessorKey === 'likes_count_increase' ? '120px' :
@@ -523,6 +533,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                                        column.accessorKey === 'comments' ? '100px' :
                                        column.accessorKey === 'product' ? '150px' :
                                        column.accessorKey === 'account_type' ? '150px' :
+                                       column.accessorKey === 'second_account_type' ? '150px' :
+                                       column.accessorKey === 'third_account_type' ? '150px' :
                                        column.accessorKey === 'hashtags' ? '150px' :
                                        column.accessorKey === 'ten_days_increase' ? '120px' :
                                        column.accessorKey === 'likes_count_increase' ? '120px' :
@@ -587,9 +599,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             hashtags={hashtagList}
             // ★ 修正: filterOptionsはデフォルト値があるのでオプショナルチェイニング不要
             products={filterOptions.products}
-            // ★ 修正: 変換されたproductCategoriesを渡す
             productCategories={convertedProductCategories}
             accountTypes={filterOptions.accountTypes}
+            secondAccountTypes={filterOptions.secondAccountTypes}
+            thirdAccountTypes={filterOptions.thirdAccountTypes}
             isLoading={isLoadingFilterOptions || filterOptions.isLoading}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}

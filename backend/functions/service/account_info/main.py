@@ -3,6 +3,7 @@ from core.config import initialize_config
 
 from services.sync_account_list import sync_account_list as sync_account
 from services.sync_crawler_accounts import sync_crawler_accounts as sync_crawler
+from services.sync_corporate_accounts_sheet import sync_corporate_accounts_from_sheet as sync_corporate_accounts
 
 # 環境変数の読み込み
 load_dotenv()
@@ -18,3 +19,6 @@ def sync_account_list(request):
 
 def sync_crawler_accounts(request):    
     return sync_crawler(request)
+
+def sync_corporate_accounts_sheet(event, context):
+    return sync_corporate_accounts(event, context)

@@ -109,6 +109,9 @@ def format_video(row):
         followers = int(row['followers']) if 'followers' in row and row['followers'] is not None else None
         play_count_per_follower = float(row['play_count_per_follower']) if 'play_count_per_follower' in row and row['play_count_per_follower'] is not None else None
         play_increase_per_follower = float(row['play_increase_per_follower']) if 'play_increase_per_follower' in row and row['play_increase_per_follower'] is not None else None
+        account_type_value = row.get('account_type')
+        second_account_type = row.get('second_account_type')
+        third_account_type = row.get('third_account_type')
 
         return {
             "url": row['url'],
@@ -126,7 +129,9 @@ def format_video(row):
             "ten_days_likes_increase": int(row['ten_days_likes_increase']) if row['ten_days_likes_increase'] else 0,
             "comment_count_increase": int(row['comment_count_increase']) if row['comment_count_increase'] else 0,
             "ten_days_comment_increase": int(row['ten_days_comment_increase']) if row['ten_days_comment_increase'] else 0,
-            "account_type": row['account_type'] if row['account_type'] else None,
+            "account_type": account_type_value if account_type_value else None,
+            "second_account_type": second_account_type if second_account_type else None,
+            "third_account_type": third_account_type if third_account_type else None,
             "hashtags": hashtags,
             "music_info": music_info,
             "audioInfo": music_info,  # 互換性のために残す

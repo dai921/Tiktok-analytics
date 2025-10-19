@@ -1,6 +1,7 @@
 ## 問題のテーブルたち
 ### フロントエンド表示用非正規テーブル
 - [71_frontend_data](./71_frontend_data.md) - フロントエンド表示用データ
+- [72_frontend_corporate_data](./72_frontend_corporate_data.md) - 企業アカウント専用フロント表示用データ
 - [72_play_count_history](./72_play_count_history.md) - 再生数履歴データ
 - [73_trend_analysis](./73_trend_analysis.md) - トレンド分析データ
 

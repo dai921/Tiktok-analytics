@@ -3,6 +3,8 @@ export const TAB_DEFAULT_COLUMNS = {
   all: [
     'thumbnail_url',
     'account_type',
+    'second_account_type',
+    'third_account_type',
     'category',
     'product',
     'createdAt',
@@ -34,6 +36,8 @@ export const TAB_DEFAULT_COLUMNS = {
   corporate: [
     'thumbnail_url',
     'account_type',
+    'second_account_type',
+    'third_account_type',
     'createdAt',
     'views',
     'viewsIncrease',
@@ -79,7 +83,7 @@ export const TAB_FILTER_FIELDS = {
   all: {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
-    categories: ['content_type', 'category', 'product', 'account_type'], 
+    categories: ['content_type', 'category', 'product', 'account_type', 'second_account_type', 'third_account_type'], 
     text: ['account_name', 'hashtags', 'audioTitle'],
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   },
@@ -93,7 +97,7 @@ export const TAB_FILTER_FIELDS = {
   corporate: {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
-    categories: ['content_type', 'account_type'], // category, productを除外
+    categories: ['content_type', 'account_type', 'second_account_type', 'third_account_type'], // category, productを除外
     text: ['account_name', 'hashtags', 'audioTitle'],
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   },

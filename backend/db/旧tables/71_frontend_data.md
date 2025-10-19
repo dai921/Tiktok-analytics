@@ -29,7 +29,10 @@
 | save_count_increase | INT | YES | NULL | 保存数増加 |
 | ten_days_save_increase | INT | YES | NULL | 10日間の保存数増加 |
 | account_type | VARCHAR(50) | YES | NULL | アカウントタイプ |
+| second_account_type | VARCHAR(50) | YES | NULL | 中ジャンル（'採用' or '集客'） |
+| third_account_type | VARCHAR(50) | YES | NULL | 両方含む場合のもう一方 |
 | hashtags | TEXT | YES | NULL | ハッシュタグ |
+| account_hashtags | TEXT | YES | NULL | アカウント頻出ハッシュタグ（頻出順, カンマ区切り） |
 | music_info | TEXT | YES | NULL | 音楽情報 |
 | caption | TEXT | YES | NULL | キャプション |
 | category | VARCHAR(255) | YES | NULL | カテゴリ |
@@ -37,6 +40,9 @@
 | follower | INT | YES |  | フォロワー数 |
 | play_count_per_follower | DECIMAL(20,3) | YES |  | 再生数/フォロワー数 |
 | play_cincrease_per_follower | DECIMAL(20,3) | YES |  | 再生増加数/フォロワー数 |
+| second_account_type | VARCHAR(50) | YES | NULL | idx_second_account_type | '採用' or '集客' |
+| third_account_type | VARCHAR(50) | YES | NULL | idx_third_account_type | 中ジャンル |
+| account_hashtags | TEXT | YES | NULL | - | アカウントハッシュタグ |
 
 ## インデックス
 
@@ -61,6 +67,9 @@
 | idx_created_at | created_at | インデックス | 投稿日検索用 |
 | idx_play_count_per_follower  | play_count_per_follower  | インデックス | 再生数/フォロワー数検索用 |
 | idx_play_increase_per_follower  | play_increase_per_follower  | インデックス | 再生増加数/フォロワー数検索用 |
+| idx_second_account_type  | second_account_type  | インデックス | 目的ジャンルの検索 |
+| idx_third_account_type  | third_account_type  | インデックス | 中ジャンルの検索 |
+| idx_account_hashtags  | account_hashtags  | インデックス | アカウントハッシュタグの検索 |
 
 ## 関連テーブル
 このテーブルは他のテーブルとの直接的な外部キー関連はありませんが、video_idやurlを通じて他のテーブルと関連付けられます。

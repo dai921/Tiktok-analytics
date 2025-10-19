@@ -31,6 +31,8 @@ interface FilterPopupProps {
   // ★ 商品カテゴリとアカウントタイプを追加
   productCategories?: Record<string, string[]>
   accountTypes?: string[]
+  secondAccountTypes?: string[]
+  thirdAccountTypes?: string[]
   isLoading: boolean
   onClearAll: () => void
   tabFilterFields?: {
@@ -206,6 +208,8 @@ export const FilterPopup = ({
   // ★ 新しいpropsを追加
   productCategories = {},
   accountTypes = [],
+  secondAccountTypes = [],
+  thirdAccountTypes = [],
   isLoading,
   onClearAll,
   tabFilterFields,
@@ -229,6 +233,8 @@ export const FilterPopup = ({
   const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
   // アカウントジャンル用の複数選択状態
   const [selectedAccountCategories, setSelectedAccountCategories] = useState<string[]>([])
+  const [selectedSecondAccountTypes, setSelectedSecondAccountTypes] = useState<string[]>([])
+  const [selectedThirdAccountTypes, setSelectedThirdAccountTypes] = useState<string[]>([])
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   // 動画タイプ用の状態
@@ -310,8 +316,32 @@ export const FilterPopup = ({
         }
       }
       setSelectedAccountCategories(initialAccountTypes);
-      console.log('[FILTER-POPUP] アカウントタイプ復元:', { accountTypeFilter, initialAccountTypes });
-      
+      console.log('[FILTER-POPUP] account_type 初期値:', { accountTypeFilter, initialAccountTypes });
+
+      const secondAccountTypeFilter = currentFilters['second_account_type'];
+      let initialSecondAccountTypes: string[] = [];
+      if (secondAccountTypeFilter && secondAccountTypeFilter.value) {
+        if (typeof secondAccountTypeFilter.value === 'string') {
+          initialSecondAccountTypes = [secondAccountTypeFilter.value];
+        } else if (Array.isArray(secondAccountTypeFilter.value)) {
+          initialSecondAccountTypes = secondAccountTypeFilter.value as string[];
+        }
+      }
+      setSelectedSecondAccountTypes(initialSecondAccountTypes);
+      console.log('[FILTER-POPUP] second_account_type 初期値:', { secondAccountTypeFilter, initialSecondAccountTypes });
+
+      const thirdAccountTypeFilter = currentFilters['third_account_type'];
+      let initialThirdAccountTypes: string[] = [];
+      if (thirdAccountTypeFilter && thirdAccountTypeFilter.value) {
+        if (typeof thirdAccountTypeFilter.value === 'string') {
+          initialThirdAccountTypes = [thirdAccountTypeFilter.value];
+        } else if (Array.isArray(thirdAccountTypeFilter.value)) {
+          initialThirdAccountTypes = thirdAccountTypeFilter.value as string[];
+        }
+      }
+      setSelectedThirdAccountTypes(initialThirdAccountTypes);
+      console.log('[FILTER-POPUP] third_account_type 初期値:', { thirdAccountTypeFilter, initialThirdAccountTypes });
+
       // 商品の選択復元
       const productFilter = currentFilters['product'];
       let initialProducts: string[] = [];
@@ -384,11 +414,23 @@ export const FilterPopup = ({
           // ★ propsから受け取った商品リストを使用
           options: productsList
         },
-        { 
+        {
           id: 'account_type', 
           label: 'アカウントジャンル', 
           type: 'multiselect' as FilterType, 
           options: getAccountTypeOptions()
+        },
+        {
+          id: 'second_account_type',
+          label: '目的',
+          type: 'multiselect' as FilterType,
+          options: secondAccountTypes
+        },
+        {
+          id: 'third_account_type',
+          label: '中ジャンル',
+          type: 'multiselect' as FilterType,
+          options: thirdAccountTypes
         }
       ],
       text: [
@@ -500,6 +542,8 @@ export const FilterPopup = ({
         }
       } else {
         setSelectedAccountCategories([]);
+    setSelectedSecondAccountTypes([]);
+    setSelectedThirdAccountTypes([]);
       }
       
       // 商品の選択初期化
@@ -680,6 +724,12 @@ export const FilterPopup = ({
     if (fieldId === 'category') {
       setSelectedCategories([]);
     }
+    if (fieldId === 'second_account_type') {
+      setSelectedSecondAccountTypes([]);
+    }
+    if (fieldId === 'third_account_type') {
+      setSelectedThirdAccountTypes([]);
+    }
   }
 
   // すべてのフィルターをクリア（簡素化）
@@ -736,6 +786,26 @@ export const FilterPopup = ({
     }
     
     // 4. 商品フィルターの処理を追加
+    if (selectedSecondAccountTypes.length > 0) {
+      finalFilters['second_account_type'] = {
+        field: 'second_account_type',
+        type: 'multiselect',
+        value: selectedSecondAccountTypes,
+        comparison: 'contains',
+        active: true
+      };
+    }
+
+    if (selectedThirdAccountTypes.length > 0) {
+      finalFilters['third_account_type'] = {
+        field: 'third_account_type',
+        type: 'multiselect',
+        value: selectedThirdAccountTypes,
+        comparison: 'contains',
+        active: true
+      };
+    }
+
     if (selectedProducts && selectedProducts.length > 0) {
       finalFilters['product'] = {
         field: 'product',
@@ -1314,13 +1384,18 @@ export const FilterPopup = ({
   // カテゴリー用の複数選択フィルターセクション
   const renderMultiSelectFilter = (field: FilterField) => {
     // フィールドに応じた選択状態と更新関数を選択
-    const selectedItems = field.id === 'category' ? selectedCategories : 
+    const selectedItems = field.id === 'category' ? selectedCategories :
                          field.id === 'content_type' ? selectedContentTypes :
-                         field.id === 'account_type' ? selectedAccountCategories : [];
+                         field.id === 'account_type' ? selectedAccountCategories :
+                         field.id === 'second_account_type' ? selectedSecondAccountTypes :
+                         field.id === 'third_account_type' ? selectedThirdAccountTypes :
+                         [];
                          
-    const setSelectedItems = field.id === 'category' ? setSelectedCategories : 
+    const setSelectedItems = field.id === 'category' ? setSelectedCategories :
                             field.id === 'content_type' ? setSelectedContentTypes :
-                            field.id === 'account_type' ? setSelectedAccountCategories : () => {};
+                            field.id === 'account_type' ? setSelectedAccountCategories :
+                            field.id === 'second_account_type' ? setSelectedSecondAccountTypes :
+                            field.id === 'third_account_type' ? setSelectedThirdAccountTypes : () => {};
     
     // コンテンツタイプの場合は表示名を変換
     const getDisplayName = (option: string) => {
@@ -1365,6 +1440,36 @@ export const FilterPopup = ({
           comparison: 'contains',
           value: checked 
             ? [...selectedItems.filter(item => item !== option), option] 
+            : selectedItems.filter(item => item !== option)
+        });
+      } else if (field.id === 'second_account_type') {
+        if (checked) {
+          setSelectedSecondAccountTypes(prev => [...prev, option]);
+        } else {
+          setSelectedSecondAccountTypes(prev => prev.filter(item => item !== option));
+        }
+
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked
+            ? [...selectedItems.filter(item => item !== option), option]
+            : selectedItems.filter(item => item !== option)
+        });
+      } else if (field.id === 'third_account_type') {
+        if (checked) {
+          setSelectedThirdAccountTypes(prev => [...prev, option]);
+        } else {
+          setSelectedThirdAccountTypes(prev => prev.filter(item => item !== option));
+        }
+
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked
+            ? [...selectedItems.filter(item => item !== option), option]
             : selectedItems.filter(item => item !== option)
         });
       } else if (field.id === 'product') {

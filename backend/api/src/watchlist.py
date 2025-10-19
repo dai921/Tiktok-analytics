@@ -141,6 +141,7 @@ async def remove_video_from_watchlist(
         conn.execute(delete_query, {"email": current_user.email, "video_id": video_id})
         
         conn.commit()
+        print(f"[DELETE][ビデオウォッチリスト] email={current_user.email} video_id={video_id} ts={datetime.utcnow().isoformat()}")
         return {"success": True, "message": "ビデオがウォッチリストから削除されました"}
         
     except HTTPException:
@@ -586,6 +587,7 @@ async def remove_account_from_bookmarks(
         conn.execute(delete_query, {"email": current_user.email, "account_name": account_name})
         
         conn.commit()
+        print(f"[DELETE][アカウントウォッチリスト] email={current_user.email} account_name={account_name} ts={datetime.utcnow().isoformat()}")
         return {"success": True, "message": "アカウントがブックマークから削除されました"}
         
     except HTTPException:

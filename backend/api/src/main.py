@@ -159,6 +159,10 @@ async def get_videos(
     product_type: Optional[str] = None,  # 商品フィルターの比較演算子
     account_type: Optional[str] = None,  # アカウントタイプフィルターを追加
     account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
+    second_account_type: Optional[str] = None,
+    second_account_type_count: Optional[int] = None,
+    third_account_type: Optional[str] = None,
+    third_account_type_count: Optional[int] = None,
     created_at: Optional[str] = None,  # 作成日フィルターを追加
     created_at_type: Optional[str] = None,  # 作成日の比較演算子
     followers: Optional[int] = None,
@@ -182,6 +186,7 @@ async def get_videos(
                 ten_days_increase, account_name, display_name, content_type, 
                 likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
                 comment_count_increase, ten_days_comment_increase, account_type,
+                second_account_type, third_account_type,
                 hashtags, music_info, caption, category, product, save_count, 
                 save_count_increase, ten_days_save_increase,
                 followers, play_count_per_follower, play_increase_per_follower
@@ -492,6 +497,42 @@ async def get_videos(
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_type LIKE :account_type")
             params["account_type"] = f"%{escaped_account_type}%"
+
+        second_account_type_filters = []
+        second_account_type_count_param = request.query_params.get('second_account_type_count')
+        if second_account_type_count_param and second_account_type_count_param.isdigit():
+            count = int(second_account_type_count_param)
+            for i in range(count):
+                second_param = request.query_params.get(f'second_account_type_{i}')
+                if second_param:
+                    escaped_second = second_param.replace("_", r"\_").replace("%", r"\%")
+                    second_account_type_filters.append(f"second_account_type LIKE :second_account_type_{i}")
+                    params[f"second_account_type_{i}"] = f"%{escaped_second}%"
+
+        if second_account_type_filters:
+            where_clauses.append(f"({' OR '.join(second_account_type_filters)})")
+        elif second_account_type:
+            escaped_second = second_account_type.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("second_account_type LIKE :second_account_type")
+            params["second_account_type"] = f"%{escaped_second}%"
+
+        third_account_type_filters = []
+        third_account_type_count_param = request.query_params.get('third_account_type_count')
+        if third_account_type_count_param and third_account_type_count_param.isdigit():
+            count = int(third_account_type_count_param)
+            for i in range(count):
+                third_param = request.query_params.get(f'third_account_type_{i}')
+                if third_param:
+                    escaped_third = third_param.replace("_", r"\_").replace("%", r"\%")
+                    third_account_type_filters.append(f"third_account_type LIKE :third_account_type_{i}")
+                    params[f"third_account_type_{i}"] = f"%{escaped_third}%"
+
+        if third_account_type_filters:
+            where_clauses.append(f"({' OR '.join(third_account_type_filters)})")
+        elif third_account_type:
+            escaped_third = third_account_type.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("third_account_type LIKE :third_account_type")
+            params["third_account_type"] = f"%{escaped_third}%"
 
         # 親アカウントタイプのフィルタリング
         if parent_account_type:
