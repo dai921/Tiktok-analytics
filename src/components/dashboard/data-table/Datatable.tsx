@@ -607,6 +607,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             accountTypes={filterOptions.accountTypes}
             secondAccountTypes={filterOptions.secondAccountTypes}
             thirdAccountTypes={filterOptions.thirdAccountTypes}
+            thirdAccountTypeMap={filterOptions.thirdAccountTypeMap}
             isLoading={isLoadingFilterOptions || filterOptions.isLoading}
             onClearAll={handleClearFilterInputs}
             tabFilterFields={tabFilterFields}

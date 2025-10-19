@@ -816,6 +816,35 @@ async def get_filter_options(
                 if account_type_value:
                     third_account_type_map[third_account_type_value] = account_type_value
 
+        # corporate_categoryに存在しない中ジャンルの補完をfrontend_dataから取得
+        third_account_pairs_query = f"""
+            SELECT account_type, third_account_type
+            FROM frontend_data
+            WHERE third_account_type IS NOT NULL AND third_account_type != ''
+            {base_where.replace('WHERE', 'AND', 1) if base_where else ''}
+        """
+        third_account_pairs_rows = execute_query(third_account_pairs_query, params)
+
+        for row in third_account_pairs_rows:
+            raw_account_type = (row.get('account_type') or '').strip()
+            raw_third_type = (row.get('third_account_type') or '').strip()
+            if not raw_third_type:
+                continue
+
+            third_tokens = [token.strip() for token in re.split(split_pattern, raw_third_type) if token.strip()]
+            account_tokens = [token.strip() for token in re.split(split_pattern, raw_account_type) if token.strip()]
+            fallback_account = account_tokens[0] if account_tokens else ''
+
+            for index, third_token in enumerate(third_tokens):
+                if not third_token:
+                    continue
+                third_account_type_set.add(third_token)
+                if third_token in third_account_type_map:
+                    continue
+                parent_account = account_tokens[index] if index < len(account_tokens) else fallback_account
+                if parent_account:
+                    third_account_type_map[third_token] = parent_account
+
         final_third_account_types = sorted(third_account_type_set)
 
         return {

@@ -5,10 +5,8 @@ import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashbo
 import { 
   TIKTOK_COLORS, 
   GENRE_COLORS, 
-  AFFILIATE_TYPE_COLORS,      // 新規追加
-  INFLUENCER_TYPE_COLORS,     // 名前変更
-  CORPORATE_TYPE_COLORS, 
   DEFAULT_GENRE_COLOR,
+  DEFAULT_ACCOUNT_TYPE_COLOR,
   getAffiliateAccountTypes,   // 新規追加
   getInfluencerAccountTypes,
   getCorporateAccountTypes,
@@ -16,6 +14,8 @@ import {
   getAccountTypeColor         // 追加
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+
+const ACCOUNT_TYPE_SPLIT_PATTERN = /[\u3001,\uFF0C\uFF0F/・\s]+/u;
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL 
 interface FilterPopupProps {
@@ -33,6 +33,7 @@ interface FilterPopupProps {
   accountTypes?: string[]
   secondAccountTypes?: string[]
   thirdAccountTypes?: string[]
+  thirdAccountTypeMap?: Record<string, string>
   isLoading: boolean
   onClearAll: () => void
   tabFilterFields?: {
@@ -210,6 +211,7 @@ export const FilterPopup = ({
   accountTypes = [],
   secondAccountTypes = [],
   thirdAccountTypes = [],
+  thirdAccountTypeMap = {},
   isLoading,
   onClearAll,
   tabFilterFields,
@@ -239,6 +241,34 @@ export const FilterPopup = ({
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   // 動画タイプ用の状態
   const [selectedVideoType, setSelectedVideoType] = useState<'all' | 'affiliate' | 'corporate' | 'influencer'>('all')
+
+  const splitAccountTypeTokens = (value?: string | null) => {
+    if (!value) return []
+    return value
+      .split(ACCOUNT_TYPE_SPLIT_PATTERN)
+      .map(token => token.trim())
+      .filter(Boolean)
+  }
+
+  const getPrimaryAccountTypeToken = (value?: string | null) => {
+    const tokens = splitAccountTypeTokens(value)
+    return tokens.length > 0 ? tokens[0] : ''
+  }
+
+  const resolveAccountTypeForColor = (raw?: string | null) => {
+    const primary = getPrimaryAccountTypeToken(raw)
+    if (!primary) return ''
+    if (accountTypes.includes(primary)) {
+      return primary
+    }
+    const partial = accountTypes.find(type => type.includes(primary) || primary.includes(type))
+    return partial || primary
+  }
+
+  const resolveThirdAccountParent = (thirdType: string) => {
+    const mapped = thirdAccountTypeMap?.[thirdType]
+    return resolveAccountTypeForColor(mapped)
+  }
 
   // useEffectも修正
   useEffect(() => {
@@ -1479,16 +1509,6 @@ export const FilterPopup = ({
         } else {
           setSelectedProducts(prev => prev.filter(item => item !== option));
         }
-        
-        // フィルター状態を更新
-        handleFilterChange(field.id, {
-          field: field.id,
-          type: 'multiselect',
-          comparison: 'contains',
-          value: checked 
-            ? [...selectedItems.filter(item => item !== option), option] 
-            : selectedItems.filter(item => item !== option)
-        });
       }
     };
 
@@ -1496,10 +1516,150 @@ export const FilterPopup = ({
     const sortedOptions = field.options ? [...field.options].sort((a, b) => {
       if (a === 'その他') return 1;
       if (b === 'その他') return -1;
-      return a.localeCompare(b);
+      return a.localeCompare(b, 'ja');
     }) : [];
     
     const isActive = selectedItems.length > 0
+    let optionIndex = 0;
+
+    const resolveOptionColors = (option: string, parentOverride?: string) => {
+      if (field.id === 'account_type') {
+        return getAccountTypeColor(option, accountTypeContext);
+      }
+
+      if (field.id === 'second_account_type') {
+        const colorKey = parentOverride || resolveAccountTypeForColor(option) || option;
+        return getAccountTypeColor(colorKey, accountTypeContext);
+      }
+
+      if (field.id === 'third_account_type') {
+        const parent = parentOverride || resolveThirdAccountParent(option);
+        if (!parent) {
+          return DEFAULT_ACCOUNT_TYPE_COLOR;
+        }
+        return getAccountTypeColor(parent, accountTypeContext);
+      }
+
+      // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
+      return option in GENRE_COLORS 
+        ? GENRE_COLORS[option as keyof typeof GENRE_COLORS] 
+        : DEFAULT_GENRE_COLOR;
+    };
+
+    const renderOptionCheckbox = (option: string, checkboxIndex: number, colors: { bg: string; text: string; border: string }) => {
+      const checkboxId = `${field.id}-${checkboxIndex}`;
+      return (
+        <div key={checkboxId} className="flex items-center mb-2">
+          <input
+            id={checkboxId}
+            type="checkbox"
+            className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300 rounded"
+            checked={selectedItems.includes(option)}
+            onChange={(e) => handleCheckboxChange(option, e.target.checked)}
+          />
+          <label htmlFor={checkboxId} className="ml-2">
+            <div 
+              className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold"
+              style={{ 
+                backgroundColor: colors.bg,
+                color: colors.text,
+                border: `1px solid ${colors.border}`
+              }}
+            >
+              {getDisplayName(option)}
+            </div>
+          </label>
+        </div>
+      );
+    };
+
+    if (field.id === 'third_account_type') {
+      const grouped = new Map<string, string[]>();
+      sortedOptions.forEach(option => {
+        const parent = resolveThirdAccountParent(option) || '未分類';
+        if (!grouped.has(parent)) {
+          grouped.set(parent, []);
+        }
+        grouped.get(parent)!.push(option);
+      });
+
+      const priority = new Map<string, number>();
+      accountTypes.forEach((type, index) => priority.set(type, index));
+
+      const parents = Array.from(grouped.keys()).sort((a, b) => {
+        const aMisc = a === '未分類';
+        const bMisc = b === '未分類';
+        if (aMisc && bMisc) return 0;
+        if (aMisc) return 1;
+        if (bMisc) return -1;
+
+        const idxA = priority.has(a) ? priority.get(a)! : Number.MAX_SAFE_INTEGER;
+        const idxB = priority.has(b) ? priority.get(b)! : Number.MAX_SAFE_INTEGER;
+
+        if (idxA !== idxB) return idxA - idxB;
+        return a.localeCompare(b, 'ja');
+      });
+
+      return (
+        <div key={field.id} className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-700">
+              {field.label || ''}
+            </label>
+            {isActive && (
+              <button 
+                onClick={() => {
+                  handleClearFilter(field.id);
+                  setSelectedItems([]);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <ClearIcon size={14} />
+              </button>
+            )}
+          </div>
+          
+          <div className="mt-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md shadow-sm p-2 space-y-3">
+            {parents.map(parent => {
+              const optionsForParent = grouped.get(parent) || [];
+              const parentColor = parent !== '未分類'
+                ? getAccountTypeColor(parent, accountTypeContext)
+                : DEFAULT_ACCOUNT_TYPE_COLOR;
+
+              return (
+                <div key={parent} className="border-b last:border-b-0 border-gray-100 pb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-600">{parent}</span>
+                    {parent !== '未分類' && (
+                      <span
+                        className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: parentColor.bg,
+                          color: parentColor.text,
+                          border: `1px solid ${parentColor.border}`
+                        }}
+                      >
+                        {parent}
+                      </span>
+                    )}
+                  </div>
+                  {optionsForParent.map(option =>
+                    renderOptionCheckbox(
+                      option,
+                      optionIndex++,
+                      resolveOptionColors(option, parent === '未分類' ? undefined : parent)
+                    )
+                  )}
+                </div>
+              );
+            })}
+            {parents.length === 0 && (
+              <div className="text-sm text-gray-500 py-2 text-center">選択肢がありません</div>
+            )}
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div key={field.id} className="mb-4">
@@ -1521,42 +1681,9 @@ export const FilterPopup = ({
         </div>
         
         <div className="mt-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md shadow-sm p-2">
-          {sortedOptions.map((option, index) => {
-            // フィールドIDに応じて適切な色を取得
-            let colors;
-            if (field.id === 'account_type') {
-              colors = getAccountTypeColor(option, accountTypeContext);
-            } else {
-              // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
-              colors = option in GENRE_COLORS 
-                ? GENRE_COLORS[option as keyof typeof GENRE_COLORS] 
-                : DEFAULT_GENRE_COLOR;
-            }
-            
-            return (
-              <div key={index} className="flex items-center mb-2">
-                <input
-                  id={`${field.id}-${index}`}
-                  type="checkbox"
-                  className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300 rounded"
-                  checked={selectedItems.includes(option)}
-                  onChange={(e) => handleCheckboxChange(option, e.target.checked)}
-                />
-                <label htmlFor={`${field.id}-${index}`} className="ml-2">
-                  <div 
-                    className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold"
-                    style={{ 
-                      backgroundColor: colors.bg,
-                      color: colors.text,
-                      border: `1px solid ${colors.border}`
-                    }}
-                  >
-                    {getDisplayName(option)}
-                  </div>
-                </label>
-              </div>
-            );
-          })}
+          {sortedOptions.map(option =>
+            renderOptionCheckbox(option, optionIndex++, resolveOptionColors(option))
+          )}
           {sortedOptions.length === 0 && (
             <div className="text-sm text-gray-500 py-2 text-center">選択肢がありません</div>
           )}
