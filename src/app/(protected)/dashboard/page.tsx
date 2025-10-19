@@ -601,6 +601,7 @@ const Dashboard = () => {
     accountTypes: [] as string[],
     secondAccountTypes: [] as string[],
     thirdAccountTypes: [] as string[],
+    thirdAccountTypeMap: {} as Record<string, string>,
     isLoading: false
   });
 
@@ -614,6 +615,7 @@ const Dashboard = () => {
     accountTypes: string[];
     secondAccountTypes: string[];
     thirdAccountTypes: string[];
+    thirdAccountTypeMap: Record<string, string>;
     isLoading: boolean;
   }) => {
     setFilterOptions(options);

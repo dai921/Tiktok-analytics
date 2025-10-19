@@ -10,6 +10,7 @@ from src.sound_stats import router as sound_stats_router
 from src.hashtag_stats import router as hashtag_stats_router
 from src.corporate_account_stats import router as corporate_account_stats_router
 from src.watchlist import router as watchlist_router
+import re
 from contextlib import closing
 from fastapi import FastAPI
 from src.timing_middleware import timing_middleware
@@ -768,27 +769,63 @@ async def get_filter_options(
         
         final_products = sorted(list(set(processed_products)))
         
-        # アカウントタイプ選択肢
+        # アカウントタイプ選択肢        # アカウントジャンル(account_type)の一覧
         account_types_query = f"SELECT DISTINCT account_type FROM frontend_data{base_where}"
         account_types_rows = execute_query(account_types_query, params)
         account_types = [row['account_type'] for row in account_types_rows if row['account_type']]
-        
-        # アカウントタイプを分割して処理
+
         processed_account_types = []
         for account_type in account_types:
-            if "、" in account_type or "," in account_type:
-                parts = account_type.replace("、", ",").split(",")
+            if '、' in account_type or ',' in account_type:
+                parts = account_type.replace('、', ',').split(',')
                 processed_account_types.extend([part.strip() for part in parts if part.strip()])
             else:
                 processed_account_types.append(account_type)
-        
+
         final_account_types = sorted(list(set(processed_account_types)))
-        
+
+        # 目的一覧(second_account_type)
+        second_account_query = f"SELECT DISTINCT second_account_type FROM frontend_data{base_where}"
+        second_account_rows = execute_query(second_account_query, params)
+        second_account_type_set = set()
+        split_pattern = r'[、,／/・\s]+'
+        for row in second_account_rows:
+            raw_value = row.get('second_account_type')
+            if not raw_value:
+                continue
+            parts = [part.strip() for part in re.split(split_pattern, raw_value) if part.strip()]
+            if not parts and raw_value.strip():
+                parts = [raw_value.strip()]
+            second_account_type_set.update(parts)
+        final_second_account_types = sorted(second_account_type_set)
+
+        # 中ジャンル(third_account_type)とアカウントジャンル(account_type)の対応
+        corporate_category_rows = execute_query(
+            "SELECT account_type, third_account_type FROM corporate_category",
+            {}
+        )
+
+        third_account_type_set = set()
+        third_account_type_map: Dict[str, str] = {}
+        for row in corporate_category_rows:
+            account_type_value = (row.get('account_type') or '').strip()
+            third_account_type_value = (row.get('third_account_type') or '').strip()
+
+            if third_account_type_value:
+                third_account_type_set.add(third_account_type_value)
+                if account_type_value:
+                    third_account_type_map[third_account_type_value] = account_type_value
+
+        final_third_account_types = sorted(third_account_type_set)
+
         return {
             "success": True,
             "categories": final_categories,
             "products": final_products,
-            "accountTypes": final_account_types
+            "accountTypes": final_account_types,
+            "secondAccountTypes": final_second_account_types,
+            "thirdAccountTypes": final_third_account_types,
+            "thirdAccountTypeMap": third_account_type_map
         }
         
     except Exception as e:
@@ -796,6 +833,12 @@ async def get_filter_options(
         print(traceback.format_exc())
         return {
             "success": False,
+            "categories": [],
+            "products": [],
+            "accountTypes": [],
+            "secondAccountTypes": [],
+            "thirdAccountTypes": [],
+            "thirdAccountTypeMap": {},
             "error": str(e)
         }
 

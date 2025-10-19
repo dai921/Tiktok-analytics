@@ -1260,6 +1260,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       accountTypeCount: result.accountTypes?.length || 0,
       secondAccountTypeCount: result.secondAccountTypes?.length || 0,
       thirdAccountTypeCount: result.thirdAccountTypes?.length || 0,
+      thirdAccountTypeMapCount: result.thirdAccountTypeMap ? Object.keys(result.thirdAccountTypeMap).length : 0,
     });
     
     if (result.success) {
@@ -1273,7 +1274,8 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         products: result.products || [],
         accountTypes: result.accountTypes || [],
         secondAccountTypes: result.secondAccountTypes || [],
-        thirdAccountTypes: result.thirdAccountTypes || []
+        thirdAccountTypes: result.thirdAccountTypes || [],
+        thirdAccountTypeMap: result.thirdAccountTypeMap || {},
       };
     } else {
       console.error('選択肢取得エラー:', result.error || '不明なエラー');
@@ -1288,6 +1290,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         accountTypes: [],
         secondAccountTypes: [],
         thirdAccountTypes: [],
+        thirdAccountTypeMap: {},
         error: result.error || '不明なエラー'
       };
     }
@@ -1304,6 +1307,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       accountTypes: [],
       secondAccountTypes: [],
       thirdAccountTypes: [],
+      thirdAccountTypeMap: {},
       error: error instanceof Error ? error.message : '不明なエラー'
     };
   }

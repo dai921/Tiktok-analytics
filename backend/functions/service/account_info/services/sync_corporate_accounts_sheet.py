@@ -173,4 +173,10 @@ def sync_corporate_accounts_from_sheet(event, context):
         logger.error(f"corporate_accounts同期エラー: {e}")
         return {"status": "error", "message": str(e)}
 
+if __name__ == "__main__":
+    import base64, json
+    # 必要: ENVIRONMENT, SPREADSHEET_ID, PROJECT_ID, (GOOGLE_APPLICATION_CREDENTIALS or Secret Manager 権限)
+    event = {"data": base64.b64encode(json.dumps({}).encode("utf-8")).decode("utf-8")}
+    print(sync_corporate_accounts_from_sheet(event, None))
+
 

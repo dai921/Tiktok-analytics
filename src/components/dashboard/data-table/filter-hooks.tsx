@@ -11,6 +11,7 @@ type FilterOptionsPayload = {
   accountTypes: string[];
   secondAccountTypes: string[];
   thirdAccountTypes: string[];
+  thirdAccountTypeMap: Record<string, string>;
 };
 
 const REQUEST_DEBOUNCE_MS = 1000;
@@ -26,6 +27,7 @@ export const useFilterOptions = (
   const [audioTitleList, setAudioTitleList] = useState<string[]>([]);
   const [secondAccountTypeList, setSecondAccountTypeList] = useState<string[]>([]);
   const [thirdAccountTypeList, setThirdAccountTypeList] = useState<string[]>([]);
+  const [thirdAccountTypeMap, setThirdAccountTypeMap] = useState<Record<string, string>>({});
   const [isLoadingFilterOptions, setIsLoadingFilterOptions] = useState(false);
 
   const hasInitialLoad = useRef(false);
@@ -53,6 +55,7 @@ export const useFilterOptions = (
         accountTypes: result.accountTypes || [],
         secondAccountTypes: result.secondAccountTypes || [],
         thirdAccountTypes: result.thirdAccountTypes || [],
+        thirdAccountTypeMap: result.thirdAccountTypeMap || {},
       };
 
       setCategoryList(payload.categories);
@@ -61,6 +64,7 @@ export const useFilterOptions = (
       setAudioTitleList(payload.music);
       setSecondAccountTypeList(payload.secondAccountTypes);
       setThirdAccountTypeList(payload.thirdAccountTypes);
+      setThirdAccountTypeMap(payload.thirdAccountTypeMap);
 
       emitUpdate(payload, false);
     },
@@ -137,6 +141,7 @@ export const useFilterOptions = (
     audioTitleList,
     secondAccountTypeList,
     thirdAccountTypeList,
+    thirdAccountTypeMap,
     isLoadingFilterOptions,
     getFilteredOptions,
     loadFilterOptions: refreshFilterOptions,

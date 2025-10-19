@@ -369,10 +369,61 @@ def sync_category_spreadsheet():
                         logger.error(f"別名の登録中にエラーが発生: {str(e)}")
                         continue
 
+            # 企業カテゴリ対応表の同期
+            logger.info("企業カテゴリ対応表の同期を開始")
+            corp_range = '企業カテゴリ対応表!B2:C'  # B列: account_type, C列: third_account_type
+            corp_result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=corp_range
+            ).execute()
+            corp_values = corp_result.get('values', [])
+
+            corp_inserted = 0
+            corp_skipped = 0
+
+            for row in corp_values:
+                account_type = row[0].strip() if len(row) > 0 and row[0] else None
+                third_account_type = row[1].strip() if len(row) > 1 and row[1] else None
+
+                if not account_type or not third_account_type:
+                    corp_skipped += 1
+                    continue
+
+                # 重複チェック
+                exists = execute_query(
+                    '''
+                    SELECT id
+                    FROM corporate_category
+                    WHERE account_type = %(account_type)s
+                      AND third_account_type = %(third_account_type)s
+                    LIMIT 1
+                    ''',
+                    {
+                        'account_type': account_type,
+                        'third_account_type': third_account_type
+                    }
+                )
+
+                if exists:
+                    continue
+
+                execute_write_query(
+                    '''
+                    INSERT INTO corporate_category (account_type, third_account_type, created_at, updated_at)
+                    VALUES (%(account_type)s, %(third_account_type)s, NOW(), NOW())
+                    ''',
+                    {
+                        'account_type': account_type,
+                        'third_account_type': third_account_type
+                    }
+                )
+                corp_inserted += 1
+
             success_message = (
                 f"Successfully inserted/updated:\n"
                 f"- {product_inserted} products and {product_keyword_inserted} product keywords\n"
-                f"- {alias_inserted} aliases and {alias_keyword_inserted} alias keywords"
+                f"- {alias_inserted} aliases and {alias_keyword_inserted} alias keywords\n"
+                f"- {corp_inserted} corporate categories"
             )
             logger.info(success_message)
             return success_message, 200

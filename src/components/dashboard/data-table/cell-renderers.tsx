@@ -11,7 +11,10 @@ import { AccountTypeBadge } from '@/components/ui/badge';
 export const TableContext = createContext<{
   setSelectedText?: (data: { title: string; content: string }) => void;
   productCategories?: Record<string, string>;
-}>({});
+  thirdAccountTypeMap?: Record<string, string>;
+}>({
+  thirdAccountTypeMap: {}
+});
 
 export const renderThumbnailCell = (row: VideoData) => {
   let thumbnailUrl = null;
@@ -224,7 +227,7 @@ const normalizeAccountSubtypeValues = (value?: string | string[] | null): string
   if (!value) return [];
 
   const values = Array.isArray(value) ? value : [value];
-  const splitter = /[,、、，､･・\s]+/;
+  const splitter = /[\u002C\u3001\uFF0C\uFF0F/\u30FB\s]+/u;
 
   const normalized = values
     .flatMap((item) => (item ?? '')
@@ -236,8 +239,8 @@ const normalizeAccountSubtypeValues = (value?: string | string[] | null): string
   return Array.from(new Set(normalized));
 };
 
-const renderAdditionalAccountTypeCell = (value?: string | string[] | null) => {
-  const types = normalizeAccountSubtypeValues(value);
+const SecondAccountTypeCell = ({ row }: { row: VideoData }) => {
+  const types = normalizeAccountSubtypeValues(row.second_account_type ?? null);
 
   return (
     <div className="w-[150px] min-w-[150px]">
@@ -245,6 +248,35 @@ const renderAdditionalAccountTypeCell = (value?: string | string[] | null) => {
         {types.map((type, idx) => (
           <AccountTypeBadge key={`${type}-${idx}`} accountType={type} />
         ))}
+      </div>
+    </div>
+  );
+};
+
+const ThirdAccountTypeCellComponent = ({ row }: { row: VideoData }) => {
+  const { thirdAccountTypeMap } = useContext(TableContext);
+
+  const thirdTypes = normalizeAccountSubtypeValues(row.third_account_type ?? null);
+  const accountTypeCandidates = normalizeAccountSubtypeValues(row.account_type ?? null);
+  const fallbackParent = accountTypeCandidates[0] || '';
+
+  return (
+    <div className="w-[150px] min-w-[150px]">
+      <div className="flex flex-wrap gap-1 justify-start items-center">
+        {thirdTypes.map((third, idx) => {
+          const parent =
+            thirdAccountTypeMap?.[third] ||
+            accountTypeCandidates[idx] ||
+            fallbackParent;
+
+          return (
+            <AccountTypeBadge
+              key={`${third}-${idx}`}
+              accountType={parent || third}
+              label={third}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -332,11 +364,11 @@ export const renderAccountTypeCell = (row: VideoData) => {
 };
 
 export const renderSecondAccountTypeCell = (row: VideoData) => {
-  return renderAdditionalAccountTypeCell(row.second_account_type ?? null);
+  return <SecondAccountTypeCell row={row} />;
 };
 
 export const renderThirdAccountTypeCell = (row: VideoData) => {
-  return renderAdditionalAccountTypeCell(row.third_account_type ?? null);
+  return <ThirdAccountTypeCellComponent row={row} />;
 };
 
 // 再生数セルレンダラー

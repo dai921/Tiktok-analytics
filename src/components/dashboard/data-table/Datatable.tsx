@@ -63,6 +63,7 @@ interface DataTableProps {
     accountTypes: string[];
     secondAccountTypes: string[];
     thirdAccountTypes: string[];
+    thirdAccountTypeMap: Record<string, string>;
     isLoading: boolean;
   }) => void;
   filterOptions?: {
@@ -74,6 +75,7 @@ interface DataTableProps {
     accountTypes: string[];
     secondAccountTypes: string[];
     thirdAccountTypes: string[];
+    thirdAccountTypeMap: Record<string, string>;
     isLoading: boolean;
   };
 
@@ -116,6 +118,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       accountTypes: [],
       secondAccountTypes: [],
       thirdAccountTypes: [],
+      thirdAccountTypeMap: {},
       isLoading: false
     },
     presetApplyFilters,
@@ -440,7 +443,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <div className="overflow-x-auto">
               <TableContext.Provider value={{ 
                 setSelectedText, 
-                productCategories 
+                productCategories, 
+                thirdAccountTypeMap: filterOptions.thirdAccountTypeMap ?? {} 
               }}>
                 <table className="min-w-full divide-y divide-gray-200">
                   <DndContextProvider>
