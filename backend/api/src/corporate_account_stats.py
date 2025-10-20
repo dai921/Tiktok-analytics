@@ -302,12 +302,43 @@ async def get_corporate_third_account_types(account_type: str):
                 third_types.add(token)
                 third_type_map.setdefault(token, account_type)
 
+        # 企業カテゴリ全体から third_account_type と紐付く account_type の対応表を構築
+        global_mapping_query = text("""
+            SELECT account_type, third_account_type
+            FROM corporate_category
+            WHERE third_account_type IS NOT NULL
+              AND third_account_type != ''
+        """)
+        global_rows = conn.execute(global_mapping_query)
+        global_mapping = {}
+
+        for row in global_rows:
+            raw_account = (row[0] or '').strip()
+            raw_third = (row[1] or '').strip()
+            if not raw_third:
+                continue
+
+            account_tokens = [token.strip() for token in split_pattern.split(raw_account) if token.strip()]
+            third_tokens = [token.strip() for token in split_pattern.split(raw_third) if token.strip()]
+            fallback_account = account_tokens[0] if account_tokens else ''
+
+            for index, third_token in enumerate(third_tokens):
+                if not third_token:
+                    continue
+                parent_account = account_tokens[index] if index < len(account_tokens) else fallback_account
+                if parent_account:
+                    global_mapping.setdefault(third_token, parent_account)
+
+        # ローカルで得た対応もグローバルマップに補完
+        for token, parent in third_type_map.items():
+            global_mapping.setdefault(token, parent)
+
         sorted_third_types = sorted(third_types)
 
         return {
             "success": True,
             "data": sorted_third_types,
-            "mapping": third_type_map
+            "mapping": global_mapping
         }
     except Exception as e:
         logger.error(f"中ジャンル一覧取得エラー: {str(e)}")
