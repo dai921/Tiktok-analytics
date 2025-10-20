@@ -825,13 +825,16 @@ async def get_filter_options(
         """
         third_account_pairs_rows = execute_query(third_account_pairs_query, params)
 
+        # third_account_type では中点「・」とスラッシュで分割しない
+        third_split_pattern = r'[、,\s]+'
+
         for row in third_account_pairs_rows:
             raw_account_type = (row.get('account_type') or '').strip()
             raw_third_type = (row.get('third_account_type') or '').strip()
             if not raw_third_type:
                 continue
 
-            third_tokens = [token.strip() for token in re.split(split_pattern, raw_third_type) if token.strip()]
+            third_tokens = [token.strip() for token in re.split(third_split_pattern, raw_third_type) if token.strip()]
             account_tokens = [token.strip() for token in re.split(split_pattern, raw_account_type) if token.strip()]
             fallback_account = account_tokens[0] if account_tokens else ''
 

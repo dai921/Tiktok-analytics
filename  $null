@@ -76,7 +76,6 @@ export default function CorporatePage() {
   const [videos, setVideos] = useState<CorporateVideo[]>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [thirdAccountTypeOptions, setThirdAccountTypeOptions] = useState<Option[]>([]);
-  const [thirdAccountTypeMap, setThirdAccountTypeMap] = useState<Record<string, string>>({});
   const [isLoadingThirdAccountTypes, setIsLoadingThirdAccountTypes] = useState(false);
   const [selectedThirdAccountTypes, setSelectedThirdAccountTypes] = useState<string[]>([]);
 
@@ -133,8 +132,6 @@ export default function CorporatePage() {
 
       if (result.success && Array.isArray(result.data)) {
         const uniqueValues: string[] = [];
-        const mapping: Record<string, string> =
-          result.mapping && typeof result.mapping === 'object' ? result.mapping : {};
         for (const raw of result.data) {
           const value = (raw || '').trim();
           if (value && !uniqueValues.includes(value)) {
@@ -147,19 +144,16 @@ export default function CorporatePage() {
           label: item,
         }));
         setThirdAccountTypeOptions(options);
-        setThirdAccountTypeMap(mapping);
         setSelectedThirdAccountTypes((prev) =>
           prev.filter((value) => uniqueValues.includes(value)),
         );
       } else {
         setThirdAccountTypeOptions([]);
-        setThirdAccountTypeMap({});
         setSelectedThirdAccountTypes([]);
       }
     } catch (err) {
       console.error('中ジャンル取得エラー:', err);
       setThirdAccountTypeOptions([]);
-      setThirdAccountTypeMap({});
       setSelectedThirdAccountTypes([]);
     } finally {
       setIsLoadingThirdAccountTypes(false);
@@ -270,15 +264,14 @@ export default function CorporatePage() {
     }
   }, [selectedGenre, activeVideoTab, JSON.stringify(selectedThirdAccountTypes)]); // dateRangeとuserSelectedDateを削除
 
-    const handleGenreSelect = (genreType: string) => {
-      setSelectedGenre(genreType);
-      setActiveTab('marketing');
-      setActiveVideoTab('marketing');
-      setSelectedThirdAccountTypes([]);
-      setThirdAccountTypeOptions([]);
-      setThirdAccountTypeMap({});
-      loadThirdAccountTypes(genreType);
-    };
+  const handleGenreSelect = (genreType: string) => {
+    setSelectedGenre(genreType);
+    setActiveTab('marketing');
+    setActiveVideoTab('marketing');
+    setSelectedThirdAccountTypes([]);
+    setThirdAccountTypeOptions([]);
+    loadThirdAccountTypes(genreType);
+  };
 
   const handleTabChange = (value: string) => {
     if (value === 'marketing' || value === 'recruitment') {
@@ -292,15 +285,6 @@ export default function CorporatePage() {
 
   const handleThirdAccountTypeChange = (values: string[]) => {
     setSelectedThirdAccountTypes(values);
-  };
-
-  const splitThirdAccountTypes = (raw?: string | null) => {
-    if (!raw) return [];
-    const tokens = raw
-      .split(/[,\u3001\uFF0C]+/)
-      .map((token) => token.trim())
-      .filter(Boolean);
-    return Array.from(new Set(tokens));
   };
 
   // 動画時間をフォーマット
@@ -432,25 +416,6 @@ export default function CorporatePage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-6 space-y-3">
-                    <span className="block text-sm font-medium text-gray-700">中ジャンル</span>
-                    {isLoadingThirdAccountTypes ? (
-                      <Skeleton className="h-10 w-full" />
-                    ) : (
-                      <MultiSelect
-                        options={thirdAccountTypeOptions}
-                        selected={selectedThirdAccountTypes}
-                        onChange={handleThirdAccountTypeChange}
-                        placeholder="中ジャンルを選択"
-                        emptyMessage="中ジャンルが見つかりません"
-                      />
-                    )}
-                    {!isLoadingThirdAccountTypes && thirdAccountTypeOptions.length === 0 && (
-                      <p className="text-xs text-gray-400">
-                        このアカウントジャンルには中ジャンルが登録されていません
-                      </p>
-                    )}
-                  </div>
                   {/* タブ */}
                   <Tabs value={activeVideoTab} onValueChange={handleTabChange} className="w-full">
                     <TabsList className="border-b border-[#25F4EE]/20 mb-4">
@@ -512,15 +477,14 @@ export default function CorporatePage() {
         <TableHeader>
           <TableRow>
             <TableHead className="text-xs py-2 px-2">サムネイル</TableHead>
-            <TableHead className="text-xs py-2 px-2">中ジャンル</TableHead>
-            <TableHead className="text-xs py-2 px-2 text-right">再生数増加</TableHead>
-            <TableHead className="text-xs py-2 px-2 text-right">いいね増加</TableHead>
+            <TableHead className="text-xs py-2 px-2 text-right">再生増加数</TableHead>
+            <TableHead className="text-xs py-2 px-2 text-right">いいね増加数</TableHead>
             <TableHead className="text-xs py-2 px-2 text-right">投稿日</TableHead>
             <TableHead className="text-xs py-2 px-2">アカウント名</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {videos.slice(0, 20).map((video, index) => (  // 9 件→20 件に変更
+          {videos.slice(0, 20).map((video, index) => (  // 9 から 20 に変更
             <TableRow key={index} className="hover:bg-[#25F4EE]/5 transition-colors">
               <TableCell>
                 {video.thumbnail_url ? (
@@ -545,40 +509,6 @@ export default function CorporatePage() {
                     <span className="text-gray-400 text-xs">No Image</span>
                   </div>
                 )}
-              </TableCell>
-              <TableCell className="align-top">
-                {(() => {
-                  const thirdTypes = splitThirdAccountTypes(video.third_account_type);
-                  if (thirdTypes.length === 0) {
-                    return (
-                      <AccountTypeBadge
-                        accountType={video.account_type || selectedGenre || ''}
-                        label="未設定"
-                        className="inline-flex min-w-[104px] justify-center"
-                      />
-                    );
-                  }
-
-                  return (
-                    <div className="flex flex-wrap gap-1">
-                      {thirdTypes.map((third) => {
-                        const parentAccount =
-                          thirdAccountTypeMap[third] ||
-                          video.account_type ||
-                          selectedGenre ||
-                          '';
-                        return (
-                          <AccountTypeBadge
-                            key={third}
-                            accountType={parentAccount}
-                            label={third}
-                            className="inline-flex min-w-[104px] justify-center"
-                          />
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
               </TableCell>
               <TableCell className="text-right">
                 {Number(video.play_count_increase) > 0 ? (
@@ -623,8 +553,8 @@ export default function CorporatePage() {
           ))}
           {videos.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-4">
-                {activeVideoTab === "recruitment" ? "採用" : "集客"}動画がありません
+              <TableCell colSpan={5} className="text-center py-4">
+                {activeVideoTab === 'recruitment' ? '採用' : '集客'}動画がありません
               </TableCell>
             </TableRow>
           )}

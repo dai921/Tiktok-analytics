@@ -98,7 +98,7 @@ export const CORPORATE_TYPE_COLORS = {
   '食料品': { bg: '#FEE2E2', text: '#B91C1C', border: '#FECACA' },
   
   // グループ2: 美容・健康・医療系（ピンク〜紫系）
-  '美容・クリニック': { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' },
+  '美容クリニック': { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' },
   '医療・福祉施設': { bg: '#FAE8FF', text: '#A21CAF', border: '#F5D0FE' },
   '化粧品・美容品': { bg: '#FDF4FF', text: '#C026D3', border: '#F5D0FE' },
   'ジム': { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE' },

@@ -239,6 +239,23 @@ const normalizeAccountSubtypeValues = (value?: string | string[] | null): string
   return Array.from(new Set(normalized));
 };
 
+// third_account_type では中点「・」で分割しない
+const splitWithoutMiddleDot = (value?: string | string[] | null): string[] => {
+  if (!value) return [];
+
+  const values = Array.isArray(value) ? value : [value];
+  const splitter = /[\u002C\u3001\uFF0C\s]+/u; // 「・」(\u30FB) とスラッシュを除外
+
+  const normalized = values
+    .flatMap((item) => (item ?? '')
+      .split(splitter)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    );
+
+  return Array.from(new Set(normalized));
+};
+
 const SecondAccountTypeCell = ({ row }: { row: VideoData }) => {
   const types = normalizeAccountSubtypeValues(row.second_account_type ?? null);
 
@@ -256,7 +273,7 @@ const SecondAccountTypeCell = ({ row }: { row: VideoData }) => {
 const ThirdAccountTypeCellComponent = ({ row }: { row: VideoData }) => {
   const { thirdAccountTypeMap } = useContext(TableContext);
 
-  const thirdTypes = normalizeAccountSubtypeValues(row.third_account_type ?? null);
+  const thirdTypes = splitWithoutMiddleDot(row.third_account_type ?? null);
   const accountTypeCandidates = normalizeAccountSubtypeValues(row.account_type ?? null);
   const fallbackParent = accountTypeCandidates[0] || '';
 

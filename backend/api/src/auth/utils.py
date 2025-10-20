@@ -30,6 +30,7 @@ def generate_token() -> str:
     """ランダムなトークンを生成"""
     return secrets.token_urlsafe(32)
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """パスワードの検証"""
     return pwd_context.verify(plain_password, hashed_password)
