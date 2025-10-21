@@ -73,20 +73,40 @@ async def get_corporate_genres():
         genres_results = result.mappings().all()
         
         # 結果を整形
-        genres_data = []
+        aggregated_genres = {}
         for row in genres_results:
-            account_type = row["account_type"]
-            # 追加のカンマ除去処理（念のため）
-            if account_type:
-                account_type = account_type.rstrip(',').strip()
-            
-            genres_data.append({
-                "account_type": account_type,
-                "recruitment_count": int(row["recruitment_count"] or 0),
-                "marketing_count": int(row["marketing_count"] or 0),
-                "total_count": int(row["total_count"] or 0)
-            })
-        
+            raw_account_type = (row["account_type"] or "").rstrip(',').strip()
+            if not raw_account_type:
+                continue
+
+            recruitment_count = int(row["recruitment_count"] or 0)
+            marketing_count = int(row["marketing_count"] or 0)
+            total_count = int(row["total_count"] or 0)
+
+            tokens = [token.strip() for token in raw_account_type.split(',') if token.strip()]
+            if not tokens:
+                tokens = [raw_account_type]
+
+            for token in tokens:
+                entry = aggregated_genres.setdefault(token, {
+                    "account_type": token,
+                    "recruitment_count": 0,
+                    "marketing_count": 0,
+                    "total_count": 0
+                })
+
+                entry["recruitment_count"] += recruitment_count
+                entry["marketing_count"] += marketing_count
+                entry["total_count"] += total_count
+
+        genres_data = sorted(
+            aggregated_genres.values(),
+            key=lambda item: (
+                1 if item["account_type"] == "その他" else 0,
+                -item["total_count"]
+            )
+        )
+
         logger.info(f"企業ジャンル統計取得完了: {len(genres_data)}件のジャンル")
         
         return {
