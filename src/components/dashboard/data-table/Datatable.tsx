@@ -326,6 +326,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleColumnVisibilityChange('', false, cols);
     }, [handleColumnVisibilityChange]);
 
+    // プリセット適用時にタブ状態を切り替える
+    const presetSetTabFlags = useCallback((flags: { isPrOnly?: boolean; isCorporateOnly?: boolean; isInfluencerOnly?: boolean }) => {
+      onPrOnlyChange(!!flags.isPrOnly);
+      onCorporateOnlyChange(!!flags.isCorporateOnly);
+      onInfluencerOnlyChange(!!flags.isInfluencerOnly);
+    }, [onPrOnlyChange, onCorporateOnlyChange, onInfluencerOnlyChange]);
+
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -342,6 +349,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 getVisibleColumns={presetGetVisibleColumns || getVisibleColumnsForPreset}
                 getVisibleColumnsByTab={presetGetVisibleColumnsByTab}
                 applyVisibleColumns={presetApplyVisibleColumns || applyVisibleColumnsForPreset}
+                setTabFlags={presetSetTabFlags}
               />
             )}
           </div>
