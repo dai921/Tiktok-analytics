@@ -11,6 +11,7 @@ product_asin テーブル
 | amazon_product_name | VARCHAR(50) | YES | NULL | 商品名 |
 | product_name | VARCHAR(50) | NO | - | ツール上での商品名 |
 | asin | DATE | YES | NULL | ASIN |
+| last_crawled_at | DATETIME | NO | CURRENT_TIMESTAMP | | 最終更新日時 |
 | created_at | DATETIME | NO | CURRENT_TIMESTAMP | | 登録日時 |
 | updated_at | DATETIME | NO | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | | 更新日時 |
 
@@ -21,5 +22,6 @@ product_asin テーブル
 | idx_amazon_product_name | amazon_product_name | インデックス | 商品名検索の高速化 |
 | idx_product_name | product_name | インデックス | 商品名検索の高速化 |
 | idx_asin | asin | インデックス | asin検索の高速化 |
+| idx_last\crawled_at | last_crawled_at | インデックス | 最終更新時間検索の高速化 |
 
 

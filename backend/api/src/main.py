@@ -782,7 +782,10 @@ async def get_filter_options(
             else:
                 processed_account_types.append(account_type)
 
-        final_account_types = sorted(list(set(processed_account_types)))
+        # account_type から目的(second_account_type)である『採用』『集客』を除外
+        final_account_types = sorted(
+            [t for t in set(processed_account_types) if t not in ['採用', '集客']]
+        )
 
         # 目的一覧(second_account_type)
         second_account_query = f"SELECT DISTINCT second_account_type FROM frontend_data{base_where}"

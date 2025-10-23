@@ -220,7 +220,8 @@ export const getProductColorFromName = (productName: string) => {
 // 既存の定数を活用したヘルパー関数
 export const getAffiliateAccountTypes = () => Object.keys(AFFILIATE_TYPE_COLORS);
 export const getInfluencerAccountTypes = () => Object.keys(INFLUENCER_TYPE_COLORS);
-export const getCorporateAccountTypes = () => Object.keys(CORPORATE_TYPE_COLORS);
+export const getCorporateAccountTypes = () =>
+  Object.keys(CORPORATE_TYPE_COLORS).filter((type) => type !== '採用' && type !== '集客');
 export const getAllAccountTypes = () => [...getAffiliateAccountTypes(), ...getInfluencerAccountTypes(), ...getCorporateAccountTypes()];
 
 // カラー取得のヘルパー関数の更新
