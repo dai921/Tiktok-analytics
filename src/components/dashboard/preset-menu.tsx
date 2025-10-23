@@ -103,18 +103,16 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
       inferredFlags?.isInfluencerOnly ? 'influencer' :
       inferredFlags?.isPrOnly ? 'affiliate' : 'all';
 
-    // 1) 先にタブを切替えてから
-    setTabFlags?.(inferredFlags);
-    // 2) 次のtickで対象タブにフィルタ・カラムを適用（現在タブ基準の更新に合わせる）
+    // 1) 先に対象タブのフィルタ・カラムを適用
+    applyFilters(incoming, targetTab)
     const cols = p?.payload?.visibleColumns
-    setTimeout(() => {
-      applyFilters(incoming, targetTab)
-      if (Array.isArray(cols) && cols.length) {
-        console.log('[DEBUG] プリセット適用のvisibleColumns:', cols);
-        applyVisibleColumns?.(cols)
-      }
-      toast({ title: '保存した表示設定を適用しました', description: p.name })
-    }, 0);
+    if (Array.isArray(cols) && cols.length) {
+      console.log('[DEBUG] プリセット適用のvisibleColumns:', cols);
+      applyVisibleColumns?.(cols)
+    }
+    // 2) 次にタブフラグを切替えて表示を移動
+    setTabFlags?.(inferredFlags);
+    toast({ title: '保存した表示設定を適用しました', description: p.name })
   }, [applyFilters, applyVisibleColumns, setTabFlags])
 
   const handleSave = useCallback(async () => {

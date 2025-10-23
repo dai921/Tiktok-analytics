@@ -255,6 +255,13 @@ const Dashboard = () => {
     const tabKey = getCurrentTabKey();
     const filterHash = generateFilterHash(filters);
 
+    // プリセット適用直後は即時フェッチ（デバウンス回避）
+    if (isPresetApplyingRef.current) {
+      isPresetApplyingRef.current = false;
+      fetchData(currentPage, filters);
+      return;
+    }
+
     console.log('[DEBUG] フィルタ変更検知:', {
       tabKey,
       filterHash,
@@ -664,6 +671,9 @@ const Dashboard = () => {
     updateTabVisibleColumns(cols);
   }, [updateTabVisibleColumns]);
 
+  // プリセット適用時はデバウンスを回避するためのフラグ
+  const isPresetApplyingRef = React.useRef(false);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main>
@@ -689,6 +699,7 @@ const Dashboard = () => {
           onColumnSettingsChange={handleColumnSettingsChange}
           // 表示設定メニュー用のコールバックを渡す
           presetApplyFilters={(f, targetTabKey) => {
+            isPresetApplyingRef.current = true;
             updateTabFilters(f, targetTabKey)
             setFilters(JSON.parse(JSON.stringify(f)))
             setCurrentPage(1)
