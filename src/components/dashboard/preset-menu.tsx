@@ -103,8 +103,9 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
       inferredFlags?.isInfluencerOnly ? 'influencer' :
       inferredFlags?.isPrOnly ? 'affiliate' : 'all';
 
-    // 先にタブフラグを切替え、その後適用（レース回避のため次tickで適用）
+    // 1) 先にタブを切替えてから
     setTabFlags?.(inferredFlags);
+    // 2) 次のtickで対象タブにフィルタ・カラムを適用（現在タブ基準の更新に合わせる）
     const cols = p?.payload?.visibleColumns
     setTimeout(() => {
       applyFilters(incoming, targetTab)
@@ -154,16 +155,18 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
         return
       }
 
-      // 従来の単体保存
-      const filters = getFilters()
-      const cols = getVisibleColumns?.() ?? []
+      // 従来の単体保存（タブ別状態を最優先で使用）
+      const filtersByTab = getFiltersByTab?.()
+      const colsByTab = (getVisibleColumnsByTab?.() ?? {}) as Record<TabType, string[]>
+      const filters = (filtersByTab && filtersByTab[tabType]) || getFilters()
+      const cols = (colsByTab && colsByTab[tabType]) || (getVisibleColumns?.() ?? [])
       console.log('[DEBUG] save visibleColumns =', cols);
       await createPreset({
         name: name.trim(),
         context_key: ctx,
         payload: {
           currentFilters: filters,
-          visibleColumns: getVisibleColumns?.() ?? [], // ← 追加
+          visibleColumns: cols, // ← タブ別の列設定を優先
           tab: tabFlags(tabType),
         },
         is_default: makeDefault

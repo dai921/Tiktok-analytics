@@ -419,10 +419,62 @@ def sync_category_spreadsheet():
                 )
                 corp_inserted += 1
 
+            # 商品ASINの同期
+            logger.info("商品ASINの同期を開始")
+            asin_range = '商品ASIN!B2:D'
+            asin_result = service.spreadsheets().values().get(
+                spreadsheetId=SPREADSHEET_ID,
+                range=asin_range
+            ).execute()
+            asin_values = asin_result.get('values', [])
+
+            asin_inserted = 0
+
+            for row in asin_values:
+                amazon_product_name = row[0].strip() if len(row) > 0 and row[0] else None
+                product_name = row[1].strip() if len(row) > 1 and row[1] else None
+                asin_value = row[2].strip() if len(row) > 2 and row[2] else None
+
+                # 必須値のチェック
+                if not product_name or not asin_value:
+                    continue
+
+                # 既存チェック（product_name と asin の組み合わせ）
+                exists = execute_query(
+                    '''
+                    SELECT id
+                    FROM product_asin
+                    WHERE product_name = %(product_name)s
+                      AND asin = %(asin)s
+                    LIMIT 1
+                    ''',
+                    {
+                        'product_name': product_name,
+                        'asin': asin_value
+                    }
+                )
+
+                if exists:
+                    continue
+
+                execute_write_query(
+                    '''
+                    INSERT INTO product_asin (amazon_product_name, product_name, asin, is_new)
+                    VALUES (%(amazon_product_name)s, %(product_name)s, %(asin)s, 1)
+                    ''',
+                    {
+                        'amazon_product_name': amazon_product_name,
+                        'product_name': product_name,
+                        'asin': asin_value
+                    }
+                )
+                asin_inserted += 1
+
             success_message = (
                 f"Successfully inserted/updated:\n"
                 f"- {product_inserted} products and {product_keyword_inserted} product keywords\n"
                 f"- {alias_inserted} aliases and {alias_keyword_inserted} alias keywords\n"
+                f"- {asin_inserted} product ASIN records\n"
                 f"- {corp_inserted} corporate categories"
             )
             logger.info(success_message)

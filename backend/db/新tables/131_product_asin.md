@@ -10,7 +10,7 @@ product_asin テーブル
 | id | INT | NO | AUTO_INCREMENT | 関連付けの一意識別子（主キー） |
 | amazon_product_name | VARCHAR(50) | YES | NULL | 商品名 |
 | product_name | VARCHAR(50) | NO | - | ツール上での商品名 |
-| asin | DATE | YES | NULL | ASIN |
+| asin | VARCHAR(50) | YES | NULL | ASIN |
 | last_crawled_at | DATETIME | NO | CURRENT_TIMESTAMP | | 最終更新日時 |
 | created_at | DATETIME | NO | CURRENT_TIMESTAMP | | 登録日時 |
 | updated_at | DATETIME | NO | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | | 更新日時 |

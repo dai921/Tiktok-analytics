@@ -714,6 +714,8 @@ const Dashboard = () => {
           presetApplyVisibleColumns={presetApplyVisibleColumns}
           onFilterChange={(hasFilters, filter) => {
             if (!filter) return;
+            // 現在のタブキーを明示的に算出し、フィルタ更新先を固定化
+            const targetTabKey = getCurrentTabKey();
           
             // multiple（複数フィルタ）は FilterValue -> FilterQuery に正規化してから渡す
             if (filter.type === 'multiple' && filter.field === 'multipleFilters' && (filter as any).filters) {
@@ -731,11 +733,11 @@ const Dashboard = () => {
               )
               
               // フィルタをタブに適用
-              updateTabFilters(normalized)
+              updateTabFilters(normalized, targetTabKey)
               setFilters(JSON.parse(JSON.stringify(normalized)))
             } else {
               // 通常のフィルタは1件だけ更新
-              updateTabFilters({ [filter.field]: filter as FilterQuery })
+              updateTabFilters({ [filter.field]: filter as FilterQuery }, targetTabKey)
               setFilters((prev) => ({ ...prev, [filter.field]: filter as FilterQuery }))
             }
             setCurrentPage(1)
