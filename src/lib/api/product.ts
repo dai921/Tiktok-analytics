@@ -80,6 +80,7 @@ export const fetchProductTrends = async (
     if (endDate) queryParams.append('end_date', endDate);
     if (genres.length > 0) queryParams.append('genres', genres.join(','));
     if (metric) queryParams.append('metric', metric);
+    
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/api/product-trends?${queryParams.toString()}`;
     console.log('API URL:', url);

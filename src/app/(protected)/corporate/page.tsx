@@ -43,6 +43,7 @@ interface CorporateVideo {
   display_name?: string;
   account_type: string;
   second_account_type: string;
+  third_account_type?: string;
   title?: string;
   duration?: string;
 }
@@ -85,16 +86,14 @@ export default function CorporatePage() {
     setTempDateRange(newRange);
   };
 
-  const handleDateRangeApply = () => {
-    if (tempDateRange) {
-      setDateRange(tempDateRange);
-      setUserSelectedDate(true);
-      setDataLoaded(false); // リセットして再読み込み可能にする
-      
-      // 選択中のジャンルがあれば動画を再取得
-      if (selectedGenre) {
-        loadCorporateVideos(selectedGenre, activeVideoTab, selectedThirdAccountTypes);
-      }
+  const handleDateRangeApply = (range: { start: Date; end: Date }) => {
+    setDateRange(range);
+    setUserSelectedDate(true);
+    setDataLoaded(false); // リセットして再読み込み可能にする
+    
+    // 選択中のジャンルがあれば動画を再取得（適用直後のレンジを優先して渡す）
+    if (selectedGenre) {
+      loadCorporateVideos(selectedGenre, activeVideoTab, selectedThirdAccountTypes, range);
     }
   };
 
@@ -216,6 +215,7 @@ export default function CorporatePage() {
     genreType: string,
     purpose: PurposeType,
     thirdTypes?: string[],
+    overrideRange?: { start: Date; end: Date },
   ) => {
     try {
       setIsLoadingVideos(true);
@@ -230,10 +230,11 @@ export default function CorporatePage() {
         });
       }
       
-      // 期間をパラメータに追加
-      if (userSelectedDate) {
-        params.append('start_date', dateRange.start.toISOString().split('T')[0]);
-        params.append('end_date', dateRange.end.toISOString().split('T')[0]);
+      // 期間をパラメータに追加（適用直後の引数優先）
+      const useRange = overrideRange || (userSelectedDate ? dateRange : undefined);
+      if (useRange) {
+        params.append('start_date', useRange.start.toISOString().split('T')[0]);
+        params.append('end_date', useRange.end.toISOString().split('T')[0]);
       }
       // userSelectedDateがfalseの場合はstart_dateとend_dateを送らず、バックエンドにデフォルト期間を任せる
       

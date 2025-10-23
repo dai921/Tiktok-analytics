@@ -345,25 +345,23 @@ export default function ProductPage() {
     setTempDateRange(newRange);
   };
 
-  const handleDateRangeApply = () => {
-    if (tempDateRange) {
-      setDateRange(tempDateRange);
-      setUserSelectedDate(true);
-      setDisplayLimit(15);
-      setSearchQuery('');
-      setCachedProductStats({
-        viewsIncrease: [],
-        over100kViews: [],
-        postCount: []
-      });
-      setCachedTrendData({
-        viewsIncrease: [],
-        over100kViews: [],
-        postCount: []
-      });
-      setDataLoaded(false);
-      setGraphDataLoaded(false);
-    }
+  const handleDateRangeApply = (range: { start: Date; end: Date }) => {
+    setDateRange(range);
+    setUserSelectedDate(true);
+    setDisplayLimit(15);
+    setSearchQuery('');
+    setCachedProductStats({
+      viewsIncrease: [],
+      over100kViews: [],
+      postCount: []
+    });
+    setCachedTrendData({
+      viewsIncrease: [],
+      over100kViews: [],
+      postCount: []
+    });
+    setDataLoaded(false);
+    setGraphDataLoaded(false);
   };
 
   const handleProductClick = (productId: string) => {

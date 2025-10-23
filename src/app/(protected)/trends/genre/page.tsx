@@ -131,8 +131,8 @@ export default function GenrePage() {
           setIsLoading(true);
           setError(null);
           
-          // キャッシュ内にすでにデータがあるか確認
-          if (cachedGenreStats[metric]?.length > 0 && userSelectedDate) {
+          // キャッシュ内にすでにデータがあるか確認（ユーザー期間指定時はキャッシュを使わない）
+          if (!userSelectedDate && cachedGenreStats[metric]?.length > 0) {
             console.log("キャッシュからデータを使用:", metric);
             setGenreStats(cachedGenreStats[metric]);
             setIsLoading(false);
@@ -172,6 +172,10 @@ export default function GenrePage() {
           }
           
           setDataLoaded(true);
+          // 期間適用による再取得後はフラグをリセット
+          if (userSelectedDate) {
+            setUserSelectedDate(false);
+          }
         } catch (err) {
           console.error("API呼び出しエラー:", err);
           setError('ジャンル統計情報の取得に失敗しました');
@@ -307,24 +311,22 @@ export default function GenrePage() {
     setTempDateRange(newRange);
   };
 
-  const handleDateRangeApply = () => {
-    if (tempDateRange) {
-      setDateRange(tempDateRange);
-      setUserSelectedDate(true);
-      setDisplayLimit(15);
-      setCachedGenreStats({
-        viewsIncrease: [],
-        over100kViews: [],
-        postCount: []
-      });
-      setCachedTrendData({
-        viewsIncrease: [],
-        over100kViews: [],
-        postCount: []
-      });
-      setDataLoaded(false);
-      setGraphDataLoaded(false);
-    }
+  const handleDateRangeApply = (range: { start: Date; end: Date }) => {
+    setDateRange(range);
+    setUserSelectedDate(true);
+    setDisplayLimit(15);
+    setCachedGenreStats({
+      viewsIncrease: [],
+      over100kViews: [],
+      postCount: []
+    });
+    setCachedTrendData({
+      viewsIncrease: [],
+      over100kViews: [],
+      postCount: []
+    });
+    setDataLoaded(false);
+    setGraphDataLoaded(false);
   };
 
   const handleGenreClick = (genreId: string) => {
