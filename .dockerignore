@@ -36,7 +36,15 @@ yarn-debug.log*
 yarn-error.log*
 
 # バックエンド関連（必要に応じて）
-backend
+backend/**
+!backend/jobs/
+backend/jobs/**
+!backend/jobs/product_determination/**
+!backend/functions/
+backend/functions/**
+!backend/functions/flask-service/
+backend/functions/flask-service/**
+!backend/functions/flask-service/product-determination/**
 venv
 __pycache__
 *.py[cod]

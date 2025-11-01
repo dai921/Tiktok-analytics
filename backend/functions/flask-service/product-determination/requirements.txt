@@ -1,0 +1,9 @@
+functions-framework
+google-cloud-storage
+yt-dlp
+requests
+pymysql
+python-dotenv
+google-cloud-secret-manager
+google-cloud-pubsub
+google-generativeai

@@ -1,0 +1,164 @@
+import os
+import json
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Any
+from backend.jobs.core.db_utils import execute_query, execute_write_query
+from backend.jobs.core.config import initialize_config
+
+# ログ設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 設定の初期化
+initialize_config()
+
+def update_needs_flags() -> Dict[str, Any]:
+    """
+    1. video_light_raw_dataのneeds_updateフラグを更新
+    2. frontend_data系の増加数カウンタをリセット
+    3. video_masterのfront_needs_update / play_needs_update / is_new_video をリセット
+    （非Pub/Sub）
+    """
+    logger.info("==== フラグ更新処理の開始 ====")
+    
+    try:
+        # 1. video_light_raw_dataのneeds_updateフラグを更新
+        logger.info("1. video_light_raw_dataのneeds_updateフラグの更新を開始")
+        update_raw_data_query = """
+        UPDATE video_light_raw_data AS vl
+        JOIN   video_master        AS vm ON vm.video_id = vl.video_id
+        SET    vl.needs_update = 0
+        WHERE  vl.needs_update = 1
+          AND  (
+            (vm.created_at < DATE_SUB(CURDATE(), INTERVAL 9 DAY) AND vm.playCountIncrease < 1000)
+            OR 
+            (vm.parent_account_type = 'インフルエンサー' AND vm.created_at < DATE_SUB(CURDATE(), INTERVAL 9 DAY))
+          );
+        """
+        
+        raw_data_affected_rows = execute_write_query(update_raw_data_query)
+        logger.info(f"video_light_raw_dataの更新完了: {raw_data_affected_rows}件更新")
+        
+        # # 2. frontend_dataの増加数カウンタをリセット
+        logger.info("2. frontend_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query = """
+        UPDATE frontend_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
+        
+        frontend_data_affected_rows = execute_write_query(reset_frontend_data_query)
+        logger.info(f"frontend_dataの更新完了: {frontend_data_affected_rows}件更新")
+
+        logger.info("2_1. frontend_affiliate_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query_1 = """
+        UPDATE frontend_affiliate_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
+        
+        frontend_data_affected_rows_1 = execute_write_query(reset_frontend_data_query_1)
+        logger.info(f"frontend_affiliate_dataの更新完了: {frontend_data_affected_rows_1}件更新")
+
+        logger.info("2_2. frontend_corporate_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query_2 = """
+        UPDATE frontend_corporate_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
+        
+        frontend_data_affected_rows_2 = execute_write_query(reset_frontend_data_query_2)
+        logger.info(f"frontend_corporate_dataの更新完了: {frontend_data_affected_rows_2}件更新")
+
+        logger.info("2_3. frontend_influencer_dataの増加数カウンタのリセットを開始")
+        reset_frontend_data_query_3 = """
+        UPDATE frontend_influencer_data
+        SET play_count_increase = 0,
+            likes_count_increase = 0,
+            comment_count_increase = 0,
+            save_count_increase = 0
+        WHERE video_id IN (
+            SELECT video_id 
+            FROM video_master 
+            WHERE front_needs_update = 0
+            or play_needs_update = 0
+        );
+        """
+        
+        frontend_data_affected_rows_3 = execute_write_query(reset_frontend_data_query_3)
+        logger.info(f"frontend_influencer_dataの更新完了: {frontend_data_affected_rows_3}件更新")
+
+        # 3. video_masterのfront_needs_updateを全て0にする
+        logger.info("3. video_masterのfront_needs_updateフラグの更新を開始")
+        reset_master_flag_query = """
+        UPDATE video_master
+        SET front_needs_update = 0
+        WHERE front_needs_update = 1;
+        """
+         # 3.5 video_masterのplay_needs_updateを全て0にする
+        logger.info("3.5 video_masterのplay_needs_updateフラグの更新を開始")
+        reset_play_needs_update_query = """
+        UPDATE video_master
+        SET play_needs_update = 0
+        WHERE play_needs_update = 1;
+        """
+        
+
+        master_affected_rows = execute_write_query(reset_master_flag_query)
+        play_needs_update_affected_rows = execute_write_query(reset_play_needs_update_query)
+        logger.info(f"video_masterの更新完了: {master_affected_rows}件更新, {play_needs_update_affected_rows}件更新")
+        
+        # 4. video_masterのis_new_videoを全て0にする
+        logger.info("4. video_masterのis_new_videoフラグの更新を開始")
+        reset_is_new_video_query = """
+        UPDATE video_master
+        SET is_new_video = 0
+        WHERE is_new_video = 1;
+        """
+        
+        is_new_video_affected_rows = execute_write_query(reset_is_new_video_query)
+        logger.info(f"video_masterのis_new_video更新完了: {is_new_video_affected_rows}件更新")
+        
+        return {
+            "status": "success",
+            "message": "フラグ更新処理が完了しました",
+            "raw_data_affected": raw_data_affected_rows,
+            # "frontend_data_affected": frontend_data_affected_rows,
+            "master_affected": master_affected_rows,
+            "execution_time": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        error_message = f"フラグ更新処理中にエラーが発生しました: {str(e)}"
+        logger.error(error_message)
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"status": "error", "error": error_message, "time": datetime.now().isoformat()}
+    
+    finally:
+        logger.info("==== フラグ更新処理の終了 ====") 
