@@ -8,6 +8,7 @@ import re
 from typing import Any, Dict, Optional, Tuple, List
 
 import yt_dlp
+from yt_dlp.utils import DownloadError
 from google.cloud import storage
 import google.generativeai as genai
 from urllib.parse import urlparse
@@ -18,6 +19,52 @@ from db_utils import execute_query, execute_write_query, DatabaseError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+SENSITIVE_STATUS = "skip_sensitive"
+
+
+class SensitiveVideoError(RuntimeError):
+    """Raised when a video requires authentication or is marked as sensitive."""
+
+
+def _is_authentication_required_message(message: str) -> bool:
+    lowered = (message or "").lower()
+    keywords = [
+        "login for access",
+        "log in for access",
+        "login required",
+        "log in required",
+        "please log in",
+        " log in",
+        "sign in",
+        "use --cookies",
+        "age restricted",
+        "sensitive content",
+        "not be comfortable for some audiences",
+        "for some audiences",
+        "private content",
+        "viewers discretion",
+    ]
+    return any(keyword in lowered for keyword in keywords)
+
+
+def _is_authentication_required_info(info: Dict[str, Any]) -> bool:
+    availability = str((info or {}).get("availability") or "").lower()
+    if availability in {
+        "needs_auth",
+        "needs_login",
+        "restricted",
+        "age_restricted",
+        "private",
+        "subscriber_only",
+    }:
+        return True
+    if info.get("is_private"):
+        return True
+    viewable = info.get("viewable")
+    if viewable is not None and not viewable:
+        return True
+    return False
 
 
 # ===============
@@ -112,8 +159,26 @@ def _download_video_to_temp(url: str, video_id: str, proxy: Optional[str] = None
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         logger.info(f"yt-dlpでダウンロード開始: {url}")
         logger.info(f"使用プロキシ: {proxy or 'なし'}")
-        info = ydl.extract_info(url, download=False)
-        ydl.download([url])
+        try:
+            info = ydl.extract_info(url, download=False)
+        except DownloadError as err:
+            message = str(err)
+            if _is_authentication_required_message(message):
+                raise SensitiveVideoError(message) from err
+            raise
+
+        if not info:
+            raise SensitiveVideoError("Failed to extract video metadata")
+        if _is_authentication_required_info(info):
+            raise SensitiveVideoError("動画がセンシティブ扱いのためダウンロードをスキップします")
+
+        try:
+            ydl.download([url])
+        except DownloadError as err:
+            message = str(err)
+            if _is_authentication_required_message(message):
+                raise SensitiveVideoError(message) from err
+            raise
 
         ext = info.get('ext', 'mp4')
         video_path = os.path.join(temp_dir, f"{video_id}.{ext}")
@@ -162,19 +227,44 @@ def _upsert_video_file_path(video_id: str, storage_url: str, user_number: Option
         )
 
 
-def _upsert_influencer_pr_product(product_name: str, product_category: str) -> None:
-    """influencer_pr_product にPR商品をUPSERT（product_name一意）"""
+def _upsert_influencer_pr_product(
+    product_name: str,
+    product_category: str,
+    source_url: Optional[str],
+) -> None:
+    """influencer_pr_product にPR商品をUPSERT（product_name単位）"""
     if not product_name:
         return
+
+    normalized_url = (source_url or "").strip() or None
+
     execute_write_query(
         """
-        INSERT INTO influencer_pr_product (product_name, product_category, is_pr)
-        VALUES (%s, %s, 0)
+        INSERT INTO influencer_pr_product (product_name, product_category, source_url, is_pr)
+        VALUES (%s, %s, %s, 0)
         ON DUPLICATE KEY UPDATE
-          product_category = VALUES(product_category)
+          product_category = VALUES(product_category),
+          source_url = COALESCE(NULLIF(source_url, ''), VALUES(source_url))
         """,
-        (product_name, product_category)
+        (product_name, product_category, normalized_url)
     )
+
+
+
+def _mark_video_as_sensitive(video_id: str, reason: str) -> None:
+    logger.info("センシティブ判定のため処理対象外に設定: video_id=%s reason=%s", video_id, reason)
+    try:
+        execute_write_query(
+            """
+            UPDATE video_master
+            SET status = %s
+            WHERE video_id = %s
+              AND (status IS NULL OR status = '' OR status = 'unknown')
+            """,
+            (SENSITIVE_STATUS, video_id),
+        )
+    except Exception as err:
+        logger.warning("センシティブ判定の更新に失敗しました (video_id=%s): %s", video_id, err)
 
 
 def _get_video_file_path(video_id: str) -> Optional[str]:
@@ -330,14 +420,25 @@ def determine_beauty_product(event, context):
             video_bytes = _download_gcs_bytes(existing_storage_url)
             product_category, product_name = _analyze_beauty_with_gemini_bytes(video_bytes, hashtags)
 
-            _upsert_influencer_pr_product(product_name, product_category)
+            _upsert_influencer_pr_product(product_name, product_category, url)
             logger.info("判定結果を保存(再利用): video_id=%s, category=%s, product=%s", video_id, product_category, product_name)
             return
 
         # 新規: 1回のみDLして保存・解析
         proxy: Optional[str] = None
         product_category, product_name = "", ""
-        video_path = _download_video_to_temp(url, video_id, proxy)
+        video_path: Optional[str] = None
+        try:
+            video_path = _download_video_to_temp(url, video_id, proxy)
+        except SensitiveVideoError as sensitive_err:
+            logger.warning(
+                "センシティブ動画のため処理をスキップします: video_id=%s url=%s reason=%s",
+                video_id,
+                url,
+                sensitive_err,
+            )
+            _mark_video_as_sensitive(video_id, str(sensitive_err))
+            return
         try:
             storage_url = _upload_to_gcs(video_path, video_id)
             _upsert_video_file_path(video_id, storage_url, user_number)
@@ -348,7 +449,7 @@ def determine_beauty_product(event, context):
             product_category, product_name = _analyze_beauty_with_gemini_bytes(video_bytes, hashtags)
         finally:
             try:
-                if os.path.exists(video_path):
+                if video_path and os.path.exists(video_path):
                     os.remove(video_path)
                     temp_dir = os.path.dirname(video_path)
                     if os.path.exists(temp_dir):
@@ -357,7 +458,7 @@ def determine_beauty_product(event, context):
                 logger.warning("一時ファイル削除エラー: %s", cleanup_err)
 
         # DB更新（PR商品マスタ）
-        _upsert_influencer_pr_product(product_name, product_category)
+        _upsert_influencer_pr_product(product_name, product_category, url)
         logger.info("判定結果を保存: video_id=%s, category=%s, product=%s", video_id, product_category, product_name)
 
     except DatabaseError as dbe:
@@ -368,5 +469,3 @@ def determine_beauty_product(event, context):
         raise
     finally:
         logger.info("==== determine_beauty_product 終了 ====")
-
-

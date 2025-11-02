@@ -8,8 +8,12 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+import random
+import time
 
 logger = logging.getLogger(__name__)
+
+SENSITIVE_STATUS = "skip_sensitive"
 
 def _resolve_module_dir() -> Path:
     current = Path(__file__).resolve()
@@ -192,8 +196,9 @@ def _determine_payloads_from_db(
         "  AND url IS NOT NULL",
         "  AND hashtags IS NOT NULL",
         "  AND hashtags <> ''",
+        "  AND (status IS NULL OR status <> %s)",
     ]
-    params: List[Any] = ["インフルエンサー"]
+    params: List[Any] = ["インフルエンサー", SENSITIVE_STATUS]
 
     if not include_processed:
         query.append("  AND (product IS NULL OR product = '')")
@@ -285,6 +290,10 @@ def run(payloads: List[Dict[str, Any]]) -> None:
                 exc,
             )
             raise
+        else:
+            delay = random.uniform(5, 10)
+            logger.info("Waiting %.2f seconds before processing next video", delay)
+            time.sleep(delay)
 
 
 def main(argv: Optional[List[str]] = None) -> None:
