@@ -69,6 +69,7 @@ export interface VideoData {
   ten_days_increase: number
   content_type: string
   account_type: string
+  account_hashtags?: string | null
   second_account_type?: string
   third_account_type?: string
   likes_count_increase: number

@@ -35,6 +35,7 @@ from src.dashboard.affiliate_videos import router as affiliate_videos_router
 from src.dashboard.corporate_videos import router as corporate_videos_router
 from src.dashboard.influencer_videos import router as influencer_videos_router
 from src.filter_presets.router import router as filter_presets_router
+from src.influencer_pr_products.router import router as influencer_pr_products_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -66,7 +67,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -88,6 +89,7 @@ app.include_router(corporate_account_stats_router)
 app.include_router(watchlist_router)
 # フィルタープリセットルーターの追加
 app.include_router(filter_presets_router)
+app.include_router(influencer_pr_products_router)
 
 # ルーターの登録
 app.include_router(tiktok_router)
@@ -173,6 +175,7 @@ async def get_videos(
     play_increase_per_follower: Optional[int] = None,
     play_increase_per_follower_type: Optional[str] = None,
     parent_account_type: Optional[str] = None,
+    search_keyword: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
 
@@ -183,15 +186,42 @@ async def get_videos(
         # 基本クエリ
         query = """
             SELECT 
-                url, thumbnail_url, created_at, play_count, play_count_increase, 
-                ten_days_increase, account_name, display_name, content_type, 
-                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
-                comment_count_increase, ten_days_comment_increase, account_type,
-                second_account_type, third_account_type,
-                hashtags, music_info, caption, category, product, save_count, 
-                save_count_increase, ten_days_save_increase,
-                followers, play_count_per_follower, play_increase_per_follower
+                frontend_data.url,
+                frontend_data.thumbnail_url,
+                frontend_data.created_at,
+                frontend_data.play_count,
+                frontend_data.play_count_increase,
+                frontend_data.ten_days_increase,
+                frontend_data.account_name,
+                frontend_data.display_name,
+                frontend_data.content_type,
+                frontend_data.likes_count,
+                frontend_data.comment_count,
+                frontend_data.likes_count_increase,
+                frontend_data.ten_days_likes_increase,
+                frontend_data.comment_count_increase,
+                frontend_data.ten_days_comment_increase,
+                frontend_data.account_type,
+                frontend_data.second_account_type,
+                frontend_data.third_account_type,
+                frontend_data.hashtags,
+                frontend_data.music_info,
+                frontend_data.caption,
+                frontend_data.category,
+                frontend_data.product,
+                frontend_data.save_count,
+                frontend_data.save_count_increase,
+                frontend_data.ten_days_save_increase,
+                frontend_data.followers,
+                frontend_data.play_count_per_follower,
+                frontend_data.play_increase_per_follower,
+                COALESCE(frontend_data.account_hashtags, corp.account_hashtags) AS account_hashtags
             FROM frontend_data
+            LEFT JOIN (
+                SELECT al.account_name, ca.account_hashtags
+                FROM corporate_accounts ca
+                JOIN account_list al ON al.id = ca.account_id
+            ) AS corp ON corp.account_name = frontend_data.account_name
         """
         params = {}
         where_clauses = []
@@ -253,7 +283,19 @@ async def get_videos(
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("LOWER(music_info) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:music_info)")
-            
+            params["music_info"] = f"%{escaped_music_info}%"
+        
+        if search_keyword:
+            escaped_keyword = search_keyword.replace("_", r"\_").replace("%", r"\%")
+            params["search_keyword"] = f"%{escaped_keyword}%"
+            where_clauses.append(
+                "("
+                "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(caption) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(COALESCE(frontend_data.account_hashtags, corp.account_hashtags, '')) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+                ")"
+            )
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
             params["min_play_count"] = min_play_count

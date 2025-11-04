@@ -6,21 +6,56 @@ from datetime import datetime, timedelta
 def build_video_query(table_name: str = "frontend_data") -> str:
     """動画クエリの基本部分を構築"""
     if table_name in {"frontend_data", "frontend_corporate_data"}:
-        second_third_columns = "second_account_type, third_account_type,"
+        second_third_columns = f"{table_name}.second_account_type, {table_name}.third_account_type,"
     else:
         second_third_columns = "NULL as second_account_type, NULL as third_account_type,"
 
+    if table_name in {"frontend_data", "frontend_corporate_data"}:
+        account_hashtags_column = f"COALESCE({table_name}.account_hashtags, corp.account_hashtags) AS account_hashtags"
+        corporate_join = f"""
+            LEFT JOIN (
+                SELECT al.account_name, ca.account_hashtags
+                FROM corporate_accounts ca
+                JOIN account_list al ON al.id = ca.account_id
+            ) AS corp ON corp.account_name = {table_name}.account_name
+        """
+    else:
+        account_hashtags_column = "NULL AS account_hashtags"
+        corporate_join = ""
+
     return f"""
         SELECT 
-            url, thumbnail_url, created_at, play_count, play_count_increase, 
-            ten_days_increase, account_name, display_name, content_type, 
-            likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
-            comment_count_increase, ten_days_comment_increase, account_type,
+            {table_name}.url,
+            {table_name}.thumbnail_url,
+            {table_name}.created_at,
+            {table_name}.play_count,
+            {table_name}.play_count_increase,
+            {table_name}.ten_days_increase,
+            {table_name}.account_name,
+            {table_name}.display_name,
+            {table_name}.content_type,
+            {table_name}.likes_count,
+            {table_name}.comment_count,
+            {table_name}.likes_count_increase,
+            {table_name}.ten_days_likes_increase,
+            {table_name}.comment_count_increase,
+            {table_name}.ten_days_comment_increase,
+            {table_name}.account_type,
             {second_third_columns}
-            hashtags, music_info, caption, category, product, save_count, 
-            save_count_increase, ten_days_save_increase,
-            followers, play_count_per_follower, play_increase_per_follower
+            {table_name}.hashtags,
+            {table_name}.music_info,
+            {table_name}.caption,
+            {table_name}.category,
+            {table_name}.product,
+            {table_name}.save_count,
+            {table_name}.save_count_increase,
+            {table_name}.ten_days_save_increase,
+            {table_name}.followers,
+            {table_name}.play_count_per_follower,
+            {table_name}.play_increase_per_follower,
+            {account_hashtags_column}
         FROM {table_name}
+        {corporate_join}
     """
 
 def apply_filters(query: str, params: Dict, where_clauses: List[str], request: Request, table_name: str = "frontend_data") -> tuple:
@@ -40,6 +75,7 @@ def apply_filters(query: str, params: Dict, where_clauses: List[str], request: R
     
     # その他のフィルター処理
     apply_other_filters(request, params, where_clauses, table_name)
+    apply_search_keyword_filter(request, params, where_clauses, table_name)
     
     # WHERE句の追加
     if where_clauses:
@@ -118,6 +154,29 @@ def apply_other_filters(request: Request, params: Dict, where_clauses: List[str]
     
     # 音楽情報フィルター
     apply_music_filters(request, params, where_clauses)
+
+def apply_search_keyword_filter(request: Request, params: Dict, where_clauses: List[str], table_name: str):
+    """検索キーワードフィルターを適用"""
+    keyword = request.query_params.get('search_keyword')
+    if not keyword:
+        return
+
+    escaped_keyword = keyword.replace("_", r"\_").replace("%", r"\%")
+    params["search_keyword"] = f"%{escaped_keyword}%"
+
+    clauses = [
+        "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
+        "LOWER(caption) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
+        "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+    ]
+
+    if table_name in {"frontend_data", "frontend_corporate_data"}:
+        clauses.append(
+            f"LOWER(COALESCE({table_name}.account_hashtags, corp.account_hashtags, '')) "
+            "COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+        )
+
+    where_clauses.append(f"({' OR '.join(clauses)})")
 
 def apply_numeric_filters(request: Request, params: Dict, where_clauses: List[str]):
     """数値フィルターを適用"""

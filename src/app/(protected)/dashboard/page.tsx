@@ -13,6 +13,8 @@ import { Suspense } from 'react'
 
 // headers: 未使用のため削除
 
+type TabKey = 'all' | 'affiliate' | 'corporate' | 'influencer'
+
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
   
@@ -64,6 +66,13 @@ const Dashboard = () => {
     corporate: [],
     influencer: [],
     affiliate: []
+  });
+
+  const [searchKeywordsByTab, setSearchKeywordsByTab] = useState<Record<TabKey, string>>({
+    all: '',
+    corporate: '',
+    influencer: '',
+    affiliate: ''
   });
 
   // 基本関数群
@@ -152,6 +161,26 @@ const Dashboard = () => {
   const generateCacheKey = (filterHash: string, page: number, size: number) => {
     return `${filterHash}_page${page}_size${size}`;
   };
+
+  const buildSearchFilters = useCallback((rawKeyword: string) => {
+    const trimmed = rawKeyword.trim();
+    if (!trimmed) return {};
+
+    return {
+      global_search: {
+        field: 'global_search',
+        type: 'text',
+        comparison: 'contains',
+        value: trimmed,
+        active: true
+      }
+    };
+  }, []);
+
+  const getSearchFiltersForTab = useCallback(
+    (tabKey: TabKey) => buildSearchFilters(searchKeywordsByTab[tabKey] ?? ''),
+    [buildSearchFilters, searchKeywordsByTab]
+  );
 
   // ★ fetchData関数を定義
   const fetchData = useCallback(async (page: number = 1, currentFilters?: Record<string, FilterQuery>) => {
@@ -253,20 +282,22 @@ const Dashboard = () => {
     if (!isBootstrapped) return;
 
     const tabKey = getCurrentTabKey();
-    const filterHash = generateFilterHash(filters);
+    const searchFilters = getSearchFiltersForTab(tabKey);
+    const combinedFilters = { ...filters, ...searchFilters };
+    const filterHash = generateFilterHash(combinedFilters);
 
     // プリセット適用直後は即時フェッチ（デバウンス回避）
     if (isPresetApplyingRef.current) {
       isPresetApplyingRef.current = false;
-      fetchData(currentPage, filters);
+      fetchData(currentPage, combinedFilters);
       return;
     }
 
     console.log('[DEBUG] フィルタ変更検知:', {
       tabKey,
       filterHash,
-      filters: filters,
-      filtersCount: Object.keys(filters).length,
+      filters: combinedFilters,
+      filtersCount: Object.keys(combinedFilters).length,
       currentPage,
       pageSize
     });
@@ -287,15 +318,15 @@ const Dashboard = () => {
     }
 
     console.log('[DEBUG] 新しいデータを取得');
-    if (Object.keys(filters).length === 0) {
+    if (Object.keys(combinedFilters).length === 0) {
       fetchData(currentPage, {});
     } else {
       const timer = setTimeout(() => {
-        fetchData(currentPage, filters);
+        fetchData(currentPage, combinedFilters);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [filters, currentPage, pageSize, isBootstrapped]);
+  }, [filters, currentPage, pageSize, isBootstrapped, searchKeywordsByTab, isPrOnly, isCorporateOnly, isInfluencerOnly, dataByTab, fetchData, getSearchFiltersForTab]);
 
   // ★ updateTabFiltersを先に定義
   const updateTabFilters = useCallback((newFilters: Record<string, FilterQuery>, targetTabKey?: string) => {
@@ -319,10 +350,23 @@ const Dashboard = () => {
         allFilters: JSON.stringify(updated.all),
         corporateFilters: JSON.stringify(updated.corporate)
       });
-      
+    
       return updated;
     });
   }, []);
+
+  const handleSearchKeywordChange = useCallback((nextValue: string) => {
+    const tabKey = getCurrentTabKey();
+    if (searchKeywordsByTab[tabKey] === nextValue) {
+      return;
+    }
+
+    setSearchKeywordsByTab(prev => ({
+      ...prev,
+      [tabKey]: nextValue,
+    }));
+    setCurrentPage(1);
+  }, [searchKeywordsByTab, isPrOnly, isCorporateOnly, isInfluencerOnly]);
 
   useEffect(() => {
     if (!isBootstrapped) return;
@@ -674,6 +718,9 @@ const Dashboard = () => {
   // プリセット適用時はデバウンスを回避するためのフラグ
   const isPresetApplyingRef = React.useRef(false);
 
+  const currentTabKey = getCurrentTabKey();
+  const currentSearchKeyword = searchKeywordsByTab[currentTabKey] ?? '';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main>
@@ -723,6 +770,8 @@ const Dashboard = () => {
             influencer: [...(visibleColumnsByTab.influencer ?? [])],
           })}
           presetApplyVisibleColumns={presetApplyVisibleColumns}
+          searchKeyword={currentSearchKeyword}
+          onSearchKeywordChange={handleSearchKeywordChange}
           onFilterChange={(hasFilters, filter) => {
             if (!filter) return;
             // 現在のタブキーを明示的に算出し、フィルタ更新先を固定化

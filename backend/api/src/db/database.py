@@ -138,6 +138,7 @@ def format_video(row):
             "caption": row['caption'] if row['caption'] else None,
             "category": row['category'] if row['category'] else None,
             "product": row['product'] if row['product'] else None,
+            "account_hashtags": row['account_hashtags'] if 'account_hashtags' in row and row['account_hashtags'] else None,
             "save_count": save_count,
             "save_count_increase": save_count_increase,
             "ten_days_save_increase": ten_days_save_increase,

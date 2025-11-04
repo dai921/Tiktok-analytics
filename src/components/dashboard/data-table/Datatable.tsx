@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo, useCallback } from 'react';
+import type { ChangeEvent } from 'react';
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard';
 import { Pagination } from '../pagination';
 import { TextPopup } from '@/components/ui/text-popup';
@@ -26,6 +27,30 @@ import type { TabType as PresetTabType } from '@/lib/filter_presets_api';
 
 // EXCLUDED_COLUMNS をここで定義
 const EXCLUDED_COLUMNS = ['description'];
+
+const SearchIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
+  <svg
+    className={className}
+    viewBox="0 0 20 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="8.75" cy="8.75" r="5.75" stroke="currentColor" strokeWidth="1.5" />
+    <line x1="12.8" y1="12.8" x2="17" y2="17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const ClearIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
+  <svg
+    className={className}
+    viewBox="0 0 20 20"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <line x1="6" y1="6" x2="14" y2="14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="6" y1="14" x2="14" y2="6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 interface DataTableProps {
   data: VideoData[];
@@ -86,6 +111,8 @@ interface DataTableProps {
   presetGetVisibleColumns?: () => string[];
   presetGetVisibleColumnsByTab?: () => Record<PresetTabType, string[]>;
   presetApplyVisibleColumns?: (cols: string[]) => void;
+  searchKeyword?: string;
+  onSearchKeywordChange?: (value: string) => void;
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -126,7 +153,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     presetGetFiltersByTab,
     presetGetVisibleColumns,
     presetGetVisibleColumnsByTab,
-    presetApplyVisibleColumns
+    presetApplyVisibleColumns,
+    searchKeyword,
+    onSearchKeywordChange
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -194,6 +223,22 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // フィルターポップアップの状態
     const [isFilterPopupOpen, setFilterPopupOpenState] = useState(false);
+
+    const openFilterPopup = useCallback(() => {
+      setIsFilterPopupOpen(true);
+      setFilterPopupOpenState(true);
+    }, [setIsFilterPopupOpen, setFilterPopupOpenState]);
+
+    const closeFilterPopup = useCallback(() => {
+      setIsFilterPopupOpen(false);
+      setFilterPopupOpenState(false);
+    }, [setIsFilterPopupOpen, setFilterPopupOpenState]);
+
+    const clearAllFilters = useCallback(() => {
+      handleClearAllFilters();
+      closeFilterPopup();
+      onSearchKeywordChange?.('');
+    }, [handleClearAllFilters, closeFilterPopup, onSearchKeywordChange]);
     
     // カスタムフックからフィルターオプションを取得
     // ★ 修正: onFilterOptionsUpdateを渡す
@@ -276,7 +321,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     // 参照を設定
     useImperativeHandle(ref, () => ({
-      clearAllFilters: handleClearAllFilters
+      clearAllFilters
     }));
     
     // ページ切り替えハンドラー
@@ -333,6 +378,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       onInfluencerOnlyChange(!!flags.isInfluencerOnly);
     }, [onPrOnlyChange, onCorporateOnlyChange, onInfluencerOnlyChange]);
 
+    const currentSearchKeyword = searchKeyword ?? '';
+
+    const handleSearchInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+      onSearchKeywordChange?.(event.target.value);
+    }, [onSearchKeywordChange]);
+
+    const handleSearchClear = useCallback(() => {
+      onSearchKeywordChange?.('');
+    }, [onSearchKeywordChange]);
+
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
         {/* 最新動画一覧のタイトルのみ表示 */}
@@ -344,7 +399,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 tabType={tabTypeForPreset}
                 getFilters={getFiltersForPreset}
                 applyFilters={presetApplyFilters}
-                clearFilters={presetClearFilters || handleClearAllFilters}
+                clearFilters={presetClearFilters || clearAllFilters}
                 getFiltersByTab={presetGetFiltersByTab}
                 getVisibleColumns={presetGetVisibleColumns || getVisibleColumnsForPreset}
                 getVisibleColumnsByTab={presetGetVisibleColumnsByTab}
@@ -365,79 +420,105 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           </button>
         </div>
         
-        <div className="flex items-center justify-between p-2">
-          <div className="flex items-center space-x-2">
-            {/* フィルターボタンを追加 */}
-            <button
-              ref={filterButtonRef}
-              onClick={() => setFilterPopupOpenState(true)}
-              className="inline-flex items-center px-2.5 py-1.5 border border-[#FE2C55] shadow-sm text-xs font-medium rounded text-[#FE2C55] bg-white hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
-            >
-              <FilterIcon size={16} />
-              <span className="ml-1">フィルター</span>
-            </button>
-            
-            {/* 動画タイプタブ */}
-            <div className="flex bg-gray-50 rounded-lg p-1">
+        <div className="flex flex-wrap items-start justify-between gap-4 p-2">
+          <div className="flex min-w-[240px] flex-col gap-2">
+            <div className="relative w-full md:w-80">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                <SearchIcon className="h-4 w-4" />
+              </span>
+              <input
+                type="search"
+                value={currentSearchKeyword}
+                onChange={handleSearchInputChange}
+                placeholder="ハッシュタグ・キャプションなどで検索"
+                className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#FE2C55] focus:outline-none focus:ring-1 focus:ring-[#FE2C55]"
+              />
+              {currentSearchKeyword && (
+                <button
+                  type="button"
+                  onClick={handleSearchClear}
+                  className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                >
+                  <span className="sr-only">検索キーワードをクリア</span>
+                  <ClearIcon className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <button
-                onClick={handleAllVideosToggle}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                  !isPrOnly && !isCorporateOnly && !isInfluencerOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
+                ref={filterButtonRef}
+                onClick={openFilterPopup}
+                className="inline-flex w-full items-center justify-center rounded border border-[#FE2C55] px-2.5 py-1.5 text-xs font-medium text-[#FE2C55] shadow-sm transition-colors duration-200 hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:ring-offset-2 sm:w-auto"
               >
-                すべての動画
+                <FilterIcon size={16} />
+                <span className="ml-1">フィルター</span>
               </button>
-              <button
-                onClick={() => {
-                  console.log('アフィリエイト系動画タブクリック');
-                  onPrOnlyChange(true);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ml-1 ${
-                  isPrOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                アフィ系動画
-              </button>
-              <button
-                onClick={() => {
-                  console.log('運用代行用動画タブクリック');
-                  onCorporateOnlyChange(true);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ml-1 ${
-                  isCorporateOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                企業系動画
-              </button>
-              <button
-                onClick={() => {
-                  console.log('インフルエンサー動画タブクリック');
-                  onInfluencerOnlyChange(true);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ml-1 ${
-                  isInfluencerOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                インフルエンサー系動画
-              </button>
+              
+              {/* 動画タイプタブ */}
+              <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1 sm:flex-nowrap">
+                <button
+                  onClick={handleAllVideosToggle}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    !isPrOnly && !isCorporateOnly && !isInfluencerOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  すべての動画
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('アフィリエイト系動画タブクリック');
+                    onPrOnlyChange(true);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    isPrOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  アフィ系動画
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('運用代行用動画タブクリック');
+                    onCorporateOnlyChange(true);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    isCorporateOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  企業系動画
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('インフルエンサー動画タブクリック');
+                    onInfluencerOnlyChange(true);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    isInfluencerOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  インフルエンサー系動画
+                </button>
+              </div>
             </div>
           </div>
-          <Pagination 
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-            pageSize={pageSize}
-            onPageSizeChange={handlePageSizeChange}
-            pageSizeOptions={[10, 20, 50]}
-          />
+          <div className="ml-auto">
+            <Pagination 
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+              pageSize={pageSize}
+              onPageSizeChange={handlePageSizeChange}
+              pageSizeOptions={[10, 20, 50]}
+            />
+          </div>
         </div>
         
         {/* テーブルの内容 */}
@@ -602,7 +683,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         {typeof window !== 'undefined' && createPortal(
           <FilterPopup
             isOpen={isFilterPopupOpen}
-            onClose={() => setFilterPopupOpenState(false)}
+            onClose={closeFilterPopup}
             anchorRef={filterButtonRef}
             onFilterChange={handleBulkFilterChange}
             currentFilters={columnFilters}

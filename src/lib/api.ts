@@ -362,6 +362,18 @@ const mapFieldToApiField = (field: string): string => {
   // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
   if (field === 'PR動画ジャンル') {
     return 'category';
+  }
+  if (field === 'global_search') {
+    return 'search_keyword';
+  }
+  if (field === 'search_hashtags') {
+    return 'hashtags';
+  } else if (field === 'search_description') {
+    return 'caption';
+  } else if (field === 'search_account_type') {
+    return 'account_type';
+  } else if (field === 'search_account_hashtags') {
+    return 'account_hashtags';
   }  else if (field === '2日再生増加数') {
     return 'play_count_increase';
   } else if (field === '10日再生増加数') {
@@ -412,7 +424,8 @@ const mapFieldToApiField = (field: string): string => {
     'product': 'product',  // 商品フィルターのマッピングを追加
     'followers': 'followers',
     'play_count_per_follower': 'play_count_per_follower',
-    'play_increase_per_follower': 'play_increase_per_follower'
+    'play_increase_per_follower': 'play_increase_per_follower',
+    'account_hashtags': 'account_hashtags'
   };
   
   const result = fieldMapping[internalField] || internalField;

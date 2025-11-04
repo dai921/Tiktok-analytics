@@ -43,6 +43,7 @@ export type PresetMenuProps = {
   applyVisibleColumns?: (cols: string[]) => void; // ← 追加
   getVisibleColumnsByTab?: () => Record<TabType, string[]>; // ← 追加
   setTabFlags?: (flags: { isPrOnly?: boolean; isCorporateOnly?: boolean; isInfluencerOnly?: boolean }) => void; // ← 追加
+  notificationButton?: React.ReactNode;
 }
 
 const tabFlags = (tabType: TabType) => ({
@@ -60,7 +61,8 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   getVisibleColumns,
   applyVisibleColumns,
   getVisibleColumnsByTab,
-  setTabFlags
+  setTabFlags,
+  notificationButton
 }) => {
   const [presets, setPresets] = useState<Preset[]>([])
   const [loading, setLoading] = useState(false)
@@ -243,6 +245,7 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
         </DropdownMenu>
 
         <Button variant="outline" onClick={() => { setSaveAll(false); setOpenSave(true) }}>表示設定を保存</Button>
+        {notificationButton ?? null}
       </div>
 
       <Dialog

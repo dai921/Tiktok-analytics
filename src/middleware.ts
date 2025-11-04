@@ -4,7 +4,8 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   // Cookieからトークンと管理者フラグを取得（キー名を変更）
   const token = request.cookies.get('auth_token')?.value
-  const isAdmin = request.cookies.get('is_admin')?.value === 'true'
+  const adminCookie = request.cookies.get('is_admin')?.value
+  const isAdmin = adminCookie === 'true' || adminCookie === '1' || adminCookie === 'True'
   
   
   const path = request.nextUrl.pathname

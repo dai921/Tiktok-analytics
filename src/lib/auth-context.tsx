@@ -27,7 +27,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
-    const isAdmin = localStorage.getItem('is_admin') === 'true';
+    const storedIsAdmin = localStorage.getItem('is_admin');
+    const isAdmin =
+      storedIsAdmin === 'true' ||
+      storedIsAdmin === '1' ||
+      storedIsAdmin === 'True';
 
     if (token) {
       fetchUser(token, 'bearer', isAdmin);
