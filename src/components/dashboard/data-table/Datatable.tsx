@@ -427,10 +427,10 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 <SearchIcon className="h-4 w-4" />
               </span>
               <input
-                type="search"
+                type="text"
                 value={currentSearchKeyword}
                 onChange={handleSearchInputChange}
-                placeholder="ハッシュタグ・キャプションなどで検索"
+                placeholder="キーワードで検索"
                 className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#FE2C55] focus:outline-none focus:ring-1 focus:ring-[#FE2C55]"
               />
               {currentSearchKeyword && (

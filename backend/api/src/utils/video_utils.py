@@ -167,7 +167,11 @@ def apply_search_keyword_filter(request: Request, params: Dict, where_clauses: L
     clauses = [
         "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
         "LOWER(caption) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+        "LOWER(category) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
+        "LOWER(product) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
+        "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
+        "LOWER(second_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
+        "LOWER(third_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
     ]
 
     if table_name in {"frontend_data", "frontend_corporate_data"}:

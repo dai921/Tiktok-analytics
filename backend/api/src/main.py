@@ -292,7 +292,11 @@ async def get_videos(
                 "("
                 "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
                 "LOWER(caption) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(category) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(product) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
                 "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(second_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
+                "LOWER(third_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
                 "LOWER(COALESCE(frontend_data.account_hashtags, corp.account_hashtags, '')) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
                 ")"
             )
