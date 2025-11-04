@@ -14,7 +14,7 @@ def build_video_query(table_name: str = "frontend_data") -> str:
         account_hashtags_column = f"COALESCE({table_name}.account_hashtags, corp.account_hashtags) AS account_hashtags"
         corporate_join = f"""
             LEFT JOIN (
-                SELECT al.account_name, ca.account_hashtags
+                SELECT al.favorite_user_username AS account_name, ca.account_hashtags
                 FROM corporate_accounts ca
                 JOIN account_list al ON al.id = ca.account_id
             ) AS corp ON corp.account_name = {table_name}.account_name

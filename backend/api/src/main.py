@@ -218,7 +218,7 @@ async def get_videos(
                 COALESCE(frontend_data.account_hashtags, corp.account_hashtags) AS account_hashtags
             FROM frontend_data
             LEFT JOIN (
-                SELECT al.account_name, ca.account_hashtags
+                SELECT al.favorite_user_username AS account_name, ca.account_hashtags
                 FROM corporate_accounts ca
                 JOIN account_list al ON al.id = ca.account_id
             ) AS corp ON corp.account_name = frontend_data.account_name
