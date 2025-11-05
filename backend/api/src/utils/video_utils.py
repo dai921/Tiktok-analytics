@@ -164,23 +164,10 @@ def apply_search_keyword_filter(request: Request, params: Dict, where_clauses: L
     escaped_keyword = keyword.replace("_", r"\_").replace("%", r"\%")
     params["search_keyword"] = f"%{escaped_keyword}%"
 
-    clauses = [
-        "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(caption) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(category) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(product) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(second_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-        "LOWER(third_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)",
-    ]
-
-    if table_name in {"frontend_data", "frontend_corporate_data"}:
-        clauses.append(
-            f"LOWER(COALESCE({table_name}.account_hashtags, corp.account_hashtags, '')) "
-            "COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
-        )
-
-    where_clauses.append(f"({' OR '.join(clauses)})")
+    search_column = f"COALESCE({table_name}.search_text, '')" if table_name else "COALESCE(search_text, '')"
+    where_clauses.append(
+        f"LOWER({search_column}) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+    )
 
 def apply_numeric_filters(request: Request, params: Dict, where_clauses: List[str]):
     """数値フィルターを適用"""

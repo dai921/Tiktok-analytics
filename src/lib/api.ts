@@ -1285,6 +1285,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         music: result.music || [],
         // ★ 追加: productsとaccountTypesを戻り値に含める
         products: result.products || [],
+        productCategories: result.productCategories || {},
         accountTypes: result.accountTypes || [],
         secondAccountTypes: result.secondAccountTypes || [],
         thirdAccountTypes: result.thirdAccountTypes || [],
@@ -1300,6 +1301,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         music: [],
         // ★ 追加
         products: [],
+        productCategories: {},
         accountTypes: [],
         secondAccountTypes: [],
         thirdAccountTypes: [],
@@ -1317,6 +1319,7 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       music: [],
       // ★ 追加
       products: [],
+      productCategories: {},
       accountTypes: [],
       secondAccountTypes: [],
       thirdAccountTypes: [],

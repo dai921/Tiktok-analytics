@@ -43,6 +43,7 @@
 | second_account_type | VARCHAR(50) | YES | NULL | idx_second_account_type | '採用' or '集客' |
 | third_account_type | VARCHAR(50) | YES | NULL | idx_third_account_type | 中ジャンル |
 | account_hashtags | TEXT | YES | NULL | - | アカウントハッシュタグ |
+| search_text | MEDIUMTEXT | YES | NULL | - | 検索用リスト |
 
 ## インデックス
 

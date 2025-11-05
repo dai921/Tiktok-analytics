@@ -51,7 +51,8 @@ export default function AdminLogin() {
       }
 
       // 管理者としてログイン
-      login(data.access_token, data.token_type, data.is_admin)
+      const isDeveloper = Boolean(data?.is_developer)
+      login(data.access_token, data.token_type, data.is_admin, isDeveloper)
       router.push('/register')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'ログインに失敗しました')

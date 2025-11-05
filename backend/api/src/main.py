@@ -289,16 +289,8 @@ async def get_videos(
             escaped_keyword = search_keyword.replace("_", r"\_").replace("%", r"\%")
             params["search_keyword"] = f"%{escaped_keyword}%"
             where_clauses.append(
-                "("
-                "LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(caption) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(category) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(product) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(second_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(third_account_type) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword) OR "
-                "LOWER(COALESCE(frontend_data.account_hashtags, corp.account_hashtags, '')) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
-                ")"
+                "LOWER(COALESCE(frontend_data.search_text, '')) "
+                "COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
             )
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
@@ -899,10 +891,52 @@ async def get_filter_options(
 
         final_third_account_types = sorted(third_account_type_set)
 
+        # 商品カテゴリーマップを商品マスターから取得
+        product_master_rows = execute_query(
+            """
+            SELECT 
+                product_name,
+                product_category
+            FROM 
+                product_master
+            WHERE 
+                product_name IS NOT NULL 
+                AND product_name != ''
+            """,
+            {}
+        )
+
+        product_categories_map: Dict[str, List[str]] = {}
+        product_to_category: Dict[str, str] = {}
+
+        for row in product_master_rows:
+            product_name = (row.get('product_name') or '').strip()
+            if not product_name:
+                continue
+            product_category = (row.get('product_category') or 'その他').strip() or 'その他'
+            product_categories_map.setdefault(product_category, [])
+            if product_name not in product_categories_map[product_category]:
+                product_categories_map[product_category].append(product_name)
+            product_to_category[product_name] = product_category
+
+        # frontend_data由来の商品でマスターに存在しないものはその他カテゴリに追加
+        for product_name in final_products:
+            if product_name in product_to_category:
+                continue
+            product_categories_map.setdefault('その他', [])
+            if product_name not in product_categories_map['その他']:
+                product_categories_map['その他'].append(product_name)
+            product_to_category[product_name] = 'その他'
+
+        # カテゴリ内の商品をソート
+        for category_name, product_list in product_categories_map.items():
+            product_categories_map[category_name] = sorted(list(set(product_list)))
+
         return {
             "success": True,
             "categories": final_categories,
             "products": final_products,
+            "productCategories": product_categories_map,
             "accountTypes": final_account_types,
             "secondAccountTypes": final_second_account_types,
             "thirdAccountTypes": final_third_account_types,
@@ -916,6 +950,7 @@ async def get_filter_options(
             "success": False,
             "categories": [],
             "products": [],
+            "productCategories": {},
             "accountTypes": [],
             "secondAccountTypes": [],
             "thirdAccountTypes": [],

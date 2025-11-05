@@ -9,6 +9,10 @@ import { TAB_DEFAULT_COLUMNS, getCurrentTabType, getTabFilterFields } from '@/co
 import { getDefaultPreset, contextKeyFromTab, getPreset } from '@/lib/filter_presets_api'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+import Link from 'next/link'
+import { Bell } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
+import { fetchPendingPrProductsCount } from '@/lib/api/influencer-pr-products'
 
 
 // headers: 未使用のため削除
@@ -17,6 +21,9 @@ type TabKey = 'all' | 'affiliate' | 'corporate' | 'influencer'
 
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
+  const { isAdmin, isDeveloper } = useAuth()
+  const [pendingPrCount, setPendingPrCount] = useState<number | null>(null)
+  const [isPendingCountLoading, setIsPendingCountLoading] = useState(false)
   
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<VideoData[]>([])
@@ -74,6 +81,39 @@ const Dashboard = () => {
     influencer: '',
     affiliate: ''
   });
+
+  const refreshPendingPrCount = useCallback(async () => {
+    if (!isAdmin) {
+      setPendingPrCount(null)
+      return
+    }
+
+    setIsPendingCountLoading(true)
+    try {
+      const res = await fetchPendingPrProductsCount()
+      if (res.success && typeof res.data === 'number') {
+        setPendingPrCount(res.data)
+      } else if (typeof res.count === 'number') {
+        setPendingPrCount(res.count)
+      } else {
+        setPendingPrCount(null)
+      }
+    } catch (error) {
+      console.warn('Failed to load pending PR product count:', error)
+      setPendingPrCount(null)
+    } finally {
+      setIsPendingCountLoading(false)
+    }
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setPendingPrCount(null)
+      setIsPendingCountLoading(false)
+      return
+    }
+    refreshPendingPrCount()
+  }, [isAdmin, refreshPendingPrCount])
 
   // 基本関数群
   const getCurrentTabKey = () => {
@@ -649,6 +689,8 @@ const Dashboard = () => {
     hashtags: [] as string[],
     music: [] as string[],
     products: [] as string[],
+    productCategories: {} as Record<string, string[]>,
+    productCategoryMap: {} as Record<string, string>,
     accountTypes: [] as string[],
     secondAccountTypes: [] as string[],
     thirdAccountTypes: [] as string[],
@@ -663,6 +705,8 @@ const Dashboard = () => {
     hashtags: string[];
     music: string[];
     products: string[];
+    productCategories: Record<string, string[]>;
+    productCategoryMap: Record<string, string>;
     accountTypes: string[];
     secondAccountTypes: string[];
     thirdAccountTypes: string[];
@@ -684,6 +728,7 @@ const Dashboard = () => {
 
     const tabType = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly);
     setVisibleColumns(TAB_DEFAULT_COLUMNS[tabType]);
+    defaultPresetAttemptedRef.current[tabType] = true;
 
     const ctx = contextKeyFromTab(tabType as any);
     (async () => {
@@ -720,6 +765,19 @@ const Dashboard = () => {
 
   const currentTabKey = getCurrentTabKey();
   const currentSearchKeyword = searchKeywordsByTab[currentTabKey] ?? '';
+
+  const adminNotificationButton = isAdmin ? (
+    <Link
+      href="/admin/pr-products"
+      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-gray-300"
+      aria-label="未判定PR商材の管理ページ"
+    >
+      <Bell className="h-5 w-5" />
+      <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
+        {isPendingCountLoading ? '...' : (pendingPrCount ?? 0) > 99 ? '99+' : (pendingPrCount ?? 0)}
+      </span>
+    </Link>
+  ) : null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -770,6 +828,8 @@ const Dashboard = () => {
             influencer: [...(visibleColumnsByTab.influencer ?? [])],
           })}
           presetApplyVisibleColumns={presetApplyVisibleColumns}
+          notificationButton={adminNotificationButton}
+          showSearchInput={isDeveloper}
           searchKeyword={currentSearchKeyword}
           onSearchKeywordChange={handleSearchKeywordChange}
           onFilterChange={(hasFilters, filter) => {

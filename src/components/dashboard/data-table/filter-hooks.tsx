@@ -8,6 +8,8 @@ type FilterOptionsPayload = {
   hashtags: string[];
   music: string[];
   products: string[];
+  productCategories: Record<string, string[]>;
+  productCategoryMap: Record<string, string>;
   accountTypes: string[];
   secondAccountTypes: string[];
   thirdAccountTypes: string[];
@@ -24,7 +26,10 @@ export const useFilterOptions = (
   const [categoryList, setCategoryList] = useState<string[]>([]);
   const [accountList, setAccountList] = useState<string[]>([]);
   const [hashtagList, setHashtagList] = useState<string[]>([]);
+  const [productList, setProductList] = useState<string[]>([]);
   const [audioTitleList, setAudioTitleList] = useState<string[]>([]);
+  const [productCategoriesGrouped, setProductCategoriesGrouped] = useState<Record<string, string[]>>({});
+  const [productCategoryLookup, setProductCategoryLookup] = useState<Record<string, string>>({});
   const [secondAccountTypeList, setSecondAccountTypeList] = useState<string[]>([]);
   const [thirdAccountTypeList, setThirdAccountTypeList] = useState<string[]>([]);
   const [thirdAccountTypeMap, setThirdAccountTypeMap] = useState<Record<string, string>>({});
@@ -46,12 +51,24 @@ export const useFilterOptions = (
 
   const syncFromResult = useCallback(
     (result: Partial<FilterOptionsPayload>) => {
+      const productCategories = result.productCategories || {};
+      const productMap: Record<string, string> = {};
+      Object.entries(productCategories).forEach(([category, items]) => {
+        items.forEach(productName => {
+          if (productName) {
+            productMap[productName] = category;
+          }
+        });
+      });
+
       const payload: FilterOptionsPayload = {
         categories: result.categories || [],
         accounts: result.accounts || [],
         hashtags: result.hashtags || [],
         music: result.music || [],
         products: result.products || [],
+        productCategories,
+        productCategoryMap: productMap,
         accountTypes: result.accountTypes || [],
         secondAccountTypes: result.secondAccountTypes || [],
         thirdAccountTypes: result.thirdAccountTypes || [],
@@ -62,6 +79,9 @@ export const useFilterOptions = (
       setAccountList(payload.accounts);
       setHashtagList(payload.hashtags);
       setAudioTitleList(payload.music);
+      setProductList(payload.products);
+      setProductCategoriesGrouped(payload.productCategories);
+      setProductCategoryLookup(payload.productCategoryMap);
       setSecondAccountTypeList(payload.secondAccountTypes);
       setThirdAccountTypeList(payload.thirdAccountTypes);
       setThirdAccountTypeMap(payload.thirdAccountTypeMap);
@@ -138,7 +158,10 @@ export const useFilterOptions = (
     categoryList,
     accountList,
     hashtagList,
+    productList,
     audioTitleList,
+    productCategories: productCategoriesGrouped,
+    productCategoryMap: productCategoryLookup,
     secondAccountTypeList,
     thirdAccountTypeList,
     thirdAccountTypeMap,

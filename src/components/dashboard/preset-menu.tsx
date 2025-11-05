@@ -72,22 +72,31 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   const ctx = useMemo(() => contextKeyFromTab(tabType), [tabType])
   const [saveAll, setSaveAll] = useState(false) // ← 追加
 
+  const [hasLoaded, setHasLoaded] = useState(false)
+
   const load = useCallback(async () => {
     try {
       setLoading(true)
       // 現在タブに限定せず全てのプリセットを取得
       const res = await listPresets()
       setPresets((res?.presets || []) as any)
+      setHasLoaded(true)
     } catch (e) {
       console.warn(e)
     } finally {
       setLoading(false)
     }
-  }, [ctx])
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [load])
+    setHasLoaded(false)
+  }, [ctx])
+
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (open && !hasLoaded) {
+      load()
+    }
+  }, [hasLoaded, load])
 
   const handleApply = useCallback((p: Preset) => {
     const incoming = p?.payload?.currentFilters || {}
@@ -206,7 +215,7 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   return (
     <>
       <div className="flex items-center gap-2">
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={handleMenuOpenChange}>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" disabled={loading}>
               表示設定
@@ -215,6 +224,9 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
           <DropdownMenuContent align="start" className="min-w-[280px]">
             <DropdownMenuLabel>表示設定</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {loading && presets.length === 0 && (
+              <DropdownMenuItem disabled>読み込み中...</DropdownMenuItem>
+            )}
             {presets.length === 0 && (
               <DropdownMenuItem disabled>なし</DropdownMenuItem>
             )}

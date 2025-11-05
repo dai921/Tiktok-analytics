@@ -40,7 +40,6 @@ interface FilterPopupProps {
     date: string[];
     metrics: string[];
     categories: string[];
-    text: string[];
     sort: string[];
   };
   accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
@@ -221,7 +220,7 @@ export const FilterPopup = ({
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
   // activeTabの初期値をより安全に設定
-  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(() => {
+  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'sort'>(() => {
     // サーバーサイドでは常に'date'をデフォルトに
     if (typeof window === 'undefined') return 'date'
     return accountTypeContext === 'all' ? 'video_type' : 'date'
@@ -463,11 +462,6 @@ export const FilterPopup = ({
           options: thirdAccountTypes
         }
       ],
-      text: [
-        { id: 'account_name', label: 'アカウント検索', type: 'text' as FilterType },
-        { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' as FilterType },
-        { id: 'audioTitle', label: 'BGM検索', type: 'text' as FilterType }
-      ],
       sort: [
         { id: 'views', label: '再生数', type: 'sort' as FilterType },
         { id: 'viewsIncrease', label: '2日再生増加数', type: 'sort' as FilterType },
@@ -493,7 +487,6 @@ export const FilterPopup = ({
       date: baseFields.date.filter(field => tabFilterFields.date.includes(field.id)),
       metrics: baseFields.metrics.filter(field => tabFilterFields.metrics.includes(field.id)),
       categories: baseFields.categories.filter(field => tabFilterFields.categories.includes(field.id)),
-      text: baseFields.text.filter(field => tabFilterFields.text.includes(field.id)),
       sort: baseFields.sort.filter(field => tabFilterFields.sort.includes(field.id))
     };
 
@@ -1291,67 +1284,6 @@ export const FilterPopup = ({
     );
   };
 
-  // テキスト入力用のフィルター条件セクション
-  const renderTextFilter = (field: FilterField) => {
-    const filterValue = tempFilters[field.id]
-    const isActive = Boolean(filterValue)
-    
-    // field.labelの値をReactNodeから文字列に安全に変換する関数
-    const getLabelText = (label: React.ReactNode): string => {
-      if (typeof label === 'string') {
-        return label;
-      } else if (React.isValidElement(label)) {
-        // Reactエレメントの場合は、fieldIdからラベルを判断
-        return field.id === 'account_name' ? 'アカウント' :
-               field.id === 'hashtags' ? 'ハッシュタグ' :
-               field.id === 'audioTitle' ? 'BGM' : '';
-      }
-      return '';
-    };
-    
-    const placeholderText = `${getLabelText(field.label).replace('検索', '')}を入力`;
-
-    return (
-      <div key={field.id} className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700">
-            {field.label || ''}
-          </label>
-          
-          {isActive && (
-            <button 
-              onClick={() => handleClearFilter(field.id)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <ClearIcon size={14} />
-            </button>
-          )}
-        </div>
-        
-        <input
-          type="text"
-          className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
-          value={filterValue?.value || ''}
-          placeholder={placeholderText}
-          onChange={(e) => {
-            // 空の値の場合はフィルターをクリア
-            if (e.target.value.trim() === '') {
-              handleClearFilter(field.id);
-              return;
-            }
-            
-            handleFilterChange(field.id, { 
-              field: field.id,
-              type: 'text', 
-              comparison: 'contains', 
-              value: e.target.value 
-            })
-          }}
-        />
-      </div>
-    )
-  }
-
   // 商品用のマルチセレクトフィルターを追加
   const renderProductFilter = (field: FilterField) => {
     const isActive = selectedProducts.length > 0;
@@ -1946,9 +1878,6 @@ export const FilterPopup = ({
           if (field.type === 'number') {
             return renderNumberFilter(field)
           }
-          if (field.type === 'text') {
-            return renderTextFilter(field)
-          }
           if (field.type === 'multiselect') {
             // 商品フィルターの場合は専用レンダリング関数を使用
             if (field.id === 'product') {
@@ -2031,14 +1960,6 @@ export const FilterPopup = ({
             onClick={() => setActiveTab('categories')}
           >
             ジャンル
-          </button>
-          <button
-            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
-              activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
-            }`}
-            onClick={() => setActiveTab('text')}
-          >
-            テキスト
           </button>
           <button
             className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${

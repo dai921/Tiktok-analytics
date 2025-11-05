@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo, useCallback } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ReactNode, ChangeEvent } from 'react';
 import type { VideoData, FilterQuery, FilterValue } from '@/types/dashboard';
 import { Pagination } from '../pagination';
 import { TextPopup } from '@/components/ui/text-popup';
@@ -16,10 +16,8 @@ import { useFilterLogic } from './filter-logic';
 import { useSortLogic } from './sort-logic';
 import { useColumnDnd } from './column-dnd';
 import { useColumnVisibility } from './column-visibility';
-import { useProductCategories } from '@/hooks/useProductCategories';
 import { TableContext } from './cell-renderers';
 import { createProductCellRenderer } from './cell-renderers';
-import { ProductBadge } from '@/components/ui/badge';
 import { createPortal } from 'react-dom'; 
 import { PresetMenu } from '@/components/dashboard/preset-menu';
 import { getCurrentTabType } from './tab-columns';
@@ -85,6 +83,8 @@ interface DataTableProps {
     hashtags: string[];
     music: string[];
     products: string[];
+    productCategories: Record<string, string[]>;
+    productCategoryMap: Record<string, string>;
     accountTypes: string[];
     secondAccountTypes: string[];
     thirdAccountTypes: string[];
@@ -97,6 +97,8 @@ interface DataTableProps {
     hashtags: string[];
     music: string[];
     products: string[];
+    productCategories: Record<string, string[]>;
+    productCategoryMap: Record<string, string>;
     accountTypes: string[];
     secondAccountTypes: string[];
     thirdAccountTypes: string[];
@@ -113,6 +115,8 @@ interface DataTableProps {
   presetApplyVisibleColumns?: (cols: string[]) => void;
   searchKeyword?: string;
   onSearchKeywordChange?: (value: string) => void;
+  notificationButton?: ReactNode;
+  showSearchInput?: boolean;
 }
 
 export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTableProps>(
@@ -142,6 +146,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       hashtags: [],
       music: [],
       products: [],
+      productCategories: {},
+      productCategoryMap: {},
       accountTypes: [],
       secondAccountTypes: [],
       thirdAccountTypes: [],
@@ -155,7 +161,9 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     presetGetVisibleColumnsByTab,
     presetApplyVisibleColumns,
     searchKeyword,
-    onSearchKeywordChange
+    onSearchKeywordChange,
+    notificationButton,
+    showSearchInput = true
   }, ref) => {
     // 選択されたテキスト（ポップアップ表示用）
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
@@ -246,28 +254,30 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       categoryList,
       accountList,
       hashtagList,
+      productList,
       audioTitleList,
+      productCategories,
+      productCategoryMap,
       isLoadingFilterOptions,
       getFilteredOptions
     } = useFilterOptions(currentFilters, onFilterOptionsUpdate);
 
-    const { productCategories } = useProductCategories();
-
-    // ★ 追加: productCategoriesを適切な形式に変換
-    const convertedProductCategories = useMemo(() => {
-      const converted: Record<string, string[]> = {};
-      
-      Object.entries(productCategories).forEach(([productName, categoryName]) => {
-        if (!converted[categoryName]) {
-          converted[categoryName] = [];
-        }
-        converted[categoryName].push(productName);
-      });
-      
-      return converted;
-    }, [productCategories]);
 
     // カラム定義を取得
+    const resolvedProductCategories = useMemo(() => {
+      if (productCategories && Object.keys(productCategories).length > 0) {
+        return productCategories;
+      }
+      return filterOptions.productCategories || {};
+    }, [productCategories, filterOptions.productCategories]);
+
+    const resolvedProductCategoryMap = useMemo(() => {
+      if (productCategoryMap && Object.keys(productCategoryMap).length > 0) {
+        return productCategoryMap;
+      }
+      return filterOptions.productCategoryMap || {};
+    }, [productCategoryMap, filterOptions.productCategoryMap]);
+
     const columns = useMemo(() => {
       const createdColumns = createColumns(
         columnFilters,
@@ -405,6 +415,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                 getVisibleColumnsByTab={presetGetVisibleColumnsByTab}
                 applyVisibleColumns={presetApplyVisibleColumns || applyVisibleColumnsForPreset}
                 setTabFlags={presetSetTabFlags}
+                notificationButton={notificationButton}
               />
             )}
           </div>
@@ -421,94 +432,97 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         </div>
         
         <div className="flex flex-wrap items-start justify-between gap-4 p-2">
-          <div className="flex min-w-[240px] flex-col gap-2">
-            <div className="relative w-full md:w-80">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
-                <SearchIcon className="h-4 w-4" />
-              </span>
-              <input
-                type="text"
-                value={currentSearchKeyword}
-                onChange={handleSearchInputChange}
-                placeholder="キーワードで検索"
-                className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#FE2C55] focus:outline-none focus:ring-1 focus:ring-[#FE2C55]"
-              />
-              {currentSearchKeyword && (
-                <button
-                  type="button"
-                  onClick={handleSearchClear}
-                  className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  <span className="sr-only">検索キーワードをクリア</span>
-                  <ClearIcon className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <button
-                ref={filterButtonRef}
-                onClick={openFilterPopup}
-                className="inline-flex w-full items-center justify-center rounded border border-[#FE2C55] px-2.5 py-1.5 text-xs font-medium text-[#FE2C55] shadow-sm transition-colors duration-200 hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:ring-offset-2 sm:w-auto"
-              >
-                <FilterIcon size={16} />
-                <span className="ml-1">フィルター</span>
-              </button>
-              
-              {/* 動画タイプタブ */}
-              <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1 sm:flex-nowrap">
-                <button
-                  onClick={handleAllVideosToggle}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                    !isPrOnly && !isCorporateOnly && !isInfluencerOnly
-                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                  }`}
-                >
-                  すべての動画
-                </button>
-                <button
-                  onClick={() => {
-                    console.log('アフィリエイト系動画タブクリック');
-                    onPrOnlyChange(true);
-                  }}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                    isPrOnly
-                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                  }`}
-                >
-                  アフィ系動画
-                </button>
-                <button
-                  onClick={() => {
-                    console.log('運用代行用動画タブクリック');
-                    onCorporateOnlyChange(true);
-                  }}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                    isCorporateOnly
-                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                  }`}
-                >
-                  企業系動画
-                </button>
-                <button
-                  onClick={() => {
-                    console.log('インフルエンサー動画タブクリック');
-                    onInfluencerOnlyChange(true);
-                  }}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                    isInfluencerOnly
-                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                  }`}
-                >
-                  インフルエンサー系動画
-                </button>
+          {showSearchInput && (
+            <div className="flex min-w-[240px] flex-col gap-2">
+              <div className="relative w-full md:w-80">
+                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                  <SearchIcon className="h-4 w-4" />
+                </span>
+                <input
+                  type="text"
+                  value={currentSearchKeyword}
+                  onChange={handleSearchInputChange}
+                  placeholder="キーワードで検索"
+                  className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#FE2C55] focus:outline-none focus:ring-1 focus:ring-[#FE2C55]"
+                />
+                {currentSearchKeyword && (
+                  <button
+                    type="button"
+                    onClick={handleSearchClear}
+                    className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    <span className="sr-only">検索キーワードをクリア</span>
+                    <ClearIcon className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
+          )}
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <button
+              ref={filterButtonRef}
+              onClick={openFilterPopup}
+              className="inline-flex w-full items-center justify-center rounded border border-[#FE2C55] px-2.5 py-1.5 text-xs font-medium text-[#FE2C55] shadow-sm transition-colors duration-200 hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:ring-offset-2 sm:w-auto"
+            >
+              <FilterIcon size={16} />
+              <span className="ml-1">フィルター</span>
+            </button>
+            
+            {/* 動画タイプタブ */}
+            <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1 sm:flex-nowrap">
+              <button
+                onClick={handleAllVideosToggle}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                  !isPrOnly && !isCorporateOnly && !isInfluencerOnly
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                }`}
+              >
+                すべての動画
+              </button>
+              <button
+                onClick={() => {
+                  console.log('アフィリエイト系動画タブクリック');
+                  onPrOnlyChange(true);
+                }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                  isPrOnly
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                }`}
+              >
+                アフィ系動画
+              </button>
+              <button
+                onClick={() => {
+                  console.log('運用代行用動画タブクリック');
+                  onCorporateOnlyChange(true);
+                }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                  isCorporateOnly
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                }`}
+              >
+                企業系動画
+              </button>
+              <button
+                onClick={() => {
+                  console.log('インフルエンサー動画タブクリック');
+                  onInfluencerOnlyChange(true);
+                }}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                  isInfluencerOnly
+                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                }`}
+              >
+                インフルエンサー系動画
+              </button>
+            </div>
           </div>
+
           <div className="ml-auto">
             <Pagination 
               currentPage={currentPage}
@@ -532,7 +546,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             <div className="overflow-x-auto">
               <TableContext.Provider value={{ 
                 setSelectedText, 
-                productCategories, 
+                productCategories: resolvedProductCategoryMap, 
                 thirdAccountTypeMap: filterOptions.thirdAccountTypeMap ?? {} 
               }}>
                 <table className="min-w-full divide-y divide-gray-200">
@@ -691,8 +705,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             accounts={accountList}
             hashtags={hashtagList}
             // ★ 修正: filterOptionsはデフォルト値があるのでオプショナルチェイニング不要
-            products={filterOptions.products}
-            productCategories={convertedProductCategories}
+            products={productList.length ? productList : filterOptions.products}
+            productCategories={resolvedProductCategories}
             accountTypes={filterOptions.accountTypes}
             secondAccountTypes={filterOptions.secondAccountTypes}
             thirdAccountTypes={filterOptions.thirdAccountTypes}
