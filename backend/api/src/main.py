@@ -22,11 +22,11 @@ import os
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 import pathlib
-import json
 import re
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
+from src.utils.search import prepare_fulltext_keyword
 from sqlalchemy import text
 from src.my_report.routes import router as tiktok_router
 from src.transcription.router import router as transcription_router
@@ -185,7 +185,7 @@ async def get_videos(
 
         # 基本クエリ
         query = """
-            SELECT 
+            SELECT
                 frontend_data.url,
                 frontend_data.thumbnail_url,
                 frontend_data.created_at,
@@ -215,13 +215,8 @@ async def get_videos(
                 frontend_data.followers,
                 frontend_data.play_count_per_follower,
                 frontend_data.play_increase_per_follower,
-                COALESCE(frontend_data.account_hashtags, corp.account_hashtags) AS account_hashtags
+                frontend_data.account_hashtags
             FROM frontend_data
-            LEFT JOIN (
-                SELECT al.favorite_user_username AS account_name, ca.account_hashtags
-                FROM corporate_accounts ca
-                JOIN account_list al ON al.id = ca.account_id
-            ) AS corp ON corp.account_name = frontend_data.account_name
         """
         params = {}
         where_clauses = []
@@ -230,7 +225,7 @@ async def get_videos(
         if account_name:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ - 大文字小文字を区別しない
             escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("LOWER(account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
+            where_clauses.append("LOWER(frontend_data.account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
             params["account_name"] = f"%{escaped_account_name}%"
         
         # カテゴリフィルターのOR条件処理
@@ -285,12 +280,11 @@ async def get_videos(
             where_clauses.append("LOWER(music_info) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:music_info)")
             params["music_info"] = f"%{escaped_music_info}%"
         
-        if search_keyword:
-            escaped_keyword = search_keyword.replace("_", r"\_").replace("%", r"\%")
-            params["search_keyword"] = f"%{escaped_keyword}%"
+        fulltext_keyword = prepare_fulltext_keyword(search_keyword)
+        if fulltext_keyword:
+            params["search_keyword"] = fulltext_keyword
             where_clauses.append(
-                "LOWER(COALESCE(frontend_data.search_text, '')) "
-                "COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+                "MATCH(frontend_data.search_text) AGAINST (:search_keyword IN BOOLEAN MODE)"
             )
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
@@ -806,7 +800,7 @@ async def get_filter_options(
                 processed_products.append(product)
         
         final_products = sorted(list(set(processed_products)))
-        
+
         # アカウントタイプ選択肢        # アカウントジャンル(account_type)の一覧
         account_types_query = f"SELECT DISTINCT account_type FROM frontend_data{base_where}"
         account_types_rows = execute_query(account_types_query, params)

@@ -4,9 +4,6 @@ import { getFilterOptions } from '@/lib/api';
 
 type FilterOptionsPayload = {
   categories: string[];
-  accounts: string[];
-  hashtags: string[];
-  music: string[];
   products: string[];
   productCategories: Record<string, string[]>;
   productCategoryMap: Record<string, string>;
@@ -61,11 +58,12 @@ export const useFilterOptions = (
         });
       });
 
+      const accounts = result.accounts || [];
+      const hashtags = result.hashtags || [];
+      const music = result.music || [];
+
       const payload: FilterOptionsPayload = {
         categories: result.categories || [],
-        accounts: result.accounts || [],
-        hashtags: result.hashtags || [],
-        music: result.music || [],
         products: result.products || [],
         productCategories,
         productCategoryMap: productMap,
@@ -76,9 +74,9 @@ export const useFilterOptions = (
       };
 
       setCategoryList(payload.categories);
-      setAccountList(payload.accounts);
-      setHashtagList(payload.hashtags);
-      setAudioTitleList(payload.music);
+      setAccountList(accounts);
+      setHashtagList(hashtags);
+      setAudioTitleList(music);
       setProductList(payload.products);
       setProductCategoriesGrouped(payload.productCategories);
       setProductCategoryLookup(payload.productCategoryMap);

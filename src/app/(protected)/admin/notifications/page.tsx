@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -10,75 +9,64 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/lib/auth-context'
 
-type NotificationOption = {
+type NotificationAction = {
   id: string
   label: string
   description: string
+  href: string
+  variant?: 'default' | 'outline'
 }
 
-type NotificationGroup = {
+type NotificationWorkflow = {
   id: string
   title: string
   description: string
-  options: NotificationOption[]
+  actions: NotificationAction[]
 }
 
-const NOTIFICATION_GROUPS: NotificationGroup[] = [
+const NOTIFICATION_WORKFLOWS: NotificationWorkflow[] = [
   {
-    id: 'pr',
-    title: 'PR関連',
+    id: 'release_notes',
+    title: 'リリースノート',
     description:
-      'PR未判定や差し戻しなど、インフルエンサーPR商材に関する通知設定です。',
-    options: [
+      '新機能や改善点をユーザーへ展開するための2ステップフローです。テンプレート編集で内容を整えてから、周知送信で配信します。',
+    actions: [
       {
-        id: 'pending_pr_alert',
-        label: '未判定PR商材の通知',
-        description:
-          '判定待ちのPR商材が一定件数を超えたときに通知します。',
+        id: 'release_template',
+        label: 'テンプレート編集',
+        description: '既存のテンプレートを編集して次回配信の下準備を行います。',
+        href: '/admin/notifications/release/template',
+        variant: 'outline',
       },
       {
-        id: 'stale_pr_alert',
-        label: '滞留アラート',
-        description: '3日以上判定されていないPR商材がある場合に通知します。',
-      },
-    ],
-  },
-  {
-    id: 'report',
-    title: 'レポート＆トレンド',
-    description: 'My Reportやトレンド関連の更新を知らせる通知です。',
-    options: [
-      {
-        id: 'my_report_ready',
-        label: 'My Report集計完了',
-        description: 'My Reportの最新集計が完了したタイミングで通知します。',
-      },
-      {
-        id: 'trend_digest',
-        label: '週次トレンドダイジェスト',
-        description: '週に一度、主要トレンドのサマリーをメールで受け取ります。',
+        id: 'release_broadcast',
+        label: '周知送信',
+        description: '完成したリリースノートをメール／通知として即時配信します。',
+        href: '/admin/notifications/release/broadcast',
       },
     ],
   },
   {
-    id: 'system',
-    title: 'システム',
-    description: 'システム保守やアカウント関連のお知らせです。',
-    options: [
+    id: 'incident_alerts',
+    title: '障害アラート',
+    description:
+      'インシデント発生時に迅速に周知するためのテンプレ編集＋配信フローです。事前にテンプレを整備することで送信を効率化します。',
+    actions: [
       {
-        id: 'release_note',
-        label: 'リリースノート',
-        description: '新機能や改善内容をまとめたリリースノートを受け取ります。',
+        id: 'incident_template',
+        label: 'テンプレート編集',
+        description: '障害報告テンプレートの最新版をメンテナンスします。',
+        href: '/admin/notifications/incident/template',
+        variant: 'outline',
       },
       {
-        id: 'incident_alert',
-        label: '障害アラート',
-        description: '障害や遅延が発生した際に即座に通知します。',
+        id: 'incident_broadcast',
+        label: '周知送信',
+        description: '影響範囲・復旧状況を含む障害報告を関係者へ届けます。',
+        href: '/admin/notifications/incident/broadcast',
       },
     ],
   },
@@ -86,16 +74,8 @@ const NOTIFICATION_GROUPS: NotificationGroup[] = [
 
 export default function AdminNotificationSettingsPage() {
   const { isAdmin } = useAuth()
+  const router = useRouter()
   const { toast } = useToast()
-  const [preferences, setPreferences] = useState<Record<string, boolean>>(() => {
-    const defaults: Record<string, boolean> = {}
-    NOTIFICATION_GROUPS.forEach((group) => {
-      group.options.forEach((option) => {
-        defaults[option.id] = false
-      })
-    })
-    return defaults
-  })
 
   if (!isAdmin) {
     return (
@@ -108,65 +88,55 @@ export default function AdminNotificationSettingsPage() {
     )
   }
 
-  const handleToggle = (id: string) => {
-    setPreferences((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }))
-  }
-
-  const handleSave = () => {
-    toast({
-      title: '通知設定を保存しました',
-      description: '保存内容は現在ローカルに保持されています。API連携は今後追加予定です。',
-    })
+  const handleNavigate = (href: string) => {
+    if (!href) {
+      toast({
+        title: '画面が未実装です',
+        description: 'リンク先が出来次第、再度お試しください。',
+      })
+      return
+    }
+    router.push(href)
   }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold">通知設定</h1>
+        <h1 className="text-2xl font-semibold">通知フロー管理</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          重要なイベントを見逃さないよう、受け取りたい通知を選択してください。現在はプレースホルダーのUIで、保存内容はブラウザ上で完結します。
+          通知を受け取る設定ではなく、配信担当者向けの操作画面です。対象の通知を選び、テンプレ編集または周知送信のボタンからそれぞれの画面へ遷移してください。
         </p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {NOTIFICATION_GROUPS.map((group) => (
-          <Card key={group.id} className="flex flex-col">
+        {NOTIFICATION_WORKFLOWS.map((workflow) => (
+          <Card key={workflow.id} className="flex flex-col">
             <CardHeader>
-              <CardTitle>{group.title}</CardTitle>
-              <CardDescription>{group.description}</CardDescription>
+              <CardTitle>{workflow.title}</CardTitle>
+              <CardDescription>{workflow.description}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              {group.options.map((option) => (
-                <label
-                  key={option.id}
-                  className="flex items-start gap-3 rounded-lg border border-dashed border-gray-200 p-3"
+              {workflow.actions.map((action) => (
+                <div
+                  key={action.id}
+                  className="rounded-lg border border-dashed border-gray-200 p-3"
                 >
-                  <Checkbox
-                    id={option.id}
-                    checked={preferences[option.id]}
-                    onCheckedChange={() => handleToggle(option.id)}
-                    className="mt-1"
-                  />
-                  <div>
-                    <Label htmlFor={option.id} className="text-base">
-                      {option.label}
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                      {option.description}
-                    </p>
-                  </div>
-                </label>
+                  <p className="text-sm font-medium">{action.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {action.description}
+                  </p>
+                  <Button
+                    className="mt-3 w-full"
+                    variant={action.variant ?? 'default'}
+                    onClick={() => handleNavigate(action.href)}
+                  >
+                    {action.label}画面へ
+                  </Button>
+                </div>
               ))}
             </CardContent>
           </Card>
         ))}
-      </div>
-
-      <div className="flex justify-end border-t border-gray-200 pt-4">
-        <Button onClick={handleSave}>設定を保存</Button>
       </div>
     </div>
   )

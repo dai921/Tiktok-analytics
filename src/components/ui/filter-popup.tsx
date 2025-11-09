@@ -25,8 +25,6 @@ interface FilterPopupProps {
   onFilterChange: (filters: Record<string, FilterValue>) => void
   currentFilters: Record<string, FilterValue>
   categories: string[]
-  accounts: string[]
-  hashtags: string[]
   products: string[]
   // ★ 商品カテゴリとアカウントタイプを追加
   productCategories?: Record<string, string[]>
@@ -41,6 +39,7 @@ interface FilterPopupProps {
     metrics: string[];
     categories: string[];
     sort: string[];
+    text?: string[];
   };
   accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
 }
@@ -202,8 +201,6 @@ export const FilterPopup = ({
   onFilterChange,
   currentFilters,
   categories,
-  accounts,
-  hashtags,
   products: productsList,
   // ★ 新しいpropsを追加
   productCategories = {},
@@ -220,7 +217,7 @@ export const FilterPopup = ({
   const popupRef = useRef<HTMLDivElement>(null)
   const [tempFilters, setTempFilters] = useState<Record<string, FilterValue>>(currentFilters || {})
   // activeTabの初期値をより安全に設定
-  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'sort'>(() => {
+  const [activeTab, setActiveTab] = useState<'video_type' | 'date' | 'metrics' | 'categories' | 'text' | 'sort'>(() => {
     // サーバーサイドでは常に'date'をデフォルトに
     if (typeof window === 'undefined') return 'date'
     return accountTypeContext === 'all' ? 'video_type' : 'date'
@@ -240,6 +237,8 @@ export const FilterPopup = ({
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   // 動画タイプ用の状態
   const [selectedVideoType, setSelectedVideoType] = useState<'all' | 'affiliate' | 'corporate' | 'influencer'>('all')
+  // テキストフィルター用の入力値
+  const [textInputs, setTextInputs] = useState<Record<string, string>>({})
 
   const splitAccountTypeTokens = (value?: string | null) => {
     if (!value) return []
@@ -384,6 +383,15 @@ export const FilterPopup = ({
       setSelectedProducts(initialProducts);
       console.log('[FILTER-POPUP] 商品復元:', { productFilter, initialProducts });
 
+      const initialTextValues: Record<string, string> = {};
+      ['account_name', 'hashtags', 'audioTitle'].forEach(fieldId => {
+        const filter = currentFilters[fieldId];
+        if (filter && typeof filter.value === 'string') {
+          initialTextValues[fieldId] = filter.value;
+        }
+      });
+      setTextInputs(initialTextValues);
+
       console.log('[FILTER-POPUP] フィルター状態復元完了');
       
       // activeTabの更新（クライアントサイドでのみ）
@@ -462,6 +470,11 @@ export const FilterPopup = ({
           options: thirdAccountTypes
         }
       ],
+      text: [
+        { id: 'account_name', label: 'アカウント名', type: 'text' as FilterType },
+        { id: 'hashtags', label: 'ハッシュタグ', type: 'text' as FilterType },
+        { id: 'audioTitle', label: 'BGM', type: 'text' as FilterType }
+      ],
       sort: [
         { id: 'views', label: '再生数', type: 'sort' as FilterType },
         { id: 'viewsIncrease', label: '2日再生増加数', type: 'sort' as FilterType },
@@ -487,6 +500,9 @@ export const FilterPopup = ({
       date: baseFields.date.filter(field => tabFilterFields.date.includes(field.id)),
       metrics: baseFields.metrics.filter(field => tabFilterFields.metrics.includes(field.id)),
       categories: baseFields.categories.filter(field => tabFilterFields.categories.includes(field.id)),
+      text: tabFilterFields.text
+        ? baseFields.text.filter(field => tabFilterFields.text!.includes(field.id))
+        : baseFields.text,
       sort: baseFields.sort.filter(field => tabFilterFields.sort.includes(field.id))
     };
 
@@ -753,6 +769,12 @@ export const FilterPopup = ({
     if (fieldId === 'third_account_type') {
       setSelectedThirdAccountTypes([]);
     }
+    if (['account_name', 'hashtags', 'audioTitle'].includes(fieldId)) {
+      setTextInputs(prev => ({
+        ...prev,
+        [fieldId]: ''
+      }));
+    }
   }
 
   // すべてのフィルターをクリア（簡素化）
@@ -761,9 +783,12 @@ export const FilterPopup = ({
     setSelectedCategories([]);
     setSelectedContentTypes([]); // ★ 空配列に変更
     setSelectedAccountCategories([]);
+    setSelectedSecondAccountTypes([]);
+    setSelectedThirdAccountTypes([]);
     setSelectedProducts([]);
     setPrimarySort(null);
     setSecondarySort(null);
+    setTextInputs({});
     
     console.log('フィルターをクリアしました');
   }
@@ -785,6 +810,7 @@ export const FilterPopup = ({
         };
       }
     });
+
     
     // 2. カテゴリフィルターの処理
     if (selectedCategories.length > 0) {
@@ -1624,6 +1650,69 @@ export const FilterPopup = ({
     )
   }
 
+  const handleTextFilterInput = (fieldId: string, value: string) => {
+    setTextInputs(prev => ({
+      ...prev,
+      [fieldId]: value
+    }));
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      handleClearFilter(fieldId);
+      return;
+    }
+
+    const filterValue: FilterValue = {
+      field: fieldId,
+      type: 'text',
+      value: trimmed,
+      comparison: 'contains',
+      active: true
+    };
+
+    if (fieldId === 'hashtags') {
+      filterValue.isHashtag = true;
+    }
+
+    handleFilterChange(fieldId, filterValue);
+  };
+
+  const renderTextFilter = (field: FilterField) => {
+    const existingValue = textInputs[field.id] ??
+      (typeof tempFilters[field.id]?.value === 'string'
+        ? (tempFilters[field.id]?.value as string)
+        : '');
+    const inputValue = existingValue || '';
+    const isActive = Boolean(tempFilters[field.id]?.value);
+
+    return (
+      <div key={field.id} className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
+          {isActive && (
+            <button
+              onClick={() => handleClearFilter(field.id)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <ClearIcon size={14} />
+            </button>
+          )}
+        </div>
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => handleTextFilterInput(field.id, e.target.value)}
+            placeholder="キーワードを入力"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[#FE2C55] focus:border-[#FE2C55] text-sm"
+          />
+        </div>
+      </div>
+    );
+  };
+
   // ソートタブのレンダリング関数
   // 動画タイプタブのコンテンツをレンダリング
   const renderVideoTypeContent = () => {
@@ -1885,6 +1974,9 @@ export const FilterPopup = ({
             }
             return renderMultiSelectFilter(field)
           }
+          if (field.type === 'text') {
+            return renderTextFilter(field)
+          }
           return null
         })}
       </div>
@@ -1960,6 +2052,14 @@ export const FilterPopup = ({
             onClick={() => setActiveTab('categories')}
           >
             ジャンル
+          </button>
+          <button
+            className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${
+              activeTab === 'text' ? 'text-[#FE2C55] border-b-2 border-[#FE2C55]' : 'text-gray-500'
+            }`}
+            onClick={() => setActiveTab('text')}
+          >
+            テキスト
           </button>
           <button
             className={`px-3 py-2 text-sm font-medium whitespace-nowrap ${

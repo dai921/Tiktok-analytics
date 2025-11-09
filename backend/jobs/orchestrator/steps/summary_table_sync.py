@@ -48,7 +48,7 @@ def update_product_daily_summary(collection_date: Optional[str] = None) -> Dict[
         JOIN 
             frontend_data fd ON pch.video_id = fd.video_id
         JOIN 
-            product_master pm ON fd.product = pm.product_name
+            product_master pm ON pm.product_name COLLATE utf8mb4_ja_0900_as_cs = fd.product
         WHERE 
             pch.collection_date = %s
             AND pch.play_count_increase IS NOT NULL
@@ -127,7 +127,7 @@ def backfill_product_historical_data(product_name, product_category, collection_
         FROM play_count_history pch
         JOIN frontend_data fd ON pch.video_id = fd.video_id
         WHERE pch.collection_date = %s 
-        AND fd.product = %s
+        AND fd.product COLLATE utf8mb4_ja_0900_as_cs = %s
         """
         data_exists = execute_query(data_check_query, (backfill_date, product_name))
         
@@ -155,11 +155,11 @@ def backfill_product_historical_data(product_name, product_category, collection_
         JOIN 
             frontend_data fd ON pch.video_id = fd.video_id
         JOIN 
-            product_master pm ON fd.product = pm.product_name
+            product_master pm ON pm.product_name COLLATE utf8mb4_ja_0900_as_cs = fd.product
         WHERE 
             pch.collection_date = %s
             AND pch.play_count_increase IS NOT NULL
-            AND pm.product_name = %s
+            AND pm.product_name COLLATE utf8mb4_ja_0900_as_cs = %s
         GROUP BY 
             pm.product_name, pm.product_category
         ON DUPLICATE KEY UPDATE
@@ -203,7 +203,7 @@ def backfill_product_historical_data(product_name, product_category, collection_
             FROM 
                 frontend_data fd
             WHERE 
-                fd.product = %s
+                fd.product COLLATE utf8mb4_ja_0900_as_cs = %s
                 AND fd.created_at <= %s
                 AND fd.play_count_increase IS NOT NULL
                 AND fd.likes_count_increase IS NOT NULL
@@ -273,9 +273,9 @@ def update_genre_daily_summary(collection_date):
             pch.collection_date = %s
             AND pch.play_count_increase IS NOT NULL
             AND fd.category IS NOT NULL
-            AND fd.category != ''
+            AND fd.category != '' COLLATE utf8mb4_ja_0900_as_cs
             AND n.n <= 1 + LENGTH(fd.category) - LENGTH(REPLACE(fd.category, ',', ''))
-            AND (FIND_IN_SET('pr', fd.hashtags) > 0 OR fd.hashtags = 'pr')
+            AND (FIND_IN_SET('pr' COLLATE utf8mb4_ja_0900_as_cs, fd.hashtags) > 0 OR fd.hashtags = 'pr' COLLATE utf8mb4_ja_0900_as_cs)
         GROUP BY 
             video_genre
         ON DUPLICATE KEY UPDATE

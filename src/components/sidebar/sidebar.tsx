@@ -12,7 +12,6 @@ import {
   LayoutDashboard, 
   LineChart, 
   Menu, 
-  Settings,
   Eye,
   LogOut,
   FileText,
@@ -21,10 +20,11 @@ import {
   X,
   Mic,
   TrendingUp,
-  Music
+  Music,
+  Shield
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp' | 'Music';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Shield' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp' | 'Music';
 
 type SidebarItemProps = {
   href?: string;
@@ -213,14 +213,25 @@ export function Sidebar() {
             label="動画文字起こし"
             active={pathname.startsWith('/transcription')}
           />
-          {isAdmin && (
+          <SidebarItem
+            href="#"
+            icon="FileText"
+            label="台本作成"
+            active={false}
+            disabled={true}
+            comingSoon={true}
+          />
+        </nav>
+
+        {isAdmin && (
+          <div className="px-2 pb-2">
             <div 
               className="relative group"
               onMouseEnter={() => setIsAdminMenuOpen(true)}
               onMouseLeave={() => setIsAdminMenuOpen(false)}
             >
               <SidebarItem
-                icon="Settings"
+                icon="Shield"
                 label="管理画面"
                 active={pathname.startsWith('/admin')}
               />
@@ -244,16 +255,8 @@ export function Sidebar() {
                 </Link>
               </div>
             </div>
-          )}
-          <SidebarItem
-            href="#"
-            icon="FileText"
-            label="台本作成"
-            active={false}
-            disabled={true}
-            comingSoon={true}
-          />
-        </nav>
+          </div>
+        )}
 
         <div className="px-4 pb-2">
           <a
@@ -360,8 +363,8 @@ function renderIcon(iconName: IconName) {
       return <TrendingUp size={20} />;
     case 'Music':
       return <Music size={20} />;
-    case 'Settings':
-      return <Settings size={20} />;
+    case 'Shield':
+      return <Shield size={20} />;
     default:
       return null;
   }

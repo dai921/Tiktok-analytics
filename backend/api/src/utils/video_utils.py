@@ -2,6 +2,7 @@ from typing import Dict, List, Optional
 from fastapi import Request
 from src.db.database import execute_query, fetch_one, format_video
 from datetime import datetime, timedelta
+from src.utils.search import prepare_fulltext_keyword
 
 def build_video_query(table_name: str = "frontend_data") -> str:
     """動画クエリの基本部分を構築"""
@@ -157,16 +158,14 @@ def apply_other_filters(request: Request, params: Dict, where_clauses: List[str]
 
 def apply_search_keyword_filter(request: Request, params: Dict, where_clauses: List[str], table_name: str):
     """検索キーワードフィルターを適用"""
-    keyword = request.query_params.get('search_keyword')
-    if not keyword:
+    fulltext_keyword = prepare_fulltext_keyword(request.query_params.get('search_keyword'))
+    if not fulltext_keyword:
         return
 
-    escaped_keyword = keyword.replace("_", r"\_").replace("%", r"\%")
-    params["search_keyword"] = f"%{escaped_keyword}%"
-
-    search_column = f"COALESCE({table_name}.search_text, '')" if table_name else "COALESCE(search_text, '')"
+    params["search_keyword"] = fulltext_keyword
+    search_column = f"{table_name}.search_text" if table_name else "search_text"
     where_clauses.append(
-        f"LOWER({search_column}) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:search_keyword)"
+        f"MATCH({search_column}) AGAINST (:search_keyword IN BOOLEAN MODE)"
     )
 
 def apply_numeric_filters(request: Request, params: Dict, where_clauses: List[str]):

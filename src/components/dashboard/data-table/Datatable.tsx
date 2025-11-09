@@ -79,9 +79,6 @@ interface DataTableProps {
   // ★ 修正: 型の一貫性を保つ
   onFilterOptionsUpdate?: (options: {
     categories: string[];
-    accounts: string[];
-    hashtags: string[];
-    music: string[];
     products: string[];
     productCategories: Record<string, string[]>;
     productCategoryMap: Record<string, string>;
@@ -93,9 +90,6 @@ interface DataTableProps {
   }) => void;
   filterOptions?: {
     categories: string[];
-    accounts: string[];
-    hashtags: string[];
-    music: string[];
     products: string[];
     productCategories: Record<string, string[]>;
     productCategoryMap: Record<string, string>;
@@ -142,9 +136,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     onFilterOptionsUpdate, // ★ 追加
     filterOptions = {      // ★ 追加: デフォルト値を設定
       categories: [],
-      accounts: [],
-      hashtags: [],
-      music: [],
       products: [],
       productCategories: {},
       productCategoryMap: {},
@@ -250,15 +241,12 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     
     // カスタムフックからフィルターオプションを取得
     // ★ 修正: onFilterOptionsUpdateを渡す
-    const {
-      categoryList,
-      accountList,
-      hashtagList,
-      productList,
-      audioTitleList,
-      productCategories,
-      productCategoryMap,
-      isLoadingFilterOptions,
+    const { 
+      categoryList, 
+      productList, 
+      productCategories, 
+      productCategoryMap, 
+      isLoadingFilterOptions, 
       getFilteredOptions
     } = useFilterOptions(currentFilters, onFilterOptionsUpdate);
 
@@ -702,8 +690,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilterChange={handleBulkFilterChange}
             currentFilters={columnFilters}
             categories={categoryList}
-            accounts={accountList}
-            hashtags={hashtagList}
             // ★ 修正: filterOptionsはデフォルト値があるのでオプショナルチェイニング不要
             products={productList.length ? productList : filterOptions.products}
             productCategories={resolvedProductCategories}

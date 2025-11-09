@@ -685,9 +685,6 @@ const Dashboard = () => {
   // ★ 追加: DataTableからフィルターオプションを受け取る
   const [filterOptions, setFilterOptions] = useState({
     categories: [] as string[],
-    accounts: [] as string[],
-    hashtags: [] as string[],
-    music: [] as string[],
     products: [] as string[],
     productCategories: {} as Record<string, string[]>,
     productCategoryMap: {} as Record<string, string>,
@@ -701,9 +698,6 @@ const Dashboard = () => {
   // ★ 修正: フィルターオプション更新のハンドラーの型を統一
   const handleFilterOptionsUpdate = useCallback((options: {
     categories: string[];
-    accounts: string[];
-    hashtags: string[];
-    music: string[];
     products: string[];
     productCategories: Record<string, string[]>;
     productCategoryMap: Record<string, string>;
