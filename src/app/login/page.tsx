@@ -43,7 +43,9 @@ export default function LoginPage() {
       }
 
       const data = await response.json()
-      login(data.access_token, data.token_type)
+      const isAdmin = Boolean(data?.is_admin)
+      const isDeveloper = Boolean(data?.is_developer)
+      login(data.access_token, data.token_type, isAdmin, isDeveloper)
       router.push('/dashboard')
     } catch (error) {
       setError(error instanceof Error ? error.message : 'ログインに失敗しました')

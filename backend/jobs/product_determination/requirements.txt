@@ -1,0 +1,7 @@
+python-dotenv
+pymysql
+google-cloud-secret-manager
+google-cloud-storage
+google-cloud-pubsub
+google-generativeai
+yt-dlp

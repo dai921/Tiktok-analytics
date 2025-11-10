@@ -20,6 +20,7 @@ class User(UserBase):
     created_at: datetime
     updated_at: datetime
     is_admin: bool = False
+    is_developer: bool = False
 
     class Config:
         from_attributes = True
@@ -41,6 +42,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     is_admin: bool = False
+    is_developer: bool = False
 
 class TokenData(BaseModel):
     email: Optional[str] = None

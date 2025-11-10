@@ -29,7 +29,8 @@ type Preset = {
     preset_id: string
     name: string
     is_default: boolean
-    payload: { currentFilters: Record<string, FilterQuery>; visibleColumns?: string[] } // ← 追加
+    context_key: string
+    payload: { currentFilters: Record<string, FilterQuery>; visibleColumns?: string[]; tab?: { isPrOnly?: boolean; isCorporateOnly?: boolean; isInfluencerOnly?: boolean } } // ← 拡張
   }
 
 export type PresetMenuProps = {
@@ -41,6 +42,8 @@ export type PresetMenuProps = {
   getVisibleColumns?: () => string[];        // ← 追加
   applyVisibleColumns?: (cols: string[]) => void; // ← 追加
   getVisibleColumnsByTab?: () => Record<TabType, string[]>; // ← 追加
+  setTabFlags?: (flags: { isPrOnly?: boolean; isCorporateOnly?: boolean; isInfluencerOnly?: boolean }) => void; // ← 追加
+  notificationButton?: React.ReactNode;
 }
 
 const tabFlags = (tabType: TabType) => ({
@@ -57,7 +60,9 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   getFiltersByTab,
   getVisibleColumns,
   applyVisibleColumns,
-  getVisibleColumnsByTab
+  getVisibleColumnsByTab,
+  setTabFlags,
+  notificationButton
 }) => {
   const [presets, setPresets] = useState<Preset[]>([])
   const [loading, setLoading] = useState(false)
@@ -67,32 +72,59 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   const ctx = useMemo(() => contextKeyFromTab(tabType), [tabType])
   const [saveAll, setSaveAll] = useState(false) // ← 追加
 
+  const [hasLoaded, setHasLoaded] = useState(false)
+
   const load = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await listPresets(ctx)
+      // 現在タブに限定せず全てのプリセットを取得
+      const res = await listPresets()
       setPresets((res?.presets || []) as any)
+      setHasLoaded(true)
     } catch (e) {
       console.warn(e)
     } finally {
       setLoading(false)
     }
-  }, [ctx])
+  }, [])
 
   useEffect(() => {
-    load()
-  }, [load])
+    setHasLoaded(false)
+  }, [ctx])
+
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (open && !hasLoaded) {
+      load()
+    }
+  }, [hasLoaded, load])
 
   const handleApply = useCallback((p: Preset) => {
     const incoming = p?.payload?.currentFilters || {}
-    applyFilters(incoming, tabType)
+    // ターゲットタブを payload.tab または context_key から推定
+    const inferredFlags = p?.payload?.tab || (() => {
+      const suffix = (p?.context_key || '').split(':').pop() as TabType;
+      return {
+        isPrOnly: suffix === 'affiliate',
+        isCorporateOnly: suffix === 'corporate',
+        isInfluencerOnly: suffix === 'influencer'
+      };
+    })();
+    const targetTab: TabType =
+      inferredFlags?.isCorporateOnly ? 'corporate' :
+      inferredFlags?.isInfluencerOnly ? 'influencer' :
+      inferredFlags?.isPrOnly ? 'affiliate' : 'all';
+
+    // 1) 先に対象タブのフィルタ・カラムを適用
+    applyFilters(incoming, targetTab)
     const cols = p?.payload?.visibleColumns
     if (Array.isArray(cols) && cols.length) {
       console.log('[DEBUG] プリセット適用のvisibleColumns:', cols);
       applyVisibleColumns?.(cols)
     }
+    // 2) 次にタブフラグを切替えて表示を移動
+    setTabFlags?.(inferredFlags);
     toast({ title: '保存した表示設定を適用しました', description: p.name })
-  }, [applyFilters, applyVisibleColumns, tabType])
+  }, [applyFilters, applyVisibleColumns, setTabFlags])
 
   const handleSave = useCallback(async () => {
     if (!name.trim()) {
@@ -132,16 +164,18 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
         return
       }
 
-      // 従来の単体保存
-      const filters = getFilters()
-      const cols = getVisibleColumns?.() ?? []
+      // 従来の単体保存（タブ別状態を最優先で使用）
+      const filtersByTab = getFiltersByTab?.()
+      const colsByTab = (getVisibleColumnsByTab?.() ?? {}) as Record<TabType, string[]>
+      const filters = (filtersByTab && filtersByTab[tabType]) || getFilters()
+      const cols = (colsByTab && colsByTab[tabType]) || (getVisibleColumns?.() ?? [])
       console.log('[DEBUG] save visibleColumns =', cols);
       await createPreset({
         name: name.trim(),
         context_key: ctx,
         payload: {
           currentFilters: filters,
-          visibleColumns: getVisibleColumns?.() ?? [], // ← 追加
+          visibleColumns: cols, // ← タブ別の列設定を優先
           tab: tabFlags(tabType),
         },
         is_default: makeDefault
@@ -181,7 +215,7 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
   return (
     <>
       <div className="flex items-center gap-2">
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={handleMenuOpenChange}>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" disabled={loading}>
               表示設定
@@ -190,14 +224,24 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
           <DropdownMenuContent align="start" className="min-w-[280px]">
             <DropdownMenuLabel>表示設定</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {loading && presets.length === 0 && (
+              <DropdownMenuItem disabled>読み込み中...</DropdownMenuItem>
+            )}
             {presets.length === 0 && (
               <DropdownMenuItem disabled>なし</DropdownMenuItem>
             )}
-            {presets.map((p) => (
+            {presets.map((p) => {
+              const tab =
+                (p?.payload?.tab?.isCorporateOnly && 'corporate') ||
+                (p?.payload?.tab?.isInfluencerOnly && 'influencer') ||
+                (p?.payload?.tab?.isPrOnly && 'affiliate') ||
+                ((p?.context_key || '').split(':').pop() as TabType || 'all');
+              const tabLabel = tab === 'corporate' ? '企業' : tab === 'affiliate' ? 'アフィ' : tab === 'influencer' ? 'インフル' : 'すべて';
+              return (
               <DropdownMenuItem key={p.preset_id} onClick={() => handleApply(p)}>
                 <div className="flex w-full items-center justify-between">
                   <div className="truncate">
-                    {p.name}
+                    <span className="mr-2 text-xs text-gray-500">[{tabLabel}]</span>{p.name}
                     {p.is_default ? <span className="ml-2 text-xs text-sky-600">(デフォルト)</span> : null}
                   </div>
                   <div className="flex items-center gap-2">
@@ -206,13 +250,14 @@ export const PresetMenu: React.FC<PresetMenuProps> = ({
                   </div>
                 </div>
               </DropdownMenuItem>
-            ))}
+            )})}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={clearFilters}>クリア</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button variant="outline" onClick={() => { setSaveAll(true); setOpenSave(true) }}>表示設定を保存</Button>
+        <Button variant="outline" onClick={() => { setSaveAll(false); setOpenSave(true) }}>表示設定を保存</Button>
+        {notificationButton ?? null}
       </div>
 
       <Dialog

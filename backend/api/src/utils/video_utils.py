@@ -2,19 +2,61 @@ from typing import Dict, List, Optional
 from fastapi import Request
 from src.db.database import execute_query, fetch_one, format_video
 from datetime import datetime, timedelta
+from src.utils.search import prepare_fulltext_keyword
 
 def build_video_query(table_name: str = "frontend_data") -> str:
     """動画クエリの基本部分を構築"""
+    if table_name in {"frontend_data", "frontend_corporate_data"}:
+        second_third_columns = f"{table_name}.second_account_type, {table_name}.third_account_type,"
+    else:
+        second_third_columns = "NULL as second_account_type, NULL as third_account_type,"
+
+    if table_name in {"frontend_data", "frontend_corporate_data"}:
+        account_hashtags_column = f"COALESCE({table_name}.account_hashtags, corp.account_hashtags) AS account_hashtags"
+        corporate_join = f"""
+            LEFT JOIN (
+                SELECT al.favorite_user_username AS account_name, ca.account_hashtags
+                FROM corporate_accounts ca
+                JOIN account_list al ON al.id = ca.account_id
+            ) AS corp ON corp.account_name = {table_name}.account_name
+        """
+    else:
+        account_hashtags_column = "NULL AS account_hashtags"
+        corporate_join = ""
+
     return f"""
         SELECT 
-            url, thumbnail_url, created_at, play_count, play_count_increase, 
-            ten_days_increase, account_name, display_name, content_type, 
-            likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
-            comment_count_increase, ten_days_comment_increase, account_type,
-            hashtags, music_info, caption, category, product, save_count, 
-            save_count_increase, ten_days_save_increase,
-            followers, play_count_per_follower, play_increase_per_follower
+            {table_name}.url,
+            {table_name}.thumbnail_url,
+            {table_name}.created_at,
+            {table_name}.play_count,
+            {table_name}.play_count_increase,
+            {table_name}.ten_days_increase,
+            {table_name}.account_name,
+            {table_name}.display_name,
+            {table_name}.content_type,
+            {table_name}.likes_count,
+            {table_name}.comment_count,
+            {table_name}.likes_count_increase,
+            {table_name}.ten_days_likes_increase,
+            {table_name}.comment_count_increase,
+            {table_name}.ten_days_comment_increase,
+            {table_name}.account_type,
+            {second_third_columns}
+            {table_name}.hashtags,
+            {table_name}.music_info,
+            {table_name}.caption,
+            {table_name}.category,
+            {table_name}.product,
+            {table_name}.save_count,
+            {table_name}.save_count_increase,
+            {table_name}.ten_days_save_increase,
+            {table_name}.followers,
+            {table_name}.play_count_per_follower,
+            {table_name}.play_increase_per_follower,
+            {account_hashtags_column}
         FROM {table_name}
+        {corporate_join}
     """
 
 def apply_filters(query: str, params: Dict, where_clauses: List[str], request: Request, table_name: str = "frontend_data") -> tuple:
@@ -33,7 +75,8 @@ def apply_filters(query: str, params: Dict, where_clauses: List[str], request: R
     apply_hashtag_filters(request, params, where_clauses)
     
     # その他のフィルター処理
-    apply_other_filters(request, params, where_clauses)
+    apply_other_filters(request, params, where_clauses, table_name)
+    apply_search_keyword_filter(request, params, where_clauses, table_name)
     
     # WHERE句の追加
     if where_clauses:
@@ -87,7 +130,7 @@ def apply_hashtag_filters(request: Request, params: Dict, where_clauses: List[st
             where_clauses.append("LOWER(hashtags) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:hashtags)")
             params["hashtags"] = f"%{escaped_hashtags}%"
 
-def apply_other_filters(request: Request, params: Dict, where_clauses: List[str]):
+def apply_other_filters(request: Request, params: Dict, where_clauses: List[str], table_name: str):
     """その他のフィルターを適用"""
     # 数値フィルター
     apply_numeric_filters(request, params, where_clauses)
@@ -104,8 +147,26 @@ def apply_other_filters(request: Request, params: Dict, where_clauses: List[str]
     # アカウントタイプフィルター
     apply_account_type_filters(request, params, where_clauses)
     
+    # �A�Ώ�A�J�E���g�^�C�v�t�B���^�[
+    apply_secondary_account_type_filters(request, params, where_clauses, table_name)
+    
+    # ����A�J�E���g�^�C�v�t�B���^�[
+    apply_third_account_type_filters(request, params, where_clauses, table_name)
+    
     # 音楽情報フィルター
     apply_music_filters(request, params, where_clauses)
+
+def apply_search_keyword_filter(request: Request, params: Dict, where_clauses: List[str], table_name: str):
+    """検索キーワードフィルターを適用"""
+    fulltext_keyword = prepare_fulltext_keyword(request.query_params.get('search_keyword'))
+    if not fulltext_keyword:
+        return
+
+    params["search_keyword"] = fulltext_keyword
+    search_column = f"{table_name}.search_text" if table_name else "search_text"
+    where_clauses.append(
+        f"MATCH({search_column}) AGAINST (:search_keyword IN BOOLEAN MODE)"
+    )
 
 def apply_numeric_filters(request: Request, params: Dict, where_clauses: List[str]):
     """数値フィルターを適用"""
@@ -379,6 +440,60 @@ def apply_account_type_filters(request: Request, params: Dict, where_clauses: Li
             escaped_account_type = account_type.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("account_type LIKE :account_type")
             params["account_type"] = f"%{escaped_account_type}%"
+
+def apply_secondary_account_type_filters(request: Request, params: Dict, where_clauses: List[str], table_name: str):
+    """セカンダリアカウントタイプのフィルタを適用"""
+    if table_name not in {"frontend_data", "frontend_corporate_data"}:
+        return
+
+    filters = []
+    count_param = request.query_params.get('second_account_type_count')
+    if count_param and count_param.isdigit():
+        count = int(count_param)
+        for i in range(count):
+            value = request.query_params.get(f'second_account_type_{i}')
+            if value:
+                escaped_value = value.replace("_", r"\_").replace("%", r"\%")
+                filters.append(f"second_account_type LIKE :second_account_type_{i}")
+                params[f"second_account_type_{i}"] = f"%{escaped_value}%"
+
+    if filters:
+        where_clauses.append(f"({' OR '.join(filters)})")
+        return
+
+    single_value = request.query_params.get('second_account_type')
+    if single_value:
+        escaped_value = single_value.replace("_", r"\_").replace("%", r"\%")
+        where_clauses.append("second_account_type LIKE :second_account_type")
+        params["second_account_type"] = f"%{escaped_value}%"
+
+
+def apply_third_account_type_filters(request: Request, params: Dict, where_clauses: List[str], table_name: str):
+    """サードアカウントタイプのフィルタを適用"""
+    if table_name not in {"frontend_data", "frontend_corporate_data"}:
+        return
+
+    filters = []
+    count_param = request.query_params.get('third_account_type_count')
+    if count_param and count_param.isdigit():
+        count = int(count_param)
+        for i in range(count):
+            value = request.query_params.get(f'third_account_type_{i}')
+            if value:
+                escaped_value = value.replace("_", r"\_").replace("%", r"\%")
+                filters.append(f"third_account_type LIKE :third_account_type_{i}")
+                params[f"third_account_type_{i}"] = f"%{escaped_value}%"
+
+    if filters:
+        where_clauses.append(f"({' OR '.join(filters)})")
+        return
+
+    single_value = request.query_params.get('third_account_type')
+    if single_value:
+        escaped_value = single_value.replace("_", r"\_").replace("%", r"\%")
+        where_clauses.append("third_account_type LIKE :third_account_type")
+        params["third_account_type"] = f"%{escaped_value}%"
+
 
 def apply_music_filters(request: Request, params: Dict, where_clauses: List[str]):
     """音楽情報フィルターを適用"""

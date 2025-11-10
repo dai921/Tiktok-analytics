@@ -237,9 +237,8 @@ def update_sound_summary(collection_date):
         execute_write_query(delete_sound_videos_query, (collection_date,))
         
         # BGMサマリーの集計（カテゴリ別のみ、ALL除外）
-        # DUPLICATE対応：INSERT を REPLACE INTO に変更
         sound_summary_query = """
-        REPLACE INTO sound_daily_summary_top150
+        INSERT INTO sound_daily_summary_top150
         (fetch_date, sound_name, plays_increase, over_100k, post_count, parent_account_type)
         WITH popular_original AS (
             SELECT music_info
@@ -309,6 +308,10 @@ def update_sound_summary(collection_date):
         fetch_date, sound_name, plays_increase, over_100k, post_count, parent_account_type
         FROM ranked
         WHERE rn <= 150
+        ON DUPLICATE KEY UPDATE
+            plays_increase = VALUES(plays_increase),
+            over_100k = VALUES(over_100k),
+            post_count = VALUES(post_count)
         """
         
         execute_write_query(sound_summary_query, (collection_date, collection_date, collection_date, collection_date))
@@ -330,9 +333,8 @@ def update_sound_summary(collection_date):
             logger.info(f"BGM '{sound_name}' ({account_type}) のTOP100動画を処理中...")
             
             # 各BGM＋カテゴリのTOP100動画を取得・挿入
-            # DUPLICATE対応：INSERT を REPLACE INTO に変更
             sound_videos_query = """
-            REPLACE INTO sound_daily_top100_videos 
+            INSERT INTO sound_daily_top100_videos 
             (video_id, fetch_date, sound_name, plays_increase, likes_increase, post_time, thumbnail_url, parent_account_type)
             SELECT DISTINCT
                 fd.video_id,
@@ -380,6 +382,12 @@ def update_sound_summary(collection_date):
             ORDER BY 
                 pch.play_count_increase DESC
             LIMIT 100
+            ON DUPLICATE KEY UPDATE
+                plays_increase = VALUES(plays_increase),
+                likes_increase = VALUES(likes_increase),
+                post_time = VALUES(post_time),
+                thumbnail_url = VALUES(thumbnail_url),
+                parent_account_type = VALUES(parent_account_type)
             """
             
             execute_write_query(sound_videos_query, (collection_date, sound_name, account_type, sound_name, sound_name, sound_name, collection_date, account_type))

@@ -128,10 +128,11 @@ function ProductBadge({ product, productCategory, className, ...props }: Product
 // アカウントタイプバッジのプロパティ
 export interface AccountTypeBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   accountType: string;
+  label?: string;
 }
 
 // アカウントタイプバッジコンポーネント
-function AccountTypeBadge({ accountType, className, ...props }: AccountTypeBadgeProps) {
+function AccountTypeBadge({ accountType, label, className, ...props }: AccountTypeBadgeProps) {
   // アカウントタイプに基づいて色を決定
   // 優先順位: アフィリエイト → インフルエンサー → 企業
   const colors = accountType in AFFILIATE_TYPE_COLORS
@@ -155,7 +156,7 @@ function AccountTypeBadge({ accountType, className, ...props }: AccountTypeBadge
       }}
       {...props}
     >
-      {accountType}
+      {label ?? accountType}
     </div>
   )
 }

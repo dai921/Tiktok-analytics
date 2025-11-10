@@ -69,6 +69,9 @@ export interface VideoData {
   ten_days_increase: number
   content_type: string
   account_type: string
+  account_hashtags?: string | null
+  second_account_type?: string
+  third_account_type?: string
   likes_count_increase: number
   ten_days_likes_increase: number
   comment_count_increase: number
@@ -172,6 +175,8 @@ export interface TikTokVideo {
   caption: string;
   category: string;
   account_type: string;
+  second_account_type?: string;
+  third_account_type?: string;
   likes_count_increase: number;
   ten_days_likes_increase: number;
   comment_count_increase: number;
@@ -201,4 +206,3 @@ export interface Sort {
   field: string;
   direction: 'asc' | 'desc';
 }
-

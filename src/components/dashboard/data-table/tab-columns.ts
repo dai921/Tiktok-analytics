@@ -34,6 +34,8 @@ export const TAB_DEFAULT_COLUMNS = {
   corporate: [
     'thumbnail_url',
     'account_type',
+    'second_account_type',
+    'third_account_type',
     'createdAt',
     'views',
     'viewsIncrease',
@@ -79,29 +81,25 @@ export const TAB_FILTER_FIELDS = {
   all: {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
-    categories: ['content_type', 'category', 'product', 'account_type'], 
-    text: ['account_name', 'hashtags', 'audioTitle'],
+    categories: ['content_type', 'category', 'product', 'account_type', 'second_account_type', 'third_account_type'], 
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   },
   affiliate: {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
     categories: ['content_type', 'category', 'product'], // account_typeを除外
-    text: ['account_name', 'hashtags', 'audioTitle'],
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   },
   corporate: {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
-    categories: ['content_type', 'account_type'], // category, productを除外
-    text: ['account_name', 'hashtags', 'audioTitle'],
+    categories: ['content_type', 'account_type', 'second_account_type', 'third_account_type'], // category, productを除外
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   },
   influencer: {
     date: ['createdAt'],
     metrics: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower'],
     categories: ['content_type', 'account_type'], // category, productを除外
-    text: ['account_name', 'hashtags', 'audioTitle'],
     sort: ['views', 'viewsIncrease', 'ten_days_increase', 'likes', 'likes_count_increase', 'ten_days_likes_increase', 'comments', 'comment_count_increase', 'ten_days_comment_increase', 'saves', 'saves_count_increase', 'ten_days_saves_increase',  'play_count_per_follower', 'play_increase_per_follower']
   }
 };

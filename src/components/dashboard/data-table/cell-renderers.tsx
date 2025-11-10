@@ -11,7 +11,10 @@ import { AccountTypeBadge } from '@/components/ui/badge';
 export const TableContext = createContext<{
   setSelectedText?: (data: { title: string; content: string }) => void;
   productCategories?: Record<string, string>;
-}>({});
+  thirdAccountTypeMap?: Record<string, string>;
+}>({
+  thirdAccountTypeMap: {}
+});
 
 export const renderThumbnailCell = (row: VideoData) => {
   let thumbnailUrl = null;
@@ -219,6 +222,83 @@ export const renderDateCell = (row: VideoData) => {
     }
 };
 
+// 目的・中ジャンルカラム共通のバッジ描画
+const normalizeAccountSubtypeValues = (value?: string | string[] | null): string[] => {
+  if (!value) return [];
+
+  const values = Array.isArray(value) ? value : [value];
+  const splitter = /[\u002C\u3001\uFF0C\uFF0F/\u30FB\s]+/u;
+
+  const normalized = values
+    .flatMap((item) => (item ?? '')
+      .split(splitter)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    );
+
+  return Array.from(new Set(normalized));
+};
+
+// third_account_type では中点「・」で分割しない
+const splitWithoutMiddleDot = (value?: string | string[] | null): string[] => {
+  if (!value) return [];
+
+  const values = Array.isArray(value) ? value : [value];
+  const splitter = /[\u002C\u3001\uFF0C\s]+/u; // 「・」(\u30FB) とスラッシュを除外
+
+  const normalized = values
+    .flatMap((item) => (item ?? '')
+      .split(splitter)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    );
+
+  return Array.from(new Set(normalized));
+};
+
+const SecondAccountTypeCell = ({ row }: { row: VideoData }) => {
+  const types = normalizeAccountSubtypeValues(row.second_account_type ?? null);
+
+  return (
+    <div className="w-[150px] min-w-[150px]">
+      <div className="flex flex-wrap gap-1 justify-start items-center">
+        {types.map((type, idx) => (
+          <AccountTypeBadge key={`${type}-${idx}`} accountType={type} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ThirdAccountTypeCellComponent = ({ row }: { row: VideoData }) => {
+  const { thirdAccountTypeMap } = useContext(TableContext);
+
+  const thirdTypes = splitWithoutMiddleDot(row.third_account_type ?? null);
+  const accountTypeCandidates = normalizeAccountSubtypeValues(row.account_type ?? null);
+  const fallbackParent = accountTypeCandidates[0] || '';
+
+  return (
+    <div className="w-[150px] min-w-[150px]">
+      <div className="flex flex-wrap gap-1 justify-start items-center">
+        {thirdTypes.map((third, idx) => {
+          const parent =
+            thirdAccountTypeMap?.[third] ||
+            accountTypeCandidates[idx] ||
+            fallbackParent;
+
+          return (
+            <AccountTypeBadge
+              key={`${third}-${idx}`}
+              accountType={parent || third}
+              label={third}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 // アカウントジャンルセルレンダラー
 export const renderAccountTypeCell = (row: VideoData) => { 
   const accountType = row.account_type;
@@ -298,6 +378,14 @@ export const renderAccountTypeCell = (row: VideoData) => {
       </div>
     </div>
   );
+};
+
+export const renderSecondAccountTypeCell = (row: VideoData) => {
+  return <SecondAccountTypeCell row={row} />;
+};
+
+export const renderThirdAccountTypeCell = (row: VideoData) => {
+  return <ThirdAccountTypeCellComponent row={row} />;
 };
 
 // 再生数セルレンダラー

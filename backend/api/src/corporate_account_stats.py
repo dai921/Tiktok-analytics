@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Query
+from typing import Optional, List
 from src.db.database import get_db_connection
 from src.utils.logger_config import setup_logger
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import traceback
+import re
 
 router = APIRouter()
 logger = setup_logger()
@@ -72,20 +73,40 @@ async def get_corporate_genres():
         genres_results = result.mappings().all()
         
         # 結果を整形
-        genres_data = []
+        aggregated_genres = {}
         for row in genres_results:
-            account_type = row["account_type"]
-            # 追加のカンマ除去処理（念のため）
-            if account_type:
-                account_type = account_type.rstrip(',').strip()
-            
-            genres_data.append({
-                "account_type": account_type,
-                "recruitment_count": int(row["recruitment_count"] or 0),
-                "marketing_count": int(row["marketing_count"] or 0),
-                "total_count": int(row["total_count"] or 0)
-            })
-        
+            raw_account_type = (row["account_type"] or "").rstrip(',').strip()
+            if not raw_account_type:
+                continue
+
+            recruitment_count = int(row["recruitment_count"] or 0)
+            marketing_count = int(row["marketing_count"] or 0)
+            total_count = int(row["total_count"] or 0)
+
+            tokens = [token.strip() for token in raw_account_type.split(',') if token.strip()]
+            if not tokens:
+                tokens = [raw_account_type]
+
+            for token in tokens:
+                entry = aggregated_genres.setdefault(token, {
+                    "account_type": token,
+                    "recruitment_count": 0,
+                    "marketing_count": 0,
+                    "total_count": 0
+                })
+
+                entry["recruitment_count"] += recruitment_count
+                entry["marketing_count"] += marketing_count
+                entry["total_count"] += total_count
+
+        genres_data = sorted(
+            aggregated_genres.values(),
+            key=lambda item: (
+                1 if item["account_type"] == "その他" else 0,
+                -item["total_count"]
+            )
+        )
+
         logger.info(f"企業ジャンル統計取得完了: {len(genres_data)}件のジャンル")
         
         return {
@@ -114,7 +135,8 @@ async def get_corporate_videos_by_genre(
     purpose: str,  # '採用' または '集客'
     start_date: Optional[str] = None,  # 追加
     end_date: Optional[str] = None,    # 追加
-    limit: Optional[int] = 20  # 9 から 20 に変更
+    limit: Optional[int] = 20,  # 9 から 20 に変更
+    third_account_types: Optional[List[str]] = Query(None, alias="third_account_type")
 ):
     """ジャンル・目的別の企業動画を取得するエンドポイント"""
     
@@ -161,7 +183,37 @@ async def get_corporate_videos_by_genre(
         conn = get_db_connection()
         
         # corporate_daily_top100_videosから期間合計を取得（frontend_corporate_dataとJOIN）
-        videos_sql = text("""
+        sanitized_third_types: List[str] = []
+        if third_account_types:
+            for raw in third_account_types:
+                if not raw:
+                    continue
+                value = raw.strip()
+                if value:
+                    sanitized_third_types.append(value)
+        sanitized_third_types = list(dict.fromkeys(sanitized_third_types))
+
+        filters = [
+            "ct.fetch_date BETWEEN :start_date AND :end_date",
+            """TRIM(TRAILING ',' FROM 
+                CASE 
+                    WHEN ct.account_type LIKE '%採用%' THEN TRIM(REPLACE(ct.account_type, '採用', ''))
+                    WHEN ct.account_type LIKE '%集客%' THEN TRIM(REPLACE(ct.account_type, '集客', ''))
+                    ELSE ct.account_type
+                END
+            ) LIKE :account_type_pattern""",
+            "ct.second_account_type = :purpose"
+        ]
+
+        if sanitized_third_types:
+            third_clauses = []
+            for idx, _ in enumerate(sanitized_third_types):
+                third_clauses.append(f"ct.third_account_type LIKE :third_account_type_pattern_{idx}")
+            filters.append(f"({' OR '.join(third_clauses)})")
+
+        where_clause = " AND ".join(filters)
+
+        videos_sql = text(f"""
             SELECT 
                 fcd.url,
                 fcd.thumbnail_url,
@@ -172,19 +224,12 @@ async def get_corporate_videos_by_genre(
                 fcd.account_name,
                 fcd.display_name,
                 ct.account_type,
-                ct.second_account_type
+                ct.second_account_type,
+                ct.third_account_type
             FROM corporate_daily_top100_videos ct
             LEFT JOIN frontend_corporate_data fcd ON ct.video_id COLLATE utf8mb4_unicode_ci = fcd.video_id COLLATE utf8mb4_unicode_ci
-            WHERE ct.fetch_date BETWEEN :start_date AND :end_date
-            AND TRIM(TRAILING ',' FROM 
-                CASE 
-                    WHEN ct.account_type LIKE '%採用%' THEN TRIM(REPLACE(ct.account_type, '採用', ''))
-                    WHEN ct.account_type LIKE '%集客%' THEN TRIM(REPLACE(ct.account_type, '集客', ''))
-                    ELSE ct.account_type
-                END
-            ) LIKE :account_type_pattern
-            AND ct.second_account_type = :purpose
-            GROUP BY ct.video_id, fcd.url, fcd.thumbnail_url, fcd.play_count, fcd.account_name, fcd.display_name, ct.account_type, ct.second_account_type
+            WHERE {where_clause}
+            GROUP BY ct.video_id, fcd.url, fcd.thumbnail_url, fcd.play_count, fcd.account_name, fcd.display_name, ct.account_type, ct.second_account_type, ct.third_account_type
             ORDER BY SUM(ct.plays_increase) DESC
             LIMIT :limit
             """)
@@ -196,6 +241,10 @@ async def get_corporate_videos_by_genre(
             "purpose": purpose,
             "limit": limit
         }
+
+        if sanitized_third_types:
+            for idx, value in enumerate(sanitized_third_types):
+                params[f"third_account_type_pattern_{idx}"] = f"%{value}%"
         
         result = conn.execute(videos_sql, params)
         videos_results = result.mappings().all()
@@ -213,7 +262,8 @@ async def get_corporate_videos_by_genre(
                 "account_name": row["account_name"] or "",
                 "display_name": row["display_name"] or "",
                 "account_type": row["account_type"] or "",
-                "second_account_type": row["second_account_type"] or purpose
+                "second_account_type": row["second_account_type"] or purpose,
+                "third_account_type": row["third_account_type"] or ""
             })
         
         logger.info(f"企業動画取得完了: {len(videos_data)}件の動画")
@@ -237,6 +287,89 @@ async def get_corporate_videos_by_genre(
     finally:
         if conn:
             conn.close() 
+
+
+@router.get("/api/corporate-third-account-types")
+async def get_corporate_third_account_types(account_type: str):
+    """指定した企業ジャンルに紐づく中ジャンル一覧を取得"""
+    conn = None
+    try:
+        conn = get_db_connection()
+
+        third_types = set()
+        third_type_map = {}
+        split_pattern = re.compile(r"[、,，]+")
+
+        category_query = text("""
+            SELECT third_account_type
+            FROM corporate_category
+            WHERE account_type = :account_type
+              AND third_account_type IS NOT NULL
+              AND third_account_type != ''
+        """)
+
+        category_rows = conn.execute(category_query, {"account_type": account_type})
+        for row in category_rows:
+            raw_value = (row[0] or '').strip()
+            if not raw_value:
+                continue
+
+            tokens = [token.strip() for token in split_pattern.split(raw_value) if token.strip()]
+            if not tokens:
+                continue
+
+            for token in tokens:
+                third_types.add(token)
+                third_type_map.setdefault(token, account_type)
+
+        # 企業カテゴリ全体から third_account_type と紐付く account_type の対応表を構築
+        global_mapping_query = text("""
+            SELECT account_type, third_account_type
+            FROM corporate_category
+            WHERE third_account_type IS NOT NULL
+              AND third_account_type != ''
+        """)
+        global_rows = conn.execute(global_mapping_query)
+        global_mapping = {}
+
+        for row in global_rows:
+            raw_account = (row[0] or '').strip()
+            raw_third = (row[1] or '').strip()
+            if not raw_third:
+                continue
+
+            account_tokens = [token.strip() for token in split_pattern.split(raw_account) if token.strip()]
+            third_tokens = [token.strip() for token in split_pattern.split(raw_third) if token.strip()]
+            fallback_account = account_tokens[0] if account_tokens else ''
+
+            for index, third_token in enumerate(third_tokens):
+                if not third_token:
+                    continue
+                parent_account = account_tokens[index] if index < len(account_tokens) else fallback_account
+                if parent_account:
+                    global_mapping.setdefault(third_token, parent_account)
+
+        # ローカルで得た対応もグローバルマップに補完
+        for token, parent in third_type_map.items():
+            global_mapping.setdefault(token, parent)
+
+        sorted_third_types = sorted(third_types)
+
+        return {
+            "success": True,
+            "data": sorted_third_types,
+            "mapping": global_mapping
+        }
+    except Exception as e:
+        logger.error(f"中ジャンル一覧取得エラー: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"中ジャンル一覧の取得に失敗しました: {str(e)}"
+        )
+    finally:
+        if conn:
+            conn.close()
 
 # convert_gs_to_https関数を追加（他のAPIファイルと同じように）
 def convert_gs_to_https(url: Optional[str]) -> Optional[str]:

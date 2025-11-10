@@ -1,0 +1,9 @@
+google-api-python-client
+oauth2client
+mysql-connector-python
+python-dotenv
+pymysql
+google-cloud-secret-manager
+google-cloud-scheduler
+google-cloud-storage
+pytz>=2025.1

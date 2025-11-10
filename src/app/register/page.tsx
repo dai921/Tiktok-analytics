@@ -85,7 +85,8 @@ export default function Register() {
 
       if (loginResponse.ok) {
         const data = await loginResponse.json()
-        login(data.access_token, data.token_type, false)
+        const isDeveloper = Boolean(data?.is_developer)
+        login(data.access_token, data.token_type, false, isDeveloper)
         router.push('/dashboard')
       } else {
         // 登録は成功したがログインに失敗した場合

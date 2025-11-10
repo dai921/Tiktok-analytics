@@ -28,6 +28,7 @@ from services.data_sync.video_history_sync import sync_video_history
 from services.data_sync.video_master_sync import sync_video_master as sync_raw_data_to_video_master
 from services.account_info.sync_account_list import sync_account_list as sync_account
 from services.account_info.sync_crawler_accounts import sync_crawler_accounts as sync_crawler
+from services.account_info.sync_corporate_accounts_sheet import sync_corporate_accounts_from_sheet as sync_corporate_accounts_sheet
 # 手動実行タスク
 from services.manual_tasks.manual_sync_master import sync_video_master as manual_sync_master_from_raw_data
 from services.manual_tasks.update_all_categories import update_all_categories as update_all_categories_function
@@ -71,6 +72,10 @@ def sync_top100(event,context):
 
 def sync_crawler_accounts(request):    
     return sync_crawler(request)
+
+# Pub/Sub エントリーポイント: account_list同期後に起動するcorporate_accounts同期
+def sync_corporate_accounts(event, context):
+    return sync_corporate_accounts_sheet(event)
 
 def update_all_categories(request):
     return update_all_categories_function(request)

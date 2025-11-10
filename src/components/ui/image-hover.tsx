@@ -114,6 +114,12 @@ export function ImageHover({
       return
     }
 
+    // 削除時は確認ポップアップを表示（ウォッチリストページと同等の文言）
+    if (isVideoInWatchlist) {
+      const confirmed = window.confirm('この動画をウォッチリストから削除しますか？')
+      if (!confirmed) return
+    }
+
     setIsLoading(prev => ({ ...prev, videoSave: true }))
     try {
       if (isVideoInWatchlist) {

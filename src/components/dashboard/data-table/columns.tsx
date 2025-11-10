@@ -56,6 +56,48 @@ export const createColumns = (
         ),
         cell: ({ row }) => cellRenderers.renderAccountTypeCell(row)  
       },
+      {
+        accessorKey: 'second_account_type',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="目的"
+            type="text"
+            onFilter={(value) => handleFilter('second_account_type')(value)}
+            isActive={Boolean(columnFilters['second_account_type']?.active)}
+            categoryData={getFilteredOptions('目的')}
+            sortDirection={
+              primarySort?.field === 'second_account_type' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'second_account_type' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'second_account_type' ? 1 : secondarySort?.field === 'second_account_type' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderSecondAccountTypeCell(row)
+      },
+      {
+        accessorKey: 'third_account_type',
+        header: ({ column }) => (
+          <TableHeaderCell
+            title="中ジャンル"
+            type="text"
+            onFilter={(value) => handleFilter('third_account_type')(value)}
+            isActive={Boolean(columnFilters['third_account_type']?.active)}
+            categoryData={getFilteredOptions('中ジャンル')}
+            sortDirection={
+              primarySort?.field === 'third_account_type' 
+                ? primarySort.direction 
+                : secondarySort?.field === 'third_account_type' 
+                  ? secondarySort.direction 
+                  : null
+            }
+            sortPriority={primarySort?.field === 'third_account_type' ? 1 : secondarySort?.field === 'third_account_type' ? 2 : null}
+          />
+        ),
+        cell: ({ row }) => cellRenderers.renderThirdAccountTypeCell(row)
+      },
 
     // 動画ジャンルカラム
     {

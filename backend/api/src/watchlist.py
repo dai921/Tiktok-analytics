@@ -141,6 +141,7 @@ async def remove_video_from_watchlist(
         conn.execute(delete_query, {"email": current_user.email, "video_id": video_id})
         
         conn.commit()
+        print(f"[DELETE][ビデオウォッチリスト] email={current_user.email} video_id={video_id} ts={datetime.utcnow().isoformat()}")
         return {"success": True, "message": "ビデオがウォッチリストから削除されました"}
         
     except HTTPException:
@@ -231,7 +232,8 @@ async def get_video_watchlist_with_details(
             logger.info(f"使用する日付範囲: 開始={start_date}, 終了={end_date}")
             
         # ウォッチリストとビデオデータを結合して取得
-        query = text("""
+        # 日付条件はJOIN句に付与してLEFT JOIN特性を維持する
+        base_query = """
         SELECT 
             vw.id, vw.email, vw.video_id, vw.video_watchlist_name, vw.created_at, vw.updated_at,
             fd.thumbnail_url, fd.created_at as video_created_at, fd.play_count, 
@@ -243,16 +245,19 @@ async def get_video_watchlist_with_details(
             fd.likes_count, fd.comment_count, fd.save_count, fd.hashtags, fd.caption
         FROM video_watchlists vw
         LEFT JOIN frontend_data fd ON vw.video_id = fd.video_id
-        LEFT JOIN play_count_history pch ON vw.video_id = pch.video_id
+        LEFT JOIN play_count_history pch ON vw.video_id = pch.video_id {pch_date_condition}
         WHERE vw.email = :email
-        """)
-        
+        """
+
+        pch_date_condition = ""
         params = {"email": current_user.email}
-        
-        # 日付範囲が指定されている場合、条件に追加
+
+        # 日付範囲が指定されている場合、JOIN句に条件を付与
         if start_date and end_date:
-            query = text(query.text + " AND pch.collection_date BETWEEN :start_date AND :end_date")
+            pch_date_condition = "AND pch.collection_date BETWEEN :start_date AND :end_date"
             params.update({"start_date": start_date, "end_date": end_date})
+
+        query = text(base_query.format(pch_date_condition=pch_date_condition))
             
         query = text(query.text + """
         GROUP BY 
@@ -582,6 +587,7 @@ async def remove_account_from_bookmarks(
         conn.execute(delete_query, {"email": current_user.email, "account_name": account_name})
         
         conn.commit()
+        print(f"[DELETE][アカウントウォッチリスト] email={current_user.email} account_name={account_name} ts={datetime.utcnow().isoformat()}")
         return {"success": True, "message": "アカウントがブックマークから削除されました"}
         
     except HTTPException:
@@ -671,8 +677,8 @@ async def get_account_bookmarks_with_details(
             
             logger.info(f"使用する日付範囲: 開始={start_date}, 終了={end_date}")
         
-        # アカウントブックマークとアカウント集計データを結合して取得
-        query = text("""
+        # アカウントブックマークとアカウント集計データを結合して取得（期間条件はJOIN句に付与）
+        base_query = """
         SELECT 
             ab.id, ab.email, ab.account_name, ab.account_watchlist_name, ab.created_at, ab.updated_at,
             COUNT(DISTINCT fd.video_id) AS total_videos,
@@ -685,17 +691,20 @@ async def get_account_bookmarks_with_details(
             MAX(al.account_type) AS account_type
         FROM account_watchlists ab
         LEFT JOIN frontend_data fd ON ab.account_name = fd.account_name
-        LEFT JOIN play_count_history pch ON fd.video_id = pch.video_id
+        LEFT JOIN play_count_history pch ON fd.video_id = pch.video_id {pch_date_condition}
         LEFT JOIN account_list al ON ab.account_name = al.favorite_user_username
         WHERE ab.email = :email
-        """)
-        
+        """
+
+        pch_date_condition = ""
         params = {"email": current_user.email}
-        
-        # 日付範囲が指定されている場合、条件に追加
+
+        # 日付範囲が指定されている場合、JOIN句に条件を付与
         if start_date and end_date:
-            query = text(query.text + " AND pch.collection_date BETWEEN :start_date AND :end_date")
+            pch_date_condition = "AND pch.collection_date BETWEEN :start_date AND :end_date"
             params.update({"start_date": start_date, "end_date": end_date})
+
+        query = text(base_query.format(pch_date_condition=pch_date_condition))
         
         query = text(query.text + """
         GROUP BY ab.id, ab.email, ab.account_name, ab.account_watchlist_name, ab.created_at, ab.updated_at
@@ -909,8 +918,8 @@ async def get_account_videos(
         if sort_by not in valid_sort_fields:
             sort_by = "play_count_increase"  # デフォルト値
         
-        # アカウントの動画一覧を取得
-        query = text("""
+        # アカウントの動画一覧を取得（期間条件はJOIN句に付与）
+        base_query = """
         SELECT 
             fd.video_id, fd.thumbnail_url, fd.url,
             fd.play_count, fd.likes_count, fd.comment_count, fd.save_count,
@@ -922,17 +931,20 @@ async def get_account_videos(
         FROM 
             frontend_data fd
         LEFT JOIN 
-            play_count_history pch ON fd.video_id = pch.video_id
+            play_count_history pch ON fd.video_id = pch.video_id {pch_date_condition}
         WHERE 
             fd.account_name = :account_name
-        """)
-        
+        """
+
+        pch_date_condition = ""
         params = {"account_name": account_name}
-        
-        # 日付範囲が指定されている場合、条件に追加
+
+        # 日付範囲が指定されている場合、JOIN句に条件を付与
         if start_date and end_date:
-            query = text(query.text + " AND pch.collection_date BETWEEN :start_date AND :end_date")
+            pch_date_condition = "AND pch.collection_date BETWEEN :start_date AND :end_date"
             params.update({"start_date": start_date, "end_date": end_date})
+
+        query = text(base_query.format(pch_date_condition=pch_date_condition))
         
         query = text(query.text + f"""
         GROUP BY 

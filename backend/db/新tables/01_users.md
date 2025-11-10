@@ -17,6 +17,7 @@
 | created_at | TIMESTAMP | YES | CURRENT_TIMESTAMP | - | 作成日時 |
 | updated_at | TIMESTAMP | YES | CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | - | 更新日時 |
 | is_customer | TINYINT(1) | NO | 1 | - | 顧客フラグ |
+| is_developer | TINYINT(1) | NO | 1 | - | 開発者フラグ |
 
 ## インデックス
 

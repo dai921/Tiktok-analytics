@@ -150,7 +150,9 @@ def sync_corporate_top100_for_date(collection_date):
         pch.save_count_increase,
         fd.created_at,
         fd.thumbnail_url,
-        fd.account_type
+        fd.account_type,
+        fd.second_account_type,
+        fd.third_account_type
     FROM 
         play_count_history pch
     JOIN 
@@ -175,10 +177,11 @@ def sync_corporate_top100_for_date(collection_date):
     account_type_groups = defaultdict(list)
     
     for row in results:
-        account_type_str = row['account_type']
-        account_type, second_account_type = parse_account_types(account_type_str)
+        account_type = row['account_type']
+        second_account_type = row.get('second_account_type')
+        third_account_type = row.get('third_account_type')
         
-        # アカウントタイプの組み合わせをキーとして使用
+        # アカウントタイプの組み合わせをキーとして使用（third はグルーピングに含めない）
         key = (account_type, second_account_type)
         account_type_groups[key].append({
             'video_id': row['video_id'],
@@ -189,7 +192,8 @@ def sync_corporate_top100_for_date(collection_date):
             'created_at': row['created_at'],
             'thumbnail_url': row['thumbnail_url'],
             'account_type': account_type,
-            'second_account_type': second_account_type
+            'second_account_type': second_account_type,
+            'third_account_type': third_account_type
         })
     
     # 各アカウントタイプの組み合わせごとにTOP100を取得して挿入
@@ -205,12 +209,13 @@ def sync_corporate_top100_for_date(collection_date):
         for video in sorted_videos:
             insert_query = """
             INSERT INTO corporate_daily_top100_videos 
-            (video_id, fetch_date, account_type, second_account_type, plays_increase, 
+            (video_id, fetch_date, account_type, second_account_type, third_account_type, plays_increase, 
              likes_increase, comments_increase, saves_increase, post_time, thumbnail_url)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 account_type = VALUES(account_type),
                 second_account_type = VALUES(second_account_type),
+                third_account_type = VALUES(third_account_type),
                 plays_increase = VALUES(plays_increase),
                 likes_increase = VALUES(likes_increase),
                 comments_increase = VALUES(comments_increase),
@@ -224,6 +229,7 @@ def sync_corporate_top100_for_date(collection_date):
                 collection_date,
                 video['account_type'],
                 video['second_account_type'],
+                video['third_account_type'],
                 video['play_count_increase'],
                 video['likes_count_increase'] or 0,
                 video['comment_count_increase'] or 0,

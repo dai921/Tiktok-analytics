@@ -5,10 +5,8 @@ import type { FilterValue, FilterType, ComparisonOperator } from '@/types/dashbo
 import { 
   TIKTOK_COLORS, 
   GENRE_COLORS, 
-  AFFILIATE_TYPE_COLORS,      // 新規追加
-  INFLUENCER_TYPE_COLORS,     // 名前変更
-  CORPORATE_TYPE_COLORS, 
   DEFAULT_GENRE_COLOR,
+  DEFAULT_ACCOUNT_TYPE_COLOR,
   getAffiliateAccountTypes,   // 新規追加
   getInfluencerAccountTypes,
   getCorporateAccountTypes,
@@ -16,6 +14,8 @@ import {
   getAccountTypeColor         // 追加
 } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+
+const ACCOUNT_TYPE_SPLIT_PATTERN = /[\u3001,\uFF0C\uFF0F/・\s]+/u;
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL 
 interface FilterPopupProps {
@@ -25,20 +25,21 @@ interface FilterPopupProps {
   onFilterChange: (filters: Record<string, FilterValue>) => void
   currentFilters: Record<string, FilterValue>
   categories: string[]
-  accounts: string[]
-  hashtags: string[]
   products: string[]
   // ★ 商品カテゴリとアカウントタイプを追加
   productCategories?: Record<string, string[]>
   accountTypes?: string[]
+  secondAccountTypes?: string[]
+  thirdAccountTypes?: string[]
+  thirdAccountTypeMap?: Record<string, string>
   isLoading: boolean
   onClearAll: () => void
   tabFilterFields?: {
     date: string[];
     metrics: string[];
     categories: string[];
-    text: string[];
     sort: string[];
+    text?: string[];
   };
   accountTypeContext?: 'influencer' | 'corporate' | 'affiliate' | 'all'
 }
@@ -200,12 +201,13 @@ export const FilterPopup = ({
   onFilterChange,
   currentFilters,
   categories,
-  accounts,
-  hashtags,
   products: productsList,
   // ★ 新しいpropsを追加
   productCategories = {},
   accountTypes = [],
+  secondAccountTypes = [],
+  thirdAccountTypes = [],
+  thirdAccountTypeMap = {},
   isLoading,
   onClearAll,
   tabFilterFields,
@@ -229,10 +231,42 @@ export const FilterPopup = ({
   const [secondarySort, setSecondarySort] = useState<{field: string; direction: 'asc' | 'desc'} | null>(null)
   // アカウントジャンル用の複数選択状態
   const [selectedAccountCategories, setSelectedAccountCategories] = useState<string[]>([])
+  const [selectedSecondAccountTypes, setSelectedSecondAccountTypes] = useState<string[]>([])
+  const [selectedThirdAccountTypes, setSelectedThirdAccountTypes] = useState<string[]>([])
   // 商品用の複数選択状態
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   // 動画タイプ用の状態
   const [selectedVideoType, setSelectedVideoType] = useState<'all' | 'affiliate' | 'corporate' | 'influencer'>('all')
+  // テキストフィルター用の入力値
+  const [textInputs, setTextInputs] = useState<Record<string, string>>({})
+
+  const splitAccountTypeTokens = (value?: string | null) => {
+    if (!value) return []
+    return value
+      .split(ACCOUNT_TYPE_SPLIT_PATTERN)
+      .map(token => token.trim())
+      .filter(Boolean)
+  }
+
+  const getPrimaryAccountTypeToken = (value?: string | null) => {
+    const tokens = splitAccountTypeTokens(value)
+    return tokens.length > 0 ? tokens[0] : ''
+  }
+
+  const resolveAccountTypeForColor = (raw?: string | null) => {
+    const primary = getPrimaryAccountTypeToken(raw)
+    if (!primary) return ''
+    if (accountTypes.includes(primary)) {
+      return primary
+    }
+    const partial = accountTypes.find(type => type.includes(primary) || primary.includes(type))
+    return partial || primary
+  }
+
+  const resolveThirdAccountParent = (thirdType: string) => {
+    const mapped = thirdAccountTypeMap?.[thirdType]
+    return resolveAccountTypeForColor(mapped)
+  }
 
   // useEffectも修正
   useEffect(() => {
@@ -310,8 +344,32 @@ export const FilterPopup = ({
         }
       }
       setSelectedAccountCategories(initialAccountTypes);
-      console.log('[FILTER-POPUP] アカウントタイプ復元:', { accountTypeFilter, initialAccountTypes });
-      
+      console.log('[FILTER-POPUP] account_type 初期値:', { accountTypeFilter, initialAccountTypes });
+
+      const secondAccountTypeFilter = currentFilters['second_account_type'];
+      let initialSecondAccountTypes: string[] = [];
+      if (secondAccountTypeFilter && secondAccountTypeFilter.value) {
+        if (typeof secondAccountTypeFilter.value === 'string') {
+          initialSecondAccountTypes = [secondAccountTypeFilter.value];
+        } else if (Array.isArray(secondAccountTypeFilter.value)) {
+          initialSecondAccountTypes = secondAccountTypeFilter.value as string[];
+        }
+      }
+      setSelectedSecondAccountTypes(initialSecondAccountTypes);
+      console.log('[FILTER-POPUP] second_account_type 初期値:', { secondAccountTypeFilter, initialSecondAccountTypes });
+
+      const thirdAccountTypeFilter = currentFilters['third_account_type'];
+      let initialThirdAccountTypes: string[] = [];
+      if (thirdAccountTypeFilter && thirdAccountTypeFilter.value) {
+        if (typeof thirdAccountTypeFilter.value === 'string') {
+          initialThirdAccountTypes = [thirdAccountTypeFilter.value];
+        } else if (Array.isArray(thirdAccountTypeFilter.value)) {
+          initialThirdAccountTypes = thirdAccountTypeFilter.value as string[];
+        }
+      }
+      setSelectedThirdAccountTypes(initialThirdAccountTypes);
+      console.log('[FILTER-POPUP] third_account_type 初期値:', { thirdAccountTypeFilter, initialThirdAccountTypes });
+
       // 商品の選択復元
       const productFilter = currentFilters['product'];
       let initialProducts: string[] = [];
@@ -324,6 +382,15 @@ export const FilterPopup = ({
       }
       setSelectedProducts(initialProducts);
       console.log('[FILTER-POPUP] 商品復元:', { productFilter, initialProducts });
+
+      const initialTextValues: Record<string, string> = {};
+      ['account_name', 'hashtags', 'audioTitle'].forEach(fieldId => {
+        const filter = currentFilters[fieldId];
+        if (filter && typeof filter.value === 'string') {
+          initialTextValues[fieldId] = filter.value;
+        }
+      });
+      setTextInputs(initialTextValues);
 
       console.log('[FILTER-POPUP] フィルター状態復元完了');
       
@@ -384,17 +451,29 @@ export const FilterPopup = ({
           // ★ propsから受け取った商品リストを使用
           options: productsList
         },
-        { 
+        {
           id: 'account_type', 
           label: 'アカウントジャンル', 
           type: 'multiselect' as FilterType, 
           options: getAccountTypeOptions()
+        },
+        {
+          id: 'second_account_type',
+          label: '目的',
+          type: 'multiselect' as FilterType,
+          options: secondAccountTypes
+        },
+        {
+          id: 'third_account_type',
+          label: '中ジャンル',
+          type: 'multiselect' as FilterType,
+          options: thirdAccountTypes
         }
       ],
       text: [
-        { id: 'account_name', label: 'アカウント検索', type: 'text' as FilterType },
-        { id: 'hashtags', label: 'ハッシュタグ検索', type: 'text' as FilterType },
-        { id: 'audioTitle', label: 'BGM検索', type: 'text' as FilterType }
+        { id: 'account_name', label: 'アカウント名', type: 'text' as FilterType },
+        { id: 'hashtags', label: 'ハッシュタグ', type: 'text' as FilterType },
+        { id: 'audioTitle', label: 'BGM', type: 'text' as FilterType }
       ],
       sort: [
         { id: 'views', label: '再生数', type: 'sort' as FilterType },
@@ -421,7 +500,9 @@ export const FilterPopup = ({
       date: baseFields.date.filter(field => tabFilterFields.date.includes(field.id)),
       metrics: baseFields.metrics.filter(field => tabFilterFields.metrics.includes(field.id)),
       categories: baseFields.categories.filter(field => tabFilterFields.categories.includes(field.id)),
-      text: baseFields.text.filter(field => tabFilterFields.text.includes(field.id)),
+      text: tabFilterFields.text
+        ? baseFields.text.filter(field => tabFilterFields.text!.includes(field.id))
+        : baseFields.text,
       sort: baseFields.sort.filter(field => tabFilterFields.sort.includes(field.id))
     };
 
@@ -500,6 +581,8 @@ export const FilterPopup = ({
         }
       } else {
         setSelectedAccountCategories([]);
+    setSelectedSecondAccountTypes([]);
+    setSelectedThirdAccountTypes([]);
       }
       
       // 商品の選択初期化
@@ -680,6 +763,18 @@ export const FilterPopup = ({
     if (fieldId === 'category') {
       setSelectedCategories([]);
     }
+    if (fieldId === 'second_account_type') {
+      setSelectedSecondAccountTypes([]);
+    }
+    if (fieldId === 'third_account_type') {
+      setSelectedThirdAccountTypes([]);
+    }
+    if (['account_name', 'hashtags', 'audioTitle'].includes(fieldId)) {
+      setTextInputs(prev => ({
+        ...prev,
+        [fieldId]: ''
+      }));
+    }
   }
 
   // すべてのフィルターをクリア（簡素化）
@@ -688,9 +783,12 @@ export const FilterPopup = ({
     setSelectedCategories([]);
     setSelectedContentTypes([]); // ★ 空配列に変更
     setSelectedAccountCategories([]);
+    setSelectedSecondAccountTypes([]);
+    setSelectedThirdAccountTypes([]);
     setSelectedProducts([]);
     setPrimarySort(null);
     setSecondarySort(null);
+    setTextInputs({});
     
     console.log('フィルターをクリアしました');
   }
@@ -712,6 +810,7 @@ export const FilterPopup = ({
         };
       }
     });
+
     
     // 2. カテゴリフィルターの処理
     if (selectedCategories.length > 0) {
@@ -736,6 +835,26 @@ export const FilterPopup = ({
     }
     
     // 4. 商品フィルターの処理を追加
+    if (selectedSecondAccountTypes.length > 0) {
+      finalFilters['second_account_type'] = {
+        field: 'second_account_type',
+        type: 'multiselect',
+        value: selectedSecondAccountTypes,
+        comparison: 'contains',
+        active: true
+      };
+    }
+
+    if (selectedThirdAccountTypes.length > 0) {
+      finalFilters['third_account_type'] = {
+        field: 'third_account_type',
+        type: 'multiselect',
+        value: selectedThirdAccountTypes,
+        comparison: 'contains',
+        active: true
+      };
+    }
+
     if (selectedProducts && selectedProducts.length > 0) {
       finalFilters['product'] = {
         field: 'product',
@@ -1191,67 +1310,6 @@ export const FilterPopup = ({
     );
   };
 
-  // テキスト入力用のフィルター条件セクション
-  const renderTextFilter = (field: FilterField) => {
-    const filterValue = tempFilters[field.id]
-    const isActive = Boolean(filterValue)
-    
-    // field.labelの値をReactNodeから文字列に安全に変換する関数
-    const getLabelText = (label: React.ReactNode): string => {
-      if (typeof label === 'string') {
-        return label;
-      } else if (React.isValidElement(label)) {
-        // Reactエレメントの場合は、fieldIdからラベルを判断
-        return field.id === 'account_name' ? 'アカウント' :
-               field.id === 'hashtags' ? 'ハッシュタグ' :
-               field.id === 'audioTitle' ? 'BGM' : '';
-      }
-      return '';
-    };
-    
-    const placeholderText = `${getLabelText(field.label).replace('検索', '')}を入力`;
-
-    return (
-      <div key={field.id} className="mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700">
-            {field.label || ''}
-          </label>
-          
-          {isActive && (
-            <button 
-              onClick={() => handleClearFilter(field.id)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <ClearIcon size={14} />
-            </button>
-          )}
-        </div>
-        
-        <input
-          type="text"
-          className="focus:ring-[#FE2C55] focus:border-[#FE2C55] block w-full sm:text-sm border-gray-300 border rounded-md shadow-sm"
-          value={filterValue?.value || ''}
-          placeholder={placeholderText}
-          onChange={(e) => {
-            // 空の値の場合はフィルターをクリア
-            if (e.target.value.trim() === '') {
-              handleClearFilter(field.id);
-              return;
-            }
-            
-            handleFilterChange(field.id, { 
-              field: field.id,
-              type: 'text', 
-              comparison: 'contains', 
-              value: e.target.value 
-            })
-          }}
-        />
-      </div>
-    )
-  }
-
   // 商品用のマルチセレクトフィルターを追加
   const renderProductFilter = (field: FilterField) => {
     const isActive = selectedProducts.length > 0;
@@ -1314,13 +1372,18 @@ export const FilterPopup = ({
   // カテゴリー用の複数選択フィルターセクション
   const renderMultiSelectFilter = (field: FilterField) => {
     // フィールドに応じた選択状態と更新関数を選択
-    const selectedItems = field.id === 'category' ? selectedCategories : 
+    const selectedItems = field.id === 'category' ? selectedCategories :
                          field.id === 'content_type' ? selectedContentTypes :
-                         field.id === 'account_type' ? selectedAccountCategories : [];
+                         field.id === 'account_type' ? selectedAccountCategories :
+                         field.id === 'second_account_type' ? selectedSecondAccountTypes :
+                         field.id === 'third_account_type' ? selectedThirdAccountTypes :
+                         [];
                          
-    const setSelectedItems = field.id === 'category' ? setSelectedCategories : 
+    const setSelectedItems = field.id === 'category' ? setSelectedCategories :
                             field.id === 'content_type' ? setSelectedContentTypes :
-                            field.id === 'account_type' ? setSelectedAccountCategories : () => {};
+                            field.id === 'account_type' ? setSelectedAccountCategories :
+                            field.id === 'second_account_type' ? setSelectedSecondAccountTypes :
+                            field.id === 'third_account_type' ? setSelectedThirdAccountTypes : () => {};
     
     // コンテンツタイプの場合は表示名を変換
     const getDisplayName = (option: string) => {
@@ -1367,6 +1430,36 @@ export const FilterPopup = ({
             ? [...selectedItems.filter(item => item !== option), option] 
             : selectedItems.filter(item => item !== option)
         });
+      } else if (field.id === 'second_account_type') {
+        if (checked) {
+          setSelectedSecondAccountTypes(prev => [...prev, option]);
+        } else {
+          setSelectedSecondAccountTypes(prev => prev.filter(item => item !== option));
+        }
+
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked
+            ? [...selectedItems.filter(item => item !== option), option]
+            : selectedItems.filter(item => item !== option)
+        });
+      } else if (field.id === 'third_account_type') {
+        if (checked) {
+          setSelectedThirdAccountTypes(prev => [...prev, option]);
+        } else {
+          setSelectedThirdAccountTypes(prev => prev.filter(item => item !== option));
+        }
+
+        handleFilterChange(field.id, {
+          field: field.id,
+          type: 'multiselect',
+          comparison: 'contains',
+          value: checked
+            ? [...selectedItems.filter(item => item !== option), option]
+            : selectedItems.filter(item => item !== option)
+        });
       } else if (field.id === 'product') {
         // 商品の選択状態を更新
         if (checked) {
@@ -1374,16 +1467,6 @@ export const FilterPopup = ({
         } else {
           setSelectedProducts(prev => prev.filter(item => item !== option));
         }
-        
-        // フィルター状態を更新
-        handleFilterChange(field.id, {
-          field: field.id,
-          type: 'multiselect',
-          comparison: 'contains',
-          value: checked 
-            ? [...selectedItems.filter(item => item !== option), option] 
-            : selectedItems.filter(item => item !== option)
-        });
       }
     };
 
@@ -1391,10 +1474,150 @@ export const FilterPopup = ({
     const sortedOptions = field.options ? [...field.options].sort((a, b) => {
       if (a === 'その他') return 1;
       if (b === 'その他') return -1;
-      return a.localeCompare(b);
+      return a.localeCompare(b, 'ja');
     }) : [];
     
     const isActive = selectedItems.length > 0
+    let optionIndex = 0;
+
+    const resolveOptionColors = (option: string, parentOverride?: string) => {
+      if (field.id === 'account_type') {
+        return getAccountTypeColor(option, accountTypeContext);
+      }
+
+      if (field.id === 'second_account_type') {
+        const colorKey = parentOverride || resolveAccountTypeForColor(option) || option;
+        return getAccountTypeColor(colorKey, accountTypeContext);
+      }
+
+      if (field.id === 'third_account_type') {
+        const parent = parentOverride || resolveThirdAccountParent(option);
+        if (!parent) {
+          return DEFAULT_ACCOUNT_TYPE_COLOR;
+        }
+        return getAccountTypeColor(parent, accountTypeContext);
+      }
+
+      // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
+      return option in GENRE_COLORS 
+        ? GENRE_COLORS[option as keyof typeof GENRE_COLORS] 
+        : DEFAULT_GENRE_COLOR;
+    };
+
+    const renderOptionCheckbox = (option: string, checkboxIndex: number, colors: { bg: string; text: string; border: string }) => {
+      const checkboxId = `${field.id}-${checkboxIndex}`;
+      return (
+        <div key={checkboxId} className="flex items-center mb-2">
+          <input
+            id={checkboxId}
+            type="checkbox"
+            className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300 rounded"
+            checked={selectedItems.includes(option)}
+            onChange={(e) => handleCheckboxChange(option, e.target.checked)}
+          />
+          <label htmlFor={checkboxId} className="ml-2">
+            <div 
+              className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold"
+              style={{ 
+                backgroundColor: colors.bg,
+                color: colors.text,
+                border: `1px solid ${colors.border}`
+              }}
+            >
+              {getDisplayName(option)}
+            </div>
+          </label>
+        </div>
+      );
+    };
+
+    if (field.id === 'third_account_type') {
+      const grouped = new Map<string, string[]>();
+      sortedOptions.forEach(option => {
+        const parent = resolveThirdAccountParent(option) || '未分類';
+        if (!grouped.has(parent)) {
+          grouped.set(parent, []);
+        }
+        grouped.get(parent)!.push(option);
+      });
+
+      const priority = new Map<string, number>();
+      accountTypes.forEach((type, index) => priority.set(type, index));
+
+      const parents = Array.from(grouped.keys()).sort((a, b) => {
+        const aMisc = a === '未分類';
+        const bMisc = b === '未分類';
+        if (aMisc && bMisc) return 0;
+        if (aMisc) return 1;
+        if (bMisc) return -1;
+
+        const idxA = priority.has(a) ? priority.get(a)! : Number.MAX_SAFE_INTEGER;
+        const idxB = priority.has(b) ? priority.get(b)! : Number.MAX_SAFE_INTEGER;
+
+        if (idxA !== idxB) return idxA - idxB;
+        return a.localeCompare(b, 'ja');
+      });
+
+      return (
+        <div key={field.id} className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-700">
+              {field.label || ''}
+            </label>
+            {isActive && (
+              <button 
+                onClick={() => {
+                  handleClearFilter(field.id);
+                  setSelectedItems([]);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <ClearIcon size={14} />
+              </button>
+            )}
+          </div>
+          
+          <div className="mt-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md shadow-sm p-2 space-y-3">
+            {parents.map(parent => {
+              const optionsForParent = grouped.get(parent) || [];
+              const parentColor = parent !== '未分類'
+                ? getAccountTypeColor(parent, accountTypeContext)
+                : DEFAULT_ACCOUNT_TYPE_COLOR;
+
+              return (
+                <div key={parent} className="border-b last:border-b-0 border-gray-100 pb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-gray-600">{parent}</span>
+                    {parent !== '未分類' && (
+                      <span
+                        className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: parentColor.bg,
+                          color: parentColor.text,
+                          border: `1px solid ${parentColor.border}`
+                        }}
+                      >
+                        {parent}
+                      </span>
+                    )}
+                  </div>
+                  {optionsForParent.map(option =>
+                    renderOptionCheckbox(
+                      option,
+                      optionIndex++,
+                      resolveOptionColors(option, parent === '未分類' ? undefined : parent)
+                    )
+                  )}
+                </div>
+              );
+            })}
+            {parents.length === 0 && (
+              <div className="text-sm text-gray-500 py-2 text-center">選択肢がありません</div>
+            )}
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div key={field.id} className="mb-4">
@@ -1416,42 +1639,9 @@ export const FilterPopup = ({
         </div>
         
         <div className="mt-2 max-h-60 overflow-y-auto border border-gray-300 rounded-md shadow-sm p-2">
-          {sortedOptions.map((option, index) => {
-            // フィールドIDに応じて適切な色を取得
-            let colors;
-            if (field.id === 'account_type') {
-              colors = getAccountTypeColor(option, accountTypeContext);
-            } else {
-              // カテゴリー(動画ジャンル)やその他の場合はGENRE_COLORSを使用
-              colors = option in GENRE_COLORS 
-                ? GENRE_COLORS[option as keyof typeof GENRE_COLORS] 
-                : DEFAULT_GENRE_COLOR;
-            }
-            
-            return (
-              <div key={index} className="flex items-center mb-2">
-                <input
-                  id={`${field.id}-${index}`}
-                  type="checkbox"
-                  className="h-4 w-4 text-[#FE2C55] focus:ring-[#FE2C55] border-gray-300 rounded"
-                  checked={selectedItems.includes(option)}
-                  onChange={(e) => handleCheckboxChange(option, e.target.checked)}
-                />
-                <label htmlFor={`${field.id}-${index}`} className="ml-2">
-                  <div 
-                    className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold"
-                    style={{ 
-                      backgroundColor: colors.bg,
-                      color: colors.text,
-                      border: `1px solid ${colors.border}`
-                    }}
-                  >
-                    {getDisplayName(option)}
-                  </div>
-                </label>
-              </div>
-            );
-          })}
+          {sortedOptions.map(option =>
+            renderOptionCheckbox(option, optionIndex++, resolveOptionColors(option))
+          )}
           {sortedOptions.length === 0 && (
             <div className="text-sm text-gray-500 py-2 text-center">選択肢がありません</div>
           )}
@@ -1459,6 +1649,69 @@ export const FilterPopup = ({
       </div>
     )
   }
+
+  const handleTextFilterInput = (fieldId: string, value: string) => {
+    setTextInputs(prev => ({
+      ...prev,
+      [fieldId]: value
+    }));
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      handleClearFilter(fieldId);
+      return;
+    }
+
+    const filterValue: FilterValue = {
+      field: fieldId,
+      type: 'text',
+      value: trimmed,
+      comparison: 'contains',
+      active: true
+    };
+
+    if (fieldId === 'hashtags') {
+      filterValue.isHashtag = true;
+    }
+
+    handleFilterChange(fieldId, filterValue);
+  };
+
+  const renderTextFilter = (field: FilterField) => {
+    const existingValue = textInputs[field.id] ??
+      (typeof tempFilters[field.id]?.value === 'string'
+        ? (tempFilters[field.id]?.value as string)
+        : '');
+    const inputValue = existingValue || '';
+    const isActive = Boolean(tempFilters[field.id]?.value);
+
+    return (
+      <div key={field.id} className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700">
+            {field.label || ''}
+          </label>
+          {isActive && (
+            <button
+              onClick={() => handleClearFilter(field.id)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <ClearIcon size={14} />
+            </button>
+          )}
+        </div>
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={inputValue}
+            onChange={(e) => handleTextFilterInput(field.id, e.target.value)}
+            placeholder="キーワードを入力"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-[#FE2C55] focus:border-[#FE2C55] text-sm"
+          />
+        </div>
+      </div>
+    );
+  };
 
   // ソートタブのレンダリング関数
   // 動画タイプタブのコンテンツをレンダリング
@@ -1714,15 +1967,15 @@ export const FilterPopup = ({
           if (field.type === 'number') {
             return renderNumberFilter(field)
           }
-          if (field.type === 'text') {
-            return renderTextFilter(field)
-          }
           if (field.type === 'multiselect') {
             // 商品フィルターの場合は専用レンダリング関数を使用
             if (field.id === 'product') {
               return renderProductFilter(field);
             }
             return renderMultiSelectFilter(field)
+          }
+          if (field.type === 'text') {
+            return renderTextFilter(field)
           }
           return null
         })}

@@ -160,11 +160,11 @@ def update_needs_flags(event, context):
         is_new_video_affected_rows = execute_write_query(reset_is_new_video_query)
         logger.info(f"video_masterのis_new_video更新完了: {is_new_video_affected_rows}件更新")
         
-        # 処理完了後、video_history_syncにPub/Subメッセージを送信
-        logger.info("動画履歴同期処理のトリガーメッセージを送信します")
-        publish_message("video-history-sync", {
+        # 処理完了後、second/third_account_type 同期にPub/Subメッセージを送信
+        logger.info("second/third_account_type 同期のトリガーメッセージを送信します")
+        publish_message("sync-second-third-account-type", {
             "status": "completed",
-            "message": "フラグ更新処理が完了しました。動画履歴同期処理を開始します。",
+            "message": "フラグ更新処理が完了しました。second/third_account_type 同期を開始します。",
             "timestamp": datetime.now().isoformat()
         })
         

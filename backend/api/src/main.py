@@ -10,6 +10,7 @@ from src.sound_stats import router as sound_stats_router
 from src.hashtag_stats import router as hashtag_stats_router
 from src.corporate_account_stats import router as corporate_account_stats_router
 from src.watchlist import router as watchlist_router
+import re
 from contextlib import closing
 from fastapi import FastAPI
 from src.timing_middleware import timing_middleware
@@ -21,11 +22,11 @@ import os
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 import pathlib
-import json
 import re
 from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from src.auth.utils import update_session_activity
+from src.utils.search import prepare_fulltext_keyword
 from sqlalchemy import text
 from src.my_report.routes import router as tiktok_router
 from src.transcription.router import router as transcription_router
@@ -34,6 +35,7 @@ from src.dashboard.affiliate_videos import router as affiliate_videos_router
 from src.dashboard.corporate_videos import router as corporate_videos_router
 from src.dashboard.influencer_videos import router as influencer_videos_router
 from src.filter_presets.router import router as filter_presets_router
+from src.influencer_pr_products.router import router as influencer_pr_products_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -65,7 +67,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -87,6 +89,7 @@ app.include_router(corporate_account_stats_router)
 app.include_router(watchlist_router)
 # フィルタープリセットルーターの追加
 app.include_router(filter_presets_router)
+app.include_router(influencer_pr_products_router)
 
 # ルーターの登録
 app.include_router(tiktok_router)
@@ -159,6 +162,10 @@ async def get_videos(
     product_type: Optional[str] = None,  # 商品フィルターの比較演算子
     account_type: Optional[str] = None,  # アカウントタイプフィルターを追加
     account_type_count: Optional[int] = None,  # 複数アカウントタイプ対応
+    second_account_type: Optional[str] = None,
+    second_account_type_count: Optional[int] = None,
+    third_account_type: Optional[str] = None,
+    third_account_type_count: Optional[int] = None,
     created_at: Optional[str] = None,  # 作成日フィルターを追加
     created_at_type: Optional[str] = None,  # 作成日の比較演算子
     followers: Optional[int] = None,
@@ -168,6 +175,7 @@ async def get_videos(
     play_increase_per_follower: Optional[int] = None,
     play_increase_per_follower_type: Optional[str] = None,
     parent_account_type: Optional[str] = None,
+    search_keyword: Optional[str] = None,
 ):
     print(f"Received request with params: {request.query_params}")  # デバッグログ追加
 
@@ -177,14 +185,37 @@ async def get_videos(
 
         # 基本クエリ
         query = """
-            SELECT 
-                url, thumbnail_url, created_at, play_count, play_count_increase, 
-                ten_days_increase, account_name, display_name, content_type, 
-                likes_count, comment_count, likes_count_increase, ten_days_likes_increase,
-                comment_count_increase, ten_days_comment_increase, account_type,
-                hashtags, music_info, caption, category, product, save_count, 
-                save_count_increase, ten_days_save_increase,
-                followers, play_count_per_follower, play_increase_per_follower
+            SELECT
+                frontend_data.url,
+                frontend_data.thumbnail_url,
+                frontend_data.created_at,
+                frontend_data.play_count,
+                frontend_data.play_count_increase,
+                frontend_data.ten_days_increase,
+                frontend_data.account_name,
+                frontend_data.display_name,
+                frontend_data.content_type,
+                frontend_data.likes_count,
+                frontend_data.comment_count,
+                frontend_data.likes_count_increase,
+                frontend_data.ten_days_likes_increase,
+                frontend_data.comment_count_increase,
+                frontend_data.ten_days_comment_increase,
+                frontend_data.account_type,
+                frontend_data.second_account_type,
+                frontend_data.third_account_type,
+                frontend_data.hashtags,
+                frontend_data.music_info,
+                frontend_data.caption,
+                frontend_data.category,
+                frontend_data.product,
+                frontend_data.save_count,
+                frontend_data.save_count_increase,
+                frontend_data.ten_days_save_increase,
+                frontend_data.followers,
+                frontend_data.play_count_per_follower,
+                frontend_data.play_increase_per_follower,
+                frontend_data.account_hashtags
             FROM frontend_data
         """
         params = {}
@@ -194,7 +225,7 @@ async def get_videos(
         if account_name:
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ - 大文字小文字を区別しない
             escaped_account_name = account_name.replace("_", r"\_").replace("%", r"\%")
-            where_clauses.append("LOWER(account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
+            where_clauses.append("LOWER(frontend_data.account_name) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:account_name)")
             params["account_name"] = f"%{escaped_account_name}%"
         
         # カテゴリフィルターのOR条件処理
@@ -247,7 +278,14 @@ async def get_videos(
             # SQLのLIKE句で使用される特殊文字（_ と %）をエスケープ
             escaped_music_info = music_info.replace("_", r"\_").replace("%", r"\%")
             where_clauses.append("LOWER(music_info) COLLATE utf8mb4_ja_0900_as_cs LIKE LOWER(:music_info)")
-            
+            params["music_info"] = f"%{escaped_music_info}%"
+        
+        fulltext_keyword = prepare_fulltext_keyword(search_keyword)
+        if fulltext_keyword:
+            params["search_keyword"] = fulltext_keyword
+            where_clauses.append(
+                "MATCH(frontend_data.search_text) AGAINST (:search_keyword IN BOOLEAN MODE)"
+            )
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
             params["min_play_count"] = min_play_count
@@ -493,6 +531,42 @@ async def get_videos(
             where_clauses.append("account_type LIKE :account_type")
             params["account_type"] = f"%{escaped_account_type}%"
 
+        second_account_type_filters = []
+        second_account_type_count_param = request.query_params.get('second_account_type_count')
+        if second_account_type_count_param and second_account_type_count_param.isdigit():
+            count = int(second_account_type_count_param)
+            for i in range(count):
+                second_param = request.query_params.get(f'second_account_type_{i}')
+                if second_param:
+                    escaped_second = second_param.replace("_", r"\_").replace("%", r"\%")
+                    second_account_type_filters.append(f"second_account_type LIKE :second_account_type_{i}")
+                    params[f"second_account_type_{i}"] = f"%{escaped_second}%"
+
+        if second_account_type_filters:
+            where_clauses.append(f"({' OR '.join(second_account_type_filters)})")
+        elif second_account_type:
+            escaped_second = second_account_type.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("second_account_type LIKE :second_account_type")
+            params["second_account_type"] = f"%{escaped_second}%"
+
+        third_account_type_filters = []
+        third_account_type_count_param = request.query_params.get('third_account_type_count')
+        if third_account_type_count_param and third_account_type_count_param.isdigit():
+            count = int(third_account_type_count_param)
+            for i in range(count):
+                third_param = request.query_params.get(f'third_account_type_{i}')
+                if third_param:
+                    escaped_third = third_param.replace("_", r"\_").replace("%", r"\%")
+                    third_account_type_filters.append(f"third_account_type LIKE :third_account_type_{i}")
+                    params[f"third_account_type_{i}"] = f"%{escaped_third}%"
+
+        if third_account_type_filters:
+            where_clauses.append(f"({' OR '.join(third_account_type_filters)})")
+        elif third_account_type:
+            escaped_third = third_account_type.replace("_", r"\_").replace("%", r"\%")
+            where_clauses.append("third_account_type LIKE :third_account_type")
+            params["third_account_type"] = f"%{escaped_third}%"
+
         # 親アカウントタイプのフィルタリング
         if parent_account_type:
             where_clauses.append("parent_account_type = :parent_account_type")
@@ -726,28 +800,141 @@ async def get_filter_options(
                 processed_products.append(product)
         
         final_products = sorted(list(set(processed_products)))
-        
-        # アカウントタイプ選択肢
+
+        # アカウントタイプ選択肢        # アカウントジャンル(account_type)の一覧
         account_types_query = f"SELECT DISTINCT account_type FROM frontend_data{base_where}"
         account_types_rows = execute_query(account_types_query, params)
         account_types = [row['account_type'] for row in account_types_rows if row['account_type']]
-        
-        # アカウントタイプを分割して処理
+
         processed_account_types = []
         for account_type in account_types:
-            if "、" in account_type or "," in account_type:
-                parts = account_type.replace("、", ",").split(",")
+            if '、' in account_type or ',' in account_type:
+                parts = account_type.replace('、', ',').split(',')
                 processed_account_types.extend([part.strip() for part in parts if part.strip()])
             else:
                 processed_account_types.append(account_type)
-        
-        final_account_types = sorted(list(set(processed_account_types)))
-        
+
+        # account_type から目的(second_account_type)である『採用』『集客』を除外
+        final_account_types = sorted(
+            [t for t in set(processed_account_types) if t not in ['採用', '集客']]
+        )
+
+        # 目的一覧(second_account_type)
+        second_account_query = f"SELECT DISTINCT second_account_type FROM frontend_data{base_where}"
+        second_account_rows = execute_query(second_account_query, params)
+        second_account_type_set = set()
+        split_pattern = r'[、,／/・\s]+'
+        for row in second_account_rows:
+            raw_value = row.get('second_account_type')
+            if not raw_value:
+                continue
+            parts = [part.strip() for part in re.split(split_pattern, raw_value) if part.strip()]
+            if not parts and raw_value.strip():
+                parts = [raw_value.strip()]
+            second_account_type_set.update(parts)
+        final_second_account_types = sorted(second_account_type_set)
+
+        # 中ジャンル(third_account_type)とアカウントジャンル(account_type)の対応
+        corporate_category_rows = execute_query(
+            "SELECT account_type, third_account_type FROM corporate_category",
+            {}
+        )
+
+        third_account_type_set = set()
+        third_account_type_map: Dict[str, str] = {}
+        for row in corporate_category_rows:
+            account_type_value = (row.get('account_type') or '').strip()
+            third_account_type_value = (row.get('third_account_type') or '').strip()
+
+            if third_account_type_value:
+                third_account_type_set.add(third_account_type_value)
+                if account_type_value:
+                    third_account_type_map[third_account_type_value] = account_type_value
+
+        # corporate_categoryに存在しない中ジャンルの補完をfrontend_dataから取得
+        third_account_pairs_query = f"""
+            SELECT account_type, third_account_type
+            FROM frontend_data
+            WHERE third_account_type IS NOT NULL AND third_account_type != ''
+            {base_where.replace('WHERE', 'AND', 1) if base_where else ''}
+        """
+        third_account_pairs_rows = execute_query(third_account_pairs_query, params)
+
+        # third_account_type では中点「・」とスラッシュで分割しない
+        third_split_pattern = r'[、,\s]+'
+
+        for row in third_account_pairs_rows:
+            raw_account_type = (row.get('account_type') or '').strip()
+            raw_third_type = (row.get('third_account_type') or '').strip()
+            if not raw_third_type:
+                continue
+
+            third_tokens = [token.strip() for token in re.split(third_split_pattern, raw_third_type) if token.strip()]
+            account_tokens = [token.strip() for token in re.split(split_pattern, raw_account_type) if token.strip()]
+            fallback_account = account_tokens[0] if account_tokens else ''
+
+            for index, third_token in enumerate(third_tokens):
+                if not third_token:
+                    continue
+                third_account_type_set.add(third_token)
+                if third_token in third_account_type_map:
+                    continue
+                parent_account = account_tokens[index] if index < len(account_tokens) else fallback_account
+                if parent_account:
+                    third_account_type_map[third_token] = parent_account
+
+        final_third_account_types = sorted(third_account_type_set)
+
+        # 商品カテゴリーマップを商品マスターから取得
+        product_master_rows = execute_query(
+            """
+            SELECT 
+                product_name,
+                product_category
+            FROM 
+                product_master
+            WHERE 
+                product_name IS NOT NULL 
+                AND product_name != ''
+            """,
+            {}
+        )
+
+        product_categories_map: Dict[str, List[str]] = {}
+        product_to_category: Dict[str, str] = {}
+
+        for row in product_master_rows:
+            product_name = (row.get('product_name') or '').strip()
+            if not product_name:
+                continue
+            product_category = (row.get('product_category') or 'その他').strip() or 'その他'
+            product_categories_map.setdefault(product_category, [])
+            if product_name not in product_categories_map[product_category]:
+                product_categories_map[product_category].append(product_name)
+            product_to_category[product_name] = product_category
+
+        # frontend_data由来の商品でマスターに存在しないものはその他カテゴリに追加
+        for product_name in final_products:
+            if product_name in product_to_category:
+                continue
+            product_categories_map.setdefault('その他', [])
+            if product_name not in product_categories_map['その他']:
+                product_categories_map['その他'].append(product_name)
+            product_to_category[product_name] = 'その他'
+
+        # カテゴリ内の商品をソート
+        for category_name, product_list in product_categories_map.items():
+            product_categories_map[category_name] = sorted(list(set(product_list)))
+
         return {
             "success": True,
             "categories": final_categories,
             "products": final_products,
-            "accountTypes": final_account_types
+            "productCategories": product_categories_map,
+            "accountTypes": final_account_types,
+            "secondAccountTypes": final_second_account_types,
+            "thirdAccountTypes": final_third_account_types,
+            "thirdAccountTypeMap": third_account_type_map
         }
         
     except Exception as e:
@@ -755,6 +942,13 @@ async def get_filter_options(
         print(traceback.format_exc())
         return {
             "success": False,
+            "categories": [],
+            "products": [],
+            "productCategories": {},
+            "accountTypes": [],
+            "secondAccountTypes": [],
+            "thirdAccountTypes": [],
+            "thirdAccountTypeMap": {},
             "error": str(e)
         }
 

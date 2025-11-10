@@ -251,7 +251,7 @@ def update_frontend_from_master() -> Dict[str, Any]:
                     continue
                 
                 update_query = """
-                REPLACE INTO frontend_data (
+                INSERT INTO frontend_data (
                     id, url, video_id, thumbnail_url, created_at, play_count, 
                     play_count_increase, account_name, likes_count, comment_count, 
                     hashtags, music_info, caption, category, display_name,
@@ -262,6 +262,30 @@ def update_frontend_from_master() -> Dict[str, Any]:
                     %(hashtags)s, %(music_info)s, %(caption)s, %(category)s, %(display_name)s,
                     %(content_type)s, %(product)s, %(save_count)s, %(likesCountIncrease)s, %(commentCountIncrease)s, %(saveCountIncrease)s, %(account_type)s, %(parent_account_type)s
                 )
+                ON DUPLICATE KEY UPDATE
+                    id = VALUES(id),
+                    url = VALUES(url),
+                    video_id = VALUES(video_id),
+                    thumbnail_url = VALUES(thumbnail_url),
+                    created_at = VALUES(created_at),
+                    play_count = VALUES(play_count),
+                    play_count_increase = VALUES(play_count_increase),
+                    account_name = VALUES(account_name),
+                    likes_count = VALUES(likes_count),
+                    comment_count = VALUES(comment_count),
+                    hashtags = VALUES(hashtags),
+                    music_info = VALUES(music_info),
+                    caption = VALUES(caption),
+                    category = VALUES(category),
+                    display_name = VALUES(display_name),
+                    content_type = VALUES(content_type),
+                    product = VALUES(product),
+                    save_count = VALUES(save_count),
+                    likes_count_increase = VALUES(likes_count_increase),
+                    comment_count_increase = VALUES(comment_count_increase),
+                    save_count_increase = VALUES(save_count_increase),
+                    account_type = VALUES(account_type),
+                    parent_account_type = VALUES(parent_account_type)
                 """
                 
                 params = {

@@ -201,9 +201,22 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     )
     
     # アクセストークンの生成（is_adminを含める）
-    access_token = create_access_token(data={"sub": user["email"], "is_admin": bool(user.get("is_admin", 0))})
+    is_admin_flag = bool(user.get("is_admin", 0))
+    is_developer_flag = bool(user.get("is_developer", 0))
+    access_token = create_access_token(
+        data={
+            "sub": user["email"],
+            "is_admin": is_admin_flag,
+            "is_developer": is_developer_flag
+        }
+    )
     
-    return {"access_token": access_token, "token_type": "bearer", "is_admin": bool(user.get("is_admin", 0))}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "is_admin": is_admin_flag,
+        "is_developer": is_developer_flag
+    }
 
 @router.post("/logout")
 async def logout(current_user: User = Depends(get_current_user)):

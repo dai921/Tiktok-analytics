@@ -18,7 +18,7 @@ spec:
       containers:
       # ────────── Ingress (HTTP) ──────────
       - name: backend
-        image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/backend-repo/backend:1001
+        image: asia-northeast1-docker.pkg.dev/tiktok-analytics-prod-451609/backend-repo/backend:1109
         ports:
           - name: http1
             containerPort: 8080                        # 1 つだけポートを公開

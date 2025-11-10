@@ -22,6 +22,8 @@ export const fetchVideosFromBackend = async (options: {
   sortBySecondary?: string;  // 二次ソート用のフィールドを追加
   sortOrderSecondary?: string;  // 二次ソート順序を追加
   content_type?: string | string[]; // コンテンツタイプフィルタを追加
+  secondAccountType?: string | string[];
+  thirdAccountType?: string | string[];
 }) => {
   const {
     page = 1,
@@ -38,6 +40,8 @@ export const fetchVideosFromBackend = async (options: {
     sortBySecondary = 'play_count',  // デフォルトの二次ソートフィールド
     sortOrderSecondary = 'desc',  // デフォルトの二次ソート順序
     content_type,
+    secondAccountType,
+    thirdAccountType,
   } = options;
 
   // クエリパラメータの構築
@@ -49,6 +53,28 @@ export const fetchVideosFromBackend = async (options: {
     sort_by_secondary: sortBySecondary,  // 二次ソートフィールドを初期パラメータに追加
     sort_order_secondary: sortOrderSecondary  // 二次ソート順序を初期パラメータに追加
   });
+
+  const appendMultiValueParam = (value: string | string[] | undefined, key: string) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      const filtered = value
+        .map((item) => item?.toString().trim())
+        .filter((item): item is string => Boolean(item && item.length > 0));
+
+      filtered.forEach((item, index) => {
+        params.append(`${key}_${index}`, item);
+      });
+
+      if (filtered.length > 0) {
+        params.append(`${key}_count`, filtered.length.toString());
+      }
+    } else {
+      const trimmed = value.toString().trim();
+      if (trimmed) {
+        params.append(key, trimmed);
+      }
+    }
+  };
 
   // オプションパラメータの追加
   if (accountName) params.append('account_name', accountName);
@@ -69,6 +95,9 @@ export const fetchVideosFromBackend = async (options: {
       params.append('content_type', content_type);
     }
   }
+
+  appendMultiValueParam(secondAccountType, 'second_account_type');
+  appendMultiValueParam(thirdAccountType, 'third_account_type');
   
   // 日付フィルターの処理
   // 注意: バックエンドAPIの現在の実装では、startDateとendDateの両方を同時に処理できません
@@ -289,6 +318,8 @@ export const COLUMN_MAP: Record<string, string> = {
   'artist': 'アーティスト',
   'content_type': 'コンテンツタイプ',
   'account_type': 'アカウントジャンル',
+  'second_account_type': '中ジャンル',
+  'third_account_type': '小ジャンル',
   'likes_count_increase': '2日いいね増加数',
   'ten_days_likes_increase': '10日いいね増加数',
   'comment_count_increase': '2日コメント増加数',
@@ -331,6 +362,18 @@ const mapFieldToApiField = (field: string): string => {
   // 「再生増加数」を「play_count_increase」に直接マッピングする場合を追加
   if (field === 'PR動画ジャンル') {
     return 'category';
+  }
+  if (field === 'global_search') {
+    return 'search_keyword';
+  }
+  if (field === 'search_hashtags') {
+    return 'hashtags';
+  } else if (field === 'search_description') {
+    return 'caption';
+  } else if (field === 'search_account_type') {
+    return 'account_type';
+  } else if (field === 'search_account_hashtags') {
+    return 'account_hashtags';
   }  else if (field === '2日再生増加数') {
     return 'play_count_increase';
   } else if (field === '10日再生増加数') {
@@ -368,6 +411,8 @@ const mapFieldToApiField = (field: string): string => {
     'viewsIncrease': 'play_count_increase', // 再生増加数の対応を追加
     'content_type': 'content_type', // コンテンツタイプのマッピングを追加
     'account_type': 'account_type',
+    'second_account_type': 'second_account_type',
+    'third_account_type': 'third_account_type',
     'likes_count_increase': 'likes_count_increase',
     'ten_days_likes_increase': 'ten_days_likes_increase',
     'comment_count_increase': 'comment_count_increase',
@@ -379,7 +424,8 @@ const mapFieldToApiField = (field: string): string => {
     'product': 'product',  // 商品フィルターのマッピングを追加
     'followers': 'followers',
     'play_count_per_follower': 'play_count_per_follower',
-    'play_increase_per_follower': 'play_increase_per_follower'
+    'play_increase_per_follower': 'play_increase_per_follower',
+    'account_hashtags': 'account_hashtags'
   };
   
   const result = fieldMapping[internalField] || internalField;
@@ -455,6 +501,8 @@ const convertToVideoData = (video: any): VideoData => {
     ten_days_increase: parseNumberSafely(video.ten_days_increase),
     content_type: video.content_type || 'video',
     account_type: video.account_type || '',
+    second_account_type: video.second_account_type || '',
+    third_account_type: video.third_account_type || '',
     likes_count_increase: parseNumberSafely(video.likes_count_increase),
     ten_days_likes_increase: parseNumberSafely(video.ten_days_likes_increase),
     comment_count_increase: parseNumberSafely(video.comment_count_increase),
@@ -602,6 +650,29 @@ export async function getDbData(page: number = 1, filters?: Record<string, Filte
             params.append('account_type_count', filter.value.length.toString());
           } else {
             params.append('account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+        if (key === 'second_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`second_account_type_${index}`, type.toString().trim());
+            });
+            params.append('second_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('second_account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        if (key === 'third_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`third_account_type_${index}`, type.toString().trim());
+            });
+            params.append('third_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('third_account_type', filter.value.toString().trim());
           }
           return;
         }
@@ -1200,6 +1271,9 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       // ★ 追加
       productCount: result.products?.length || 0,
       accountTypeCount: result.accountTypes?.length || 0,
+      secondAccountTypeCount: result.secondAccountTypes?.length || 0,
+      thirdAccountTypeCount: result.thirdAccountTypes?.length || 0,
+      thirdAccountTypeMapCount: result.thirdAccountTypeMap ? Object.keys(result.thirdAccountTypeMap).length : 0,
     });
     
     if (result.success) {
@@ -1211,7 +1285,11 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         music: result.music || [],
         // ★ 追加: productsとaccountTypesを戻り値に含める
         products: result.products || [],
-        accountTypes: result.accountTypes || []
+        productCategories: result.productCategories || {},
+        accountTypes: result.accountTypes || [],
+        secondAccountTypes: result.secondAccountTypes || [],
+        thirdAccountTypes: result.thirdAccountTypes || [],
+        thirdAccountTypeMap: result.thirdAccountTypeMap || {},
       };
     } else {
       console.error('選択肢取得エラー:', result.error || '不明なエラー');
@@ -1223,7 +1301,11 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
         music: [],
         // ★ 追加
         products: [],
+        productCategories: {},
         accountTypes: [],
+        secondAccountTypes: [],
+        thirdAccountTypes: [],
+        thirdAccountTypeMap: {},
         error: result.error || '不明なエラー'
       };
     }
@@ -1237,7 +1319,11 @@ export async function getFilterOptions(filters?: Record<string, FilterQuery>, fi
       music: [],
       // ★ 追加
       products: [],
+      productCategories: {},
       accountTypes: [],
+      secondAccountTypes: [],
+      thirdAccountTypes: [],
+      thirdAccountTypeMap: {},
       error: error instanceof Error ? error.message : '不明なエラー'
     };
   }
@@ -1373,6 +1459,29 @@ export async function getAffiliateData(page: number = 1, filters?: Record<string
             params.append('account_type_count', filter.value.length.toString());
           } else {
             params.append('account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+        if (key === 'second_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`second_account_type_${index}`, type.toString().trim());
+            });
+            params.append('second_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('second_account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        if (key === 'third_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`third_account_type_${index}`, type.toString().trim());
+            });
+            params.append('third_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('third_account_type', filter.value.toString().trim());
           }
           return;
         }
@@ -1602,6 +1711,29 @@ export async function getCorporateData(page: number = 1, filters?: Record<string
             params.append('account_type_count', filter.value.length.toString());
           } else {
             params.append('account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+        if (key === 'second_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`second_account_type_${index}`, type.toString().trim());
+            });
+            params.append('second_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('second_account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        if (key === 'third_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`third_account_type_${index}`, type.toString().trim());
+            });
+            params.append('third_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('third_account_type', filter.value.toString().trim());
           }
           return;
         }
@@ -2017,6 +2149,29 @@ export async function getInfluencerData(page: number = 1, filters?: Record<strin
           }
           return;
         }
+        if (key === 'second_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`second_account_type_${index}`, type.toString().trim());
+            });
+            params.append('second_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('second_account_type', filter.value.toString().trim());
+          }
+          return;
+        }
+
+        if (key === 'third_account_type') {
+          if (Array.isArray(filter.value)) {
+            filter.value.forEach((type, index) => {
+              params.append(`third_account_type_${index}`, type.toString().trim());
+            });
+            params.append('third_account_type_count', filter.value.length.toString());
+          } else {
+            params.append('third_account_type', filter.value.toString().trim());
+          }
+          return;
+        }
 
         // カテゴリフィルター
         if (key === 'category' || key === 'PR動画ジャンル') {
@@ -2103,4 +2258,3 @@ export async function getInfluencerData(page: number = 1, filters?: Record<strin
     };
   }
 }
-

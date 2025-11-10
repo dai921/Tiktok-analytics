@@ -14,6 +14,7 @@ export const fetchGenreStats = async (
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (metric) params.append('metric', metric);
+    
 
     
     // パラメータがあれば追加
@@ -76,6 +77,7 @@ export const fetchGenreTrends = async (
     if (startDate) queryParams.append('start_date', startDate);
     if (endDate) queryParams.append('end_date', endDate);
     if (metric) queryParams.append('metric', metric);
+    
 
     const url = `${process.env.NEXT_PUBLIC_API_URL}/api/genre-trends?${queryParams.toString()}`;
     console.log('API URL:', url);

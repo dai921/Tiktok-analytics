@@ -32,13 +32,18 @@ def categorize_video_type(video_url: str) -> str:
         return 'video'
     return 'unknown'
 
-def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, str]:
+def analyze_title(
+    title: Optional[str],
+    account_type: Optional[str] = None,
+    comment_texts: Optional[List[str]] = None
+) -> Dict[str, str]:
     """
     動画タイトルからカテゴリと商品名を抽出する
     
     Args:
         title (str): 動画タイトル
         account_type (str, optional): アカウントタイプ
+        comment_texts (List[str], optional): 取得済みのコメント本文
     
     Returns:
         Dict[str, str]: カテゴリと商品名の辞書
@@ -52,6 +57,12 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
             }
 
         video_title_lower = title.lower() if title else ''
+
+        # 商品判定用にコメントも含めたテキストを構築
+        combined_text = [title] if title else []
+        if comment_texts:
+            combined_text.extend([text for text in comment_texts if text])
+        product_text_lower = ' '.join(combined_text).lower() if combined_text else video_title_lower
         
         # 商品キーワードの取得
         product_query = """
@@ -64,59 +75,73 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         """
         product_data = execute_query(product_query)
 
-        # 先に商品名の判定
+        # 先に商品名の判定（出現回数が最も多いキーワードを採用）
         product_name = ''
         product_category = ''
+        best_product_match: Optional[Dict] = None
         
         for product_info in product_data:
             keyword = product_info['keyword'].lower()
-            if keyword in video_title_lower:
-                product_name = product_info['product_name']
-                product_category = product_info['product_category']
+            if not keyword:
+                continue
+            keyword_count = product_text_lower.count(keyword)
+            if keyword_count <= 0:
+                continue
+            if not best_product_match or keyword_count > best_product_match['count']:
+                best_product_match = {
+                    'info': product_info,
+                    'count': keyword_count
+                }
+
+        if best_product_match:
+            product_name = best_product_match['info']['product_name']
+            product_category = best_product_match['info']['product_category']
+            
+            # product_categoryが「複数」の場合、別名テーブルを検索して出現回数順に選択
+            if product_category == '複数':
+                alias_query = """
+                    SELECT 
+                        pa.alias_name,
+                        pa.alias_priority,
+                        pak.keyword
+                    FROM product_alias pa
+                    JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
+                    WHERE pa.product_name = %s
+                """
+                alias_data = execute_query(alias_query, (product_name,))
                 
-                # product_categoryが「複数」の場合、別名テーブルを検索
-                if product_category == '複数':
-                    alias_query = """
-                        SELECT 
-                            pa.alias_name,
-                            pa.alias_priority,
-                            pak.keyword
-                        FROM product_alias pa
-                        JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
-                        WHERE pa.product_name = %s
-                    """
-                    alias_data = execute_query(alias_query, (product_name,))
-                    
-                    # 別名キーワードでマッチするか確認
-                    alias_match = False
-                    priority_alias = None
-                    
-                    for alias_info in alias_data:
-                        if alias_info['keyword'].lower() in video_title_lower:
-                            product_name = alias_info['alias_name']
-                            alias_match = True
-                            break
-                        # Priority=1の別名を保持
-                        elif alias_info['alias_priority'] == 1:
-                            priority_alias = alias_info['alias_name']
-                    
-                    # キーワードマッチしなかった場合はPriority=1の別名を使用
-                    if not alias_match and priority_alias:
-                        product_name = priority_alias
-                    
-                    # 更新した商品名に対応するカテゴリを取得
-                    updated_category_query = """
-                        SELECT product_category
-                        FROM product_master
-                        WHERE product_name = %s
-                    """
-                    updated_category_result = execute_query(updated_category_query, (product_name,))
-                    
-                    # 新しいカテゴリがあれば更新
-                    if updated_category_result and updated_category_result[0]['product_category'] != '複数':
-                        product_category = updated_category_result[0]['product_category']
+                alias_best = None
+                priority_alias = None
                 
-                break  # 最初にマッチした商品で処理を終了
+                for alias_info in alias_data:
+                    alias_keyword = alias_info['keyword'].lower() if alias_info['keyword'] else ''
+                    keyword_count = product_text_lower.count(alias_keyword) if alias_keyword else 0
+                    if keyword_count > 0 and (
+                        not alias_best or keyword_count > alias_best['count']
+                    ):
+                        alias_best = {
+                            'name': alias_info['alias_name'],
+                            'count': keyword_count
+                        }
+                    elif alias_info['alias_priority'] == 1 and not priority_alias:
+                        priority_alias = alias_info['alias_name']
+                
+                if alias_best:
+                    product_name = alias_best['name']
+                elif priority_alias:
+                    product_name = priority_alias
+                
+                # 更新した商品名に対応するカテゴリを取得
+                updated_category_query = """
+                    SELECT product_category
+                    FROM product_master
+                    WHERE product_name = %s
+                """
+                updated_category_result = execute_query(updated_category_query, (product_name,))
+                
+                # 新しいカテゴリがあれば更新
+                if updated_category_result and updated_category_result[0]['product_category'] != '複数':
+                    product_category = updated_category_result[0]['product_category']
 
         # 商品が見つかり、product_categoryが「複数」でない場合はそれをカテゴリとして使用
         if product_name and product_category:
@@ -301,6 +326,62 @@ def extract_hashtags(title: str) -> Tuple[str, bool]:
     hashtags_str = ','.join(hashtags)
     
     return hashtags_str, is_pr
+
+
+COMMENT_TEXT_SAMPLE_LIMIT = 50
+
+
+def fetch_comment_texts(video_id: str) -> List[str]:
+    """Fetch comment texts stored as JSON in video_heavy_raw_data."""
+    try:
+        comments_query = """
+            SELECT comments_json
+            FROM video_heavy_raw_data
+            WHERE video_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+        """
+        comments_result = execute_query(comments_query, (video_id,))
+        if not comments_result:
+            return []
+
+        raw_comments = comments_result[0].get('comments_json')
+        if not raw_comments:
+            return []
+
+        try:
+            payload = json.loads(raw_comments)
+        except json.JSONDecodeError:
+            stripped = raw_comments.strip() if isinstance(raw_comments, str) else ''
+            return [stripped] if stripped else []
+
+        if isinstance(payload, list):
+            texts = [text.strip() for text in payload if isinstance(text, str) and text.strip()]
+            return texts[:COMMENT_TEXT_SAMPLE_LIMIT]
+
+        if isinstance(payload, dict):
+            raw_texts = payload.get('comments') or payload.get('items') or payload.get('data')
+            if isinstance(raw_texts, list):
+                texts = []
+                for item in raw_texts:
+                    if len(texts) >= COMMENT_TEXT_SAMPLE_LIMIT:
+                        break
+                    if isinstance(item, str):
+                        stripped = item.strip()
+                        if stripped:
+                            texts.append(stripped)
+                    elif isinstance(item, dict):
+                        candidate = item.get('text') or item.get('comment') or item.get('content')
+                        if isinstance(candidate, str):
+                            stripped = candidate.strip()
+                            if stripped:
+                                texts.append(stripped)
+                return texts
+
+        return []
+    except Exception as e:
+        logger.warning(f"コメント取得に失敗しました: {str(e)}, video_id: {video_id}")
+        return []
 
 
 def find_music_title_from_alt(alt_text: Optional[str]) -> Optional[str]:
@@ -494,7 +575,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # ②加工後のvideo_titleのログ
         print(f"[LOG] 加工後のvideo_title: {video_title}")
         
-        title_analysis = analyze_title(video_title, account_type)
+        comment_texts = fetch_comment_texts(video_id)
+        title_analysis = analyze_title(video_title, account_type, comment_texts)
         
         # コンテンツタイプの判定
         content_type = categorize_video_type(video_data['video_url'])

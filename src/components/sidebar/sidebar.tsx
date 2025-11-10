@@ -12,7 +12,6 @@ import {
   LayoutDashboard, 
   LineChart, 
   Menu, 
-  Settings,
   Eye,
   LogOut,
   FileText,
@@ -21,10 +20,11 @@ import {
   X,
   Mic,
   TrendingUp,
-  Music
+  Music,
+  Shield
 } from 'lucide-react';
 
-type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Settings' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp' | 'Music';
+type IconName = 'LayoutDashboard' | 'LineChart' | 'Eye' | 'Shield' | 'LogOut' | 'FileText' | 'Users' | 'Mic' | 'TrendingUp' | 'Music';
 
 type SidebarItemProps = {
   href?: string;
@@ -41,10 +41,11 @@ type SidebarItemProps = {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isTrendsOpen, setIsTrendsOpen] = useState(false);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState(false);
+  const [, setIsAdminMenuOpen] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   
   // 画面幅を監視するステート
@@ -222,6 +223,41 @@ export function Sidebar() {
           />
         </nav>
 
+        {isAdmin && (
+          <div className="px-2 pb-2">
+            <div 
+              className="relative group"
+              onMouseEnter={() => setIsAdminMenuOpen(true)}
+              onMouseLeave={() => setIsAdminMenuOpen(false)}
+            >
+              <SidebarItem
+                icon="Shield"
+                label="管理画面"
+                active={pathname.startsWith('/admin')}
+              />
+              <div 
+                className="absolute left-full top-0 ml-0 bg-[#1a1a1a] rounded-md border border-gray-800 min-w-[200px] shadow-lg z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+              >
+                <Link href="/admin/notifications">
+                  <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-t-md">
+                    通知設定
+                  </div>
+                </Link>
+                <Link href="/admin/pr-products">
+                  <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors">
+                    PR未判定
+                  </div>
+                </Link>
+                <Link href="/admin/feature-roadmap">
+                  <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
+                    追加機能予定
+                  </div>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="px-4 pb-2">
           <a
             href="https://docs.google.com/forms/d/e/1FAIpQLSdO_WCDxWCJfDlZMURIxVaH_X4B8iVRuBVYTYyfX26vJrRL_A/viewform"
@@ -327,6 +363,8 @@ function renderIcon(iconName: IconName) {
       return <TrendingUp size={20} />;
     case 'Music':
       return <Music size={20} />;
+    case 'Shield':
+      return <Shield size={20} />;
     default:
       return null;
   }

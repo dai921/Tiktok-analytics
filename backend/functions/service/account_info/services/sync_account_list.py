@@ -64,6 +64,18 @@ def sync_account_list(request):
         result, status_code = process_account_list()
         execution_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"同期処理完了: 実行時間 {execution_time}秒, 結果: {result}")
+
+        # 後続の企業アカウント派生データ同期をトリガー
+        try:
+            publish_message("sync-corporate-accounts", {
+                "status": "success" if status_code == 200 else "unknown",
+                "previous_step": "sync_account_list",
+                "message": result,
+                "execution_time": execution_time
+            })
+        except Exception as pubsub_error:
+            logger.error(f"企業アカウント同期トリガーの送信に失敗: {str(pubsub_error)}")
+
         return result, status_code
     except Exception as e:
         logger.error(f"同期処理エラー: {str(e)}")
@@ -127,7 +139,7 @@ def process_account_list():
 
         # スプレッドシートからデータを読み取る（アカウント作業用シート）
         print("アカウント作業用シートデータ取得開始")
-        range_name = 'アカウント作業用シート!B:K'  # B列からK列までの範囲を取得
+        range_name = 'アカウント作業用シート!B:N'  # B列からK列までの範囲を取得
         
         result = service.spreadsheets().values().get(
             spreadsheetId=SPREADSHEET_ID,
@@ -149,10 +161,10 @@ def process_account_list():
                 account_url = row[0].strip() if len(row) > 0 and row[0] else None
                 favorite_user_username = row[1].strip() if len(row) > 1 and row[1] else None
                 account_type = row[5].strip() if len(row) > 5 and row[5] else None
-                crawler_account_id = row[6].strip() if len(row) > 6 and row[6] else None
-                delete_flag = row[7].strip() if len(row) > 7 and row[7] else None
-                parent_account_type = row[8].strip() if len(row) > 8 and row[8] else None
-                play_count_crawler_id = row[9].strip() if len(row) > 9 and row[9] else None
+                crawler_account_id = row[9].strip() if len(row) > 9 and row[9] else None
+                delete_flag = row[10].strip() if len(row) > 10 and row[10] else None
+                parent_account_type = row[11].strip() if len(row) > 11 and row[11] else None
+                play_count_crawler_id = row[12].strip() if len(row) > 12 and row[12] else None
 
                 # 必須項目のチェック
                 if not account_url or not favorite_user_username:
