@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -93,85 +93,82 @@ export default function AccountWatchlistPage() {
   // 2. useToastフックを追加
   const { toast } = useToast();
 
-  // アカウント一覧を読み込む
+  // アカウント一覧とトレンドデータを並列で読み込む
   useEffect(() => {
     const loadAccounts = async () => {
       try {
         setIsLoading(true);
+        setIsLoadingTrends(true);
         setError(null);
+        setTrendError(null);
 
-        // APIからアカウントの詳細情報を取得
         const startDate = userSelectedDate ? dateRange.start.toISOString().split('T')[0] : undefined;
         const endDate = userSelectedDate ? dateRange.end.toISOString().split('T')[0] : undefined;
-        
-        const response = await getAccountBookmarksWithDetails(startDate, endDate);
-        
-        if (response.success) {
-          setAccounts(response.data);
-          
-          // 日付範囲情報を保存
-          if (response.period) {
-            setPeriod(response.period);
-            
-            // ユーザーが日付を選択していない場合はAPIから返された日付を使用
-            if (!userSelectedDate && response.period.start_date && response.period.end_date && !initialDateSet.current) {
-              initialDateSet.current = true;
-              setDateRange({
-                start: new Date(response.period.start_date),
-                end: new Date(response.period.end_date)
-              });
+
+        const [accountsResult, trendsResult] = await Promise.allSettled([
+          getAccountBookmarksWithDetails(startDate, endDate),
+          getAccountTrends(startDate, endDate)
+        ]);
+
+        if (accountsResult.status === 'fulfilled') {
+          const response = accountsResult.value;
+
+          if (response.success) {
+            setAccounts(response.data);
+
+            if (response.period) {
+              setPeriod(response.period);
+
+              if (!userSelectedDate && response.period.start_date && response.period.end_date && !initialDateSet.current) {
+                initialDateSet.current = true;
+                setDateRange({
+                  start: new Date(response.period.start_date),
+                  end: new Date(response.period.end_date)
+                });
+              }
             }
+          } else {
+            setAccounts([]);
+            setError('アカウント情報の取得に失敗しました');
           }
-          
-          // // アカウントタイプの一覧を抽出（フィルタリング用）
-          // const types = Array.from(new Set(
-          //   response.data
-          //     .filter((item: BookmarkAccountItem) => item.account && item.account.account_type)
-          //     .map((item: BookmarkAccountItem) => item.account!.account_type as string)
-          // ));
-          // setAccountTypes(types);
-          
-          // トレンドデータを読み込む
-          loadTrendData(startDate, endDate);
         } else {
-          setError('アカウント情報の取得に失敗しました');
+          console.error("アカウント情報取得エラー:", accountsResult.reason);
+          setAccounts([]);
+          setError('アカウント情報の取得中にエラーが発生しました');
+        }
+
+        if (trendsResult.status === 'fulfilled') {
+          const response = trendsResult.value;
+
+          if (response.success) {
+            setTrendData(response.data);
+
+            if (response.period && (!period || !userSelectedDate)) {
+              setPeriod(response.period);
+            }
+          } else {
+            setTrendData([]);
+            setTrendError('トレンドデータの取得に失敗しました');
+          }
+        } else {
+          console.error("トレンドデータ取得エラー:", trendsResult.reason);
+          setTrendData([]);
+          setTrendError('トレンドデータの取得中にエラーが発生しました');
         }
       } catch (err) {
         console.error("アカウント情報取得エラー:", err);
+        setAccounts([]);
+        setTrendData([]);
         setError('アカウント情報の取得中にエラーが発生しました');
       } finally {
         setIsLoading(false);
+        setIsLoadingTrends(false);
+        setUserSelectedDate(false);
       }
     };
 
     loadAccounts();
   }, [userSelectedDate]);
-
-  // トレンドデータを読み込む
-  const loadTrendData = async (startDate?: string, endDate?: string) => {
-    try {
-      setIsLoadingTrends(true);
-      setTrendError(null);
-      
-      const response = await getAccountTrends(startDate, endDate);
-      
-      if (response.success) {
-        setTrendData(response.data);
-        
-        // 日付範囲情報を更新（期間が返されている場合）
-        if (response.period && (!period || !userSelectedDate)) {
-          setPeriod(response.period);
-        }
-      } else {
-        setTrendError('トレンドデータの取得に失敗しました');
-      }
-    } catch (err) {
-      console.error("トレンドデータ取得エラー:", err);
-      setTrendError('トレンドデータの取得中にエラーが発生しました');
-    } finally {
-      setIsLoadingTrends(false);
-    }
-  };
 
   // アカウント選択時のハンドラ
   const handleAccountSelect = (accountName: string) => {
@@ -276,30 +273,28 @@ export default function AccountWatchlistPage() {
     setMetric(e.target.value as MetricType);
   };
 
-  // フィルタリングされたアカウント一覧を取得
-  const getFilteredAccounts = () => {
+  const filteredAccounts = useMemo(() => {
     if (!selectedAccountType) return accounts;
     
     return accounts.filter(item => 
       item.account && item.account.account_type === selectedAccountType
     );
-  };
+  }, [accounts, selectedAccountType]);
 
-  // 現在の指標でソートされたアカウント一覧を取得
-  const getRankedAccounts = () => {
-    // トレンドデータの集計値でソート
-    return [...trendData]
+  const rankedAccounts = useMemo(() => {
+    if (!trendData.length) return [];
+
+    return trendData
       .map(account => {
-        // 各アカウントの指標の総計を計算
         const totalMetricValue = account.trends.reduce(
-          (sum, point) => sum + point[metric], 0
+          (sum, point) => sum + (point[metric] || 0), 
+          0
         );
-        
-        // アカウント情報を取得
+
         const accountInfo = accounts.find(
           a => a.account && a.account.account_name === account.account_name
         );
-        
+
         return {
           account_name: account.account_name,
           display_name: account.display_name || account.account_name,
@@ -309,34 +304,40 @@ export default function AccountWatchlistPage() {
       })
       .sort((a, b) => b.metric_value - a.metric_value)
       .slice(0, 10);
-  };
+  }, [trendData, accounts, metric]);
 
-  // グラフ表示用のデータを加工
-  const getFormattedGraphData = () => {
-    // ランキング上位のアカウント一覧
-    const topAccounts = getRankedAccounts().slice(0, 5).map(a => a.account_name);
-    
-    // すべての日付を取得
-    const allDates = Array.from(
-      new Set(trendData.flatMap(account => account.trends.map(t => t.date)))
-    ).sort();
-    
-    // 日付ごとにデータを整形
-    return allDates.map(date => {
-      const dataPoint: Record<string, string | number> = { date };
-      
-      // 各アカウントのデータを追加
-      topAccounts.forEach(accountName => {
-        const accountData = trendData.find(a => a.account_name === accountName);
-        if (accountData) {
-          const pointForDate = accountData.trends.find(t => t.date === date);
-          dataPoint[accountName] = pointForDate ? pointForDate[metric] : 0;
-        }
-      });
-      
-      return dataPoint;
+  const topGraphAccounts = useMemo(
+    () => rankedAccounts.slice(0, 5),
+    [rankedAccounts]
+  );
+
+  const formattedGraphData = useMemo(() => {
+    if (!topGraphAccounts.length) return [];
+
+    const accountTrendMap = new Map(
+      trendData.map(account => [account.account_name, account.trends] as const)
+    );
+
+    const allDates = new Set<string>();
+    topGraphAccounts.forEach(account => {
+      const trends = accountTrendMap.get(account.account_name);
+      trends?.forEach(trend => allDates.add(trend.date));
     });
-  };
+
+    return Array.from(allDates)
+      .sort()
+      .map(date => {
+        const dataPoint: Record<string, string | number> = { date };
+
+        topGraphAccounts.forEach(account => {
+          const trends = accountTrendMap.get(account.account_name);
+          const pointForDate = trends?.find(t => t.date === date);
+          dataPoint[account.account_name] = pointForDate ? pointForDate[metric] : 0;
+        });
+
+        return dataPoint;
+      });
+  }, [topGraphAccounts, trendData, metric]);
 
   // 日付フォーマット用の関数
   const formatDate = (dateString: string) => {
@@ -366,11 +367,7 @@ export default function AccountWatchlistPage() {
     }
   };
 
-  // ソートされた動画一覧を取得 - APIから既にソート済みデータが来るため、そのまま返す
-  const getSortedVideos = () => {
-    if (!accountVideos.length) return [];
-    return accountVideos;
-  };
+  const sortedVideos = useMemo(() => accountVideos, [accountVideos]);
 
   if (isLoading) {
     return (
@@ -451,7 +448,7 @@ export default function AccountWatchlistPage() {
                   <CardTitle>お気に入りアカウント一覧</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {getFilteredAccounts().length === 0 ? (
+                  {filteredAccounts.length === 0 ? (
                     <div className="bg-[#2a2a2a] p-8 rounded-md text-center text-gray-400">
                       <p>ウォッチリストにアカウントはまだありません</p>
                     </div>
@@ -469,7 +466,7 @@ export default function AccountWatchlistPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {getFilteredAccounts().map((item, index) => {
+                        {filteredAccounts.map((item, index) => {
                           const accountData = item.account;
                           const isSelected = selectedAccount === accountData?.account_name;
                           
@@ -493,7 +490,7 @@ export default function AccountWatchlistPage() {
                           
                           return (
                             <TableRow 
-                              key={index} 
+                              key={item.bookmark.bookmark_id} 
                               className={cn(
                                 "cursor-pointer transition-colors",
                                 isSelected ? "bg-[#25F4EE]/5 hover:bg-[#25F4EE]/10" : "hover:bg-[#25F4EE]/5"
@@ -616,8 +613,8 @@ export default function AccountWatchlistPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {getSortedVideos().map((video, index) => (
-                              <TableRow key={index}>
+                            {sortedVideos.map((video, index) => (
+                              <TableRow key={video.video_id || index}>
                                 <TableCell className="text-left">
                                   {video.thumbnail_url ? (
                                     <div className="relative w-[120px] h-[120px] my-1">
@@ -740,9 +737,9 @@ export default function AccountWatchlistPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {getRankedAccounts().map((item, index) => (
+                        {rankedAccounts.map((item, index) => (
                           <TableRow 
-                            key={index}
+                            key={item.account_name}
                             className="hover:bg-[#25F4EE]/5 transition-colors"
                           >
                             <TableCell className={cn(
@@ -799,7 +796,7 @@ export default function AccountWatchlistPage() {
                     ) : (
                       <div>
                         <div className="flex flex-wrap gap-2 mb-4">
-                          {getRankedAccounts().slice(0, 5).map((account, index) => (
+                          {topGraphAccounts.map((account, index) => (
                             <div key={account.account_name} className="flex items-center gap-1">
                               <div 
                                 className="w-3 h-3 rounded-full" 
@@ -811,7 +808,7 @@ export default function AccountWatchlistPage() {
                         </div>
                         <ResponsiveContainer width="100%" height={400}>
                           <LineChart
-                            data={getFormattedGraphData()}
+                            data={formattedGraphData}
                             margin={{ top: 5, right: 30, left: 40, bottom: 25 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" />
@@ -832,7 +829,7 @@ export default function AccountWatchlistPage() {
                               labelFormatter={(label) => formatDate(label.toString())}
                             />
                             <Legend />
-                            {getRankedAccounts().slice(0, 5).map((account, index) => (
+                            {topGraphAccounts.map((account, index) => (
                               <Line
                                 key={account.account_name}
                                 type="monotone"

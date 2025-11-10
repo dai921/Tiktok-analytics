@@ -32,13 +32,18 @@ def categorize_video_type(video_url: str) -> str:
         return 'video'
     return 'unknown'
 
-def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, str]:
+def analyze_title(
+    title: Optional[str],
+    account_type: Optional[str] = None,
+    comment_texts: Optional[List[str]] = None
+) -> Dict[str, str]:
     """
     動画タイトルからカテゴリと商品名を抽出する
     
     Args:
         title (str): 動画タイトル
         account_type (str, optional): アカウントタイプ
+        comment_texts (List[str], optional): 取得済みのコメント本文
     
     Returns:
         Dict[str, str]: カテゴリと商品名の辞書
@@ -52,6 +57,12 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
             }
 
         video_title_lower = title.lower() if title else ''
+
+        # 商品判定用にコメントも含めたテキストを構築
+        combined_text = [title] if title else []
+        if comment_texts:
+            combined_text.extend([text for text in comment_texts if text])
+        product_text_lower = ' '.join(combined_text).lower() if combined_text else video_title_lower
         
         # 商品キーワードの取得
         product_query = """
@@ -70,7 +81,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
         
         for product_info in product_data:
             keyword = product_info['keyword'].lower()
-            if keyword in video_title_lower:
+            if keyword in product_text_lower:
                 product_name = product_info['product_name']
                 product_category = product_info['product_category']
                 
@@ -92,7 +103,7 @@ def analyze_title(title: str, account_type: Optional[str] = None) -> Dict[str, s
                     priority_alias = None
                     
                     for alias_info in alias_data:
-                        if alias_info['keyword'].lower() in video_title_lower:
+                        if alias_info['keyword'].lower() in product_text_lower:
                             product_name = alias_info['alias_name']
                             alias_match = True
                             break
@@ -303,6 +314,62 @@ def extract_hashtags(title: str) -> Tuple[str, bool]:
     return hashtags_str, is_pr
 
 
+COMMENT_TEXT_SAMPLE_LIMIT = 50
+
+
+def fetch_comment_texts(video_id: str) -> List[str]:
+    """Fetch comment texts stored as JSON in video_heavy_raw_data."""
+    try:
+        comments_query = """
+            SELECT comments_json
+            FROM video_heavy_raw_data
+            WHERE video_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+        """
+        comments_result = execute_query(comments_query, (video_id,))
+        if not comments_result:
+            return []
+
+        raw_comments = comments_result[0].get('comments_json')
+        if not raw_comments:
+            return []
+
+        try:
+            payload = json.loads(raw_comments)
+        except json.JSONDecodeError:
+            stripped = raw_comments.strip() if isinstance(raw_comments, str) else ''
+            return [stripped] if stripped else []
+
+        if isinstance(payload, list):
+            texts = [text.strip() for text in payload if isinstance(text, str) and text.strip()]
+            return texts[:COMMENT_TEXT_SAMPLE_LIMIT]
+
+        if isinstance(payload, dict):
+            raw_texts = payload.get('comments') or payload.get('items') or payload.get('data')
+            if isinstance(raw_texts, list):
+                texts = []
+                for item in raw_texts:
+                    if len(texts) >= COMMENT_TEXT_SAMPLE_LIMIT:
+                        break
+                    if isinstance(item, str):
+                        stripped = item.strip()
+                        if stripped:
+                            texts.append(stripped)
+                    elif isinstance(item, dict):
+                        candidate = item.get('text') or item.get('comment') or item.get('content')
+                        if isinstance(candidate, str):
+                            stripped = candidate.strip()
+                            if stripped:
+                                texts.append(stripped)
+                return texts
+
+        return []
+    except Exception as e:
+        logger.warning(f"コメント取得に失敗しました: {str(e)}, video_id: {video_id}")
+        return []
+
+
 def find_music_title_from_alt(alt_text: Optional[str]) -> Optional[str]:
     """
     alt_text の「を使用して」より左側を対象に、右端の「の」から遡って
@@ -494,7 +561,8 @@ def sync_video_data(video_data: Dict) -> Dict[str, str]:
         # ②加工後のvideo_titleのログ
         print(f"[LOG] 加工後のvideo_title: {video_title}")
         
-        title_analysis = analyze_title(video_title, account_type)
+        comment_texts = fetch_comment_texts(video_id)
+        title_analysis = analyze_title(video_title, account_type, comment_texts)
         
         # コンテンツタイプの判定
         content_type = categorize_video_type(video_data['video_url'])

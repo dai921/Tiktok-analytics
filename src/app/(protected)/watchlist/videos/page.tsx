@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -35,7 +35,7 @@ import {
 // 動画ウォッチリストの型定義
 interface WatchlistVideoItem {
   watchlist: {
-    watchlist_id: number;
+    id: number;
     email: string;
     video_id: string;
     watchlist_name: string | null;
@@ -163,63 +163,77 @@ export default function VideoWatchlistPage() {
             startDateStr = dateRange.start.toISOString().split('T')[0];
             endDateStr = dateRange.end.toISOString().split('T')[0];
           }
+
+          const [watchlistResult, trendResult] = await Promise.allSettled([
+            getVideoWatchlist(
+              dateRange ? startDateStr : undefined, 
+              dateRange ? endDateStr : undefined
+            ),
+            getVideoWatchlistTrends(
+              dateRange ? startDateStr : undefined, 
+              dateRange ? endDateStr : undefined
+            )
+          ]);
           
-          // APIから詳細付きウォッチリストを取得（日付パラメータはユーザーが選択した場合のみ送信）
-          const result = await getVideoWatchlist(
-            dateRange ? startDateStr : undefined, 
-            dateRange ? endDateStr : undefined
-          );
-          
-          console.log('API応答結果:', result);
-          
-          if (result.success) {
-            console.log('取得したデータ数:', result.data?.length || 0);
-            console.log('最初のデータ:', result.data?.[0] || 'データなし');
+          if (watchlistResult.status === 'fulfilled') {
+            const result = watchlistResult.value;
+            console.log('API応答結果:', result);
             
-            // データがあるか確認
-            if (result.data && Array.isArray(result.data) && result.data.length > 0) {
-              setWatchlistVideos(result.data);
-              setFilteredVideos(result.data);
+            if (result.success) {
+              console.log('取得したデータ数:', result.data?.length || 0);
+              console.log('最初のデータ:', result.data?.[0] || 'データなし');
               
-              // APIから期間情報を取得し設定
-              if (result.period) {
-                setPeriodInfo(result.period);
+              if (result.data && Array.isArray(result.data) && result.data.length > 0) {
+                setWatchlistVideos(result.data);
+                setFilteredVideos(result.data);
                 
-                // APIから取得した期間情報をdateRangeにも設定（ユーザーが選択していない場合のみ）
-                if (!userSelectedDate) {
-                  setDateRange({
-                    start: new Date(result.period.start_date),
-                    end: new Date(result.period.end_date)
-                  });
-                  setTempDateRange({
-                    start: new Date(result.period.start_date),
-                    end: new Date(result.period.end_date)
+                if (result.period) {
+                  setPeriodInfo(result.period);
+                  
+                  if (!userSelectedDate) {
+                    setDateRange({
+                      start: new Date(result.period.start_date),
+                      end: new Date(result.period.end_date)
+                    });
+                    setTempDateRange({
+                      start: new Date(result.period.start_date),
+                      end: new Date(result.period.end_date)
+                    });
+                  }
+                } else {
+                  setPeriodInfo({
+                    start_date: startDateStr,
+                    end_date: endDateStr
                   });
                 }
+                
+                setDataLoaded(true);
+                setUserSelectedDate(false);
               } else {
+                console.warn('APIからデータが返されましたが、データが空です');
+                setWatchlistVideos([]);
+                setFilteredVideos([]);
                 setPeriodInfo({
                   start_date: startDateStr,
                   end_date: endDateStr
                 });
+                setTrendData([]);
               }
-              
-              setDataLoaded(true);
-              setUserSelectedDate(false);
-              
-              // トレンドデータを取得（ビデオの自動選択なし）
-              await loadTrendData(dateRange, setTrendData);
             } else {
-              console.warn('APIからデータが返されましたが、データが空です');
-              setWatchlistVideos([]);
-              setFilteredVideos([]);
-              setPeriodInfo({
-                start_date: startDateStr,
-                end_date: endDateStr
-              });
+              console.error('APIエラー:', result.error);
+              setError('動画ウォッチリストの取得に失敗しました');
             }
           } else {
-            console.error('APIエラー:', result.error);
+            console.error("API呼び出しエラー:", watchlistResult.reason);
             setError('動画ウォッチリストの取得に失敗しました');
+          }
+
+          if (trendResult.status === 'fulfilled') {
+            if (trendResult.value.success && trendResult.value.data) {
+              setTrendData(trendResult.value.data);
+            }
+          } else {
+            console.error('トレンドデータ取得エラー:', trendResult.reason);
           }
         } catch (err) {
           console.error("API呼び出しエラー:", err);
@@ -232,34 +246,6 @@ export default function VideoWatchlistPage() {
       loadWatchlistVideos();
     }
   }, [dataLoaded, userSelectedDate, dateRange]);
-
-  // トレンドデータを取得する関数
-  const loadTrendData = async (dateRange: { start: Date; end: Date } | null, setTrendData: React.Dispatch<React.SetStateAction<VideoTrendData[]>>) => {
-    try {
-      // 日付形式をYYYY-MM-DDに変換
-      let startDateStr = '';
-      let endDateStr = '';
-      
-      if (dateRange) {
-        startDateStr = dateRange.start.toISOString().split('T')[0];
-        endDateStr = dateRange.end.toISOString().split('T')[0];
-      }
-      
-      // APIからトレンドデータを取得
-      const result = await getVideoWatchlistTrends(
-        dateRange ? startDateStr : undefined, 
-        dateRange ? endDateStr : undefined
-      );
-      
-      if (result.success && result.data) {
-        setTrendData(result.data);
-      } else {
-
-      }
-    } catch (error) {
-      console.error('トレンドデータ取得エラー:', error);
-    }
-  };
   
   // // ジャンルフィルタリングを適用するuseEffectを単純化
   // useEffect(() => {
@@ -294,8 +280,7 @@ export default function VideoWatchlistPage() {
     setSelectedVideoId(videoId);
   };
 
-  // 指標に基づいてビデオをソートする関数
-  const getSortedVideos = () => {
+  const sortedVideos = useMemo(() => {
     return [...filteredVideos]
       .filter(item => item.video)
       .sort((a, b) => {
@@ -303,62 +288,40 @@ export default function VideoWatchlistPage() {
         const bValue = b.video?.[`${selectedMetric}`] || 0;
         return bValue - aValue;
       })
-      .slice(0, 10); // 最大10件表示
-  };
+      .slice(0, 10);
+  }, [filteredVideos, selectedMetric]);
 
-  // 選択されたビデオのトレンドデータを取得
-  const getSelectedVideoTrend = () => {
-    if (!selectedVideoId) return null;
-    return trendData.find(item => item.video_id === selectedVideoId);
-  };
+  const topVideoIds = useMemo(
+    () => sortedVideos.map(item => item.video?.video_id).filter(Boolean) as string[],
+    [sortedVideos]
+  );
 
-  // ランキング上位のビデオすべてのトレンドデータを取得
-  const getTopVideosTrends = () => {
-    // ランキング上位の動画IDを取得
-    const topVideoIds = getSortedVideos().map(item => item.video?.video_id).filter(Boolean) as string[];
-    
-    // 上位動画のトレンドデータを取得
-    return trendData.filter(item => topVideoIds.includes(item.video_id));
-  };
+  const topVideosTrends = useMemo(
+    () => trendData.filter(item => topVideoIds.includes(item.video_id)),
+    [trendData, topVideoIds]
+  );
 
-  // すべての日付を取得し、重複を排除して並べ替える
-  const getAllUniqueDates = () => {
+  const allUniqueDates = useMemo(() => {
     const allDates = new Set<string>();
-    
-    getTopVideosTrends().forEach(videoTrend => {
+    topVideosTrends.forEach(videoTrend => {
       videoTrend.trends.forEach(trend => {
         allDates.add(trend.date);
       });
     });
-    
     return Array.from(allDates).sort();
-  };
-  
-  // 上位動画のデータを日付ごとに整理したグラフデータを生成
-  const getFormattedGraphData = () => {
-    const sortedVideos = getSortedVideos();
-    const topTrends = getTopVideosTrends();
-    const allDates = getAllUniqueDates();
-    
-    // 日付ごとのデータポイントを作成
-    return allDates.map(date => {
-      const dataPoint: any = { date };
-      
-      // 各動画の指定された日付のデータを追加
-      topTrends.forEach((videoTrend, index) => {
-        // 順位を表す識別子（1位、2位など）
+  }, [topVideosTrends]);
+
+  const formattedGraphData = useMemo(() => {
+    return allUniqueDates.map(date => {
+      const dataPoint: Record<string, number | string> = { date };
+      topVideosTrends.forEach((videoTrend, index) => {
         const rankLabel = `${index + 1}位`;
-        
-        // その日付のトレンドデータを検索
         const trendForDate = videoTrend.trends.find(t => t.date === date);
-        
-        // 該当する日付のデータがあれば値を設定、なければ0
         dataPoint[rankLabel] = trendForDate ? trendForDate[selectedMetric] : 0;
       });
-      
       return dataPoint;
     });
-  };
+  }, [allUniqueDates, topVideosTrends, selectedMetric]);
 
   // 指標の表示名を取得
   const getMetricDisplayName = (metric: MetricType): string => {
@@ -514,7 +477,7 @@ export default function VideoWatchlistPage() {
                           }
                           
                           return (
-                            <TableRow key={item.watchlist.watchlist_id} className="hover:bg-[#25F4EE]/5 transition-colors">
+                            <TableRow key={item.watchlist.id} className="hover:bg-[#25F4EE]/5 transition-colors">
                               <TableCell>
                                 {video.thumbnail_url ? (
                                   <div className="relative w-[120px] h-[120px] my-1 mx-auto">
@@ -658,13 +621,13 @@ export default function VideoWatchlistPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {getSortedVideos().map((item, index) => {
+                          {sortedVideos.map((item, index) => {
                             const video = item.video;
                             if (!video) return null;
                             
                             return (
                               <TableRow 
-                                key={item.watchlist.watchlist_id} 
+                                key={item.watchlist.id} 
                                 className={`hover:bg-[#25F4EE]/5 transition-colors cursor-pointer ${selectedVideoId === video.video_id ? 'bg-[#25F4EE]/10' : ''}`}
                                 onClick={() => handleVideoSelect(video.video_id)}
                               >
@@ -751,7 +714,7 @@ export default function VideoWatchlistPage() {
                           {trendData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart
-                                data={getFormattedGraphData()}
+                                data={formattedGraphData}
                                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                               >
                                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -765,7 +728,7 @@ export default function VideoWatchlistPage() {
                                   formatter={(value, name) => [formatNumber(Number(value)), name]}
                                 />
                                 <Legend />
-                                {getTopVideosTrends().map((videoTrend, index) => {
+                                {topVideosTrends.map((videoTrend, index) => {
                                   // 鮮やかで見分けやすい10色のカラーパレット
                                   const colors = [
                                     '#FF3B30', // 赤（1位）
