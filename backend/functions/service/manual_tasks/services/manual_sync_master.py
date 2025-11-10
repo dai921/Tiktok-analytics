@@ -71,59 +71,71 @@ def analyze_title(
         """
         product_data = execute_query(product_query)
 
-        # 先に商品名の判定
+        # 先に商品名の判定（出現回数が最も多いキーワードを採用）
         product_name = ''
         product_category = ''
+        best_product_match: Optional[Dict] = None
         
         for product_info in product_data:
             keyword = product_info['keyword'].lower()
-            if keyword in product_text_lower:
-                product_name = product_info['product_name']
-                product_category = product_info['product_category']
+            if not keyword:
+                continue
+            keyword_count = product_text_lower.count(keyword)
+            if keyword_count <= 0:
+                continue
+            if not best_product_match or keyword_count > best_product_match['count']:
+                best_product_match = {
+                    'info': product_info,
+                    'count': keyword_count
+                }
+
+        if best_product_match:
+            product_name = best_product_match['info']['product_name']
+            product_category = best_product_match['info']['product_category']
+            
+            # product_categoryが「複数」の場合、別名テーブルを検索し出現回数で選択
+            if product_category == '複数':
+                alias_query = """
+                    SELECT 
+                        pa.alias_name,
+                        pa.alias_priority,
+                        pak.keyword
+                    FROM product_alias pa
+                    JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
+                    WHERE pa.product_name = %s
+                """
+                alias_data = execute_query(alias_query, (product_name,))
                 
-                # product_categoryが「複数」の場合、別名テーブルを検索
-                if product_category == '複数':
-                    alias_query = """
-                        SELECT 
-                            pa.alias_name,
-                            pa.alias_priority,
-                            pak.keyword
-                        FROM product_alias pa
-                        JOIN product_alias_keywords pak ON pa.alias_id = pak.alias_id
-                        WHERE pa.product_name = %s
-                    """
-                    alias_data = execute_query(alias_query, (product_name,))
-                    
-                    # 別名キーワードでマッチするか確認
-                    alias_match = False
-                    priority_alias = None
-                    
-                    for alias_info in alias_data:
-                        if alias_info['keyword'].lower() in product_text_lower:
-                            product_name = alias_info['alias_name']
-                            alias_match = True
-                            break
-                        # Priority=1の別名を保持
-                        elif alias_info['alias_priority'] == 1:
-                            priority_alias = alias_info['alias_name']
-                    
-                    # キーワードマッチしなかった場合はPriority=1の別名を使用
-                    if not alias_match and priority_alias:
-                        product_name = priority_alias
-                    
-                    # 更新した商品名に対応するカテゴリを取得
-                    updated_category_query = """
-                        SELECT product_category
-                        FROM product_master
-                        WHERE product_name = %s
-                    """
-                    updated_category_result = execute_query(updated_category_query, (product_name,))
-                    
-                    # 新しいカテゴリがあれば更新
-                    if updated_category_result and updated_category_result[0]['product_category'] != '複数':
-                        product_category = updated_category_result[0]['product_category']
+                alias_best = None
+                priority_alias = None
                 
-                break  # 最初にマッチした商品で処理を終了
+                for alias_info in alias_data:
+                    alias_keyword = alias_info['keyword'].lower() if alias_info['keyword'] else ''
+                    keyword_count = product_text_lower.count(alias_keyword) if alias_keyword else 0
+                    if keyword_count > 0 and (
+                        not alias_best or keyword_count > alias_best['count']
+                    ):
+                        alias_best = {
+                            'name': alias_info['alias_name'],
+                            'count': keyword_count
+                        }
+                    elif alias_info['alias_priority'] == 1 and not priority_alias:
+                        priority_alias = alias_info['alias_name']
+                
+                if alias_best:
+                    product_name = alias_best['name']
+                elif priority_alias:
+                    product_name = priority_alias
+                
+                updated_category_query = """
+                    SELECT product_category
+                    FROM product_master
+                    WHERE product_name = %s
+                """
+                updated_category_result = execute_query(updated_category_query, (product_name,))
+                
+                if updated_category_result and updated_category_result[0]['product_category'] != '複数':
+                    product_category = updated_category_result[0]['product_category']
 
         # 商品が見つかり、product_categoryが「複数」でない場合はそれをカテゴリとして使用
         if product_name and product_category and product_category != '複数':
