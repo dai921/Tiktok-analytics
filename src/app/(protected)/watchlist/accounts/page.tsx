@@ -170,26 +170,26 @@ export default function AccountWatchlistPage() {
     loadAccounts();
   }, [userSelectedDate]);
 
-  useEffect(() => {
-    const types = Array.from(
-      new Set(
-        accounts
-          .map(item => item.account?.account_type)
-          .filter((type): type is string => Boolean(type))
-      )
-    ).sort();
+  // useEffect(() => {
+  //   const types = Array.from(
+  //     new Set(
+  //       accounts
+  //         .map(item => item.account?.account_type)
+  //         .filter((type): type is string => Boolean(type))
+  //     )
+  //   ).sort();
 
-    setAccountTypes(prev => {
-      if (prev.length === types.length && prev.every((type, index) => type === types[index])) {
-        return prev;
-      }
-      return types;
-    });
+  //   setAccountTypes(prev => {
+  //     if (prev.length === types.length && prev.every((type, index) => type === types[index])) {
+  //       return prev;
+  //     }
+  //     return types;
+  //   });
 
-    if (selectedAccountType && !types.includes(selectedAccountType)) {
-      setSelectedAccountType(null);
-    }
-  }, [accounts, selectedAccountType]);
+  //   if (selectedAccountType && !types.includes(selectedAccountType)) {
+  //     setSelectedAccountType(null);
+  //   }
+  // }, [accounts, selectedAccountType]);
 
   // アカウント選択時のハンドラ
   const handleAccountSelect = (accountName: string) => {
@@ -283,10 +283,10 @@ export default function AccountWatchlistPage() {
     }
   };
 
-  const handleAccountTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setSelectedAccountType(value === "all" ? null : value);
-  };
+  // const handleAccountTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  //   const value = e.target.value;
+  //   setSelectedAccountType(value === "all" ? null : value);
+  // };
 
   // 指標変更ハンドラ
   const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -419,7 +419,7 @@ export default function AccountWatchlistPage() {
       
       {/* フィルターエリア */}
       <div className="flex gap-4 items-center mb-6">
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <label className="text-sm whitespace-nowrap">アカウントタイプ:</label>
           <select 
             value={selectedAccountType || "all"}
@@ -431,7 +431,7 @@ export default function AccountWatchlistPage() {
               <option key={type} value={type}>{getAccountTypeDisplayName(type)}</option>
             ))}
           </select>
-        </div>
+        </div> */}
         <div className="w-[280px]">
           <DateRangePicker
             dateRange={dateRange}
