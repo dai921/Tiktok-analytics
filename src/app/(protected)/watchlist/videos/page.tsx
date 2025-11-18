@@ -101,7 +101,6 @@ export default function VideoWatchlistPage() {
   
   // 動画データ
   const [watchlistVideos, setWatchlistVideos] = useState<WatchlistVideoItem[]>([]);
-  const [filteredVideos, setFilteredVideos] = useState<WatchlistVideoItem[]>([]);
 
   // 指標選択
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('play_count_increase');
@@ -109,6 +108,9 @@ export default function VideoWatchlistPage() {
   // トレンドデータ
   const [trendData, setTrendData] = useState<VideoTrendData[]>([]);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
+  const [isTrendLoading, setIsTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState<string | null>(null);
+  const [lastTrendRangeKey, setLastTrendRangeKey] = useState<string | null>(null);
   
   const { toast } = useToast();
   
@@ -149,110 +151,224 @@ export default function VideoWatchlistPage() {
 
   // データを取得するuseEffect
   useEffect(() => {
+
     if (!dataLoaded || userSelectedDate) {
+
       const loadWatchlistVideos = async () => {
+
         try {
+
           setIsLoading(true);
+
           setError(null);
+
           
-          // 日付形式をYYYY-MM-DDに変換
+
+          // 日付範囲をYYYY-MM-DDに変換
+
           let startDateStr = '';
+
           let endDateStr = '';
+
           
+
           if (dateRange) {
+
             startDateStr = dateRange.start.toISOString().split('T')[0];
+
             endDateStr = dateRange.end.toISOString().split('T')[0];
+
           }
 
-          const [watchlistResult, trendResult] = await Promise.allSettled([
-            getVideoWatchlist(
-              dateRange ? startDateStr : undefined, 
-              dateRange ? endDateStr : undefined
-            ),
-            getVideoWatchlistTrends(
-              dateRange ? startDateStr : undefined, 
-              dateRange ? endDateStr : undefined
-            )
-          ]);
+
+
+          const result = await getVideoWatchlist(
+
+            dateRange ? startDateStr : undefined, 
+
+            dateRange ? endDateStr : undefined
+
+          );
+
           
-          if (watchlistResult.status === 'fulfilled') {
-            const result = watchlistResult.value;
-            console.log('API応答結果:', result);
+
+          if (result.success) {
+
+            console.log('取得したデータ数:', result.data?.length || 0);
+
+            console.log('最初のデータ:', result.data?.[0] || 'データなし');
+
             
-            if (result.success) {
-              console.log('取得したデータ数:', result.data?.length || 0);
-              console.log('最初のデータ:', result.data?.[0] || 'データなし');
+
+            if (result.data && Array.isArray(result.data) && result.data.length > 0) {
+
+              setWatchlistVideos(result.data);
+
               
-              if (result.data && Array.isArray(result.data) && result.data.length > 0) {
-                setWatchlistVideos(result.data);
-                setFilteredVideos(result.data);
+
+              if (result.period) {
+
+                setPeriodInfo(result.period);
+
                 
-                if (result.period) {
-                  setPeriodInfo(result.period);
-                  
-                  if (!userSelectedDate) {
-                    setDateRange({
-                      start: new Date(result.period.start_date),
-                      end: new Date(result.period.end_date)
-                    });
-                    setTempDateRange({
-                      start: new Date(result.period.start_date),
-                      end: new Date(result.period.end_date)
-                    });
-                  }
-                } else {
-                  setPeriodInfo({
-                    start_date: startDateStr,
-                    end_date: endDateStr
+
+                if (!userSelectedDate) {
+
+                  setDateRange({
+
+                    start: new Date(result.period.start_date),
+
+                    end: new Date(result.period.end_date)
+
                   });
+
+                  setTempDateRange({
+
+                    start: new Date(result.period.start_date),
+
+                    end: new Date(result.period.end_date)
+
+                  });
+
                 }
-                
-                setDataLoaded(true);
-                setUserSelectedDate(false);
+
               } else {
-                console.warn('APIからデータが返されましたが、データが空です');
-                setWatchlistVideos([]);
-                setFilteredVideos([]);
+
                 setPeriodInfo({
+
                   start_date: startDateStr,
+
                   end_date: endDateStr
+
                 });
-                setTrendData([]);
+
               }
+
+              
+
+              setDataLoaded(true);
+
+              setUserSelectedDate(false);
+
+              setTrendData([]);
+
+              setTrendError(null);
+
+              setLastTrendRangeKey(null);
+
             } else {
-              console.error('APIエラー:', result.error);
-              setError('動画ウォッチリストの取得に失敗しました');
+
+              console.warn('APIからデータが返されましたが、データが空です');
+
+              setWatchlistVideos([]);
+
+              setPeriodInfo({
+
+                start_date: startDateStr,
+
+                end_date: endDateStr
+
+              });
+
+              setTrendData([]);
+
+              setLastTrendRangeKey(null);
+
             }
+
           } else {
-            console.error("API呼び出しエラー:", watchlistResult.reason);
+
+            console.error('APIエラー:', result.error);
+
             setError('動画ウォッチリストの取得に失敗しました');
+
           }
 
-          if (trendResult.status === 'fulfilled') {
-            if (trendResult.value.success && trendResult.value.data) {
-              setTrendData(trendResult.value.data);
-            }
-          } else {
-            console.error('トレンドデータ取得エラー:', trendResult.reason);
-          }
         } catch (err) {
+
           console.error("API呼び出しエラー:", err);
+
           setError('動画ウォッチリストの取得に失敗しました');
+
         } finally {
+
           setIsLoading(false);
+
         }
+
       };
 
+
+
       loadWatchlistVideos();
+
     }
+
   }, [dataLoaded, userSelectedDate, dateRange]);
+
+
+
   
-  // // ジャンルフィルタリングを適用するuseEffectを単純化
-  // useEffect(() => {
-  //   // ハッシュタグでフィルタリングしない - すべてのデータを表示
-  //   console.log('全データ表示:', watchlistVideos.length);
-  //   setFilteredVideos(watchlistVideos);
-  // }, [watchlistVideos]);
+  const filteredVideos = useMemo(() => watchlistVideos, [watchlistVideos]);
+
+  useEffect(() => {
+    if (activeTab !== 'ranking' || !dataLoaded || userSelectedDate) {
+      return;
+    }
+
+    if (watchlistVideos.length === 0) {
+              setTrendData([]);
+              setTrendError(null);
+              setLastTrendRangeKey(null);
+      return;
+    }
+
+    let startDateStr = '';
+    let endDateStr = '';
+
+    if (dateRange) {
+      startDateStr = dateRange.start.toISOString().split('T')[0];
+      endDateStr = dateRange.end.toISOString().split('T')[0];
+    }
+
+    const rangeKey = `${startDateStr || 'default'}_${endDateStr || 'default'}`;
+
+    if (lastTrendRangeKey === rangeKey && trendData.length > 0) {
+      return;
+    }
+
+    const fetchTrends = async () => {
+      try {
+        setIsTrendLoading(true);
+        setTrendError(null);
+
+        const response = await getVideoWatchlistTrends(
+          dateRange ? startDateStr : undefined,
+          dateRange ? endDateStr : undefined
+        );
+
+        if (response.success) {
+          setTrendData(response.data || []);
+          setLastTrendRangeKey(rangeKey);
+        } else {
+          setTrendData([]);
+          setTrendError('トレンドデータの取得に失敗しました');
+          setLastTrendRangeKey(null);
+        }
+      } catch (error) {
+        console.error('トレンドデータ取得エラー:', error);
+        setTrendData([]);
+        setTrendError('トレンドデータの取得に失敗しました');
+        setLastTrendRangeKey(null);
+      } finally {
+        setIsTrendLoading(false);
+      }
+    };
+
+    fetchTrends();
+  }, [activeTab, dateRange, dataLoaded, userSelectedDate, lastTrendRangeKey, trendData.length, watchlistVideos.length]);
+
+
 
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
@@ -705,11 +821,138 @@ export default function VideoWatchlistPage() {
                     {/* 推移グラフ */}
                     <div className="h-[400px] border border-gray-200 dark:border-gray-800 rounded-md p-4">
                       <div className="h-full flex flex-col">
-                        <div className="mb-2">
-                          <h3 className="text-sm font-medium">
-                            上位10動画の{getMetricDisplayName(selectedMetric)}推移
-                          </h3>
+                        <div className="mb-2">
+                          <h3 className="text-sm font-medium">
+                            ���10�����{getMetricDisplayName(selectedMetric)}����
+                          </h3>
+                        </div>
+                        <div className="flex-grow">
+
+                          {isTrendLoading ? (
+
+                            <div className="h-full flex items-center justify-center">
+
+                              <Skeleton className="h-[200px] w-full" />
+
+                            </div>
+
+                          ) : trendError ? (
+
+                            <div className="h-full flex items-center justify-center">
+
+                              <p className="text-sm text-red-400">{trendError}</p>
+
+                            </div>
+
+                          ) : trendData.length > 0 ? (
+
+                            <ResponsiveContainer width="100%" height="100%">
+
+                              <LineChart
+
+                                data={formattedGraphData}
+
+                                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+
+                              >
+
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+
+                                <XAxis 
+
+                                  dataKey="date" 
+
+                                  tickFormatter={(value) => value.split('-').slice(1).join('/')}
+
+                                />
+
+                                <YAxis />
+
+                                <Tooltip 
+
+                                  labelFormatter={(value) => `���t: ${value}`}
+
+                                  formatter={(value, name) => [formatNumber(Number(value)), name]}
+
+                                />
+
+                                <Legend />
+
+                                {topVideosTrends.map((videoTrend, index) => {
+
+                                  // �N�₩�Ō������₷��10�F�̃J���[�p���b�g
+
+                                  const colors = [
+
+                                    '#FF3B30',
+
+                                    '#34C759',
+
+                                    '#007AFF',
+
+                                    '#FF9500',
+
+                                    '#5856D6',
+
+                                    '#FF2D55',
+
+                                    '#00C7BE',
+
+                                    '#AF52DE',
+
+                                    '#FFCC00',
+
+                                    '#8E8E93'
+
+                                  ];
+
+                                  const color = colors[index % colors.length];
+
+                                  const rankLabel = `${index + 1}��`;
+
+                                  
+
+                                  return (
+
+                                    <Line 
+
+                                      key={videoTrend.video_id}
+
+                                      type="monotone" 
+
+                                      dataKey={rankLabel}
+
+                                      stroke={color}
+
+                                      name={rankLabel}
+
+                                      dot={{ r: 3 }}
+
+                                      activeDot={{ r: 6 }}
+
+                                    />
+
+                                  );
+
+                                })}
+
+                              </LineChart>
+
+                            </ResponsiveContainer>
+
+                          ) : (
+
+                            <div className="h-full flex items-center justify-center">
+
+                              <p className="text-gray-400">�g�����h�f�[�^�����p�ł��܂���</p>
+
+                            </div>
+
+                          )}
+
                         </div>
+
+
                         <div className="flex-grow">
                           {trendData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">

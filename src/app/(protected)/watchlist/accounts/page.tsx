@@ -170,6 +170,27 @@ export default function AccountWatchlistPage() {
     loadAccounts();
   }, [userSelectedDate]);
 
+  // useEffect(() => {
+  //   const types = Array.from(
+  //     new Set(
+  //       accounts
+  //         .map(item => item.account?.account_type)
+  //         .filter((type): type is string => Boolean(type))
+  //     )
+  //   ).sort();
+
+  //   setAccountTypes(prev => {
+  //     if (prev.length === types.length && prev.every((type, index) => type === types[index])) {
+  //       return prev;
+  //     }
+  //     return types;
+  //   });
+
+  //   if (selectedAccountType && !types.includes(selectedAccountType)) {
+  //     setSelectedAccountType(null);
+  //   }
+  // }, [accounts, selectedAccountType]);
+
   // アカウント選択時のハンドラ
   const handleAccountSelect = (accountName: string) => {
     setSelectedAccount(accountName);
@@ -262,7 +283,6 @@ export default function AccountWatchlistPage() {
     }
   };
 
-  // // アカウントタイプ変更ハンドラ
   // const handleAccountTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
   //   const value = e.target.value;
   //   setSelectedAccountType(value === "all" ? null : value);
