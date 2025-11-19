@@ -823,7 +823,7 @@ const Dashboard = () => {
           })}
           presetApplyVisibleColumns={presetApplyVisibleColumns}
           notificationButton={adminNotificationButton}
-          showSearchInput={isDeveloper}
+          showSearchInput={isDeveloper || isAdmin}
           searchKeyword={currentSearchKeyword}
           onSearchKeywordChange={handleSearchKeywordChange}
           onFilterChange={(hasFilters, filter) => {

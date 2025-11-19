@@ -1,0 +1,97 @@
+diff --git a/backend/functions/flask-service/product-determination/main.py b/backend/functions/flask-service/product-determination/main.py
+index a260e86..ad14ce5 100644
+--- a/backend/functions/flask-service/product-determination/main.py
++++ b/backend/functions/flask-service/product-determination/main.py
+@@ -21,6 +21,7 @@ logging.basicConfig(level=logging.INFO)
+ logger = logging.getLogger(__name__)
+ 
+ SENSITIVE_STATUS = "skip_sensitive"
++UNKNOWN_PRODUCT_NAME = "\u4e0d\u660e"
+ 
+ 
+ class SensitiveVideoError(RuntimeError):
+@@ -167,8 +168,8 @@ def _download_video_to_temp(url: str, video_id: str, proxy: Optional[str] = None
+                 raise SensitiveVideoError(message) from err
+             raise
+ 
+-        if not info:
+-            raise SensitiveVideoError("Failed to extract video metadata")
++        if not info:
++            raise SensitiveVideoError("Failed to extract video metadata")
+         if _is_authentication_required_info(info):
+             raise SensitiveVideoError("動画がセンシティブ扱いのためダウンロードをスキップします")
+ 
+@@ -238,19 +239,19 @@ def _upsert_influencer_pr_product(
+ 
+     normalized_url = (source_url or "").strip() or None
+ 
+-    execute_write_query(
+-        """
+-        INSERT INTO influencer_pr_product (product_name, product_category, source_url, is_pr)
+-        VALUES (%s, %s, %s, 0)
+-        ON DUPLICATE KEY UPDATE
+-          product_category = VALUES(product_category),
+-          source_url = COALESCE(NULLIF(source_url, ''), VALUES(source_url))
+-        """,
+-        (product_name, product_category, normalized_url)
+-    )
+-
+-
+-
++    execute_write_query(
++        """
++        INSERT INTO influencer_pr_product (product_name, product_category, source_url, is_pr)
++        VALUES (%s, %s, %s, 0)
++        ON DUPLICATE KEY UPDATE
++          product_category = VALUES(product_category),
++          source_url = COALESCE(NULLIF(source_url, ''), VALUES(source_url))
++        """,
++        (product_name, product_category, normalized_url)
++    )
++
++
++
+ def _mark_video_as_sensitive(video_id: str, reason: str) -> None:
+     logger.info("センシティブ判定のため処理対象外に設定: video_id=%s reason=%s", video_id, reason)
+     try:
+@@ -380,6 +381,24 @@ def _analyze_beauty_with_gemini_bytes(video_bytes: bytes, hashtags: List[str]) -
+         return "", text
+ 
+ 
++def _enforce_product_name_from_hashtags(initial_name: str, hashtags: List[str]) -> str:
++    """Ensure product_name matches one of the hashtags (case-insensitive) or becomes 不明."""
++    normalized_map = {
++        (tag or "").strip().lower(): (tag or "").strip()
++        for tag in hashtags
++        if tag
++    }
++    if not normalized_map:
++        return (initial_name or "").strip()
++
++    candidate = (initial_name or "").strip()
++    candidate_lower = candidate.lower()
++    if candidate_lower in normalized_map:
++        return normalized_map[candidate_lower]
++
++    return UNKNOWN_PRODUCT_NAME
++
++
+ # =====================
+ # Cloud Function entry
+ # =====================
+@@ -419,6 +438,7 @@ def determine_beauty_product(event, context):
+             logger.info("既存の動画データを再利用: %s", existing_storage_url)
+             video_bytes = _download_gcs_bytes(existing_storage_url)
+             product_category, product_name = _analyze_beauty_with_gemini_bytes(video_bytes, hashtags)
++            product_name = _enforce_product_name_from_hashtags(product_name, hashtags)
+ 
+             _upsert_influencer_pr_product(product_name, product_category, url)
+             logger.info("判定結果を保存(再利用): video_id=%s, category=%s, product=%s", video_id, product_category, product_name)
+@@ -447,6 +467,7 @@ def determine_beauty_product(event, context):
+             with open(video_path, 'rb') as f:
+                 video_bytes = f.read()
+             product_category, product_name = _analyze_beauty_with_gemini_bytes(video_bytes, hashtags)
++            product_name = _enforce_product_name_from_hashtags(product_name, hashtags)
+         finally:
+             try:
+                 if video_path and os.path.exists(video_path):

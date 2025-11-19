@@ -9,7 +9,7 @@ import { ColumnSettings } from '@/components/ui/column-settings';
 import { SettingsIcon, FilterIcon } from './icons';
 import { SortableHeaderCell } from './SortableHeaderCell';
 import { createColumns } from './columns';
-// 循環参照を避けるために./constantsからインポートしていたものを一部移動
+// 蠕ｪ迺ｰ蜿ら・繧帝∩縺代ｋ縺溘ａ縺ｫ./constants縺九ｉ繧､繝ｳ繝昴・繝医＠縺ｦ縺・◆繧ゅ・繧剃ｸ驛ｨ遘ｻ蜍・
 import { DEFAULT_VISIBLE_COLUMNS } from './constants';
 import { useFilterOptions } from './filter-hooks';
 import { useFilterLogic } from './filter-logic';
@@ -23,7 +23,7 @@ import { PresetMenu } from '@/components/dashboard/preset-menu';
 import { getCurrentTabType } from './tab-columns';
 import type { TabType as PresetTabType } from '@/lib/filter_presets_api';
 
-// EXCLUDED_COLUMNS をここで定義
+// EXCLUDED_COLUMNS 繧偵％縺薙〒螳夂ｾｩ
 const EXCLUDED_COLUMNS = ['description'];
 
 const SearchIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
@@ -76,7 +76,7 @@ interface DataTableProps {
   };
   currentTabFilters?: Record<string, FilterQuery>;
   
-  // ★ 修正: 型の一貫性を保つ
+  // 笘・菫ｮ豁｣: 蝙九・荳雋ｫ諤ｧ繧剃ｿ昴▽
   onFilterOptionsUpdate?: (options: {
     categories: string[];
     products: string[];
@@ -100,7 +100,7 @@ interface DataTableProps {
     isLoading: boolean;
   };
 
-  // ★ 追加: 表示設定メニュー用（任意）
+  // 笘・霑ｽ蜉: 陦ｨ遉ｺ險ｭ螳壹Γ繝九Η繝ｼ逕ｨ・井ｻｻ諢擾ｼ・
   presetApplyFilters?: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void;
   presetClearFilters?: () => void;
   presetGetFiltersByTab?: () => Record<PresetTabType, Record<string, FilterQuery>>;
@@ -133,9 +133,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     onColumnSettingsChange,
     tabFilterFields,
     currentTabFilters = {},
-    onFilterOptionsUpdate, // ★ 追加
-    filterOptions = {      // ★ 追加: デフォルト値を設定
-      categories: [],
+    onFilterOptionsUpdate, // 笘・霑ｽ蜉
+    filterOptions = {      // 笘・霑ｽ蜉: 繝・ヵ繧ｩ繝ｫ繝亥､繧定ｨｭ螳・      categories: [],
       products: [],
       productCategories: {},
       productCategoryMap: {},
@@ -156,11 +155,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     notificationButton,
     showSearchInput = true
   }, ref) => {
-    // 選択されたテキスト（ポップアップ表示用）
+    // 驕ｸ謚槭＆繧後◆繝・く繧ｹ繝茨ｼ医・繝・・繧｢繝・・陦ｨ遉ｺ逕ｨ・・
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
     const filterButtonRef = useRef<HTMLButtonElement>(null);
     
-    // ソートロジック
+    // 繧ｽ繝ｼ繝医Ο繧ｸ繝・け
     const sortLogic = useSortLogic();
     const { 
       primarySort, 
@@ -173,7 +172,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       setSortDirection
     } = sortLogic;
     
-    // フィルターロジック - 外部フィルターを渡す
+    // 繝輔ぅ繝ｫ繧ｿ繝ｼ繝ｭ繧ｸ繝・け - 螟夜Κ繝輔ぅ繝ｫ繧ｿ繝ｼ繧呈ｸ｡縺・
     const [filterState, filterHandlers] = useFilterLogic(
       onFilterChange, 
       {
@@ -186,15 +185,15 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }, 
       isPrOnly, 
       isCorporateOnly,
-      currentTabFilters // ← 外部フィルター状態を渡す
+      currentTabFilters // 竊・螟夜Κ繝輔ぅ繝ｫ繧ｿ繝ｼ迥ｶ諷九ｒ貂｡縺・
     );
     
     const { 
       columnFilters, 
       currentFilters, 
       hasActiveFilters,
-      // isPrOnly: internalIsPrOnly, // 削除
-      // isCorporateOnly: internalIsCorporateOnly // 削除
+      // isPrOnly: internalIsPrOnly, // 蜑企勁
+      // isCorporateOnly: internalIsCorporateOnly // 蜑企勁
     } = filterState;
     
     const { 
@@ -203,11 +202,11 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleClearAllFilters, 
       handleClearFilterInputs,
       setIsFilterPopupOpen,
-      // handlePrOnlyChange, // 削除
-      // handleCorporateOnlyChange // 削除
+      // handlePrOnlyChange, // 蜑企勁
+      // handleCorporateOnlyChange // 蜑企勁
     } = filterHandlers;
 
-    // 外部状態と内部状態の同期 - 削除
+    // 螟夜Κ迥ｶ諷九→蜀・Κ迥ｶ諷九・蜷梧悄 - 蜑企勁
     // useEffect(() => {
     //   if (internalIsPrOnly !== isPrOnly) {
     //     handlePrOnlyChange(isPrOnly);
@@ -220,7 +219,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     //   }
     // }, [isCorporateOnly, internalIsCorporateOnly, handleCorporateOnlyChange]);
     
-    // フィルターポップアップの状態
+    // 繝輔ぅ繝ｫ繧ｿ繝ｼ繝昴ャ繝励い繝・・縺ｮ迥ｶ諷・
     const [isFilterPopupOpen, setFilterPopupOpenState] = useState(false);
 
     const openFilterPopup = useCallback(() => {
@@ -239,8 +238,8 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       onSearchKeywordChange?.('');
     }, [handleClearAllFilters, closeFilterPopup, onSearchKeywordChange]);
     
-    // カスタムフックからフィルターオプションを取得
-    // ★ 修正: onFilterOptionsUpdateを渡す
+    // 繧ｫ繧ｹ繧ｿ繝繝輔ャ繧ｯ縺九ｉ繝輔ぅ繝ｫ繧ｿ繝ｼ繧ｪ繝励す繝ｧ繝ｳ繧貞叙蠕・
+    // 笘・菫ｮ豁｣: onFilterOptionsUpdate繧呈ｸ｡縺・
     const { 
       categoryList, 
       productList, 
@@ -251,7 +250,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     } = useFilterOptions(currentFilters, onFilterOptionsUpdate);
 
 
-    // カラム定義を取得
+    // 繧ｫ繝ｩ繝螳夂ｾｩ繧貞叙蠕・
     const resolvedProductCategories = useMemo(() => {
       if (productCategories && Object.keys(productCategories).length > 0) {
         return productCategories;
@@ -276,7 +275,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         isLoadingFilterOptions,
         sortField,
         sortDirection,
-        createProductCellRenderer() // 直接呼び出し
+        createProductCellRenderer() // 逶ｴ謗･蜻ｼ縺ｳ蜃ｺ縺・
       );
       
       return createdColumns;
@@ -291,7 +290,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       sortDirection
     ]);
     
-    // カラムのドラッグ＆ドロップ機能
+    // 繧ｫ繝ｩ繝縺ｮ繝峨Λ繝・げ・・ラ繝ｭ繝・・讖溯・
     const {
       orderedColumns,
       setOrderedColumns,
@@ -299,7 +298,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       SortableContextProvider
     } = useColumnDnd(columns);
     
-    // 初期化時にカラムの順序を設定
+    // 蛻晄悄蛹匁凾縺ｫ繧ｫ繝ｩ繝縺ｮ鬆・ｺ上ｒ險ｭ螳・
     const isInitialRenderRef = useRef(true);
     useEffect(() => {
       if (isInitialRenderRef.current) {
@@ -308,7 +307,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
     }, [columns, setOrderedColumns]);
     
-    // カラム表示設定
+    // 繧ｫ繝ｩ繝陦ｨ遉ｺ險ｭ螳・
     const {
       isColumnSettingsOpen,
       setIsColumnSettingsOpen,
@@ -317,17 +316,17 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleColumnVisibilityChange
     } = useColumnVisibility(defaultVisibleColumns, onColumnSettingsChange);
 
-    // 参照を設定
+    // 蜿ら・繧定ｨｭ螳・
     useImperativeHandle(ref, () => ({
       clearAllFilters
     }));
     
-    // ページ切り替えハンドラー
+    // 繝壹・繧ｸ蛻・ｊ譖ｿ縺医ワ繝ｳ繝峨Λ繝ｼ
     const handlePageChange = (page: number) => {
       onPageChange(page);
     };
     
-    // 表示件数変更のハンドラー
+    // 陦ｨ遉ｺ莉ｶ謨ｰ螟画峩縺ｮ繝上Φ繝峨Λ繝ｼ
     const handlePageSizeChange = (size: number) => {
       if (onPageSizeChange) {
         onPageSizeChange(size);
@@ -335,24 +334,24 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     };
 
 
-    // filteredColumns の定義で columns を直接使用
+    // filteredColumns 縺ｮ螳夂ｾｩ縺ｧ columns 繧堤峩謗･菴ｿ逕ｨ
     const filteredColumns = useMemo(() => {
       return orderedColumns.filter(col => 
         !EXCLUDED_COLUMNS.includes(String(col.accessorKey)) &&
         visibleColumns.includes(String(col.accessorKey))
       );
-    }, [orderedColumns, visibleColumns]); // columnsWithProductRendererを依存配列から削除
+    }, [orderedColumns, visibleColumns]); // columnsWithProductRenderer繧剃ｾ晏ｭ倬・蛻励°繧牙炎髯､
   
 
-    // すべての動画タブのハンドラー
+    // 縺吶∋縺ｦ縺ｮ蜍慕判繧ｿ繝悶・繝上Φ繝峨Λ繝ｼ
     const handleAllVideosToggle = useCallback(() => {
-      console.log('すべての動画タブクリック');
+      console.log('縺吶∋縺ｦ縺ｮ蜍慕判繧ｿ繝悶け繝ｪ繝・け');
       onPrOnlyChange(false);
       onCorporateOnlyChange(false);
       onInfluencerOnlyChange(false);
     }, [onPrOnlyChange, onCorporateOnlyChange, onInfluencerOnlyChange]);
 
-    // フィルターポップアップに渡すaccountTypeContextを動的に生成
+    // 繝輔ぅ繝ｫ繧ｿ繝ｼ繝昴ャ繝励い繝・・縺ｫ貂｡縺兮ccountTypeContext繧貞虚逧・↓逕滓・
     const getAccountTypeContext = (): 'influencer' | 'corporate' | 'affiliate' | 'all' => {
       if (isCorporateOnly) return 'corporate';
       if (isInfluencerOnly) return 'influencer';
@@ -360,16 +359,16 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       return 'all';
     };
 
-    // 表示設定用: 現在のタブタイプと可視カラム操作
+    // 陦ｨ遉ｺ險ｭ螳夂畑: 迴ｾ蝨ｨ縺ｮ繧ｿ繝悶ち繧､繝励→蜿ｯ隕悶き繝ｩ繝謫堺ｽ・
     const tabTypeForPreset = getCurrentTabType(isPrOnly, isCorporateOnly, isInfluencerOnly) as PresetTabType;
     const getFiltersForPreset = useCallback(() => currentFilters, [currentFilters]);
     const getVisibleColumnsForPreset = useCallback(() => visibleColumns, [visibleColumns]);
     const applyVisibleColumnsForPreset = useCallback((cols: string[]) => {
-      // newColumns 経由で一括適用
+      // newColumns 邨檎罰縺ｧ荳諡ｬ驕ｩ逕ｨ
       handleColumnVisibilityChange('', false, cols);
     }, [handleColumnVisibilityChange]);
 
-    // プリセット適用時にタブ状態を切り替える
+    // 繝励Μ繧ｻ繝・ヨ驕ｩ逕ｨ譎ゅ↓繧ｿ繝也憾諷九ｒ蛻・ｊ譖ｿ縺医ｋ
     const presetSetTabFlags = useCallback((flags: { isPrOnly?: boolean; isCorporateOnly?: boolean; isInfluencerOnly?: boolean }) => {
       onPrOnlyChange(!!flags.isPrOnly);
       onCorporateOnlyChange(!!flags.isCorporateOnly);
@@ -388,7 +387,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
 
     return (
       <div className="data-table-wrapper relative bg-white rounded-lg shadow-sm border border-gray-200">
-        {/* 最新動画一覧のタイトルのみ表示 */}
+        {/* 譛譁ｰ蜍慕判荳隕ｧ縺ｮ繧ｿ繧､繝医Ν縺ｮ縺ｿ陦ｨ遉ｺ */}
         <div className="flex items-center justify-between p-3">
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-gray-800">最新動画一覧</h2>
@@ -408,7 +407,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             )}
           </div>
           
-          {/* 表示設定ボタンをヘッダー右上に移動 */}
+          {/* Move display settings button to the top-right */}
           <button
             ref={columnSettingsButtonRef}
             onClick={() => setIsColumnSettingsOpen(true)}
@@ -420,97 +419,98 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         </div>
         
         <div className="flex flex-wrap items-start justify-between gap-4 p-2">
-          {showSearchInput && (
-            <div className="flex min-w-[240px] flex-col gap-2">
-              <div className="relative w-full md:w-80">
-                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
-                  <SearchIcon className="h-4 w-4" />
-                </span>
-                <input
-                  type="text"
-                  value={currentSearchKeyword}
-                  onChange={handleSearchInputChange}
-                  placeholder="キーワードで検索"
-                  className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#FE2C55] focus:outline-none focus:ring-1 focus:ring-[#FE2C55]"
-                />
-                {currentSearchKeyword && (
-                  <button
-                    type="button"
-                    onClick={handleSearchClear}
-                    className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
-                  >
-                    <span className="sr-only">検索キーワードをクリア</span>
-                    <ClearIcon className="h-4 w-4" />
-                  </button>
-                )}
+          <div className="flex min-w-[260px] flex-1 flex-col gap-3">
+            {showSearchInput && (
+              <div className="flex min-w-[240px] flex-col gap-2">
+                <div className="relative w-full md:w-80">
+                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-400">
+                    <SearchIcon className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={currentSearchKeyword}
+                    onChange={handleSearchInputChange}
+                    placeholder="キーワードで検索"
+                    className="w-full rounded-md border border-gray-300 bg-white py-2 pl-9 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#FE2C55] focus:outline-none focus:ring-1 focus:ring-[#FE2C55]"
+                  />
+                  {currentSearchKeyword && (
+                    <button
+                      type="button"
+                      onClick={handleSearchClear}
+                      className="absolute inset-y-0 right-2 flex items-center text-gray-400 hover:text-gray-600"
+                    >
+                      <span className="sr-only">検索キーワードをクリア</span>
+                      <ClearIcon className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <button
+                ref={filterButtonRef}
+                onClick={openFilterPopup}
+                className="inline-flex w-full items-center justify-center rounded border border-[#FE2C55] px-2.5 py-1.5 text-xs font-medium text-[#FE2C55] shadow-sm transition-colors duration-200 hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:ring-offset-2 sm:w-auto"
+              >
+                <FilterIcon size={16} />
+                <span className="ml-1">フィルター</span>
+              </button>
+              
+              {/* Video type tabs */}
+              <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1 sm:flex-nowrap">
+                <button
+                  onClick={handleAllVideosToggle}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    !isPrOnly && !isCorporateOnly && !isInfluencerOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  すべての動画
+                </button>
+                <button
+                  onClick={() => {
+                    console.log("\u30a2\u30d5\u30a3\u30ea\u30a8\u30a4\u30c8\u7cfb\u52d5\u753b\u30bf\u30d6\u30af\u30ea\u30c3\u30af");
+                    onPrOnlyChange(true);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    isPrOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  アフィ系動画
+                </button>
+                <button
+                  onClick={() => {
+                    console.log("\u4f01\u696d\u7cfb\u52d5\u753b\u30bf\u30d6\u30af\u30ea\u30c3\u30af");
+                    onCorporateOnlyChange(true);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    isCorporateOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  企業系動画
+                </button>
+                <button
+                  onClick={() => {
+                    console.log("\u30a4\u30f3\u30d5\u30eb\u30a8\u30f3\u30b5\u30fc\u7cfb\u52d5\u753b\u30bf\u30d6\u30af\u30ea\u30c3\u30af");
+                    onInfluencerOnlyChange(true);
+                  }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
+                    isInfluencerOnly
+                      ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
+                      : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  インフルエンサー系動画
+                </button>
               </div>
             </div>
-          )}
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <button
-              ref={filterButtonRef}
-              onClick={openFilterPopup}
-              className="inline-flex w-full items-center justify-center rounded border border-[#FE2C55] px-2.5 py-1.5 text-xs font-medium text-[#FE2C55] shadow-sm transition-colors duration-200 hover:bg-[#FE2C55] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#FE2C55] focus:ring-offset-2 sm:w-auto"
-            >
-              <FilterIcon size={16} />
-              <span className="ml-1">フィルター</span>
-            </button>
-            
-            {/* 動画タイプタブ */}
-            <div className="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1 sm:flex-nowrap">
-              <button
-                onClick={handleAllVideosToggle}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                  !isPrOnly && !isCorporateOnly && !isInfluencerOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                すべての動画
-              </button>
-              <button
-                onClick={() => {
-                  console.log('アフィリエイト系動画タブクリック');
-                  onPrOnlyChange(true);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                  isPrOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                アフィ系動画
-              </button>
-              <button
-                onClick={() => {
-                  console.log('運用代行用動画タブクリック');
-                  onCorporateOnlyChange(true);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                  isCorporateOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                企業系動画
-              </button>
-              <button
-                onClick={() => {
-                  console.log('インフルエンサー動画タブクリック');
-                  onInfluencerOnlyChange(true);
-                }}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 border-2 ${
-                  isInfluencerOnly
-                    ? 'bg-white text-gray-900 border-[#FE2C55] shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 border-transparent hover:border-gray-300'
-                }`}
-              >
-                インフルエンサー系動画
-              </button>
-            </div>
           </div>
-
           <div className="ml-auto">
             <Pagination 
               currentPage={currentPage}
@@ -523,7 +523,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           </div>
         </div>
         
-        {/* テーブルの内容 */}
+        {/* 繝・・繝悶Ν縺ｮ蜀・ｮｹ */}
         <div className="relative">
           <div className="bg-white rounded-lg shadow-sm">
             {isLoading && (
@@ -681,7 +681,7 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           />
         </div>
 
-        {/* Portalを使用してDOM階層の上位に表示 */}
+        {/* Portal繧剃ｽｿ逕ｨ縺励※DOM髫主ｱ､縺ｮ荳贋ｽ阪↓陦ｨ遉ｺ */}
         {typeof window !== 'undefined' && createPortal(
           <FilterPopup
             isOpen={isFilterPopupOpen}
@@ -690,8 +690,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             onFilterChange={handleBulkFilterChange}
             currentFilters={columnFilters}
             categories={categoryList}
-            // ★ 修正: filterOptionsはデフォルト値があるのでオプショナルチェイニング不要
-            products={productList.length ? productList : filterOptions.products}
             productCategories={resolvedProductCategories}
             accountTypes={filterOptions.accountTypes}
             secondAccountTypes={filterOptions.secondAccountTypes}
