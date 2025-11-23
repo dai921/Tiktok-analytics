@@ -1,7 +1,7 @@
 substitutions:
   _REPO: jobs
   _IMAGE_NAME: manual-summary-sync
-  _TAG: "251102"
+  _TAG: "251120"
 
 steps:
   - name: gcr.io/cloud-builders/docker

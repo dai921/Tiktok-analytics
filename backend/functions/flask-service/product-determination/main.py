@@ -21,7 +21,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SENSITIVE_STATUS = "skip_sensitive"
-UNKNOWN_PRODUCT_NAME = "\u4e0d\u660e"
 
 
 class SensitiveVideoError(RuntimeError):
@@ -381,24 +380,6 @@ def _analyze_beauty_with_gemini_bytes(video_bytes: bytes, hashtags: List[str]) -
         return "", text
 
 
-def _enforce_product_name_from_hashtags(initial_name: str, hashtags: List[str]) -> str:
-    """Ensure product_name matches one of the hashtags (case-insensitive) or becomes 不明."""
-    normalized_map = {
-        (tag or "").strip().lower(): (tag or "").strip()
-        for tag in hashtags
-        if tag
-    }
-    if not normalized_map:
-        return (initial_name or "").strip()
-
-    candidate = (initial_name or "").strip()
-    candidate_lower = candidate.lower()
-    if candidate_lower in normalized_map:
-        return normalized_map[candidate_lower]
-
-    return UNKNOWN_PRODUCT_NAME
-
-
 # =====================
 # Cloud Function entry
 # =====================
@@ -438,7 +419,6 @@ def determine_beauty_product(event, context):
             logger.info("既存の動画データを再利用: %s", existing_storage_url)
             video_bytes = _download_gcs_bytes(existing_storage_url)
             product_category, product_name = _analyze_beauty_with_gemini_bytes(video_bytes, hashtags)
-            product_name = _enforce_product_name_from_hashtags(product_name, hashtags)
 
             _upsert_influencer_pr_product(product_name, product_category, url)
             logger.info("判定結果を保存(再利用): video_id=%s, category=%s, product=%s", video_id, product_category, product_name)
@@ -467,7 +447,6 @@ def determine_beauty_product(event, context):
             with open(video_path, 'rb') as f:
                 video_bytes = f.read()
             product_category, product_name = _analyze_beauty_with_gemini_bytes(video_bytes, hashtags)
-            product_name = _enforce_product_name_from_hashtags(product_name, hashtags)
         finally:
             try:
                 if video_path and os.path.exists(video_path):
