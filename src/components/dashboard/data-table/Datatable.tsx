@@ -691,7 +691,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                             onChange={(e) => {
                               setExportPageStartInput(e.target.value);
                             }}
-                            placeholder="例: 1"
                             className="w-16 rounded border border-gray-300 px-2 py-1"
                           />
                           <span>〜</span>
@@ -703,7 +702,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
                             onChange={(e) => {
                               setExportPageEndInput(e.target.value);
                             }}
-                            placeholder="例: 3"
                             className="w-16 rounded border border-gray-300 px-2 py-1"
                           />
                           <span className="text-[11px] text-gray-500">全{totalPages || 1}ページ</span>
