@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 SENSITIVE_STATUS = "skip_sensitive"
 PROCESSOR_NAME = "manual_product_determination"
 TARGET_TABLE = "video_master"
-DEFAULT_BATCH_SIZE = 5000
+DEFAULT_BATCH_SIZE = 3000
 DEFAULT_CURSOR_RESET_INTERVAL = 86400
 
 def _resolve_module_dir() -> Path:
