@@ -15,6 +15,8 @@ import type { SoundVideoStats } from '@/types/sound';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getAccountTypeColor } from '@/lib/constants';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
 
 interface SoundTrend {  
   rank: number;
@@ -85,6 +87,9 @@ export default function SoundsPage() {
   const [error, setError] = useState<string | null>(null);
   const [soundStats, setSoundStats] = useState<SoundStats[]>([]);
   const [displayLimit, setDisplayLimit] = useState(15);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const { isAdmin } = useAuth();
   
   // 指標ごとにデータをキャッシュするための状態を追加
   const [cachedSoundStats, setCachedSoundStats] = useState<Record<string, SoundStats[]>>({});
@@ -189,6 +194,72 @@ export default function SoundsPage() {
     setDisplayLimit(15);
     setDataLoaded(false);
   };
+  const formatDateForCsv = (value?: Date) => {
+    if (!value || Number.isNaN(value.getTime())) return '';
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleExportCsv = () => {
+    if (isExporting) return;
+    if (!isAdmin) {
+      setExportError('管理者のみ利用できます');
+      return;
+    }
+    if (!soundStats.length) {
+      setExportError('出力対象のデータがありません');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      const start = formatDateForCsv(dateRange.start);
+      const end = formatDateForCsv(dateRange.end);
+      const escapeForCsv = (value: string | number) => {
+        const str = String(value ?? '')
+          .replace(/\r?\n|\r/g, ' ')
+          .replace(/"/g, '');
+        return `"${str}"`;
+      };
+
+      const header = ['サウンド', 'アーティスト', '動画種別', '期間開始', '期間終了', '再生増加', '10万再生以上本数', '投稿数'];
+      const rows = soundStats
+        .filter((stat) => stat.sound_title && stat.sound_title.trim() !== '')
+        .map((stat) => [
+          stat.sound_title,
+          stat.sound_artist || '',
+          getVideoTypeLabel(activeTab),
+          start,
+          end,
+          Number(stat.total_play_count_increase) || 0,
+          Number(stat.videos_over_100k) || 0,
+          Number(stat.total_posts) || 0,
+        ]);
+
+      const csvContent = [
+        '\ufeff' + header.map(escapeForCsv).join(','),
+        ...rows.map((row) => row.map(escapeForCsv).join(',')),
+      ].join('\r\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+      anchor.href = url;
+      anchor.download = `sounds-trends-${timestamp}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -217,7 +288,7 @@ export default function SoundsPage() {
 
       <div className="space-y-4">
         {/* フィルターエリア */}
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-4 items-center flex-wrap">
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">表示指標:</label>
             <select 
@@ -237,6 +308,19 @@ export default function SoundsPage() {
               onApply={handleDateRangeApply}
             />
           </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 ml-auto">
+              {exportError && <span className="text-xs text-red-500">{exportError}</span>}
+              <Button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={isExporting || !soundStats.length}
+                className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
+              >
+                {isExporting ? 'CSV出力中...' : 'CSV出力'}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* タブエリア */}

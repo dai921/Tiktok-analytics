@@ -15,6 +15,8 @@ import type { HashtagVideoStats } from '@/types/hashtag';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getAccountTypeColor } from '@/lib/constants';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
 
 interface HashtagTrend {  
   rank: number;
@@ -84,6 +86,9 @@ export default function HashtagsPage() {
   const [error, setError] = useState<string | null>(null);
   const [hashtagStats, setHashtagStats] = useState<HashtagStats[]>([]);
   const [displayLimit, setDisplayLimit] = useState(15);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const { isAdmin } = useAuth();
   
   // 指標ごとにデータをキャッシュするための状態を追加
   const [cachedHashtagStats, setCachedHashtagStats] = useState<Record<string, HashtagStats[]>>({});
@@ -92,21 +97,16 @@ export default function HashtagsPage() {
     if (!dataLoaded || userSelectedDate) {
       const loadHashtagStats = async () => {
         try {
-          console.log("API呼び出し開始:", { userSelectedDate, dataLoaded, metric, activeTab });
           setIsLoading(true);
           setError(null);
-          
-          // キャッシュキーを作成
+
           const cacheKey = `${metric}_${activeTab}`;
-          
-          // キャッシュ内にすでにデータがあるか確認
           if (cachedHashtagStats[cacheKey]?.length > 0 && userSelectedDate) {
-            console.log("キャッシュからデータを使用:", cacheKey);
             setHashtagStats(cachedHashtagStats[cacheKey]);
             setIsLoading(false);
             return;
           }
-          
+
           const result = await fetchHashtagStats(
             userSelectedDate ? dateRange.start.toISOString().split('T')[0] : null,
             userSelectedDate ? dateRange.end.toISOString().split('T')[0] : null,
@@ -114,36 +114,23 @@ export default function HashtagsPage() {
             activeTab
           );
 
-          console.log("APIレスポンス:", result);
           setHashtagStats(result.data);
-          
-          // 結果をキャッシュに保存
-          setCachedHashtagStats(prev => ({
+          setCachedHashtagStats((prev) => ({
             ...prev,
-            [cacheKey]: result.data
+            [`${metric}_${activeTab}`]: result.data,
           }));
-          
-          // ユーザーが選択していない場合のみ、バックエンドから返された日付範囲を設定
-          if (!userSelectedDate && !dataLoaded) {
-            console.log("ユーザー選択なし、dateRange確認:", result.dateRange);
-            if (result.dateRange) {
-              console.log("バックエンドから受け取った日付範囲:", result.dateRange);
-              const start = new Date(result.dateRange.startDate);
-              const end = new Date(result.dateRange.endDate);
-              console.log("変換された日付範囲:", { start, end });
-              setDateRange({
-                start,
-                end
-              });
-            } else {
-              console.log("dateRangeなし");
-            }
+
+          if (!userSelectedDate && !dataLoaded && result.dateRange) {
+            setDateRange({
+              start: new Date(result.dateRange.startDate),
+              end: new Date(result.dateRange.endDate),
+            });
           }
-          
+
           setDataLoaded(true);
         } catch (err) {
-          console.error("API呼び出しエラー:", err);
-          setError('ハッシュタグ統計情報の取得に失敗しました');
+          console.error('ハッシュタグデータ取得エラー:', err);
+          setError('ハッシュタグトレンドの取得に失敗しました');
         } finally {
           setIsLoading(false);
         }
@@ -151,11 +138,11 @@ export default function HashtagsPage() {
 
       loadHashtagStats();
     } else {
-      console.log("API呼び出しがスキップされました:", { userSelectedDate, dataLoaded, metric, activeTab });
+      console.log('API呼び出しスキップ:', { userSelectedDate, dataLoaded, metric, activeTab });
     }
   }, [userSelectedDate, dataLoaded, dateRange, metric, activeTab, cachedHashtagStats]);
 
-  const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
+const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
   };
 
@@ -188,6 +175,77 @@ export default function HashtagsPage() {
     setDisplayLimit(15);
     setDataLoaded(false);
   };
+  const formatDateForCsv = (value?: Date) => {
+    if (!value || Number.isNaN(value.getTime())) return '';
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+        const handleExportCsv = () => {
+    if (isExporting) return;
+    if (!isAdmin) {
+      setExportError('管理者のみ利用できます');
+      return;
+    }
+    if (!hashtagStats.length) {
+      setExportError('出力対象のデータがありません');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      const start = formatDateForCsv(dateRange.start);
+      const end = formatDateForCsv(dateRange.end);
+      const escapeForCsv = (value: string | number) => {
+        const str = String(value ?? '').replace(/\r?\n|\r/g, ' ').replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const header = [
+        'ハッシュタグ',
+        '動画種別',
+        '期間開始',
+        '期間終了',
+        '再生増加',
+        '10万再生以上本数',
+        '投稿数',
+      ];
+
+      const rows = hashtagStats
+        .filter((stat) => stat.hashtag && stat.hashtag.trim() !== '')
+        .map((stat) => [
+          stat.hashtag,
+          getVideoTypeLabel(activeTab),
+          start,
+          end,
+          Number(stat.total_play_count_increase) || 0,
+          Number(stat.videos_over_100k) || 0,
+          Number(stat.total_posts) || 0,
+        ]);
+
+      const csvContent = [
+        '\ufeff' + header.map(escapeForCsv).join(','),
+        ...rows.map((row) => row.map(escapeForCsv).join(',')),
+      ].join('\r\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+      anchor.href = url;
+      anchor.download = `hashtags-trends-${timestamp}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -216,7 +274,7 @@ export default function HashtagsPage() {
 
       <div className="space-y-4">
         {/* フィルターエリア */}
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-4 items-center flex-wrap">
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">表示指標:</label>
             <select 
@@ -236,6 +294,19 @@ export default function HashtagsPage() {
               onApply={handleDateRangeApply}
             />
           </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 ml-auto">
+              {exportError && <span className="text-xs text-red-500">{exportError}</span>}
+              <Button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={isExporting || !hashtagStats.length}
+                className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
+              >
+                {isExporting ? 'CSV出力中...' : 'CSV出力'}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* タブエリア */}
