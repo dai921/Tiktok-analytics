@@ -9,22 +9,123 @@ import { TAB_DEFAULT_COLUMNS, getCurrentTabType, getTabFilterFields } from '@/co
 import { getDefaultPreset, contextKeyFromTab, getPreset } from '@/lib/filter_presets_api'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
-import Link from 'next/link'
-import { Bell } from 'lucide-react'
+import { Bell, Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { fetchPendingPrProductsCount } from '@/lib/api/influencer-pr-products'
+import { Button } from '@/components/ui/button'
+import {
+  NotificationItem,
+  fetchNotifications,
+  fetchUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+} from '@/lib/api/notifications'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 
 // headers: 未使用のため削除
 
 type TabKey = 'all' | 'affiliate' | 'corporate' | 'influencer'
 
+const formatJstDateTime = (value?: string | null) => {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
+const UrlPresetApplier: React.FC<{
+  updateTabFilters: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void
+  setFilters: React.Dispatch<React.SetStateAction<Record<string, FilterQuery>>>
+  setCurrentPage: React.Dispatch<React.SetStateAction<number>>
+  setIsPrOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
+  updateTabVisibleColumns: (columns: string[], targetTabKey?: string) => void
+}> = ({
+  updateTabFilters,
+  setFilters,
+  setCurrentPage,
+  setIsPrOnly,
+  setIsCorporateOnly,
+  setIsInfluencerOnly,
+  setVisibleColumns,
+  updateTabVisibleColumns
+}) => {
+  const searchParams = useSearchParams()
+  const appliedPresetRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    const presetId = searchParams.get('preset')
+    if (!presetId || appliedPresetRef.current === presetId) return
+
+    ;(async () => {
+      try {
+        const res = await getPreset(presetId)
+        const p = res?.preset
+        if (!p) return
+
+        const incoming = p.payload?.currentFilters ?? {}
+        const cols = (p as any)?.payload?.visibleColumns
+        const tabFlags = p.payload?.tab || {}
+        const targetTab = getCurrentTabType(!!tabFlags.isPrOnly, !!tabFlags.isCorporateOnly, !!tabFlags.isInfluencerOnly)
+
+        setIsPrOnly(!!tabFlags.isPrOnly)
+        setIsCorporateOnly(!!tabFlags.isCorporateOnly)
+        setIsInfluencerOnly(!!tabFlags.isInfluencerOnly)
+
+        updateTabFilters(incoming, targetTab)
+        setFilters(JSON.parse(JSON.stringify(incoming)))
+        if (Array.isArray(cols) && cols.length) {
+          console.log('[DEBUG] url apply visibleColumns =', cols);
+          setVisibleColumns(cols);
+          updateTabVisibleColumns(cols, targetTab);
+        }
+        setCurrentPage(1)
+        appliedPresetRef.current = presetId
+      } catch (e) {
+        console.warn('Failed to apply preset from URL:', e)
+      }
+    })()
+  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly, updateTabVisibleColumns])
+
+  return null
+}
+
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
   const { isAdmin, isDeveloper } = useAuth()
-  const [pendingPrCount, setPendingPrCount] = useState<number | null>(null)
-  const [isPendingCountLoading, setIsPendingCountLoading] = useState(false)
-  
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState<number | null>(null)
+  const [isNotificationCountLoading, setIsNotificationCountLoading] = useState(false)
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [isNotificationListLoading, setIsNotificationListLoading] = useState(false)
+  const [isMarkAllReadLoading, setIsMarkAllReadLoading] = useState(false)
+  const [notificationPage, setNotificationPage] = useState(1)
+  const [notificationTotal, setNotificationTotal] = useState(0)
+  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
+  const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
+  const NOTIFICATION_PAGE_SIZE = 10
+
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<VideoData[]>([])
   const tableRef = useRef<{ clearAllFilters: () => void } | null>(null)
@@ -82,38 +183,67 @@ const Dashboard = () => {
     affiliate: ''
   });
 
-  const refreshPendingPrCount = useCallback(async () => {
+  const refreshNotificationCount = useCallback(async () => {
     if (!isAdmin) {
-      setPendingPrCount(null)
+      setUnreadNotificationCount(null)
       return
     }
 
-    setIsPendingCountLoading(true)
+    setIsNotificationCountLoading(true)
     try {
-      const res = await fetchPendingPrProductsCount()
-      if (res.success && typeof res.data === 'number') {
-        setPendingPrCount(res.data)
-      } else if (typeof res.count === 'number') {
-        setPendingPrCount(res.count)
-      } else {
-        setPendingPrCount(null)
-      }
+      const res = await fetchUnreadNotificationCount()
+      const next =
+        res.success && typeof res.data === 'number'
+          ? res.data
+          : typeof res.unread_total === 'number'
+          ? res.unread_total
+          : null
+      setUnreadNotificationCount(next)
     } catch (error) {
-      console.warn('Failed to load pending PR product count:', error)
-      setPendingPrCount(null)
+      console.warn('Failed to load unread notification count:', error)
+      setUnreadNotificationCount(null)
     } finally {
-      setIsPendingCountLoading(false)
+      setIsNotificationCountLoading(false)
     }
   }, [isAdmin])
 
-  useEffect(() => {
+  const loadNotifications = useCallback(async (page: number = 1) => {
     if (!isAdmin) {
-      setPendingPrCount(null)
-      setIsPendingCountLoading(false)
+      setNotifications([])
       return
     }
-    refreshPendingPrCount()
-  }, [isAdmin, refreshPendingPrCount])
+    setIsNotificationListLoading(true)
+    try {
+      const res = await fetchNotifications({
+        limit: NOTIFICATION_PAGE_SIZE,
+        offset: (page - 1) * NOTIFICATION_PAGE_SIZE,
+      })
+      if (res.success && Array.isArray(res.data)) {
+        setNotifications(res.data)
+        setNotificationTotal(
+          typeof res.total === 'number'
+            ? res.total
+            : res.data.length,
+        )
+        if (typeof res.unread_total === 'number') {
+          setUnreadNotificationCount(res.unread_total)
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load notifications:', error)
+    } finally {
+      setIsNotificationListLoading(false)
+    }
+  }, [NOTIFICATION_PAGE_SIZE, isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setUnreadNotificationCount(null)
+      setIsNotificationCountLoading(false)
+      return
+    }
+    refreshNotificationCount()
+  }, [isAdmin, refreshNotificationCount])
 
   // 基本関数群
   const getCurrentTabKey = () => {
@@ -757,21 +887,188 @@ const Dashboard = () => {
   // プリセット適用時はデバウンスを回避するためのフラグ
   const isPresetApplyingRef = React.useRef(false);
 
+  const handleMarkAllRead = useCallback(async () => {
+    if (isMarkAllReadLoading) return
+    setIsMarkAllReadLoading(true)
+    try {
+      const res = await markAllNotificationsRead()
+      if (res.success) {
+        const nowIso = new Date().toISOString()
+        setNotifications((prev) =>
+          prev.map((n) => ({
+            ...n,
+            is_read: true,
+            read_at: n.read_at ?? nowIso,
+          })),
+        )
+        setUnreadNotificationCount(0)
+      }
+    } catch (error) {
+      console.warn('Failed to mark all notifications read:', error)
+    } finally {
+      setIsMarkAllReadLoading(false)
+    }
+  }, [isMarkAllReadLoading])
+
+  const handleSelectNotification = useCallback(
+    async (item: NotificationItem) => {
+      setSelectedNotification(item)
+      setIsNotificationDialogOpen(true)
+
+      if (item.is_read) return
+      try {
+        const res = await markNotificationRead(item.id, true)
+        if (res.success && res.data) {
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === item.id ? { ...n, ...res.data } : n)),
+          )
+          setUnreadNotificationCount((prev) => {
+            const next = (prev ?? 0) - 1
+            return next < 0 ? 0 : next
+          })
+        }
+      } catch (error) {
+        console.warn('Failed to mark notification read:', error)
+      }
+    },
+    [],
+  )
+
   const currentTabKey = getCurrentTabKey();
   const currentSearchKeyword = searchKeywordsByTab[currentTabKey] ?? '';
 
   const adminNotificationButton = isAdmin ? (
-    <Link
-      href="/admin/pr-products"
-      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-gray-300"
-      aria-label="未判定PR商材の管理ページ"
+    <Popover
+      open={isNotificationOpen}
+      onOpenChange={(open) => {
+        setIsNotificationOpen(open)
+        if (open) {
+          setNotificationPage(1)
+          loadNotifications(1)
+        }
+      }}
     >
-      <Bell className="h-5 w-5" />
-      <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
-        {isPendingCountLoading ? '...' : (pendingPrCount ?? 0) > 99 ? '99+' : (pendingPrCount ?? 0)}
-      </span>
-    </Link>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-gray-300"
+          aria-label="通知一覧"
+        >
+          <Bell className="h-5 w-5" />
+          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
+            {isNotificationCountLoading
+              ? '...'
+              : (unreadNotificationCount ?? 0) > 99
+              ? '99+'
+              : unreadNotificationCount ?? 0}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0">
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <div>
+            <p className="text-sm font-semibold">通知</p>
+            <p className="text-xs text-muted-foreground">未読: {unreadNotificationCount ?? 0}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={handleMarkAllRead}
+            disabled={
+              isNotificationListLoading ||
+              isMarkAllReadLoading ||
+              (unreadNotificationCount ?? 0) === 0
+            }
+          >
+            すべて既読にする
+          </Button>
+        </div>
+        <div className="max-h-80 overflow-y-auto">
+          {isNotificationListLoading ? (
+            <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              読み込み中...
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              通知はありません。
+            </div>
+          ) : (
+            notifications.map((item) => (
+              <div
+                key={item.id}
+                className="cursor-pointer border-b px-3 py-3 last:border-b-0 hover:bg-muted/50"
+                onClick={() => handleSelectNotification(item)}
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium leading-tight">{item.title}</p>
+                    {!item.is_read && (
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                        未読
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-wrap">
+                    {item.body}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {formatJstDateTime(item.sent_at) || '送信日時不明'}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex items-center justify-between border-t px-3 py-2 text-xs">
+          <div className="space-x-2">
+            <button
+              type="button"
+              className="rounded-md border px-2 py-1 transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                const next = Math.max(1, notificationPage - 1)
+                setNotificationPage(next)
+                loadNotifications(next)
+              }}
+              disabled={notificationPage <= 1 || isNotificationListLoading}
+            >
+              前へ
+            </button>
+            <button
+              type="button"
+              className="rounded-md border px-2 py-1 transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                const totalPages = Math.max(
+                  1,
+                  Math.ceil(notificationTotal / NOTIFICATION_PAGE_SIZE),
+                )
+                const next = Math.min(totalPages, notificationPage + 1)
+                setNotificationPage(next)
+                loadNotifications(next)
+              }}
+              disabled={
+                isNotificationListLoading ||
+                notificationPage >=
+                  Math.max(1, Math.ceil(notificationTotal / NOTIFICATION_PAGE_SIZE))
+              }
+            >
+              次へ
+            </button>
+          </div>
+          <span className="text-muted-foreground">
+            {notificationPage}/
+            {Math.max(1, Math.ceil(notificationTotal / NOTIFICATION_PAGE_SIZE))}
+          </span>
+        </div>
+      </PopoverContent>
+    </Popover>
   ) : null
+
+  const handleCloseNotificationDialog = () => {
+    setIsNotificationDialogOpen(false)
+    setSelectedNotification(null)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -869,74 +1166,48 @@ const Dashboard = () => {
           pageSize={pageSize}
           onPageSizeChange={handlePageSizeChange}
           tabFilterFields={currentTabFilterFields}
+          isAdmin={isAdmin}
           // ★ 追加: 現在のタブのフィルター状態を渡す
           currentTabFilters={getCurrentFilters()}
           // ★ 修正: 両方のpropsを渡す
           onFilterOptionsUpdate={handleFilterOptionsUpdate}
           filterOptions={filterOptions}
         />
+
+        <Dialog
+          open={isNotificationDialogOpen}
+          onOpenChange={(open) => {
+            setIsNotificationDialogOpen(open)
+            if (!open) setSelectedNotification(null)
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{selectedNotification?.title ?? '通知'}</DialogTitle>
+              <DialogDescription>
+                {formatJstDateTime(selectedNotification?.sent_at) || '送信日時不明'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                {selectedNotification?.body ?? ''}
+              </p>
+              {selectedNotification?.delivered_at && (
+                <p className="text-xs text-muted-foreground">
+                  配信: {formatJstDateTime(selectedNotification.delivered_at) || '-'}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsNotificationDialogOpen(false)}>
+                閉じる
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   )
-}
-
-const UrlPresetApplier: React.FC<{
-  updateTabFilters: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void
-  setFilters: React.Dispatch<React.SetStateAction<Record<string, FilterQuery>>>
-  setCurrentPage: React.Dispatch<React.SetStateAction<number>>
-  setIsPrOnly: React.Dispatch<React.SetStateAction<boolean>>
-  setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
-  setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
-  setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
-  updateTabVisibleColumns: (columns: string[], targetTabKey?: string) => void
-}> = ({
-  updateTabFilters,
-  setFilters,
-  setCurrentPage,
-  setIsPrOnly,
-  setIsCorporateOnly,
-  setIsInfluencerOnly,
-  setVisibleColumns,
-  updateTabVisibleColumns
-}) => {
-  const searchParams = useSearchParams()
-  const appliedPresetRef = React.useRef<string | null>(null)
-
-  React.useEffect(() => {
-    const presetId = searchParams.get('preset')
-    if (!presetId || appliedPresetRef.current === presetId) return
-
-    ;(async () => {
-      try {
-        const res = await getPreset(presetId)
-        const p = res?.preset
-        if (!p) return
-
-        const incoming = p.payload?.currentFilters ?? {}
-        const cols = (p as any)?.payload?.visibleColumns
-        const tabFlags = p.payload?.tab || {}
-        const targetTab = getCurrentTabType(!!tabFlags.isPrOnly, !!tabFlags.isCorporateOnly, !!tabFlags.isInfluencerOnly)
-
-        setIsPrOnly(!!tabFlags.isPrOnly)
-        setIsCorporateOnly(!!tabFlags.isCorporateOnly)
-        setIsInfluencerOnly(!!tabFlags.isInfluencerOnly)
-
-        updateTabFilters(incoming, targetTab)
-        setFilters(JSON.parse(JSON.stringify(incoming)))
-        if (Array.isArray(cols) && cols.length) {
-          console.log('[DEBUG] url apply visibleColumns =', cols);
-          setVisibleColumns(cols);
-          updateTabVisibleColumns(cols, targetTab);
-        }
-        setCurrentPage(1)
-        appliedPresetRef.current = presetId
-      } catch (e) {
-        console.warn('Failed to apply preset from URL:', e)
-      }
-    })()
-  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly, updateTabVisibleColumns])
-
-  return null
 }
 
 export default Dashboard

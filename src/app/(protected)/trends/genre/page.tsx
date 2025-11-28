@@ -30,6 +30,9 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { GENRE_COLORS, DEFAULT_GENRE_COLOR } from '@/lib/constants';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface GenreTrend {  
   rank: number;
@@ -62,6 +65,8 @@ const TIKTOK_COLORS = {
   black: '#000000',
   white: '#FFFFFF',
 };
+
+const MAX_RANGE_DAYS = 62;
 
 // 指標の表示名を取得する関数
 const getMetricLabel = (metricKey: string) => {
@@ -122,6 +127,16 @@ export default function GenrePage() {
   });
 
   const [displayLimit, setDisplayLimit] = useState(15);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDateRange, setExportDateRange] = useState<{ start: Date; end: Date }>(() => ({
+    start: new Date(),
+    end: new Date(),
+  }));
+  const [exportTempDateRange, setExportTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [exportRangeError, setExportRangeError] = useState<string | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const { isAdmin } = useAuth();
 
   useEffect(() => {
     if (!dataLoaded || userSelectedDate) {
@@ -391,6 +406,158 @@ export default function GenrePage() {
     });
   };
 
+  const formatDateForCsv = (value?: Date) => {
+    if (!value || Number.isNaN(value.getTime())) return '';
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatExportDateLabel = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear().toString().slice(-2);
+    return `${year}/${date.getMonth() + 1}/${date.getDate()}`;
+  };
+
+  const isRangeWithinLimit = (range: { start: Date; end: Date }) => {
+    const diffMs = range.end.getTime() - range.start.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    return diffDays <= MAX_RANGE_DAYS;
+  };
+
+  const handleExportDateRangeChange = (newRange: { start: Date; end: Date }) => {
+    setExportTempDateRange(newRange);
+    if (exportRangeError) {
+      setExportRangeError(null);
+    }
+  };
+
+  const handleExportDateRangeApply = (range?: { start: Date; end: Date }) => {
+    const appliedRange = range || exportTempDateRange;
+    if (!appliedRange) return;
+    if (!isRangeWithinLimit(appliedRange)) {
+      setExportRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+    setExportRangeError(null);
+    setExportDateRange(appliedRange);
+  };
+
+  const handleOpenExportDialog = () => {
+    // ページで表示中の日付範囲をデフォルトとして設定
+    setExportTempDateRange(dateRange);
+    setExportDateRange(dateRange);
+    setExportRangeError(null);
+    setExportError(null);
+    setIsExportDialogOpen(true);
+  };
+
+  const handleExportConfirm = () => {
+    const selectedRange = exportTempDateRange || exportDateRange;
+    if (!selectedRange?.start || !selectedRange?.end) {
+      setExportRangeError('出力期間を選択してください。');
+      return;
+    }
+    if (!isRangeWithinLimit(selectedRange)) {
+      setExportRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+    setExportRangeError(null);
+    setExportDateRange(selectedRange);
+    setIsExportDialogOpen(false);
+    handleExportCsv(selectedRange);
+  };
+
+  const handleExportCsv = async (range?: { start: Date; end: Date }) => {
+    const selectedRange = range || exportTempDateRange || exportDateRange;
+    if (!selectedRange?.start || !selectedRange?.end) {
+      setExportError('出力期間を選択してください。');
+      return;
+    }
+    if (!isRangeWithinLimit(selectedRange)) {
+      setExportError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      const start = selectedRange.start.toISOString().split('T')[0];
+      const end = selectedRange.end.toISOString().split('T')[0];
+      const escapeForCsv = (value: string | number) => {
+        const str = String(value ?? '')
+          .replace(/\r?\n|\r/g, ' ')
+          .replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const metricsForExport: { key: MetricKey; label: string }[] = [
+        { key: 'viewsIncrease', label: '再生数増加' },
+        { key: 'over100kViews', label: '10万再生超え本数' },
+        { key: 'postCount', label: '投稿数' },
+      ];
+
+      const limit = Math.min(Math.max(genreStats.length, 10), 150);
+      const trendResponse = await fetchGenreTrends(
+        start,
+        end,
+        metric,
+        limit
+      );
+      const dailyData = trendResponse?.data || [];
+      if (!dailyData.length) {
+        setExportError('出力対象のデータがありません。');
+        return;
+      }
+
+      const uniqueDates = Array.from(new Set(dailyData.map((item) => item.date))).sort();
+
+      const rows = genreStats
+        .filter((stat) => stat.genre && stat.genre.trim() !== '')
+        .map((stat) => {
+          const perDateValues = uniqueDates.flatMap((date) => {
+            const record = dailyData.find(
+              (item) => item.genre === stat.genre && item.date === date,
+            );
+            return metricsForExport.map((m) => Number(record?.metrics?.[m.key] ?? 0) || 0);
+          });
+
+          return [
+            stat.genre,
+            ...perDateValues,
+          ];
+        });
+
+      const header = ['ジャンル', ...uniqueDates.flatMap((date) =>
+        metricsForExport.map((m) => `${formatExportDateLabel(date)} ${m.label}`)
+      )];
+
+      const csvContent = [
+        '﻿' + header.map(escapeForCsv).join(','),
+        ...rows.map((row) => row.map(escapeForCsv).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+      anchor.href = url;
+      anchor.download = `genre-trends-daily-${start}-to-${end}-${timestamp}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setExportError(error instanceof Error ? error.message : 'CSV出力に失敗しました。');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+
   if (isLoading) {
     return (
       <div className="container mx-auto py-8">
@@ -418,7 +585,7 @@ export default function GenrePage() {
 
       <div className="space-y-4">
         {/* フィルターエリア */}
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-4 items-center flex-wrap">
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">表示指標:</label>
             <select 
@@ -438,6 +605,44 @@ export default function GenrePage() {
               onApply={handleDateRangeApply}
             />
           </div>
+          <div className="flex items-center gap-2 ml-auto">
+            {exportError && (
+              <span className="text-xs text-red-500">{exportError}</span>
+            )}
+            <Button
+              type="button"
+              onClick={handleOpenExportDialog}
+              disabled={isExporting || !genreStats.length}
+              className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
+            >
+              {isExporting ? 'CSV出力中...' : 'CSV出力'}
+            </Button>
+          </div>
+          <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>CSV出力期間を選択</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-2">
+                <DateRangePicker
+                  dateRange={exportTempDateRange || exportDateRange}
+                  onDateRangeChange={handleExportDateRangeChange}
+                  onApply={handleExportDateRangeApply}
+                />
+                {exportRangeError && (
+                  <p className="text-xs text-red-500">{exportRangeError}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+                  キャンセル
+                </Button>
+                <Button onClick={handleExportConfirm} disabled={isExporting}>
+                  {isExporting ? 'CSV出力中...' : 'CSV出力'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* タブエリア */}

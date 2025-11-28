@@ -22,9 +22,43 @@ import { createPortal } from 'react-dom';
 import { PresetMenu } from '@/components/dashboard/preset-menu';
 import { getCurrentTabType } from './tab-columns';
 import type { TabType as PresetTabType } from '@/lib/filter_presets_api';
+import { getDbData, getAffiliateData, getCorporateData, getInfluencerData } from '@/lib/api';
+const MAX_EXPORT_RANGE = 100;
 
-// EXCLUDED_COLUMNS 繧偵％縺薙〒螳夂ｾｩ
+// EXCLUDED_COLUMNS をここで定義
 const EXCLUDED_COLUMNS = ['description'];
+
+// ダッシュボード表示名に合わせたCSVヘッダー
+const COLUMN_LABELS: Record<string, string> = {
+  url: 'URL',
+  thumbnail_url: '\u30b5\u30e0\u30cd\u30a4\u30eb',
+  account_type: '\u30a2\u30ab\u30a6\u30f3\u30c8\u30b8\u30e3\u30f3\u30eb',
+  second_account_type: '\u76ee\u7684',
+  third_account_type: '\u30b5\u30d6\u30ab\u30c6\u30b4\u30ea',
+  category: 'PR\u30ab\u30c6\u30b4\u30ea',
+  product: '\u5546\u54c1',
+  createdAt: '\u6295\u7a3f\u65e5',
+  views: '\u518d\u751f\u6570',
+  viewsIncrease: '2\u65e5\u518d\u751f\u5897\u52a0',
+  ten_days_increase: '10\u65e5\u518d\u751f\u5897\u52a0',
+  likes: '\u3044\u3044\u306d\u6570',
+  likes_count_increase: '2\u65e5\u3044\u3044\u306d\u5897\u52a0',
+  ten_days_likes_increase: '10\u65e5\u3044\u3044\u306d\u5897\u52a0',
+  comments: '\u30b3\u30e1\u30f3\u30c8\u6570',
+  comment_count_increase: '2\u65e5\u30b3\u30e1\u30f3\u30c8\u5897\u52a0',
+  ten_days_comment_increase: '10\u65e5\u30b3\u30e1\u30f3\u30c8\u5897\u52a0',
+  play_count_per_follower: '\u518d\u751f/\u30d5\u30a9\u30ed\u30ef\u30fc',
+  play_increase_per_follower: '\u518d\u751f\u5897/\u30d5\u30a9\u30ed\u30ef\u30fc',
+  save_count: '\u4fdd\u5b58\u6570',
+  save_count_increase: '2\u65e5\u4fdd\u5b58\u5897\u52a0',
+  ten_days_save_increase: '10\u65e5\u4fdd\u5b58\u5897\u52a0',
+  account_name: '\u30a2\u30ab\u30a6\u30f3\u30c8\u540d',
+  hashtags: '\u30cf\u30c3\u30b7\u30e5\u30bf\u30b0',
+  audioTitle: 'BGM',
+  content_type: '\u30b3\u30f3\u30c6\u30f3\u30c4\u30bf\u30a4\u30d7',
+  followers: '\u30d5\u30a9\u30ed\u30ef\u30fc\u6570'
+};
+
 
 const SearchIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
   <svg
@@ -75,6 +109,7 @@ interface DataTableProps {
     sort: string[];
   };
   currentTabFilters?: Record<string, FilterQuery>;
+  isAdmin?: boolean;
   
   // 笘・菫ｮ豁｣: 蝙九・荳雋ｫ諤ｧ繧剃ｿ昴▽
   onFilterOptionsUpdate?: (options: {
@@ -153,11 +188,18 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     searchKeyword,
     onSearchKeywordChange,
     notificationButton,
-    showSearchInput = true
+    showSearchInput = true,
+    isAdmin = false
   }, ref) => {
     // 驕ｸ謚槭＆繧後◆繝・く繧ｹ繝茨ｼ医・繝・・繧｢繝・・陦ｨ遉ｺ逕ｨ・・
     const [selectedText, setSelectedText] = useState<{ title: string; content: string } | null>(null);
     const filterButtonRef = useRef<HTMLButtonElement>(null);
+    const [isExporting, setIsExporting] = useState(false);
+    const [isExportOptionsOpen, setIsExportOptionsOpen] = useState(false);
+    const [exportColumnMode, setExportColumnMode] = useState<'visible' | 'all'>('visible');
+    const [exportPageStartInput, setExportPageStartInput] = useState('');
+    const [exportPageEndInput, setExportPageEndInput] = useState('');
+    const [exportError, setExportError] = useState('');
     
     // 繧ｽ繝ｼ繝医Ο繧ｸ繝・け
     const sortLogic = useSortLogic();
@@ -316,6 +358,185 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleColumnVisibilityChange
     } = useColumnVisibility(defaultVisibleColumns, onColumnSettingsChange);
 
+    const formatDateForCsv = useCallback((value: string): string => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }, []);
+
+    const normalizeCellValue = useCallback((columnKey: string, row: VideoData): string => {
+      if (columnKey === 'url') {
+        return row.url || '';
+      }
+
+      const raw = (row as Record<string, unknown>)[columnKey];
+      if (raw === undefined || raw === null) return '';
+
+      if (columnKey === 'createdAt') {
+        return formatDateForCsv(String(raw));
+      }
+
+      if (Array.isArray(raw)) {
+        return raw.join(' ');
+      }
+
+      if (typeof raw === 'object') {
+        if ('url' in (raw as Record<string, unknown>) && typeof (raw as Record<string, unknown>).url === 'string') {
+          return (raw as Record<string, string>).url || '';
+        }
+        return JSON.stringify(raw);
+      }
+
+      return String(raw);
+    }, [formatDateForCsv]);
+
+    const escapeForCsv = useCallback((value: string): string => {
+      const sanitized = value.replace(/\r?\n|\r/g, ' ').replace(/"/g, '""');
+      return `"${sanitized}"`;
+    }, []);
+
+    const buildExportColumns = useCallback(() => {
+      const baseColumns =
+        exportColumnMode === 'all'
+          ? orderedColumns.map((col) => String(col.accessorKey))
+          : visibleColumns;
+
+      const replaced = baseColumns
+        .map((col) => (col === 'thumbnail_url' ? 'url' : col))
+        .filter((col) => col !== 'thumbnail_url' && !EXCLUDED_COLUMNS.includes(col));
+
+      const unique = Array.from(new Set(replaced));
+      if (!unique.includes('url')) {
+        unique.unshift('url');
+      }
+      return unique;
+    }, [exportColumnMode, orderedColumns, visibleColumns]);
+
+    const fetchPageData = useCallback(
+      async (page: number): Promise<VideoData[]> => {
+        const filtersToUse = currentFilters || {};
+        const size = pageSize || 50;
+        try {
+          let response;
+          if (isPrOnly) {
+            response = await getAffiliateData(page, filtersToUse, size);
+          } else if (isCorporateOnly) {
+            response = await getCorporateData(page, filtersToUse, size);
+          } else if (isInfluencerOnly) {
+            response = await getInfluencerData(page, filtersToUse, size);
+          } else {
+            response = await getDbData(page, filtersToUse, size);
+          }
+
+          if (response?.success && Array.isArray(response.data)) {
+            return response.data as VideoData[];
+          }
+        } catch (error) {
+          console.warn('CSV export fetch failed:', error);
+        }
+        return [];
+      },
+      [currentFilters, isCorporateOnly, isInfluencerOnly, isPrOnly, pageSize]
+    );
+
+    const handleExportCsv = useCallback(async () => {
+      if (!data || data.length === 0 || isExporting) return;
+
+      setIsExportOptionsOpen(false);
+      setIsExporting(true);
+      try {
+        setExportError('');
+        const total = totalPages || 1;
+        const startStr = exportPageStartInput.trim();
+        const endStr = exportPageEndInput.trim();
+
+        if (!startStr) {
+          setExportError('開始ページを入力してください。');
+          return;
+        }
+        if (!endStr) {
+          setExportError('終了ページを入力してください。');
+          return;
+        }
+
+        const start = Number(startStr);
+        const end = Number(endStr);
+
+        if (Number.isNaN(start) || Number.isNaN(end)) {
+          setExportError('ページ番号は数字で入力してください。');
+          return;
+        }
+        if (start < 1 || start > total) {
+          setExportError(`開始ページは1〜${total}で入力してください。`);
+          return;
+        }
+        if (end < start) {
+          setExportError('終了ページは開始ページ以上にしてください。');
+          return;
+        }
+        if (end > total) {
+          setExportError(`終了ページは1〜${total}で入力してください。`);
+          return;
+        }
+        if (end - start + 1 > MAX_EXPORT_RANGE) {
+          setExportError(`一度に出力できるのは最大${MAX_EXPORT_RANGE}ページまでです。`);
+          return;
+        }
+
+        const exportColumns = buildExportColumns();
+        const rows: VideoData[] = [];
+
+        for (let page = start; page <= end; page += 1) {
+          if (page === currentPage) {
+            rows.push(...data);
+          } else {
+            const pageData = await fetchPageData(page);
+            rows.push(...pageData);
+          }
+        }
+
+        const headerRow = exportColumns
+          .map((key) => COLUMN_LABELS[key] || key)
+          .map(escapeForCsv)
+          .join(',');
+
+        const bodyRows = rows.map((row) =>
+          exportColumns
+            .map((key) => normalizeCellValue(key, row))
+            .map(escapeForCsv)
+            .join(',')
+        );
+
+        const csvContent = ['\ufeff' + headerRow, ...bodyRows].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+        anchor.href = url;
+        anchor.download = `dashboard-export-${timestamp}.csv`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        window.URL.revokeObjectURL(url);
+      } finally {
+        setIsExporting(false);
+      }
+    }, [
+      data,
+      isExporting,
+      exportPageStartInput,
+      exportPageEndInput,
+      totalPages,
+      currentPage,
+      buildExportColumns,
+      escapeForCsv,
+      normalizeCellValue,
+      fetchPageData
+    ]);
+
     // 蜿ら・繧定ｨｭ螳・
     useImperativeHandle(ref, () => ({
       clearAllFilters
@@ -407,17 +628,116 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
             )}
           </div>
           
-          {/* Move display settings button to the top-right */}
-          <button
-            ref={columnSettingsButtonRef}
-            onClick={() => setIsColumnSettingsOpen(true)}
-            className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
-          >
-            <SettingsIcon size={16} />
-            <span className="ml-1">表示カラム</span>
-          </button>
+          <div className="relative flex items-center gap-2">
+            <button
+              onClick={() => {
+                setExportError('');
+                setIsExportOptionsOpen((prev) => !prev);
+              }}
+              disabled={isExporting || !data || data.length === 0}
+              className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                isExporting || !data || data.length === 0
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-[#FE2C55] text-white hover:bg-[#e6264c] focus:ring-[#FE2C55]'
+              }`}
+            >
+              {isExporting ? 'CSV出力中...' : 'CSV出力'}
+            </button>
+
+            {isExportOptionsOpen && (
+              <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg p-3 z-30">
+                <div className="space-y-3 text-sm text-gray-800">
+                  <div>
+                    <p className="font-semibold">カラム</p>
+                    <div className="mt-1 space-y-1">
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="radio"
+                          checked={exportColumnMode === 'visible'}
+                          onChange={() => setExportColumnMode('visible')}
+                        />
+                        <span>表示中のみ</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="radio"
+                          checked={exportColumnMode === 'all'}
+                          onChange={() => setExportColumnMode('all')}
+                        />
+                        <span>すべての列を含む</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="font-semibold">ページ範囲（最大{MAX_EXPORT_RANGE}ページ）</p>
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages || 1}
+                        value={exportPageStartInput}
+                        onChange={(e) => {
+                          setExportPageStartInput(e.target.value);
+                        }}
+                        className="w-16 rounded border border-gray-300 px-2 py-1"
+                      />
+                      <span>〜</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages || 1}
+                        value={exportPageEndInput}
+                        onChange={(e) => {
+                          setExportPageEndInput(e.target.value);
+                        }}
+                        className="w-16 rounded border border-gray-300 px-2 py-1"
+                      />
+                      <span className="text-[11px] text-gray-500">全{totalPages || 1}ページ</span>
+                    </div>
+                    {exportError && (
+                      <p className="mt-1 text-xs text-red-600">{exportError}</p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportError('');
+                        setIsExportOptionsOpen(false);
+                        setExportPageStartInput('');
+                        setExportPageEndInput('');
+                      }}
+                      className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      disabled={isExporting}
+                      className={`rounded px-3 py-1 text-xs font-semibold text-white ${
+                        isExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#FE2C55] hover:bg-[#e6264c]'
+                      }`}
+                    >
+                      出力開始
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              ref={columnSettingsButtonRef}
+              onClick={() => setIsColumnSettingsOpen(true)}
+              className="inline-flex items-center px-2.5 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FE2C55] transition-colors duration-200"
+            >
+              <SettingsIcon size={16} />
+              <span className="ml-1">表示設定</span>
+            </button>
+          </div>
         </div>
-        
         <div className="flex flex-wrap items-start justify-between gap-4 p-2">
           <div className="flex min-w-[260px] flex-1 flex-col gap-3">
             {showSearchInput && (
