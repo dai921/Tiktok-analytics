@@ -138,3 +138,29 @@ export async function markNotificationRead(
     return handleApiError(error)
   }
 }
+
+export async function markAllNotificationsRead(): Promise<
+  ApiResponse<{ updated: number }>
+> {
+  try {
+    const headers = buildAuthHeaders()
+    const response = await fetch(`${apiUrl}/api/notifications/read-all`, {
+      method: 'POST',
+      headers,
+    })
+
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok || !data?.success) {
+      throw new Error(
+        data?.detail || data?.message || '���ׂĂ̓ʒm�𖳌��Ɏ��s���܂����B'
+      )
+    }
+
+    return {
+      success: true,
+      data: { updated: typeof data?.updated === 'number' ? data.updated : 0 },
+    }
+  } catch (error) {
+    return handleApiError(error)
+  }
+}

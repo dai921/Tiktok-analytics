@@ -324,3 +324,28 @@ async def mark_notification_read(
         ).mappings().first()
 
     return {"success": True, "data": updated}
+
+
+@router.post("/notifications/read-all")
+async def mark_all_notifications_read(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Mark all notifications for the current user as read.
+    """
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(
+                """
+                UPDATE notification_receipts
+                SET is_read = 1,
+                    read_at = COALESCE(read_at, NOW()),
+                    updated_at = NOW()
+                WHERE user_id = :user_id AND is_read = 0
+                """
+            ),
+            {"user_id": current_user.id},
+        )
+
+    updated = result.rowcount or 0
+    return {"success": True, "updated": updated}

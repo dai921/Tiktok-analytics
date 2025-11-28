@@ -17,6 +17,7 @@ import {
   fetchNotifications,
   fetchUnreadNotificationCount,
   markNotificationRead,
+  markAllNotificationsRead,
 } from '@/lib/api/notifications'
 import {
   Popover,
@@ -51,6 +52,65 @@ const formatJstDateTime = (value?: string | null) => {
   }).format(parsed)
 }
 
+const UrlPresetApplier: React.FC<{
+  updateTabFilters: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void
+  setFilters: React.Dispatch<React.SetStateAction<Record<string, FilterQuery>>>
+  setCurrentPage: React.Dispatch<React.SetStateAction<number>>
+  setIsPrOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
+  setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
+  updateTabVisibleColumns: (columns: string[], targetTabKey?: string) => void
+}> = ({
+  updateTabFilters,
+  setFilters,
+  setCurrentPage,
+  setIsPrOnly,
+  setIsCorporateOnly,
+  setIsInfluencerOnly,
+  setVisibleColumns,
+  updateTabVisibleColumns
+}) => {
+  const searchParams = useSearchParams()
+  const appliedPresetRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    const presetId = searchParams.get('preset')
+    if (!presetId || appliedPresetRef.current === presetId) return
+
+    ;(async () => {
+      try {
+        const res = await getPreset(presetId)
+        const p = res?.preset
+        if (!p) return
+
+        const incoming = p.payload?.currentFilters ?? {}
+        const cols = (p as any)?.payload?.visibleColumns
+        const tabFlags = p.payload?.tab || {}
+        const targetTab = getCurrentTabType(!!tabFlags.isPrOnly, !!tabFlags.isCorporateOnly, !!tabFlags.isInfluencerOnly)
+
+        setIsPrOnly(!!tabFlags.isPrOnly)
+        setIsCorporateOnly(!!tabFlags.isCorporateOnly)
+        setIsInfluencerOnly(!!tabFlags.isInfluencerOnly)
+
+        updateTabFilters(incoming, targetTab)
+        setFilters(JSON.parse(JSON.stringify(incoming)))
+        if (Array.isArray(cols) && cols.length) {
+          console.log('[DEBUG] url apply visibleColumns =', cols);
+          setVisibleColumns(cols);
+          updateTabVisibleColumns(cols, targetTab);
+        }
+        setCurrentPage(1)
+        appliedPresetRef.current = presetId
+      } catch (e) {
+        console.warn('Failed to apply preset from URL:', e)
+      }
+    })()
+  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly, updateTabVisibleColumns])
+
+  return null
+}
+
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
   const { isAdmin, isDeveloper } = useAuth()
@@ -59,6 +119,7 @@ const Dashboard = () => {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [isNotificationListLoading, setIsNotificationListLoading] = useState(false)
+  const [isMarkAllReadLoading, setIsMarkAllReadLoading] = useState(false)
   const [notificationPage, setNotificationPage] = useState(1)
   const [notificationTotal, setNotificationTotal] = useState(0)
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
@@ -826,6 +887,53 @@ const Dashboard = () => {
   // プリセット適用時はデバウンスを回避するためのフラグ
   const isPresetApplyingRef = React.useRef(false);
 
+  const handleMarkAllRead = useCallback(async () => {
+    if (isMarkAllReadLoading) return
+    setIsMarkAllReadLoading(true)
+    try {
+      const res = await markAllNotificationsRead()
+      if (res.success) {
+        const nowIso = new Date().toISOString()
+        setNotifications((prev) =>
+          prev.map((n) => ({
+            ...n,
+            is_read: true,
+            read_at: n.read_at ?? nowIso,
+          })),
+        )
+        setUnreadNotificationCount(0)
+      }
+    } catch (error) {
+      console.warn('Failed to mark all notifications read:', error)
+    } finally {
+      setIsMarkAllReadLoading(false)
+    }
+  }, [isMarkAllReadLoading])
+
+  const handleSelectNotification = useCallback(
+    async (item: NotificationItem) => {
+      setSelectedNotification(item)
+      setIsNotificationDialogOpen(true)
+
+      if (item.is_read) return
+      try {
+        const res = await markNotificationRead(item.id, true)
+        if (res.success && res.data) {
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === item.id ? { ...n, ...res.data } : n)),
+          )
+          setUnreadNotificationCount((prev) => {
+            const next = (prev ?? 0) - 1
+            return next < 0 ? 0 : next
+          })
+        }
+      } catch (error) {
+        console.warn('Failed to mark notification read:', error)
+      }
+    },
+    [],
+  )
+
   const currentTabKey = getCurrentTabKey();
   const currentSearchKeyword = searchKeywordsByTab[currentTabKey] ?? '';
 
@@ -847,7 +955,7 @@ const Dashboard = () => {
           aria-label="通知一覧"
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[0.65rem] font-semibold text-red-700">
+          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
             {isNotificationCountLoading
               ? '...'
               : (unreadNotificationCount ?? 0) > 99
@@ -857,9 +965,24 @@ const Dashboard = () => {
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
-        <div className="border-b px-3 py-2">
-          <p className="text-sm font-semibold">通知</p>
-          <p className="text-xs text-muted-foreground">未読: {unreadNotificationCount ?? 0}</p>
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <div>
+            <p className="text-sm font-semibold">通知</p>
+            <p className="text-xs text-muted-foreground">未読: {unreadNotificationCount ?? 0}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            onClick={handleMarkAllRead}
+            disabled={
+              isNotificationListLoading ||
+              isMarkAllReadLoading ||
+              (unreadNotificationCount ?? 0) === 0
+            }
+          >
+            すべて既読にする
+          </Button>
         </div>
         <div className="max-h-80 overflow-y-auto">
           {isNotificationListLoading ? (
@@ -946,30 +1069,6 @@ const Dashboard = () => {
     setIsNotificationDialogOpen(false)
     setSelectedNotification(null)
   }
-
-  const handleSelectNotification = useCallback(
-    async (item: NotificationItem) => {
-      setSelectedNotification(item)
-      setIsNotificationDialogOpen(true)
-
-      if (item.is_read) return
-      try {
-        const res = await markNotificationRead(item.id, true)
-        if (res.success && res.data) {
-          setNotifications((prev) =>
-            prev.map((n) => (n.id === item.id ? { ...n, ...res.data } : n)),
-          )
-          setUnreadNotificationCount((prev) => {
-            const next = (prev ?? 0) - 1
-            return next < 0 ? 0 : next
-          })
-        }
-      } catch (error) {
-        console.warn('Failed to mark notification read:', error)
-      }
-    },
-    [],
-  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1109,65 +1208,6 @@ const Dashboard = () => {
       </main>
     </div>
   )
-}
-
-const UrlPresetApplier: React.FC<{
-  updateTabFilters: (filters: Record<string, FilterQuery>, targetTabKey?: string) => void
-  setFilters: React.Dispatch<React.SetStateAction<Record<string, FilterQuery>>>
-  setCurrentPage: React.Dispatch<React.SetStateAction<number>>
-  setIsPrOnly: React.Dispatch<React.SetStateAction<boolean>>
-  setIsCorporateOnly: React.Dispatch<React.SetStateAction<boolean>>
-  setIsInfluencerOnly: React.Dispatch<React.SetStateAction<boolean>>
-  setVisibleColumns: React.Dispatch<React.SetStateAction<string[]>>
-  updateTabVisibleColumns: (columns: string[], targetTabKey?: string) => void
-}> = ({
-  updateTabFilters,
-  setFilters,
-  setCurrentPage,
-  setIsPrOnly,
-  setIsCorporateOnly,
-  setIsInfluencerOnly,
-  setVisibleColumns,
-  updateTabVisibleColumns
-}) => {
-  const searchParams = useSearchParams()
-  const appliedPresetRef = React.useRef<string | null>(null)
-
-  React.useEffect(() => {
-    const presetId = searchParams.get('preset')
-    if (!presetId || appliedPresetRef.current === presetId) return
-
-    ;(async () => {
-      try {
-        const res = await getPreset(presetId)
-        const p = res?.preset
-        if (!p) return
-
-        const incoming = p.payload?.currentFilters ?? {}
-        const cols = (p as any)?.payload?.visibleColumns
-        const tabFlags = p.payload?.tab || {}
-        const targetTab = getCurrentTabType(!!tabFlags.isPrOnly, !!tabFlags.isCorporateOnly, !!tabFlags.isInfluencerOnly)
-
-        setIsPrOnly(!!tabFlags.isPrOnly)
-        setIsCorporateOnly(!!tabFlags.isCorporateOnly)
-        setIsInfluencerOnly(!!tabFlags.isInfluencerOnly)
-
-        updateTabFilters(incoming, targetTab)
-        setFilters(JSON.parse(JSON.stringify(incoming)))
-        if (Array.isArray(cols) && cols.length) {
-          console.log('[DEBUG] url apply visibleColumns =', cols);
-          setVisibleColumns(cols);
-          updateTabVisibleColumns(cols, targetTab);
-        }
-        setCurrentPage(1)
-        appliedPresetRef.current = presetId
-      } catch (e) {
-        console.warn('Failed to apply preset from URL:', e)
-      }
-    })()
-  }, [searchParams, updateTabFilters, setFilters, setCurrentPage, setIsPrOnly, setIsCorporateOnly, setIsInfluencerOnly, updateTabVisibleColumns])
-
-  return null
 }
 
 export default Dashboard
