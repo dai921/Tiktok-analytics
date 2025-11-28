@@ -556,10 +556,6 @@ export default function ProductPage() {
 
   const handleExportCsv = async (range?: { start: Date; end: Date }) => {
     if (isExporting) return;
-    if (!isAdmin) {
-      setExportError('管理者のみCSVを出力できます。');
-      return;
-    }
     if (!productStats.length) {
       setExportError('出力対象のデータがありません。');
       return;
@@ -735,50 +731,46 @@ export default function ProductPage() {
               onApply={handleDateRangeApply}
             />
           </div>
-          {isAdmin && (
-            <div className="flex items-center gap-3 ml-auto flex-wrap">
-              {exportError && (
-                <span className="text-xs text-red-500">{exportError}</span>
-              )}
-              <Button
-                type="button"
-                onClick={handleOpenExportDialog}
-                disabled={isExporting || !productStats.length}
-                className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
-              >
-                {isExporting ? 'CSV出力中...' : 'CSV出力'}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-3 ml-auto flex-wrap">
+            {exportError && (
+              <span className="text-xs text-red-500">{exportError}</span>
+            )}
+            <Button
+              type="button"
+              onClick={handleOpenExportDialog}
+              disabled={isExporting || !productStats.length}
+              className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
+            >
+              {isExporting ? 'CSV出力中...' : 'CSV出力'}
+            </Button>
+          </div>
         </div>
 
-        {isAdmin && (
-          <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>CSV出力期間を選択</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-2">
-                <DateRangePicker
-                  dateRange={exportTempDateRange || exportDateRange}
-                  onDateRangeChange={handleExportDateRangeChange}
-                  onApply={handleExportDateRangeApply}
-                />
-                {exportRangeError && (
-                  <p className="text-xs text-red-500">{exportRangeError}</p>
-                )}
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
-                  キャンセル
-                </Button>
-                <Button onClick={handleExportConfirm} disabled={isExporting}>
-                  {isExporting ? 'CSV出力中...' : 'CSV出力'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>CSV出力期間を選択</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2">
+              <DateRangePicker
+                dateRange={exportTempDateRange || exportDateRange}
+                onDateRangeChange={handleExportDateRangeChange}
+                onApply={handleExportDateRangeApply}
+              />
+              {exportRangeError && (
+                <p className="text-xs text-red-500">{exportRangeError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+                キャンセル
+              </Button>
+              <Button onClick={handleExportConfirm} disabled={isExporting}>
+                {isExporting ? 'CSV出力中...' : 'CSV出力'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* タブエリア */}
         <Tabs defaultValue="ranking" className="w-full" onValueChange={setActiveTab} value={activeTab}>

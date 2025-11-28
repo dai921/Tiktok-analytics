@@ -413,19 +413,17 @@ export default function SoundsPage() {
             />
             {rangeError && <p className="mt-1 text-xs text-red-500">{rangeError}</p>}
           </div>
-          {isAdmin && (
-            <div className="flex items-center gap-2 ml-auto">
-              {exportError && <span className="text-xs text-red-500">{exportError}</span>}
-              <Button
-                type="button"
-                onClick={handleOpenExportDialog}
-                disabled={isExporting || !soundStats.length}
-                className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
-              >
-                {isExporting ? 'CSV出力中...' : 'CSV出力'}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-2 ml-auto">
+            {exportError && <span className="text-xs text-red-500">{exportError}</span>}
+            <Button
+              type="button"
+              onClick={handleOpenExportDialog}
+              disabled={isExporting || !soundStats.length}
+              className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
+            >
+              {isExporting ? 'CSV出力中...' : 'CSV出力'}
+            </Button>
+          </div>
           <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
             <DialogContent>
               <DialogHeader>

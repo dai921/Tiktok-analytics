@@ -358,13 +358,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       handleColumnVisibilityChange
     } = useColumnVisibility(defaultVisibleColumns, onColumnSettingsChange);
 
-    useEffect(() => {
-      if (!isAdmin) {
-        setExportError('');
-        setIsExportOptionsOpen(false);
-      }
-    }, [isAdmin]);
-
     const formatDateForCsv = useCallback((value: string): string => {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return value;
@@ -450,7 +443,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
     );
 
     const handleExportCsv = useCallback(async () => {
-      if (!isAdmin) return;
       if (!data || data.length === 0 || isExporting) return;
 
       setIsExportOptionsOpen(false);
@@ -534,7 +526,6 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       }
     }, [
       data,
-      isAdmin,
       isExporting,
       exportPageStartInput,
       exportPageEndInput,
@@ -638,107 +629,103 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
           </div>
           
           <div className="relative flex items-center gap-2">
-            {isAdmin && (
-              <>
-                <button
-                  onClick={() => {
-                    setExportError('');
-                    setIsExportOptionsOpen((prev) => !prev);
-                  }}
-                  disabled={isExporting || !data || data.length === 0}
-                  className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                    isExporting || !data || data.length === 0
-                      ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                      : 'bg-[#FE2C55] text-white hover:bg-[#e6264c] focus:ring-[#FE2C55]'
-                  }`}
-                >
-                  {isExporting ? 'CSV出力中...' : 'CSV出力'}
-                </button>
+            <button
+              onClick={() => {
+                setExportError('');
+                setIsExportOptionsOpen((prev) => !prev);
+              }}
+              disabled={isExporting || !data || data.length === 0}
+              className={`inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded shadow-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                isExporting || !data || data.length === 0
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  : 'bg-[#FE2C55] text-white hover:bg-[#e6264c] focus:ring-[#FE2C55]'
+              }`}
+            >
+              {isExporting ? 'CSV出力中...' : 'CSV出力'}
+            </button>
 
-                {isExportOptionsOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg p-3 z-30">
-                    <div className="space-y-3 text-sm text-gray-800">
-                      <div>
-                        <p className="font-semibold">カラム</p>
-                        <div className="mt-1 space-y-1">
-                          <label className="flex items-center gap-2 text-xs">
-                            <input
-                              type="radio"
-                              checked={exportColumnMode === 'visible'}
-                              onChange={() => setExportColumnMode('visible')}
-                            />
-                            <span>表示中のみ</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs">
-                            <input
-                              type="radio"
-                              checked={exportColumnMode === 'all'}
-                              onChange={() => setExportColumnMode('all')}
-                            />
-                            <span>すべての列を含む</span>
-                          </label>
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="font-semibold">ページ範囲（最大{MAX_EXPORT_RANGE}ページ）</p>
-                        <div className="mt-1 flex items-center gap-2 text-xs">
-                          <input
-                            type="number"
-                            min={1}
-                            max={totalPages || 1}
-                            value={exportPageStartInput}
-                            onChange={(e) => {
-                              setExportPageStartInput(e.target.value);
-                            }}
-                            className="w-16 rounded border border-gray-300 px-2 py-1"
-                          />
-                          <span>〜</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={totalPages || 1}
-                            value={exportPageEndInput}
-                            onChange={(e) => {
-                              setExportPageEndInput(e.target.value);
-                            }}
-                            className="w-16 rounded border border-gray-300 px-2 py-1"
-                          />
-                          <span className="text-[11px] text-gray-500">全{totalPages || 1}ページ</span>
-                        </div>
-                        {exportError && (
-                          <p className="mt-1 text-xs text-red-600">{exportError}</p>
-                        )}
-                      </div>
-
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setExportError('');
-                            setIsExportOptionsOpen(false);
-                            setExportPageStartInput('');
-                            setExportPageEndInput('');
-                          }}
-                          className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          キャンセル
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleExportCsv}
-                          disabled={isExporting}
-                          className={`rounded px-3 py-1 text-xs font-semibold text-white ${
-                            isExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#FE2C55] hover:bg-[#e6264c]'
-                          }`}
-                        >
-                          出力開始
-                        </button>
-                      </div>
+            {isExportOptionsOpen && (
+              <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg p-3 z-30">
+                <div className="space-y-3 text-sm text-gray-800">
+                  <div>
+                    <p className="font-semibold">カラム</p>
+                    <div className="mt-1 space-y-1">
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="radio"
+                          checked={exportColumnMode === 'visible'}
+                          onChange={() => setExportColumnMode('visible')}
+                        />
+                        <span>表示中のみ</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="radio"
+                          checked={exportColumnMode === 'all'}
+                          onChange={() => setExportColumnMode('all')}
+                        />
+                        <span>すべての列を含む</span>
+                      </label>
                     </div>
                   </div>
-                )}
-              </>
+
+                  <div>
+                    <p className="font-semibold">ページ範囲（最大{MAX_EXPORT_RANGE}ページ）</p>
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages || 1}
+                        value={exportPageStartInput}
+                        onChange={(e) => {
+                          setExportPageStartInput(e.target.value);
+                        }}
+                        className="w-16 rounded border border-gray-300 px-2 py-1"
+                      />
+                      <span>〜</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={totalPages || 1}
+                        value={exportPageEndInput}
+                        onChange={(e) => {
+                          setExportPageEndInput(e.target.value);
+                        }}
+                        className="w-16 rounded border border-gray-300 px-2 py-1"
+                      />
+                      <span className="text-[11px] text-gray-500">全{totalPages || 1}ページ</span>
+                    </div>
+                    {exportError && (
+                      <p className="mt-1 text-xs text-red-600">{exportError}</p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportError('');
+                        setIsExportOptionsOpen(false);
+                        setExportPageStartInput('');
+                        setExportPageEndInput('');
+                      }}
+                      className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      disabled={isExporting}
+                      className={`rounded px-3 py-1 text-xs font-semibold text-white ${
+                        isExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#FE2C55] hover:bg-[#e6264c]'
+                      }`}
+                    >
+                      出力開始
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             <button
