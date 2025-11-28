@@ -3,6 +3,8 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Card,
   CardContent,
@@ -35,6 +37,19 @@ const toIsoStringOrUndefined = (value: string) => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
 }
 
+const formatJstDateTime = (value: string) => {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 export default function AdminNotificationSettingsPage() {
   const { isAdmin, isLoading } = useAuth()
   const { toast } = useToast()
@@ -43,13 +58,14 @@ export default function AdminNotificationSettingsPage() {
   const [scheduledAt, setScheduledAt] = useState<string>(
     () => toDatetimeLocalValue(new Date()),
   )
+  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now')
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
 
   if (isLoading) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <p className="text-sm text-muted-foreground">読み込み中です…</p>
+        <p className="text-sm text-muted-foreground">読み込み中です...</p>
       </div>
     )
   }
@@ -68,6 +84,30 @@ export default function AdminNotificationSettingsPage() {
   const resetDraft = () => {
     setBody('')
     setScheduledAt(toDatetimeLocalValue(new Date()))
+    setScheduleType('now')
+  }
+
+  const validateScheduledAt = () => {
+    if (scheduleType === 'now') return true
+    const parsed = new Date(scheduledAt)
+    if (Number.isNaN(parsed.getTime())) {
+      toast({
+        variant: 'destructive',
+        title: '送信日時を入力してください',
+        description: '予約送信の日時を正しく選択してください。',
+      })
+      return false
+    }
+    const now = new Date()
+    if (parsed.getTime() <= now.getTime()) {
+      toast({
+        variant: 'destructive',
+        title: '過去の時刻が選択されています',
+        description: '今すぐ送信を選ぶか、現在より後の時刻で予約してください。',
+      })
+      return false
+    }
+    return true
   }
 
   const handleOpenConfirm = () => {
@@ -80,10 +120,14 @@ export default function AdminNotificationSettingsPage() {
       return
     }
 
+    if (!validateScheduledAt()) return
+
     setIsConfirmOpen(true)
   }
 
   const handleSend = async () => {
+    if (!validateScheduledAt()) return
+
     setIsSending(true)
     try {
       const token = localStorage.getItem('auth_token')
@@ -95,7 +139,10 @@ export default function AdminNotificationSettingsPage() {
 
       const payload = {
         body: body.trim(),
-        scheduled_at: toIsoStringOrUndefined(scheduledAt),
+        scheduled_at:
+          scheduleType === 'schedule'
+            ? toIsoStringOrUndefined(scheduledAt)
+            : undefined,
       }
 
       const response = await fetch(
@@ -122,7 +169,7 @@ export default function AdminNotificationSettingsPage() {
 
       toast({
         title: '通知を送信しました',
-        description: `${data?.delivery_count ?? 0}件に配信しました。`,
+        description: `${data?.delivery_count ?? 0}件に配信されます。`,
       })
       resetDraft()
       setIsConfirmOpen(false)
@@ -134,7 +181,7 @@ export default function AdminNotificationSettingsPage() {
         description:
           error instanceof Error
             ? error.message
-            : '時間をおいて再度お試しください。',
+            : 'エラーが発生しました。再度お試しください。',
       })
     } finally {
       setIsSending(false)
@@ -144,14 +191,14 @@ export default function AdminNotificationSettingsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold">通知設定（管理者専用）</h1>
+        <h1 className="text-2xl font-semibold">通知設定（管理者向け）</h1>
       </div>
 
       <div className="grid gap-6">
         <Card>
           <CardHeader>
             <CardTitle>通知作成</CardTitle>
-            <CardDescription>本文・送信時刻を確認して全ユーザーに送信します。</CardDescription>
+            <CardDescription>本文を確認して送信します。全ユーザーに配信されます。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
@@ -160,23 +207,50 @@ export default function AdminNotificationSettingsPage() {
                 className={textareaStyles}
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
-                placeholder="お知らせ内容を入力してください"
+                placeholder="送信する本文を入力してください"
                 disabled={isSending}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="scheduledAt">送信日時</Label>
-              <Input
-                id="scheduledAt"
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(event) => setScheduledAt(event.target.value)}
-                disabled={isSending}
-              />
-              <p className="text-xs text-muted-foreground">
-                空欄の場合は即時送信します。入力済みの場合は指定時刻を送信時刻として記録します。
-              </p>
+            <div className="space-y-3">
+              <Label>送信タイミング</Label>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="scheduleType"
+                    value="now"
+                    checked={scheduleType === 'now'}
+                    onChange={() => setScheduleType('now')}
+                    disabled={isSending}
+                  />
+                  <span>今すぐ送信</span>
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="scheduleType"
+                    value="schedule"
+                    checked={scheduleType === 'schedule'}
+                    onChange={() => setScheduleType('schedule')}
+                    disabled={isSending}
+                  />
+                  <span>日時を指定して送信</span>
+                </label>
+              </div>
+              <div className="space-y-2">
+                <Input
+                  id="scheduledAt"
+                  type="datetime-local"
+                  value={scheduledAt}
+                  min={toDatetimeLocalValue(new Date())}
+                  onChange={(event) => setScheduledAt(event.target.value)}
+                  disabled={isSending || scheduleType === 'now'}
+                />
+                <p className="text-xs text-muted-foreground">
+                  予約送信の場合は現在時刻より後を選択してください。過去の日時は指定できません。
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap justify-end gap-3 pt-2">
@@ -200,7 +274,7 @@ export default function AdminNotificationSettingsPage() {
           <DialogHeader>
             <DialogTitle>送信内容の最終確認</DialogTitle>
             <DialogDescription>
-              問題なければ「この内容で送信」を押してください。
+              よろしければ「この内容で送信」を押してください。
             </DialogDescription>
           </DialogHeader>
 
@@ -214,9 +288,11 @@ export default function AdminNotificationSettingsPage() {
             <div className="space-y-1 rounded-md border bg-muted/50 p-3">
               <p className="text-xs text-muted-foreground">送信日時</p>
               <p className="text-sm leading-relaxed">
-                {scheduledAt
-                  ? `${scheduledAt}（送信時刻として記録されます）`
-                  : '即時送信'}
+                {scheduleType === 'now'
+                  ? '今すぐ送信（即時配送）'
+                  : scheduledAt
+                  ? `${formatJstDateTime(scheduledAt)}（JST）`
+                  : '送信日時未設定'}
               </p>
             </div>
           </div>
@@ -230,7 +306,7 @@ export default function AdminNotificationSettingsPage() {
               キャンセル
             </Button>
             <Button onClick={handleSend} disabled={isSending}>
-              {isSending ? '送信中…' : 'この内容で送信'}
+              {isSending ? '送信中...' : 'この内容で送信'}
             </Button>
           </DialogFooter>
         </DialogContent>

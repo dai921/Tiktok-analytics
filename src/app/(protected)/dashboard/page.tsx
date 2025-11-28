@@ -37,6 +37,20 @@ import {
 
 type TabKey = 'all' | 'affiliate' | 'corporate' | 'influencer'
 
+const formatJstDateTime = (value?: string | null) => {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
   const { isAdmin, isDeveloper } = useAuth()
@@ -833,7 +847,7 @@ const Dashboard = () => {
           aria-label="通知一覧"
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
+          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[0.65rem] font-semibold text-red-700">
             {isNotificationCountLoading
               ? '...'
               : (unreadNotificationCount ?? 0) > 99
@@ -868,7 +882,7 @@ const Dashboard = () => {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium leading-tight">{item.title}</p>
                     {!item.is_read && (
-                      <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
                         未読
                       </span>
                     )}
@@ -877,9 +891,7 @@ const Dashboard = () => {
                     {item.body}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {item.sent_at
-                      ? new Date(item.sent_at).toLocaleString()
-                      : '送信時刻不明'}
+                    {formatJstDateTime(item.sent_at) || '送信日時不明'}
                   </p>
                 </div>
               </div>
@@ -1074,9 +1086,7 @@ const Dashboard = () => {
             <DialogHeader>
               <DialogTitle>{selectedNotification?.title ?? '通知'}</DialogTitle>
               <DialogDescription>
-                {selectedNotification?.sent_at
-                  ? new Date(selectedNotification.sent_at).toLocaleString()
-                  : '送信時刻不明'}
+                {formatJstDateTime(selectedNotification?.sent_at) || '送信日時不明'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2">
@@ -1085,7 +1095,7 @@ const Dashboard = () => {
               </p>
               {selectedNotification?.delivered_at && (
                 <p className="text-xs text-muted-foreground">
-                  配信: {new Date(selectedNotification.delivered_at).toLocaleString()}
+                  配信: {formatJstDateTime(selectedNotification.delivered_at) || '-'}
                 </p>
               )}
             </div>

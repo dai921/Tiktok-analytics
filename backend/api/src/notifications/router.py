@@ -1,5 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -52,6 +53,20 @@ def _derive_title(body: str, title: Optional[str] = None) -> str:
     return "お知らせ"
 
 
+JST = ZoneInfo("Asia/Tokyo")
+
+
+def _to_jst_trim_seconds(dt: datetime) -> datetime:
+    """
+    Convert to JST and drop seconds/microseconds (keep minutes).
+    Treat naive datetimes as UTC because the frontend sends ISO strings with Z.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    jst = dt.astimezone(JST)
+    return jst.replace(second=0, microsecond=0, tzinfo=None)
+
+
 @router.post("/admin/notifications")
 async def create_and_send_notification(
     payload: NotificationCreate,
@@ -60,8 +75,9 @@ async def create_and_send_notification(
     """通知を作成し全ユーザーに即時配信する"""
     _ensure_admin(current_user)
 
-    sent_at = payload.scheduled_at or datetime.utcnow()
-    scheduled_at = payload.scheduled_at or sent_at
+    base_datetime = payload.scheduled_at or datetime.utcnow().replace(tzinfo=timezone.utc)
+    scheduled_at = _to_jst_trim_seconds(base_datetime)
+    sent_at = scheduled_at if payload.scheduled_at else _to_jst_trim_seconds(datetime.utcnow())
     derived_title = _derive_title(payload.body, payload.title)
 
     with engine.begin() as conn:
