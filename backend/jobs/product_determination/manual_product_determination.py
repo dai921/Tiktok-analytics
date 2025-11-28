@@ -7,13 +7,17 @@ import re
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 import random
 import time
 
 logger = logging.getLogger(__name__)
 
 SENSITIVE_STATUS = "skip_sensitive"
+PROCESSOR_NAME = "manual_product_determination"
+TARGET_TABLE = "video_master"
+DEFAULT_BATCH_SIZE = 3000
+DEFAULT_CURSOR_RESET_INTERVAL = 86400
 
 def _resolve_module_dir() -> Path:
     current = Path(__file__).resolve()
@@ -174,49 +178,136 @@ def _has_pr_hashtag(hashtags: Iterable[str]) -> bool:
     return False
 
 
+def _get_db_functions() -> Tuple[Any, Any]:
+    db_module = _get_db_module()
+    execute_query = getattr(db_module, "execute_query", None)
+    execute_write_query = getattr(db_module, "execute_write_query", None)
+    if not callable(execute_query):
+        raise AttributeError("execute_query not available in db_utils module")
+    if not callable(execute_write_query):
+        raise AttributeError("execute_write_query not available in db_utils module")
+    return execute_query, execute_write_query
+
+
+def _get_or_create_processing_cursor() -> Dict[str, Any]:
+    execute_query, execute_write_query = _get_db_functions()
+    select_sql = """
+        SELECT id, last_cursor_id, batch_size, batch_number
+        FROM processing_cursors
+        WHERE processor_name = %s AND target_table = %s
+        LIMIT 1
+    """
+    params = (PROCESSOR_NAME, TARGET_TABLE)
+    rows = execute_query(select_sql, params)
+    if rows:
+        cursor_row = rows[0]
+        stored_size = cursor_row.get("batch_size")
+        if stored_size != DEFAULT_BATCH_SIZE:
+            execute_write_query(
+                """
+                UPDATE processing_cursors
+                SET batch_size = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (DEFAULT_BATCH_SIZE, cursor_row.get("id")),
+            )
+            cursor_row["batch_size"] = DEFAULT_BATCH_SIZE
+        return cursor_row
+
+    insert_sql = """
+        INSERT INTO processing_cursors
+        (processor_name, target_table, last_cursor_id, batch_size, batch_number, reset_interval)
+        VALUES (%s, %s, 0, %s, 1, %s)
+    """
+    execute_write_query(
+        insert_sql,
+        (PROCESSOR_NAME, TARGET_TABLE, DEFAULT_BATCH_SIZE, DEFAULT_CURSOR_RESET_INTERVAL),
+    )
+    rows = execute_query(select_sql, params)
+    if rows:
+        return rows[0]
+    raise RuntimeError("Failed to initialize processing cursor record.")
+
+
+def _update_processing_cursor(last_cursor_id: int, batch_number: int) -> None:
+    _, execute_write_query = _get_db_functions()
+    update_sql = """
+        UPDATE processing_cursors
+        SET last_cursor_id = %s,
+            batch_number = %s,
+            updated_at = NOW()
+        WHERE processor_name = %s AND target_table = %s
+    """
+    execute_write_query(
+        update_sql,
+        (last_cursor_id, batch_number, PROCESSOR_NAME, TARGET_TABLE),
+    )
+
+
 def _determine_payloads_from_db(
     limit: Optional[int] = None,
     include_processed: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Fetch target videos from video_master and convert to payloads."""
-    db_module = _get_db_module()
-    execute_query = getattr(db_module, "execute_query", None)
-    if not callable(execute_query):
-        raise AttributeError("execute_query not available in db_utils module")
+    """Fetch target videos from video_master using the processing cursor."""
+    execute_query, _ = _get_db_functions()
+    cursor_state = _get_or_create_processing_cursor()
+    last_cursor_id = int(cursor_state.get("last_cursor_id") or 0)
+    batch_number = int(cursor_state.get("batch_number") or 1)
+
+    target_batch_size = DEFAULT_BATCH_SIZE
+    stored_batch_size = cursor_state.get("batch_size")
+    if isinstance(stored_batch_size, int) and stored_batch_size > 0:
+        target_batch_size = min(stored_batch_size, DEFAULT_BATCH_SIZE)
+    if limit is not None:
+        target_batch_size = min(limit, DEFAULT_BATCH_SIZE)
 
     query = [
         "SELECT",
+        "  id,",
         "  video_id,",
         "  url,",
         "  hashtags,",
         "  product",
         "FROM video_master",
         "WHERE parent_account_type = %s",
+        "  AND id > %s",
         "  AND video_id IS NOT NULL",
         "  AND url IS NOT NULL",
         "  AND hashtags IS NOT NULL",
         "  AND hashtags <> ''",
         "  AND (status IS NULL OR status <> %s)",
     ]
-    params: List[Any] = ["インフルエンサー", SENSITIVE_STATUS]
+    params: List[Any] = ["インフルエンサー", last_cursor_id, SENSITIVE_STATUS]
 
     if not include_processed:
         query.append("  AND (product IS NULL OR product = '')")
 
-    query.append("ORDER BY currentFetchDate DESC")
-    if limit is not None:
-        query.append("LIMIT %s")
-        params.append(limit)
+    query.append("ORDER BY id ASC")
+    query.append("LIMIT %s")
+    params.append(target_batch_size)
 
     sql = "\n".join(query)
     logger.info(
-        "Fetching candidate videos from video_master (limit=%s)",
-        limit if limit is not None else "ALL",
+        "Fetching candidate videos from video_master (cursor_id>%s, batch_size=%s)",
+        last_cursor_id,
+        target_batch_size,
     )
     rows = execute_query(sql, tuple(params))
 
+    if not rows:
+        logger.info("No new rows found after cursor_id=%s.", last_cursor_id)
+        return []
+
     payloads: List[Dict[str, Any]] = []
+    last_processed_id = last_cursor_id
     for row in rows:
+        row_id_raw = row.get("id")
+        try:
+            row_id = int(row_id_raw)
+        except (TypeError, ValueError):
+            row_id = last_processed_id
+        last_processed_id = max(last_processed_id, row_id)
         raw_hashtags = row.get("hashtags") or ""
         parsed_hashtags = _parse_hashtags(str(raw_hashtags))
         if not parsed_hashtags:
@@ -239,6 +330,12 @@ def _determine_payloads_from_db(
             continue
         payloads.append(normalized)
 
+    _update_processing_cursor(last_processed_id, batch_number + 1)
+    logger.info(
+        "Advanced processing cursor to id=%s (next batch_number=%s)",
+        last_processed_id,
+        batch_number + 1,
+    )
     logger.info("Fetched %s candidate videos after filtering hashtags", len(payloads))
     return payloads
 
@@ -313,7 +410,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument(
         "--limit",
         type=int,
-        help="Optional maximum number of records to fetch from video_master (process all when omitted).",
+        default=DEFAULT_BATCH_SIZE,
+        help=f"Maximum number of records to examine from video_master per run (default: {DEFAULT_BATCH_SIZE}).",
     )
     parser.add_argument(
         "--include-processed",
@@ -330,6 +428,15 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be a positive integer.")
+    effective_limit = args.limit
+    if effective_limit is not None and effective_limit > DEFAULT_BATCH_SIZE:
+        logger.warning(
+            "limit %s exceeds the enforced maximum of %s; clamping to %s.",
+            effective_limit,
+            DEFAULT_BATCH_SIZE,
+            DEFAULT_BATCH_SIZE,
+        )
+        effective_limit = DEFAULT_BATCH_SIZE
 
     manual_mode = bool(
         args.payload_file or args.payload_json or args.video_url or args.video_id
@@ -349,7 +456,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             payloads = [_build_single_payload(args)]
     else:
         payloads = _determine_payloads_from_db(
-            limit=args.limit,
+            limit=effective_limit,
             include_processed=args.include_processed,
         )
 

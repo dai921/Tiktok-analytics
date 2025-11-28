@@ -346,7 +346,7 @@ def _analyze_beauty_with_gemini_bytes(video_bytes: bytes, hashtags: List[str]) -
     Returns: (product_category, product_name) — 直接バイト列から解析
     """
     _configure_gemini()
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
 
     hints = ", ".join([f"#{t}" for t in hashtags]) if hashtags else "(なし)"
 

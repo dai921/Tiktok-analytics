@@ -36,6 +36,7 @@ from src.dashboard.corporate_videos import router as corporate_videos_router
 from src.dashboard.influencer_videos import router as influencer_videos_router
 from src.filter_presets.router import router as filter_presets_router
 from src.influencer_pr_products.router import router as influencer_pr_products_router
+from src.notifications.router import router as notifications_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -90,6 +91,7 @@ app.include_router(watchlist_router)
 # フィルタープリセットルーターの追加
 app.include_router(filter_presets_router)
 app.include_router(influencer_pr_products_router)
+app.include_router(notifications_router)
 
 # ルーターの登録
 app.include_router(tiktok_router)
@@ -283,9 +285,15 @@ async def get_videos(
         fulltext_keyword = prepare_fulltext_keyword(search_keyword)
         if fulltext_keyword:
             params["search_keyword"] = fulltext_keyword
-            where_clauses.append(
-                "MATCH(frontend_data.search_text) AGAINST (:search_keyword IN BOOLEAN MODE)"
-            )
+            match_clause = "MATCH(frontend_data.search_text) AGAINST (:search_keyword IN BOOLEAN MODE)"
+            is_katan_keyword = bool(search_keyword and search_keyword.strip().upper() == "KATAN")
+            if is_katan_keyword:
+                params["katan_product_match"] = "KATAN"
+                where_clauses.append(
+                    f"({match_clause} OR frontend_data.product = :katan_product_match)"
+                )
+            else:
+                where_clauses.append(match_clause)
         if min_play_count:
             where_clauses.append("play_count >= :min_play_count")
             params["min_play_count"] = min_play_count
@@ -627,8 +635,8 @@ async def get_videos(
             params["offset"] = offset
 
         # デバッグ用にクエリとパラメータを出力
-        print(f"Executing query: {query}")
-        print(f"With parameters: {params}")
+        print("FINAL SQL:", query)
+        print("PARAMS:", params)
 
         # メインクエリ実行
         rows = execute_query(query, params)

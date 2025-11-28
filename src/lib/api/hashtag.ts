@@ -1,4 +1,4 @@
-import { HashtagStats, HashtagStatsResponse, VideoType } from '../../types/hashtag';
+import { HashtagStats, HashtagStatsResponse, HashtagTrendResponse, VideoType } from '../../types/hashtag';
 
 // VideoTypeをparent_account_typeの値にマッピングする関数
 const mapVideoTypeToParentAccountType = (videoType: VideoType): string | null => {
@@ -83,3 +83,62 @@ export const fetchHashtagStats = async (
     throw error;
   }
 }; 
+
+
+export const fetchHashtagTrends = async (
+  startDate: string | null = null,
+  endDate: string | null = null,
+  metric: string = 'viewsIncrease',
+  videoType?: VideoType,
+  limit?: number
+): Promise<HashtagTrendResponse> => {
+  try {
+    const queryParams = new URLSearchParams();
+    if (startDate) queryParams.append('start_date', startDate);
+    if (endDate) queryParams.append('end_date', endDate);
+    if (metric) queryParams.append('metric', metric);
+    if (limit) queryParams.append('limit', String(limit));
+
+    if (videoType) {
+      const parentAccountType = mapVideoTypeToParentAccountType(videoType);
+      if (parentAccountType) {
+        queryParams.append('parent_account_type', parentAccountType);
+      }
+    }
+
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/api/hashtag-trends?${queryParams.toString()}`;
+    console.log('API URL:', url);
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      let errorDetail = '';
+      try {
+        const errorData = await response.json();
+        errorDetail = errorData.detail || JSON.stringify(errorData);
+      } catch (e) {
+        errorDetail = await response.text() || `�X�e�[�^�X�R�[�h: ${response.status}`;
+      }
+      throw new Error(`API�G���[: ${errorDetail}`);
+    }
+
+    const jsonData = await response.json();
+
+    return {
+      data: jsonData.data || [],
+      hashtags: jsonData.hashtags || [],
+      topHashtagsByMetric: jsonData.topHashtagsByMetric || {
+        viewsIncrease: [],
+        over100kViews: [],
+        postCount: []
+      },
+      dateRange: jsonData.date_range ? {
+        startDate: jsonData.date_range.start_date,
+        endDate: jsonData.date_range.end_date
+      } : undefined
+    };
+  } catch (error) {
+    console.error('�n�b�V���^�O�g�����h�̎擾�G���[:', error);
+    throw error;
+  }
+};

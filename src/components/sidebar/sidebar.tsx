@@ -69,22 +69,24 @@ export function Sidebar() {
     setIsLoggingOut(true);
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      if (token) {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
 
-      if (response.ok) {
-        logout();
+        if (!response.ok) {
+          console.error('ログアウトAPIに失敗しました');
+        }
       } else {
-        console.error('ログアウトに失敗しました');
-        setIsLoggingOut(false);
+        console.warn('トークンが存在しないためクライアント側のみでログアウトします');
       }
     } catch (error) {
       console.error('ログアウトエラー:', error);
-      setIsLoggingOut(false);
+    } finally {
+      logout();
     }
   };
   

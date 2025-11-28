@@ -158,15 +158,23 @@ def apply_other_filters(request: Request, params: Dict, where_clauses: List[str]
 
 def apply_search_keyword_filter(request: Request, params: Dict, where_clauses: List[str], table_name: str):
     """検索キーワードフィルターを適用"""
-    fulltext_keyword = prepare_fulltext_keyword(request.query_params.get('search_keyword'))
+    raw_keyword = request.query_params.get('search_keyword')
+    fulltext_keyword = prepare_fulltext_keyword(raw_keyword)
     if not fulltext_keyword:
         return
 
     params["search_keyword"] = fulltext_keyword
     search_column = f"{table_name}.search_text" if table_name else "search_text"
-    where_clauses.append(
-        f"MATCH({search_column}) AGAINST (:search_keyword IN BOOLEAN MODE)"
-    )
+    match_clause = f"MATCH({search_column}) AGAINST (:search_keyword IN BOOLEAN MODE)"
+    is_katan_keyword = bool(raw_keyword and raw_keyword.strip().upper() == "KATAN")
+    if is_katan_keyword:
+        product_column = f"{table_name}.product" if table_name else "product"
+        params["katan_product_keyword"] = "KATAN"
+        where_clauses.append(
+            f"({match_clause} OR {product_column} = :katan_product_keyword)"
+        )
+    else:
+        where_clauses.append(match_clause)
 
 def apply_numeric_filters(request: Request, params: Dict, where_clauses: List[str]):
     """数値フィルターを適用"""

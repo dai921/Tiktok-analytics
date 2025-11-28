@@ -31,6 +31,9 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { GENRE_COLORS, DEFAULT_GENRE_COLOR, getProductColorFromName } from '@/lib/constants';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/auth-context';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface ProductTrend {
   rank: number;
@@ -63,6 +66,9 @@ const TIKTOK_COLORS = {
   black: '#000000',
   white: '#FFFFFF',
 };
+
+const MAX_RANGE_DAYS = 62;
+
 
 // 指標の表示名を取得する関数
 const getMetricLabel = (metricKey: string) => {
@@ -129,6 +135,16 @@ export default function ProductPage() {
   const [displayLimit, setDisplayLimit] = useState(15);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportDateRange, setExportDateRange] = useState<{ start: Date; end: Date }>(() => ({
+    start: new Date(),
+    end: new Date(),
+  }));
+  const [exportTempDateRange, setExportTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [exportRangeError, setExportRangeError] = useState<string | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const { isAdmin } = useAuth();
 
   // ジャンル取得のuseEffect
   useEffect(() => {
@@ -341,12 +357,97 @@ export default function ProductPage() {
       .slice(0, 10);
   };
 
+  // 検索ワードでランキング表示用データを絞り込み
+  const filteredProductStats = productStats.filter((stat) => {
+    if (!searchQuery.trim()) return true;
+    const productName = stat.product?.toLowerCase() || "";
+    const category = stat.product_category?.toLowerCase() || "";
+    const query = searchQuery.toLowerCase();
+    return productName.includes(query) || category.includes(query);
+  });
+
+  // 現在の並び順を保持するマップ（元の順位表示用）
+  const originalRankMap = new Map<string, number>();
+  productStats
+    .filter(stat => stat.product && stat.product.trim() !== "")
+    .forEach((stat, index) => {
+      originalRankMap.set(stat.product, index + 1);
+    });
+
+  // ジャンルフィルタがかかっているか
+  const isGenreFiltered = () => {
+    return selectedGenres.length < availableGenres.length;
+  };
+
+  // 商品色を決定
+  const getProductColor = (product: string, productCategory?: string) => {
+    if (isGenreFiltered()) {
+      return getProductColorFromName(product).text;
+    }
+    const colorKey = productCategory || product;
+    const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
+    return colors.text;
+  };
+
+  const isRangeWithinLimit = (range?: { start: Date; end: Date }) => {
+    if (!range?.start || !range?.end) return true;
+    const diffMs = Math.abs(range.end.getTime() - range.start.getTime());
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    return diffDays <= MAX_RANGE_DAYS;
+  };
+
+
+  const handleExportDateRangeChange = (newRange: { start: Date; end: Date }) => {
+    setExportTempDateRange(newRange);
+    if (exportRangeError) {
+      setExportRangeError(null);
+    }
+  };
+
+  const handleExportDateRangeApply = (range?: { start: Date; end: Date }) => {
+    const appliedRange = range || exportTempDateRange;
+    if (!appliedRange) return;
+    if (!isRangeWithinLimit(appliedRange)) {
+      setExportRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+    setExportRangeError(null);
+    setExportDateRange(appliedRange);
+  };
+
+  const handleOpenExportDialog = () => {
+    // ページで表示中の日付範囲をデフォルトとして設定
+    setExportTempDateRange(dateRange);
+    setExportDateRange(dateRange);
+    setExportRangeError(null);
+    setExportError(null);
+    setIsExportDialogOpen(true);
+  };
+
+  const handleExportConfirm = () => {
+    const selectedRange = exportTempDateRange || exportDateRange;
+    if (!selectedRange?.start || !selectedRange?.end) {
+      setExportRangeError('出力期間を選択してください。');
+      return;
+    }
+    if (!isRangeWithinLimit(selectedRange)) {
+      setExportRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+    setExportRangeError(null);
+    setExportDateRange(selectedRange);
+    setIsExportDialogOpen(false);
+    handleExportCsv(selectedRange);
+  };
+
   const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
     setTempDateRange(newRange);
   };
 
-  const handleDateRangeApply = (range: { start: Date; end: Date }) => {
-    setDateRange(range);
+  const handleDateRangeApply = (range?: { start: Date; end: Date }) => {
+    const appliedRange = range || tempDateRange;
+    if (!appliedRange) return;
+    setDateRange(appliedRange);
     setUserSelectedDate(true);
     setDisplayLimit(15);
     setSearchQuery('');
@@ -373,6 +474,12 @@ export default function ProductPage() {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
+
+  const formatExportDateLabel = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear().toString().slice(-2);
+    return `${year}/${date.getMonth() + 1}/${date.getDate()}`;
   };
 
   // ジャンル選択用のハンドラを修正
@@ -444,44 +551,107 @@ export default function ProductPage() {
     });
   };
 
-  // 検索フィルター機能
-  const filteredProductStats = productStats.filter(stat => {
-    if (!searchQuery.trim()) return true;
-    
-    const productName = stat.product?.toLowerCase() || '';
-    const category = stat.product_category?.toLowerCase() || '';
-    const query = searchQuery.toLowerCase();
-    
-    return productName.includes(query) || category.includes(query);
-  });
+  
 
-  // 元の順位を保持するためのマップを作成
-  const originalRankMap = new Map<string, number>();
-  productStats
-    .filter(stat => stat.product && stat.product.trim() !== '')
-    .forEach((stat, index) => {
-      originalRankMap.set(stat.product, index + 1);
-    });
 
-  // ジャンルフィルタがかかっているかどうかを判定する関数
-  const isGenreFiltered = () => {
-    return selectedGenres.length < availableGenres.length;
-  };
+  const handleExportCsv = async (range?: { start: Date; end: Date }) => {
+    if (isExporting) return;
+    if (!productStats.length) {
+      setExportError('出力対象のデータがありません。');
+      return;
+    }
 
-  // 商品の色を取得する関数（フィルタ状態に応じて色を決定）
-  const getProductColor = (product: string, productCategory?: string) => {
-    if (isGenreFiltered()) {
-      // ジャンルフィルタがかかっている場合は商品名ベースで色を決定
-      return getProductColorFromName(product).text; // .textを追加
-    } else {
-      // フィルタがかかっていない場合は従来通りカテゴリベースで色を決定
-      const colorKey = productCategory || product;
-      const colors = GENRE_COLORS[colorKey as keyof typeof GENRE_COLORS] || DEFAULT_GENRE_COLOR;
-      return colors.text;
+    const selectedRange = range || exportTempDateRange || exportDateRange;
+    if (!selectedRange?.start || !selectedRange?.end) {
+      setExportError('出力期間を選択してください。');
+      return;
+    }
+    if (!isRangeWithinLimit(selectedRange)) {
+      setExportError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      const start = selectedRange.start.toISOString().split('T')[0];
+      const end = selectedRange.end.toISOString().split('T')[0];
+      const escapeForCsv = (value: string | number) => {
+        const str = String(value ?? '')
+          .replace(/\r?\n|\r/g, ' ')
+          .replace(/"/g, '""');
+        return `"${str}"`;
+      };
+
+      const metricsForExport: { key: MetricKey; label: string }[] = [
+        { key: 'viewsIncrease', label: '再生数増加' },
+        { key: 'over100kViews', label: '10万再生超え本数' },
+        { key: 'postCount', label: '投稿数' },
+      ];
+
+      const limit = Math.min(Math.max(productStats.length, 10), 150);
+      const trendResponse = await fetchProductTrends(
+        start,
+        end,
+        selectedGenres,
+        metric,
+        limit
+      );
+      const dailyData = trendResponse?.data || [];
+      if (!dailyData.length) {
+        setExportError('出力対象のデータがありません。');
+        return;
+      }
+
+      const uniqueDates = Array.from(new Set(dailyData.map((item) => item.date))).sort();
+
+      const rows = filteredProductStats
+        .filter((stat) => stat.product && stat.product.trim() !== '')
+        .map((stat) => {
+          const perDateValues = uniqueDates.flatMap((date) => {
+            const record = dailyData.find(
+              (item) => item.product === stat.product && item.date === date,
+            );
+            return metricsForExport.map((m) => Number(record?.metrics?.[m.key] ?? 0) || 0);
+          });
+
+          return [
+            stat.product,
+            stat.product_category || '',
+            ...perDateValues,
+          ];
+        });
+
+      const header = ['商材名', 'カテゴリ', ...uniqueDates.flatMap((date) =>
+        metricsForExport.map((m) => `${formatExportDateLabel(date)} ${m.label}`)
+      )];
+
+      const csvContent = [
+        '﻿' + header.map(escapeForCsv).join(','),
+        ...rows.map((row) => row.map(escapeForCsv).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+      anchor.href = url;
+      anchor.download = `product-trends-daily-${start}-to-${end}-${timestamp}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setExportError(error instanceof Error ? error.message : 'CSV出力に失敗しました。');
+    } finally {
+      setIsExporting(false);
     }
   };
 
   if (isLoading) {
+
     return (
       <div className="container mx-auto py-8">
         <Skeleton className="h-8 w-[200px] mb-4" />
@@ -507,8 +677,9 @@ export default function ProductPage() {
       <h1 className="text-2xl font-bold mb-6">PR動画商材トレンド</h1>
 
       <div className="space-y-4">
+
         {/* フィルターエリア */}
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-4 items-center flex-wrap">
           <div className="flex items-center gap-2">
             <label className="text-sm whitespace-nowrap">表示指標:</label>
             <select 
@@ -517,19 +688,19 @@ export default function ProductPage() {
               className="border rounded p-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE]"
             >
               <option value="viewsIncrease">総再生増加数</option>
-              <option value="over100kViews">10万再生以上個数</option>
+              <option value="over100kViews">10万再生超え本数</option>
               <option value="postCount">投稿数</option>
             </select>
           </div>
           
           {/* 検索ボックス */}
           <div className="flex items-center gap-2">
-            <label className="text-sm whitespace-nowrap">商品検索:</label>
+            <label className="text-sm whitespace-nowrap">商材検索:</label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="商品名で検索..."
+              placeholder="商材名で検索..."
               className="border rounded px-3 py-1 focus:border-[#25F4EE] focus:ring-1 focus:ring-[#25F4EE] w-64"
             />
             {searchQuery && (
@@ -537,7 +708,7 @@ export default function ProductPage() {
                 onClick={() => setSearchQuery('')}
                 className="text-gray-500 hover:text-gray-700"
               >
-                ✕
+                ×
               </button>
             )}
           </div>
@@ -560,7 +731,46 @@ export default function ProductPage() {
               onApply={handleDateRangeApply}
             />
           </div>
+          <div className="flex items-center gap-3 ml-auto flex-wrap">
+            {exportError && (
+              <span className="text-xs text-red-500">{exportError}</span>
+            )}
+            <Button
+              type="button"
+              onClick={handleOpenExportDialog}
+              disabled={isExporting || !productStats.length}
+              className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
+            >
+              {isExporting ? 'CSV出力中...' : 'CSV出力'}
+            </Button>
+          </div>
         </div>
+
+        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>CSV出力期間を選択</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2">
+              <DateRangePicker
+                dateRange={exportTempDateRange || exportDateRange}
+                onDateRangeChange={handleExportDateRangeChange}
+                onApply={handleExportDateRangeApply}
+              />
+              {exportRangeError && (
+                <p className="text-xs text-red-500">{exportRangeError}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+                キャンセル
+              </Button>
+              <Button onClick={handleExportConfirm} disabled={isExporting}>
+                {isExporting ? 'CSV出力中...' : 'CSV出力'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* タブエリア */}
         <Tabs defaultValue="ranking" className="w-full" onValueChange={setActiveTab} value={activeTab}>
