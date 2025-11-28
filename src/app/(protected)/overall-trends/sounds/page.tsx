@@ -7,7 +7,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ArrowUp, Music } from "lucide-react";
 import { SoundStats, VideoType } from '@/types/sound';
 import { ImageHover } from '@/components/ui/image-hover';
-import { fetchSoundStats } from '@/lib/api/sound';
+import { fetchSoundStats, fetchSoundTrends } from '@/lib/api/sound';
 import { formatNumber } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { getAccountTypeColor } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface SoundTrend {  
   rank: number;
@@ -72,6 +73,8 @@ const AccountTypeBadge: React.FC<{ accountType: string; videoType: VideoType }> 
   );
 };
 
+const MAX_RANGE_DAYS = 62;
+
 export default function SoundsPage() {
   const [activeTab, setActiveTab] = useState<VideoType>("affiliate");
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>({
@@ -89,6 +92,14 @@ export default function SoundsPage() {
   const [displayLimit, setDisplayLimit] = useState(15);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [rangeError, setRangeError] = useState<string | null>(null);
+  const [exportDateRange, setExportDateRange] = useState<{ start: Date; end: Date }>(() => ({
+    start: new Date(),
+    end: new Date(),
+  }));
+  const [exportTempDateRange, setExportTempDateRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [exportRangeError, setExportRangeError] = useState<string | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const { isAdmin } = useAuth();
   
   // 指標ごとにデータをキャッシュするための状態を追加
@@ -161,21 +172,34 @@ export default function SoundsPage() {
     }
   }, [userSelectedDate, dataLoaded, dateRange, metric, activeTab, cachedSoundStats]);
 
-  const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
-    setTempDateRange(newRange);
+  const isRangeWithinLimit = (range?: { start: Date; end: Date }) => {
+    if (!range?.start || !range?.end) return true;
+    const diffMs = Math.abs(range.end.getTime() - range.start.getTime());
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    return diffDays <= MAX_RANGE_DAYS;
   };
 
-  const handleDateRangeApply = () => {
-    if (tempDateRange) {
-      setDateRange(tempDateRange);
-      setUserSelectedDate(true);
-      setDisplayLimit(15);
-      setCachedSoundStats({});
-      setDataLoaded(false);
+  const handleDateRangeChange = (newRange: { start: Date; end: Date }) => {
+    setTempDateRange(newRange);
+    if (rangeError) {
+      setRangeError(null);
     }
   };
 
-  // タブ変更ハンドラ
+  const handleDateRangeApply = (range?: { start: Date; end: Date }) => {
+    const appliedRange = range || tempDateRange;
+    if (!appliedRange) return;
+    if (!isRangeWithinLimit(appliedRange)) {
+      setRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+    setRangeError(null);
+    setDateRange(appliedRange);
+    setUserSelectedDate(true);
+    setDisplayLimit(15);
+    setCachedSoundStats({});
+    setDataLoaded(false);
+  };
   const handleTabChange = (value: string) => {
     const newTab = value as VideoType;
     console.log(`タブ変更: ${activeTab} → ${newTab}`);
@@ -194,22 +218,64 @@ export default function SoundsPage() {
     setDisplayLimit(15);
     setDataLoaded(false);
   };
-  const formatDateForCsv = (value?: Date) => {
-    if (!value || Number.isNaN(value.getTime())) return '';
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+
+  const formatExportDateLabel = (dateString: string) => {
+    const date = new Date(dateString);
+    const year = date.getFullYear().toString().slice(-2);
+    return `${year}/${date.getMonth() + 1}/${date.getDate()}`;
   };
 
-  const handleExportCsv = () => {
-    if (isExporting) return;
-    if (!isAdmin) {
-      setExportError('管理者のみ利用できます');
+  const handleExportDateRangeChange = (newRange: { start: Date; end: Date }) => {
+    setExportTempDateRange(newRange);
+    if (exportRangeError) {
+      setExportRangeError(null);
+    }
+  };
+
+  const handleExportDateRangeApply = (range?: { start: Date; end: Date }) => {
+    const appliedRange = range || exportTempDateRange;
+    if (!appliedRange) return;
+    if (!isRangeWithinLimit(appliedRange)) {
+      setExportRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
       return;
     }
-    if (!soundStats.length) {
-      setExportError('出力対象のデータがありません');
+    setExportRangeError(null);
+    setExportDateRange(appliedRange);
+  };
+
+  const handleOpenExportDialog = () => {
+    // ページで表示中の日付範囲をデフォルトとして設定
+    setExportTempDateRange(dateRange);
+    setExportDateRange(dateRange);
+    setExportRangeError(null);
+    setExportError(null);
+    setIsExportDialogOpen(true);
+  };
+
+  const handleExportConfirm = () => {
+    const selectedRange = exportTempDateRange || exportDateRange;
+    if (!selectedRange?.start || !selectedRange?.end) {
+      setExportRangeError('出力期間を選択してください。');
+      return;
+    }
+    if (!isRangeWithinLimit(selectedRange)) {
+      setExportRangeError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
+      return;
+    }
+    setExportRangeError(null);
+    setExportDateRange(selectedRange);
+    setIsExportDialogOpen(false);
+    handleExportCsv(selectedRange);
+  };
+
+  const handleExportCsv = async (range?: { start: Date; end: Date }) => {
+    const selectedRange = range || exportTempDateRange || exportDateRange;
+    if (!selectedRange?.start || !selectedRange?.end) {
+      setExportError('出力期間を選択してください。');
+      return;
+    }
+    if (!isRangeWithinLimit(selectedRange)) {
+      setExportError(`CSV出力は最大${MAX_RANGE_DAYS}日までです。`);
       return;
     }
 
@@ -217,50 +283,88 @@ export default function SoundsPage() {
     setExportError(null);
 
     try {
-      const start = formatDateForCsv(dateRange.start);
-      const end = formatDateForCsv(dateRange.end);
+      const start = selectedRange.start.toISOString().split('T')[0];
+      const end = selectedRange.end.toISOString().split('T')[0];
       const escapeForCsv = (value: string | number) => {
         const str = String(value ?? '')
           .replace(/\r?\n|\r/g, ' ')
-          .replace(/"/g, '');
+          .replace(/"/g, '""');
         return `"${str}"`;
       };
 
-      const header = ['サウンド', 'アーティスト', '動画種別', '期間開始', '期間終了', '再生増加', '10万再生以上本数', '投稿数'];
+      const metricsForExport: { key: MetricKey; label: string }[] = [
+        { key: 'viewsIncrease', label: '再生数増加' },
+        { key: 'over100kViews', label: '10万再生超え本数' },
+        { key: 'postCount', label: '投稿数' },
+      ];
+
+      const limit = Math.min(Math.max(soundStats.length, 10), 150);
+      const trendResponse = await fetchSoundTrends(
+        start,
+        end,
+        metric,
+        activeTab,
+        limit
+      );
+      const dailyData = trendResponse?.data || [];
+      if (!dailyData.length) {
+        setExportError('出力対象のデータがありません。');
+        return;
+      }
+
+      const artistMap = new Map<string, string>();
+      soundStats.forEach((item) => {
+        if (item.sound_title) {
+          artistMap.set(item.sound_title, item.sound_artist || '');
+        }
+      });
+
+      const uniqueDates = Array.from(new Set(dailyData.map((item) => item.date))).sort();
+
       const rows = soundStats
-        .filter((stat) => stat.sound_title && stat.sound_title.trim() !== '')
-        .map((stat) => [
-          stat.sound_title,
-          stat.sound_artist || '',
-          getVideoTypeLabel(activeTab),
-          start,
-          end,
-          Number(stat.total_play_count_increase) || 0,
-          Number(stat.videos_over_100k) || 0,
-          Number(stat.total_posts) || 0,
-        ]);
+        .filter((stat) => stat.sound_title && stat.sound_title.trim() !== '' && stat.sound_title !== 'オリジナル楽曲')
+        .map((stat) => {
+          const perDateValues = uniqueDates.flatMap((date) => {
+            const record = dailyData.find(
+              (item) => item.sound === stat.sound_title && item.date === date,
+            );
+            return metricsForExport.map((m) => Number(record?.metrics?.[m.key] ?? 0) || 0);
+          });
+
+          return [
+            stat.sound_title,
+            stat.sound_artist || '',
+            getVideoTypeLabel(activeTab),
+            ...perDateValues,
+          ];
+        });
+
+      const header = ['BGM名', 'アーティスト', '動画タイプ', ...uniqueDates.flatMap((date) =>
+        metricsForExport.map((m) => `${formatExportDateLabel(date)} ${m.label}`)
+      )];
 
       const csvContent = [
-        '\ufeff' + header.map(escapeForCsv).join(','),
-        ...rows.map((row) => row.map(escapeForCsv).join(',')),
-      ].join('\r\n');
+        '﻿' + header.map(escapeForCsv).join(','),
+        ...rows.map((row) => row.map(escapeForCsv).join(','))
+      ].join('\n');
 
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       const timestamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
       anchor.href = url;
-      anchor.download = `sounds-trends-${timestamp}.csv`;
+      anchor.download = `sounds-trends-daily-${start}-to-${end}-${timestamp}.csv`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+      setExportError(error instanceof Error ? error.message : 'CSV出力に失敗しました。');
     } finally {
       setIsExporting(false);
     }
   };
-
-
   if (isLoading) {
     return (
       <div className="container mx-auto py-8">
@@ -307,13 +411,14 @@ export default function SoundsPage() {
               onDateRangeChange={handleDateRangeChange}
               onApply={handleDateRangeApply}
             />
+            {rangeError && <p className="mt-1 text-xs text-red-500">{rangeError}</p>}
           </div>
           {isAdmin && (
             <div className="flex items-center gap-2 ml-auto">
               {exportError && <span className="text-xs text-red-500">{exportError}</span>}
               <Button
                 type="button"
-                onClick={handleExportCsv}
+                onClick={handleOpenExportDialog}
                 disabled={isExporting || !soundStats.length}
                 className="bg-[#FE2C55] hover:bg-[#e6264c] text-white"
               >
@@ -321,6 +426,31 @@ export default function SoundsPage() {
               </Button>
             </div>
           )}
+          <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>CSV出力期間を選択</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-2">
+                <DateRangePicker
+                  dateRange={exportTempDateRange || exportDateRange}
+                  onDateRangeChange={handleExportDateRangeChange}
+                  onApply={handleExportDateRangeApply}
+                />
+                {exportRangeError && (
+                  <p className="text-xs text-red-500">{exportRangeError}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+                  キャンセル
+                </Button>
+                <Button onClick={handleExportConfirm} disabled={isExporting}>
+                  {isExporting ? 'CSV出力中...' : 'CSV出力'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* タブエリア */}

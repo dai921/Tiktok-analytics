@@ -245,3 +245,39 @@ PARTITION BY RANGE (TO_DAYS(collection_date)) (
     PARTITION p_future VALUES LESS THAN MAXVALUE
 );
 
+-- 通知マスター
+CREATE TABLE IF NOT EXISTS notifications (
+  id INT NOT NULL AUTO_INCREMENT,
+  title VARCHAR(255) NOT NULL,
+  body TEXT NOT NULL,
+  target_scope ENUM('all') NOT NULL DEFAULT 'all',
+  status ENUM('draft','scheduled','sent','archived') NOT NULL DEFAULT 'draft',
+  scheduled_at DATETIME DEFAULT NULL,
+  sent_at DATETIME DEFAULT NULL,
+  created_by VARCHAR(255) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_status (status),
+  KEY idx_sent_at (sent_at),
+  KEY idx_created_by (created_by),
+  CONSTRAINT fk_notifications_created_by FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 通知配信・既読管理
+CREATE TABLE IF NOT EXISTS notification_receipts (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  notification_id INT NOT NULL,
+  user_id VARCHAR(255) NOT NULL,
+  delivered_at DATETIME NOT NULL,
+  read_at DATETIME DEFAULT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_notification_user (notification_id, user_id),
+  KEY idx_user_is_read (user_id, is_read),
+  KEY idx_read_at (read_at),
+  CONSTRAINT fk_notification_receipts_notification FOREIGN KEY (notification_id) REFERENCES notifications (id),
+  CONSTRAINT fk_notification_receipts_user FOREIGN KEY (user_id) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -36,6 +36,7 @@ from src.dashboard.corporate_videos import router as corporate_videos_router
 from src.dashboard.influencer_videos import router as influencer_videos_router
 from src.filter_presets.router import router as filter_presets_router
 from src.influencer_pr_products.router import router as influencer_pr_products_router
+from src.notifications.router import router as notifications_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -90,6 +91,7 @@ app.include_router(watchlist_router)
 # フィルタープリセットルーターの追加
 app.include_router(filter_presets_router)
 app.include_router(influencer_pr_products_router)
+app.include_router(notifications_router)
 
 # ルーターの登録
 app.include_router(tiktok_router)
