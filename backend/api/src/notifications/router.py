@@ -1,7 +1,11 @@
+import logging
+import os
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -12,12 +16,12 @@ from src.db.database import engine, execute_query
 
 
 router = APIRouter(prefix="/api", tags=["notifications"])
+logger = logging.getLogger(__name__)
 
 
 class NotificationCreate(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     body: str = Field(..., min_length=1)
-    scheduled_at: Optional[datetime] = None
 
 
 class MarkReadPayload(BaseModel):
@@ -52,6 +56,70 @@ def _derive_title(body: str, title: Optional[str] = None) -> str:
         return body_trimmed[:40]
     return "お知らせ"
 
+CHATWORK_BASE_URL_DEFAULT = "https://api.chatwork.com/v2"
+
+
+@lru_cache
+def _get_chatwork_config() -> dict:
+    api_token = (os.getenv("CHATWORK_API_KEY") or "").strip()
+    room_id = (os.getenv("CHATWORK_ROOM_ID") or "").strip()
+    base_url = (os.getenv("CHATWORK_API_BASE_URL") or CHATWORK_BASE_URL_DEFAULT).rstrip("/")
+
+    if not api_token or not room_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Chatwork APIの設定が不足しています。管理者に問い合わせてください。",
+        )
+
+    return {"api_token": api_token, "room_id": room_id, "base_url": base_url}
+
+
+def _build_chatwork_body(
+    title: str,
+    body: str,
+    scheduled_at: datetime,
+    is_scheduled: bool,
+    delivery_count: Optional[int] = None,
+) -> str:
+    content = (body or "").strip()
+    if not content:
+        content = title or "お知らせ"
+    return "[toall]\n" + content
+
+
+async def _send_chatwork_notification(
+    title: str,
+    body: str,
+    scheduled_at: datetime,
+    is_scheduled: bool,
+    delivery_count: Optional[int] = None,
+) -> None:
+    config = _get_chatwork_config()
+    message_body = _build_chatwork_body(title, body, scheduled_at, is_scheduled, delivery_count)
+    url = f"{config['base_url']}/rooms/{config['room_id']}/messages"
+    headers = {"X-ChatWorkToken": config["api_token"]}
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(url, headers=headers, data={"body": message_body})
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "Chatwork通知の送信に失敗しました: status=%s, body=%s",
+            exc.response.status_code if exc.response else "unknown",
+            exc.response.text if exc.response else "",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Chatworkへの通知送信に失敗しました。",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Chatwork通知の送信中にエラーが発生しました: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Chatworkへの通知送信中にエラーが発生しました。",
+        )
+
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -75,9 +143,8 @@ async def create_and_send_notification(
     """通知を作成し全ユーザーに即時配信する"""
     _ensure_admin(current_user)
 
-    base_datetime = payload.scheduled_at or datetime.utcnow().replace(tzinfo=timezone.utc)
-    scheduled_at = _to_jst_trim_seconds(base_datetime)
-    sent_at = scheduled_at if payload.scheduled_at else _to_jst_trim_seconds(datetime.utcnow())
+    scheduled_at = _to_jst_trim_seconds(datetime.utcnow().replace(tzinfo=timezone.utc))
+    sent_at = scheduled_at
     derived_title = _derive_title(payload.body, payload.title)
 
     with engine.begin() as conn:
@@ -157,10 +224,20 @@ async def create_and_send_notification(
             {"notification_id": notification_id},
         ).mappings().first()
 
+    delivery_count = int(count_row["total"]) if count_row and count_row.get("total") is not None else 0
+
+    await _send_chatwork_notification(
+        title=notification_row["title"],
+        body=notification_row["body"],
+        scheduled_at=scheduled_at,
+        is_scheduled=False,
+        delivery_count=delivery_count,
+    )
+
     return {
         "success": True,
         "notification": notification_row,
-        "delivery_count": int(count_row["total"]) if count_row and count_row.get("total") is not None else 0,
+        "delivery_count": delivery_count,
     }
 
 

@@ -1002,10 +1002,10 @@ const Dashboard = () => {
                 onClick={() => handleSelectNotification(item)}
               >
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium leading-tight">{item.title}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="text-sm font-medium leading-tight truncate">{item.title}</p>
                     {!item.is_read && (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                      <span className="flex-shrink-0 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
                         未読
                       </span>
                     )}
