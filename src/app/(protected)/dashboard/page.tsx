@@ -1192,11 +1192,6 @@ const Dashboard = () => {
               <p className="whitespace-pre-wrap text-sm leading-relaxed">
                 {selectedNotification?.body ?? ''}
               </p>
-              {selectedNotification?.delivered_at && (
-                <p className="text-xs text-muted-foreground">
-                  配信: {formatJstDateTime(selectedNotification.delivered_at) || '-'}
-                </p>
-              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsNotificationDialogOpen(false)}>
