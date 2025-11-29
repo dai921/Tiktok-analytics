@@ -2,11 +2,11 @@ import logging
 import os
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -57,6 +57,7 @@ def _derive_title(body: str, title: Optional[str] = None) -> str:
     return "お知らせ"
 
 CHATWORK_BASE_URL_DEFAULT = "https://api.chatwork.com/v2"
+MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 
 
 @lru_cache
@@ -86,6 +87,92 @@ def _build_chatwork_body(
         content = title or "お知らせ"
     return "[toall]\n" + content
 
+async def _prepare_image_payload(upload: UploadFile) -> Optional[dict[str, Any]]:
+    """
+    Validate and read an optional image upload for Chatwork.
+    """
+    if not upload:
+        return None
+
+    content_type = upload.content_type or ""
+    if content_type and not content_type.startswith("image/"):
+        await upload.close()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="画像ファイルのみアップロードできます",
+        )
+
+    file_bytes = await upload.read()
+    await upload.close()
+
+    logger.warning(
+        {
+            "phase": "prepare_image",
+            "filename": upload.filename,
+            "content_type": content_type,
+            "size": len(file_bytes),
+        }
+    )
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="空のファイルはアップロードできません",
+        )
+
+    if len(file_bytes) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="画像のサイズが大きすぎます。10MB以下にしてください。",
+        )
+
+    return {
+        "filename": upload.filename or "upload",
+        "content": file_bytes,
+        "content_type": content_type or "application/octet-stream",
+    }
+
+
+def _parse_notification_inputs(
+    form_body: Optional[str],
+    form_title: Optional[str],
+    upload: Optional[UploadFile],
+    json_payload: Optional[NotificationCreate],
+) -> tuple[str, Optional[str], Optional[UploadFile], dict]:
+    """
+    Use FastAPI-parsed inputs (Form/File for multipart, Body for JSON) and normalize them.
+    This keeps JSON clients and multipart clients working without manual boundary parsing.
+    """
+    debug: dict[str, Any] = {
+        "source": "form" if form_body or form_title or upload else "json" if json_payload else "none",
+        "has_upload": bool(upload),
+        "upload_filename": getattr(upload, "filename", None),
+        "body_from_form": form_body is not None,
+        "title_from_form": form_title is not None,
+    }
+
+    def _clean(value: Optional[str]) -> Optional[str]:
+        return value.strip() if value and value.strip() else None
+
+    raw_body = _clean(form_body)
+    raw_title = _clean(form_title)
+
+    if not raw_body and json_payload:
+        raw_body = _clean(json_payload.body)
+        raw_title = raw_title or _clean(json_payload.title)
+        debug["source"] = "json"
+
+    if not raw_body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="本文を入力してください",
+        )
+
+    return raw_body, raw_title, upload, debug
+
+
+
+
 
 async def _send_chatwork_notification(
     title: str,
@@ -93,15 +180,35 @@ async def _send_chatwork_notification(
     scheduled_at: datetime,
     is_scheduled: bool,
     delivery_count: Optional[int] = None,
+    attachment: Optional[dict[str, Any]] = None,
 ) -> None:
     config = _get_chatwork_config()
     message_body = _build_chatwork_body(title, body, scheduled_at, is_scheduled, delivery_count)
-    url = f"{config['base_url']}/rooms/{config['room_id']}/messages"
+    url = (
+        f"{config['base_url']}/rooms/{config['room_id']}/files"
+        if attachment
+        else f"{config['base_url']}/rooms/{config['room_id']}/messages"
+    )
     headers = {"X-ChatWorkToken": config["api_token"]}
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.post(url, headers=headers, data={"body": message_body})
+        async with httpx.AsyncClient(timeout=20 if attachment else 10) as client:
+            if attachment:
+                files = {
+                    "file": (
+                        attachment["filename"],
+                        attachment["content"],
+                        attachment.get("content_type") or "application/octet-stream",
+                    )
+                }
+                response = await client.post(
+                    url,
+                    headers=headers,
+                    data={"message": message_body},
+                    files=files,
+                )
+            else:
+                response = await client.post(url, headers=headers, data={"body": message_body})
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         logger.error(
@@ -137,15 +244,26 @@ def _to_jst_trim_seconds(dt: datetime) -> datetime:
 
 @router.post("/admin/notifications")
 async def create_and_send_notification(
-    payload: NotificationCreate,
+    body: Optional[str] = Form(None, alias="body"),
+    title: Optional[str] = Form(None, alias="title"),
+    image: Optional[UploadFile] = File(None),
+    payload: Optional[NotificationCreate] = Body(None),
     current_user: User = Depends(get_current_user),
 ):
     """通知を作成し全ユーザーに即時配信する"""
     _ensure_admin(current_user)
 
+    body_text, provided_title, upload, debug_info = _parse_notification_inputs(
+        form_body=body,
+        form_title=title,
+        upload=image,
+        json_payload=payload,
+    )
+    attachment = await _prepare_image_payload(upload) if upload is not None else None
+
     scheduled_at = _to_jst_trim_seconds(datetime.utcnow().replace(tzinfo=timezone.utc))
     sent_at = scheduled_at
-    derived_title = _derive_title(payload.body, payload.title)
+    derived_title = _derive_title(body_text, provided_title)
 
     with engine.begin() as conn:
         insert_result = conn.execute(
@@ -163,7 +281,7 @@ async def create_and_send_notification(
             ),
             {
                 "title": derived_title,
-                "body": payload.body,
+                "body": body_text,
                 "scheduled_at": scheduled_at,
                 "sent_at": sent_at,
                 "created_by": current_user.id,
@@ -232,12 +350,17 @@ async def create_and_send_notification(
         scheduled_at=scheduled_at,
         is_scheduled=False,
         delivery_count=delivery_count,
+        attachment=attachment,
     )
 
     return {
         "success": True,
         "notification": notification_row,
         "delivery_count": delivery_count,
+        "uploaded_image": bool(attachment),
+        "received_upload": bool(attachment),
+        "received_upload_name": attachment["filename"] if attachment else None,
+        "debug_upload": debug_info,
     }
 
 
