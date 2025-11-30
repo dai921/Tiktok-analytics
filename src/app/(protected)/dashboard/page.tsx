@@ -37,6 +37,7 @@ import {
 // headers: 未使用のため削除
 
 type TabKey = 'all' | 'affiliate' | 'corporate' | 'influencer'
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
 
 const formatJstDateTime = (value?: string | null) => {
   if (!value) return ''
@@ -125,6 +126,12 @@ const Dashboard = () => {
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
   const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
   const NOTIFICATION_PAGE_SIZE = 10
+  const buildNotificationImageUrl = useCallback((path?: string | null) => {
+    if (!path) return null
+    if (/^https?:\/\//.test(path)) return path
+    if (!API_BASE_URL) return path
+    return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+  }, [])
 
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<VideoData[]>([])
@@ -1070,6 +1077,8 @@ const Dashboard = () => {
     setSelectedNotification(null)
   }
 
+  const selectedNotificationImage = buildNotificationImageUrl(selectedNotification?.image_url)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main>
@@ -1192,6 +1201,15 @@ const Dashboard = () => {
               <p className="whitespace-pre-wrap text-sm leading-relaxed">
                 {selectedNotification?.body ?? ''}
               </p>
+              {selectedNotificationImage && (
+                <div className="rounded-md border bg-muted/30 p-2">
+                  <img
+                    src={selectedNotificationImage}
+                    alt={selectedNotification?.title || '通知画像'}
+                    className="max-h-64 w-full rounded object-contain"
+                  />
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsNotificationDialogOpen(false)}>

@@ -2,6 +2,7 @@ export type NotificationItem = {
   id: number
   title: string
   body: string
+  image_url?: string | null
   sent_at: string | null
   delivered_at: string | null
   is_read: number | boolean

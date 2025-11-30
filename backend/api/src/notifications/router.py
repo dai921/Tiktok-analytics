@@ -2,11 +2,13 @@ import logging
 import os
 from datetime import datetime, timezone
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from google.cloud import storage
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -58,6 +60,7 @@ def _derive_title(body: str, title: Optional[str] = None) -> str:
 
 CHATWORK_BASE_URL_DEFAULT = "https://api.chatwork.com/v2"
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+NOTIFICATION_IMAGE_BUCKET = os.getenv("NOTIFICATION_IMAGE_BUCKET", "").strip()
 
 
 @lru_cache
@@ -131,6 +134,63 @@ async def _prepare_image_payload(upload: UploadFile) -> Optional[dict[str, Any]]
         "content": file_bytes,
         "content_type": content_type or "application/octet-stream",
     }
+
+
+def _store_notification_image_gcs(notification_id: int, attachment: dict[str, Any]) -> Optional[str]:
+    """
+    Persist the uploaded image to Cloud Storage and return the object name.
+    """
+    if not attachment:
+        return None
+    if not NOTIFICATION_IMAGE_BUCKET:
+        logger.warning(
+            {
+                "phase": "store_notification_image",
+                "warning": "bucket_not_configured",
+            }
+        )
+        return None
+
+    client = storage.Client()
+    bucket = client.bucket(NOTIFICATION_IMAGE_BUCKET)
+    orig_name = attachment.get("filename") or "upload"
+    content_type = attachment.get("content_type") or "application/octet-stream"
+
+    suffix = Path(orig_name).suffix or ""
+    object_name = f"notifications/{notification_id}/image{suffix}"
+
+    blob = bucket.blob(object_name)
+    blob.content_type = content_type
+    blob.metadata = {"original_filename": orig_name}
+    blob.upload_from_string(attachment.get("content") or b"", content_type=content_type)
+    logger.info(
+        {
+            "phase": "store_notification_image",
+            "bucket": NOTIFICATION_IMAGE_BUCKET,
+            "object_name": object_name,
+            "content_type": content_type,
+            "size": len(attachment.get("content") or b""),
+        }
+    )
+    return object_name
+
+
+def _notification_image_url(notification_id: int, image_path: Optional[str]) -> Optional[str]:
+    if not image_path:
+        return None
+    return f"/api/notifications/{notification_id}/image"
+
+
+def _add_image_url_to_row(row: Optional[dict]) -> Optional[dict]:
+    if not row:
+        return row
+    try:
+        nid = int(row.get("id"))
+    except Exception:
+        row["image_url"] = None
+        return row
+    row["image_url"] = _notification_image_url(nid, row.get("image_path"))
+    return row
 
 
 def _parse_notification_inputs(
@@ -242,6 +302,66 @@ def _to_jst_trim_seconds(dt: datetime) -> datetime:
     return jst.replace(second=0, microsecond=0, tzinfo=None)
 
 
+def _user_can_access_notification(notification_id: int, user: User) -> bool:
+    if getattr(user, "is_admin", False):
+        return True
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT 1
+                FROM notification_receipts
+                WHERE notification_id = :notification_id AND user_id = :user_id
+                LIMIT 1
+                """
+            ),
+            {"notification_id": notification_id, "user_id": user.id},
+        ).first()
+    return bool(row)
+
+
+@router.get("/notifications/{notification_id}/image")
+async def get_notification_image(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    if not _user_can_access_notification(notification_id, current_user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+    if not NOTIFICATION_IMAGE_BUCKET:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT image_path
+                FROM notifications
+                WHERE id = :notification_id
+                LIMIT 1
+                """
+            ),
+            {"notification_id": notification_id},
+        ).first()
+
+    image_path = row[0] if row else None
+    if not image_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    client = storage.Client()
+    bucket = client.bucket(NOTIFICATION_IMAGE_BUCKET)
+    blob = bucket.blob(image_path)
+    if not blob.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    data = blob.download_as_bytes()
+    content_type = blob.content_type or "application/octet-stream"
+    orig_name = (blob.metadata or {}).get("original_filename") if blob.metadata else None
+    filename = orig_name or Path(image_path).name
+
+    headers = {"Content-Disposition": f'inline; filename="{filename}"'}
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
 @router.post("/admin/notifications")
 async def create_and_send_notification(
     body: Optional[str] = Form(None, alias="body"),
@@ -264,6 +384,7 @@ async def create_and_send_notification(
     scheduled_at = _to_jst_trim_seconds(datetime.utcnow().replace(tzinfo=timezone.utc))
     sent_at = scheduled_at
     derived_title = _derive_title(body_text, provided_title)
+    image_path: Optional[str] = None
 
     with engine.begin() as conn:
         insert_result = conn.execute(
@@ -271,11 +392,11 @@ async def create_and_send_notification(
                 """
                 INSERT INTO notifications (
                   title, body, target_scope, status,
-                  scheduled_at, sent_at, created_by, created_at, updated_at
+                  scheduled_at, sent_at, created_by, created_at, updated_at, image_path
                 )
                 VALUES (
                   :title, :body, 'all', 'sent',
-                  :scheduled_at, :sent_at, :created_by, NOW(), NOW()
+                  :scheduled_at, :sent_at, :created_by, NOW(), NOW(), :image_path
                 )
                 """
             ),
@@ -285,6 +406,7 @@ async def create_and_send_notification(
                 "scheduled_at": scheduled_at,
                 "sent_at": sent_at,
                 "created_by": current_user.id,
+                "image_path": None,
             },
         )
         notification_id = _extract_lastrowid(insert_result)
@@ -295,7 +417,34 @@ async def create_and_send_notification(
         if notification_id is None:
             raise HTTPException(status_code=500, detail="Failed to get notification id")
 
-        # 全ユーザー分の配信レコードを一括挿入
+        if attachment:
+            try:
+                image_path = _store_notification_image_gcs(notification_id, attachment)
+                if image_path:
+                    conn.execute(
+                        text("UPDATE notifications SET image_path = :image_path WHERE id = :notification_id"),
+                        {"image_path": image_path, "notification_id": notification_id},
+                    )
+                    logger.info(
+                        {
+                            "phase": "notification_image_path_saved",
+                            "notification_id": notification_id,
+                            "image_path": image_path,
+                            "bucket": NOTIFICATION_IMAGE_BUCKET,
+                        }
+                    )
+                else:
+                    logger.warning(
+                        {
+                            "phase": "notification_image_path_missing_after_upload",
+                            "notification_id": notification_id,
+                            "bucket": NOTIFICATION_IMAGE_BUCKET,
+                        }
+                    )
+            except Exception as exc:
+                logger.warning({"phase": "store_notification_image_error", "error": str(exc)})
+
+        # �S���[�U�[���̔z�M���R�[�h���ꊇ�}��
         conn.execute(
             text(
                 """
@@ -323,7 +472,7 @@ async def create_and_send_notification(
                 """
                 SELECT
                   id, title, body, target_scope, status,
-                  scheduled_at, sent_at, created_by, created_at, updated_at
+                  scheduled_at, sent_at, created_by, created_at, updated_at, image_path
                 FROM notifications
                 WHERE id = :notification_id
                 """
@@ -352,6 +501,9 @@ async def create_and_send_notification(
         delivery_count=delivery_count,
         attachment=attachment,
     )
+
+    notification_row = dict(notification_row or {})
+    notification_row["image_url"] = _notification_image_url(notification_id, notification_row.get("image_path"))
 
     return {
         "success": True,
@@ -385,6 +537,7 @@ async def list_notifications_admin(
           n.created_by,
           n.created_at,
           n.updated_at,
+          n.image_path,
           COALESCE(stats.total, 0) AS delivery_total,
           COALESCE(stats.read_count, 0) AS read_count
         FROM notifications n
@@ -401,6 +554,7 @@ async def list_notifications_admin(
         """,
         {"limit": limit, "offset": offset},
     )
+    rows = [_add_image_url_to_row(dict(row)) for row in rows]
     return {"success": True, "data": rows}
 
 
@@ -422,6 +576,7 @@ async def list_notifications_for_user(
           n.title,
           n.body,
           n.sent_at,
+          n.image_path,
           nr.delivered_at,
           nr.is_read,
           nr.read_at
@@ -434,6 +589,7 @@ async def list_notifications_for_user(
         params,
     )
 
+    rows = [_add_image_url_to_row(dict(row)) for row in rows]
     totals = execute_query(
         """
         SELECT
@@ -511,6 +667,7 @@ async def mark_notification_read(
                   n.title,
                   n.body,
                   n.sent_at,
+                  n.image_path,
                   nr.delivered_at,
                   nr.is_read,
                   nr.read_at
@@ -523,6 +680,9 @@ async def mark_notification_read(
             {"notification_id": notification_id, "user_id": current_user.id},
         ).mappings().first()
 
+    if updated:
+        updated = dict(updated)
+        updated["image_url"] = _notification_image_url(notification_id, updated.get("image_path"))
     return {"success": True, "data": updated}
 
 
