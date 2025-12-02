@@ -114,7 +114,7 @@ const UrlPresetApplier: React.FC<{
 
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
-  const { isAdmin, isDeveloper } = useAuth()
+  const { isAdmin } = useAuth()
   const [unreadNotificationCount, setUnreadNotificationCount] = useState<number | null>(null)
   const [isNotificationCountLoading, setIsNotificationCountLoading] = useState(false)
   const [isNotificationOpen, setIsNotificationOpen] = useState(false)
@@ -191,11 +191,6 @@ const Dashboard = () => {
   });
 
   const refreshNotificationCount = useCallback(async () => {
-    if (!isAdmin) {
-      setUnreadNotificationCount(null)
-      return
-    }
-
     setIsNotificationCountLoading(true)
     try {
       const res = await fetchUnreadNotificationCount()
@@ -212,13 +207,9 @@ const Dashboard = () => {
     } finally {
       setIsNotificationCountLoading(false)
     }
-  }, [isAdmin])
+  }, [])
 
   const loadNotifications = useCallback(async (page: number = 1) => {
-    if (!isAdmin) {
-      setNotifications([])
-      return
-    }
     setIsNotificationListLoading(true)
     try {
       const res = await fetchNotifications({
@@ -241,16 +232,11 @@ const Dashboard = () => {
     } finally {
       setIsNotificationListLoading(false)
     }
-  }, [NOTIFICATION_PAGE_SIZE, isAdmin])
+  }, [NOTIFICATION_PAGE_SIZE])
 
   useEffect(() => {
-    if (!isAdmin) {
-      setUnreadNotificationCount(null)
-      setIsNotificationCountLoading(false)
-      return
-    }
     refreshNotificationCount()
-  }, [isAdmin, refreshNotificationCount])
+  }, [refreshNotificationCount])
 
   // 基本関数群
   const getCurrentTabKey = () => {
@@ -943,8 +929,10 @@ const Dashboard = () => {
 
   const currentTabKey = getCurrentTabKey();
   const currentSearchKeyword = searchKeywordsByTab[currentTabKey] ?? '';
+  const shouldShowNotificationBadge =
+    isNotificationCountLoading || (unreadNotificationCount ?? 0) > 0;
 
-  const adminNotificationButton = isAdmin ? (
+  const notificationButton = (
     <Popover
       open={isNotificationOpen}
       onOpenChange={(open) => {
@@ -962,13 +950,15 @@ const Dashboard = () => {
           aria-label="通知一覧"
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
-            {isNotificationCountLoading
-              ? '...'
-              : (unreadNotificationCount ?? 0) > 99
-              ? '99+'
-              : unreadNotificationCount ?? 0}
-          </span>
+          {shouldShowNotificationBadge && (
+            <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
+              {isNotificationCountLoading
+                ? '...'
+                : (unreadNotificationCount ?? 0) > 99
+                ? '99+'
+                : unreadNotificationCount ?? 0}
+            </span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
@@ -1070,7 +1060,7 @@ const Dashboard = () => {
         </div>
       </PopoverContent>
     </Popover>
-  ) : null
+  )
 
   const handleCloseNotificationDialog = () => {
     setIsNotificationDialogOpen(false)
@@ -1128,7 +1118,7 @@ const Dashboard = () => {
             influencer: [...(visibleColumnsByTab.influencer ?? [])],
           })}
           presetApplyVisibleColumns={presetApplyVisibleColumns}
-          notificationButton={adminNotificationButton}
+          notificationButton={notificationButton}
           showSearchInput
           searchKeyword={currentSearchKeyword}
           onSearchKeywordChange={handleSearchKeywordChange}

@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from google.auth import compute_engine
 from google.cloud import storage
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -76,6 +77,18 @@ def _get_chatwork_config() -> dict:
         )
 
     return {"api_token": api_token, "room_id": room_id, "base_url": base_url}
+
+
+def _storage_client() -> storage.Client:
+    """
+    On Cloud Run, force metadata credentials to avoid any local key file lookups.
+    Locally, fall back to default ADC for developer convenience.
+    """
+    if os.getenv("K_SERVICE"):
+        credentials = compute_engine.Credentials()
+        project_id = os.getenv("PROJECT_ID") or None
+        return storage.Client(project=project_id, credentials=credentials)
+    return storage.Client()
 
 
 def _build_chatwork_body(
@@ -151,7 +164,7 @@ def _store_notification_image_gcs(notification_id: int, attachment: dict[str, An
         )
         return None
 
-    client = storage.Client()
+    client = _storage_client()
     bucket = client.bucket(NOTIFICATION_IMAGE_BUCKET)
     orig_name = attachment.get("filename") or "upload"
     content_type = attachment.get("content_type") or "application/octet-stream"
@@ -176,9 +189,18 @@ def _store_notification_image_gcs(notification_id: int, attachment: dict[str, An
 
 
 def _notification_image_url(notification_id: int, image_path: Optional[str]) -> Optional[str]:
-    if not image_path:
+    if not image_path or not NOTIFICATION_IMAGE_BUCKET:
         return None
-    return f"/api/notifications/{notification_id}/image"
+    try:
+        client = _storage_client()
+        bucket = client.bucket(NOTIFICATION_IMAGE_BUCKET)
+        blob = bucket.blob(image_path)
+        # 署名付きURL（GET）を30分で発行
+        return blob.generate_signed_url(expiration=timedelta(minutes=30), method="GET")
+    except Exception:
+        # 失敗時は保護付きエンドポイントにフォールバック
+        logger.warning("failed to generate signed url; fallback to protected endpoint", exc_info=True)
+        return f"/api/notifications/{notification_id}/image"
 
 
 def _add_image_url_to_row(row: Optional[dict]) -> Optional[dict]:
@@ -347,7 +369,7 @@ async def get_notification_image(
     if not image_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
 
-    client = storage.Client()
+    client = _storage_client()
     bucket = client.bucket(NOTIFICATION_IMAGE_BUCKET)
     blob = bucket.blob(image_path)
     if not blob.exists():
