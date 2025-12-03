@@ -107,7 +107,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/token")
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[User]:
     """現在のユーザーを取得"""
+    print(f"[DEBUG get_current_user] token received: {token[:20]}..." if token else "[DEBUG get_current_user] No token")
+    
     email = verify_token(token)
+    print(f"[DEBUG get_current_user] verify_token result: {email}")
+    
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -119,13 +123,22 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[User
         "SELECT * FROM users WHERE email = :email",
         {"email": email}
     )
+    print(f"[DEBUG get_current_user] DB user row: {user}")
     
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="ユーザーが見つかりません",
         )
-    return User(**user)
+    
+    try:
+        result = User(**user)
+        print(f"[DEBUG get_current_user] User model created successfully: id={result.id}, is_admin={result.is_admin}")
+        return result
+    except Exception as e:
+        print(f"[ERROR get_current_user] Failed to create User model: {e}")
+        print(f"[ERROR get_current_user] DB columns: {list(user.keys())}")
+        raise
 
 @router.post("/register", response_model=User)
 async def register(user_in: UserCreate):

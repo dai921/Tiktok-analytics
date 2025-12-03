@@ -250,6 +250,11 @@ export function Sidebar() {
                     PR未判定
                   </div>
                 </Link>
+                <Link href="/admin/user-usage">
+                  <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors">
+                    ユーザー利用状況
+                  </div>
+                </Link>
                 <Link href="/admin/feature-roadmap">
                   <div className="px-4 py-2 text-gray-200 hover:bg-[#2a2a2a] transition-colors rounded-b-md">
                     追加機能予定
