@@ -33,18 +33,14 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/lib/auth-context'
 import {
+  MissingByAccountEntry,
   MissingUsageEntry,
-  MissingVideoEntry,
   SessionSummary,
   SessionUsage,
   TranscriptionUsageEntry,
   fetchSessionUsage,
   fetchTranscriptionUsage,
 } from '@/lib/api/admin-usage'
-
-type MissingVideosByUser = MissingUsageEntry & {
-  videos: MissingVideoEntry[]
-}
 
 const formatDate = (value?: string | null) => {
   if (!value) return '-'
@@ -70,12 +66,13 @@ export default function AdminUserUsagePage() {
     'desc',
   )
   const [missingOrder, setMissingOrder] = useState<'asc' | 'desc'>('desc')
+  const [missingByAccountOrder, setMissingByAccountOrder] = useState<'asc' | 'desc'>('desc')
 
   const [sessions, setSessions] = useState<SessionUsage[]>([])
   const [sessionSummary, setSessionSummary] = useState<SessionSummary[]>([])
   const [usageByUser, setUsageByUser] = useState<TranscriptionUsageEntry[]>([])
   const [missingByUser, setMissingByUser] = useState<MissingUsageEntry[]>([])
-  const [missingVideos, setMissingVideos] = useState<MissingVideoEntry[]>([])
+  const [missingByAccount, setMissingByAccount] = useState<MissingByAccountEntry[]>([])
 
   const loadData = useCallback(
     async (withSpinner: boolean = false) => {
@@ -86,7 +83,12 @@ export default function AdminUserUsagePage() {
 
       try {
         const [sessionRes, transcriptionRes] = await Promise.all([
-          fetchSessionUsage({ order: sessionOrder, summarySort }),
+          fetchSessionUsage({
+            order: sessionOrder,
+            summarySort,
+            summaryLimit: 100,
+            sessionLimit: 300,
+          }),
           fetchTranscriptionUsage({ missingLimit: 300 }),
         ])
 
@@ -104,7 +106,7 @@ export default function AdminUserUsagePage() {
         setSessionSummary(sessionRes.data.summary || [])
         setUsageByUser(transcriptionRes.data.usage_by_user || [])
         setMissingByUser(transcriptionRes.data.missing_by_user || [])
-        setMissingVideos(transcriptionRes.data.missing_videos || [])
+        setMissingByAccount(transcriptionRes.data.missing_by_account || [])
       } catch (error) {
         toast({
           variant: 'destructive',
@@ -151,30 +153,15 @@ export default function AdminUserUsagePage() {
     return sorted
   }, [missingByUser, missingOrder])
 
-  const missingVideosByUser = useMemo<MissingVideosByUser[]>(() => {
-    const grouped = new Map<string, MissingVideoEntry[]>()
-    missingVideos.forEach((video) => {
-      const key = String(video.user_number ?? video.user_name ?? 'unknown')
-      const current = grouped.get(key) || []
-      grouped.set(key, [...current, video])
-    })
-
-    return sortedMissing.map((user) => {
-      const key = String(user.user_number ?? user.user_name ?? 'unknown')
-      return {
-        ...user,
-        videos: grouped.get(key) || [],
-      }
-    })
-  }, [missingVideos, sortedMissing])
-
-  const totalSessions = sessions.length
-  const totalUsers = sessionSummary.length
-  const totalTranscriptions = useMemo(
-    () => usageByUser.reduce((sum, item) => sum + (item.transcription_count || 0), 0),
-    [usageByUser],
-  )
-  const totalMissingVideos = missingVideos.length
+  const sortedMissingByAccount = useMemo(() => {
+    const sorted = [...missingByAccount]
+    sorted.sort((a, b) =>
+      missingByAccountOrder === 'desc'
+        ? (b.data_count || 0) - (a.data_count || 0)
+        : (a.data_count || 0) - (b.data_count || 0),
+    )
+    return sorted
+  }, [missingByAccount, missingByAccountOrder])
 
   if (authLoading) {
     return (
@@ -204,43 +191,19 @@ export default function AdminUserUsagePage() {
             セッション履歴と文字起こし利用状況を管理者向けにまとめています。
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setSessionOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
-            }
-          >
-            <Clock className="mr-2 h-4 w-4" />
-            {sessionOrder === 'desc' ? '新しい順' : '古い順'}で表示
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setSummarySort((prev) =>
-                prev === 'last_used_at' ? 'session_count' : 'last_used_at',
-              )
-            }
-          >
-            <Users className="mr-2 h-4 w-4" />
-            {summarySort === 'last_used_at' ? '最終利用順' : 'セッション数順'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="mr-2 h-4 w-4" />
-            )}
-            データ更新
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCcw className="mr-2 h-4 w-4" />
+          )}
+          データ更新
+        </Button>
       </div>
 
       {isLoading && (
@@ -249,55 +212,41 @@ export default function AdminUserUsagePage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">セッション数</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalSessions}</div>
-            <p className="text-xs text-muted-foreground">取得済みセッション</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">利用ユーザー数</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalUsers}</div>
-            <p className="text-xs text-muted-foreground">セッションを持つユーザー</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">文字起こし総数</CardTitle>
-            <Mic className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalTranscriptions}</div>
-            <p className="text-xs text-muted-foreground">完了した文字起こし合計</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">未登録動画</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalMissingVideos}</div>
-            <p className="text-xs text-muted-foreground">ツール未登録の文字起こし</p>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* ユーザーごとのセッション概要 - 最大100件 */}
       <Card>
         <CardHeader>
-          <CardTitle>ユーザーごとのセッション概要</CardTitle>
-          <CardDescription>
-            最終利用日時とセッション数の一覧です。並び替えはボタンで切り替えできます。
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>ユーザーごとのセッション概要</CardTitle>
+              <CardDescription>
+                最終利用日時とセッション数の一覧です（最大100件）
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setSessionOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                }
+              >
+                <Clock className="mr-2 h-4 w-4" />
+                {sessionOrder === 'desc' ? '新しい順' : '古い順'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setSummarySort((prev) =>
+                    prev === 'last_used_at' ? 'session_count' : 'last_used_at',
+                  )
+                }
+              >
+                <Users className="mr-2 h-4 w-4" />
+                {summarySort === 'last_used_at' ? '最終利用順' : 'セッション数順'}
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="overflow-x-auto">
@@ -305,7 +254,6 @@ export default function AdminUserUsagePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>ユーザー</TableHead>
-                  <TableHead>ユーザー番号</TableHead>
                   <TableHead>最終利用日時(JST)</TableHead>
                   <TableHead className="text-right">セッション数</TableHead>
                 </TableRow>
@@ -313,7 +261,7 @@ export default function AdminUserUsagePage() {
               <TableBody>
                 {sessionSummary.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
                       データがありません。
                     </TableCell>
                   </TableRow>
@@ -328,11 +276,6 @@ export default function AdminUserUsagePage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {row.user_number ?? 'N/A'}
-                      </Badge>
-                    </TableCell>
                     <TableCell>{formatDate(row.last_used_at_jst || row.last_used_at)}</TableCell>
                     <TableCell className="text-right font-medium">
                       {row.session_count.toLocaleString()}
@@ -342,43 +285,35 @@ export default function AdminUserUsagePage() {
               </TableBody>
             </Table>
           </div>
-
-          <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-            取得順序: {sessionOrder === 'desc' ? '新しい順' : '古い順'} / 並び替えキー: {summarySort === 'last_used_at' ? '最終利用日時' : 'セッション数'}
-          </div>
         </CardContent>
       </Card>
 
+      {/* 最新セッション - 最大300件 */}
       <Card>
         <CardHeader>
-          <CardTitle>最新セッション（最大30件）</CardTitle>
+          <CardTitle>最新セッション（最大300件）</CardTitle>
           <CardDescription>
-            直近の利用状況を確認できます。トークンは一部のみマスクしています。
+            直近の利用状況を確認できます。
           </CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>セッションID</TableHead>
                 <TableHead>ユーザー</TableHead>
                 <TableHead>最終利用日時(JST)</TableHead>
-                <TableHead>トークンプレビュー</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sessions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={2} className="text-center text-sm text-muted-foreground">
                     データがありません。
                   </TableCell>
                 </TableRow>
               )}
-              {sessions.slice(0, 30).map((session) => (
-                <TableRow key={session.session_id}>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {session.session_id}
-                  </TableCell>
+              {sessions.map((session, index) => (
+                <TableRow key={`${session.user_id}-${index}`}>
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium">
@@ -390,21 +325,17 @@ export default function AdminUserUsagePage() {
                     </div>
                   </TableCell>
                   <TableCell>{formatDate(session.last_used_at_jst || session.last_used_at)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    Token: {session.session_token_preview || 'N/A'}
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-          {sessions.length > 30 && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              表示は30件までです。取得済みセッション数: {sessions.length}
-            </p>
-          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            取得済みセッション数: {sessions.length}
+          </p>
         </CardContent>
       </Card>
 
+      {/* 文字起こし利用状況 */}
       <Card>
         <CardHeader className="space-y-1">
           <CardTitle>文字起こし利用状況</CardTitle>
@@ -543,79 +474,94 @@ export default function AdminUserUsagePage() {
         </CardContent>
       </Card>
 
+      {/* ツール未登録動画の詳細 - アカウント名単位 */}
       <Card>
         <CardHeader>
-          <CardTitle>ツール未登録動画の詳細</CardTitle>
-          <CardDescription>
-            TikTokリンクに飛び、パケットキャプチャなどで登録を検討できます。
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>ツール未登録動画の詳細</CardTitle>
+              <CardDescription>
+                TikTokアカウント単位で未登録データを表示しています（最大300件）
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setMissingByAccountOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+              }
+              className="h-8 px-2 text-xs"
+            >
+              {missingByAccountOrder === 'desc' ? (
+                <>
+                  <ArrowDown className="mr-1 h-3.5 w-3.5" />
+                  多い順
+                </>
+              ) : (
+                <>
+                  <ArrowUp className="mr-1 h-3.5 w-3.5" />
+                  少ない順
+                </>
+              )}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {missingVideosByUser.length === 0 && (
+          {sortedMissingByAccount.length === 0 && (
             <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
               未登録データはありません。
             </div>
           )}
 
-          {missingVideosByUser.map((group) => (
-            <div
-              key={`${group.user_number}-${group.user_name}-group`}
-              className="rounded-lg border bg-muted/40 p-4"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{group.user_name || '未設定'}</span>
-                    <Badge variant="secondary">
-                      {group.user_number ? `No. ${group.user_number}` : 'user_number未登録'}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    未登録件数: {group.missing_count?.toLocaleString() ?? 0}
-                  </p>
-                </div>
-                <Badge variant="outline">{group.videos.length} 件</Badge>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {group.videos.map((video) => (
-                  <div
-                    key={video.video_id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-background/80 px-3 py-2 text-sm"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">video_id: {video.video_id}</span>
-                      <span className="text-xs text-muted-foreground">
-                        account: {video.account_name || 'N/A'}
-                      </span>
-                      {video.file_path && (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>アカウント名</TableHead>
+                  <TableHead>ユーザー名</TableHead>
+                  <TableHead className="text-right">データ個数</TableHead>
+                  <TableHead>アカウントURL</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedMissingByAccount.map((row, index) => (
+                  <TableRow key={`${row.account_name}-${row.user_number}-${index}`}>
+                    <TableCell className="font-medium">
+                      @{row.account_name || 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span>{row.user_name || '未設定'}</span>
                         <span className="text-xs text-muted-foreground">
-                          file: {video.file_path}
+                          {row.user_number ? `No. ${row.user_number}` : ''}
                         </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {row.data_count?.toLocaleString() ?? 0}
+                    </TableCell>
+                    <TableCell>
+                      {row.account_url ? (
+                        <a
+                          href={row.account_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                        >
+                          TikTokを見る <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
-                    </div>
-                    {video.video_url ? (
-                      <a
-                        href={video.video_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                      >
-                        TikTokを見る <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        URLは生成できません。video_idで検索してください。
-                      </span>
-                    )}
-                  </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
-            </div>
-          ))}
+              </TableBody>
+            </Table>
+          </div>
 
           <p className="text-xs text-muted-foreground">
-            表示上限: missing_limit=300 で取得した結果を表示しています。
+            表示件数: {sortedMissingByAccount.length}
           </p>
         </CardContent>
       </Card>

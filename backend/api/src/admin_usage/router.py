@@ -94,11 +94,11 @@ def _has_table(table: str) -> bool:
 async def get_session_usage(
     order: str = Query("desc", pattern="^(?i)(asc|desc)$"),
     summary_sort: str = Query("last_used_at", pattern="^(last_used_at|session_count)$"),
+    summary_limit: int = Query(100, ge=1, le=500),
+    session_limit: int = Query(300, ge=1, le=1000),
     current_user: User = Depends(get_current_user),
 ):
     """管理者向けにユーザーのセッションと最終利用日時を返す。"""
-    print(f"[DEBUG get_session_usage] ★ ENDPOINT HIT ★")  # ← これを先頭に追加
-    print(f"[DEBUG get_session_usage] current_user: id={current_user.id}, is_admin={current_user.is_admin}")
     _ensure_admin(current_user)
 
     has_last_used = _has_column("sessions", "last_used_at")
@@ -114,11 +114,8 @@ async def get_session_usage(
             f"""
             SELECT
                 u.id AS user_id,
-                u.user_number AS user_number,
                 u.name AS user_name,
                 u.email AS email,
-                s.id AS session_id,
-                s.session_token AS session_token,
                 s.expires AS expires_at,
                 s.created_at AS created_at,
                 {last_used_expr} AS last_used_at
@@ -126,7 +123,9 @@ async def get_session_usage(
             JOIN sessions s ON u.id = s.user_id
             WHERE {customer_filter}
             ORDER BY last_used_at {direction}
-            """
+            LIMIT :limit
+            """,
+            {"limit": session_limit},
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"sessions query failed: {exc}")
@@ -136,7 +135,6 @@ async def get_session_usage(
             f"""
             SELECT
                 u.id AS user_id,
-                u.user_number AS user_number,
                 u.name AS user_name,
                 u.email AS email,
                 COUNT(s.id) AS session_count,
@@ -144,9 +142,11 @@ async def get_session_usage(
             FROM users u
             JOIN sessions s ON u.id = s.user_id
             WHERE {customer_filter}
-            GROUP BY u.id, u.user_number, u.name, u.email
+            GROUP BY u.id, u.name, u.email
             ORDER BY {summary_sort_column} {direction}
-            """
+            LIMIT :limit
+            """,
+            {"limit": summary_limit},
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"sessions summary query failed: {exc}")
@@ -156,9 +156,7 @@ async def get_session_usage(
         created_at = _to_datetime(row.get("created_at"))
         expires_at = _to_datetime(row.get("expires_at"))
         return {
-            "session_id": row.get("session_id"),
             "user_id": row.get("user_id"),
-            "user_number": row.get("user_number"),
             "user_name": row.get("user_name"),
             "email": row.get("email"),
             "last_used_at": _iso(last_used),
@@ -167,14 +165,12 @@ async def get_session_usage(
             "created_at_jst": _iso_jst(created_at),
             "expires_at": _iso(expires_at),
             "expires_at_jst": _iso_jst(expires_at),
-            "session_token_preview": _mask_token(row.get("session_token")),
         }
 
     def _map_summary(row: Dict[str, Any]) -> Dict[str, Any]:
         last_used = _to_datetime(row.get("last_used_at"))
         return {
             "user_id": row.get("user_id"),
-            "user_number": row.get("user_number"),
             "user_name": row.get("user_name"),
             "email": row.get("email"),
             "session_count": int(row.get("session_count") or 0),
@@ -191,12 +187,14 @@ async def get_session_usage(
         },
         "order": direction.lower(),
         "summary_sort": summary_sort_column,
+        "summary_limit": summary_limit,
+        "session_limit": session_limit,
     }
 
 
 @router.get("/transcription")
 async def get_transcription_usage(
-    missing_limit: int = Query(200, ge=1, le=2000),
+    missing_limit: int = Query(300, ge=1, le=2000),
     current_user: User = Depends(get_current_user),
 ):
     """文字起こし利用数とツール未登録動画の利用状況を返す。"""
@@ -228,7 +226,7 @@ async def get_transcription_usage(
         raise HTTPException(status_code=500, detail=f"transcription usage query failed: {exc}")
 
     missing_rows: list[dict[str, Any]] = []
-    missing_detail_rows: list[dict[str, Any]] = []
+    missing_by_account_rows: list[dict[str, Any]] = []
     if has_video_master:
         try:
             missing_rows = execute_query(
@@ -249,34 +247,32 @@ async def get_transcription_usage(
             raise HTTPException(status_code=500, detail=f"missing summary query failed: {exc}")
 
         try:
-            missing_detail_rows = execute_query(
+            missing_by_account_rows = execute_query(
                 """
                 SELECT
-                    u.user_number AS user_number,
-                    u.name AS user_name,
-                    vt.video_id AS video_id,
                     vt.account_name AS account_name,
-                    vt.file_path AS file_path
+                    u.name AS user_name,
+                    u.user_number AS user_number,
+                    COUNT(*) AS data_count
                 FROM video_transcription vt
                 INNER JOIN users u ON vt.user_number = u.user_number
                 LEFT JOIN video_master vm ON vt.video_id = vm.video_id
                 WHERE vm.video_id IS NULL
-                ORDER BY u.name, vt.id DESC
+                  AND vt.account_name IS NOT NULL
+                  AND vt.account_name != ''
+                GROUP BY vt.account_name, u.name, u.user_number
+                ORDER BY data_count DESC
                 LIMIT :limit
                 """,
                 {"limit": missing_limit},
             )
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"missing detail query failed: {exc}")
+            raise HTTPException(status_code=500, detail=f"missing by account query failed: {exc}")
 
-    def _build_video_url(row: Dict[str, Any]) -> Optional[str]:
-        video_id = row.get("video_id")
-        account_name = row.get("account_name")
-        if not video_id:
+    def _build_account_url(account_name: Optional[str]) -> Optional[str]:
+        if not account_name:
             return None
-        if account_name:
-            return f"https://www.tiktok.com/@{account_name}/video/{video_id}"
-        return f"https://www.tiktok.com/video/{video_id}"
+        return f"https://www.tiktok.com/@{account_name}"
 
     return {
         "success": True,
@@ -297,16 +293,15 @@ async def get_transcription_usage(
                 }
                 for row in missing_rows
             ],
-            "missing_videos": [
+            "missing_by_account": [
                 {
-                    "user_number": row.get("user_number"),
-                    "user_name": row.get("user_name"),
-                    "video_id": row.get("video_id"),
                     "account_name": row.get("account_name"),
-                    "file_path": row.get("file_path"),
-                    "video_url": _build_video_url(row),
+                    "user_name": row.get("user_name"),
+                    "user_number": row.get("user_number"),
+                    "data_count": int(row.get("data_count") or 0),
+                    "account_url": _build_account_url(row.get("account_name")),
                 }
-                for row in missing_detail_rows
+                for row in missing_by_account_rows
             ],
         },
         "missing_limit": missing_limit,

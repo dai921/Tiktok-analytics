@@ -1,7 +1,5 @@
 export type SessionUsage = {
-  session_id: string
   user_id: string
-  user_number?: number | null
   user_name?: string | null
   email?: string | null
   last_used_at?: string | null
@@ -10,12 +8,10 @@ export type SessionUsage = {
   created_at_jst?: string | null
   expires_at?: string | null
   expires_at_jst?: string | null
-  session_token_preview?: string | null
 }
 
 export type SessionSummary = {
   user_id: string
-  user_number?: number | null
   user_name?: string | null
   email?: string | null
   session_count: number
@@ -35,13 +31,12 @@ export type MissingUsageEntry = {
   missing_count: number
 }
 
-export type MissingVideoEntry = {
-  user_number?: number | null
-  user_name?: string | null
-  video_id?: string | null
+export type MissingByAccountEntry = {
   account_name?: string | null
-  file_path?: string | null
-  video_url?: string | null
+  user_name?: string | null
+  user_number?: number | null
+  data_count: number
+  account_url?: string | null
 }
 
 type ApiResponse<T> = {
@@ -61,7 +56,7 @@ type SessionUsagePayload = {
 type TranscriptionUsagePayload = {
   usage_by_user: TranscriptionUsageEntry[]
   missing_by_user: MissingUsageEntry[]
-  missing_videos: MissingVideoEntry[]
+  missing_by_account: MissingByAccountEntry[]
 }
 
 // 他のAPIと同様にバックエンドに直接送信
@@ -101,12 +96,16 @@ const handleApiError = (error: unknown): ApiResponse<never> => {
 export async function fetchSessionUsage(params?: {
   order?: 'asc' | 'desc'
   summarySort?: 'last_used_at' | 'session_count'
+  summaryLimit?: number
+  sessionLimit?: number
 }): Promise<ApiResponse<SessionUsagePayload>> {
   try {
     const headers = buildAuthHeaders()
     const qs = new URLSearchParams()
     if (params?.order) qs.append('order', params.order)
     if (params?.summarySort) qs.append('summary_sort', params.summarySort)
+    if (params?.summaryLimit) qs.append('summary_limit', String(params.summaryLimit))
+    if (params?.sessionLimit) qs.append('session_limit', String(params.sessionLimit))
 
     const response = await fetch(
       `${apiBase}/api/admin/usage/sessions?${qs.toString()}`,
@@ -175,8 +174,8 @@ export async function fetchTranscriptionUsage(params?: {
         missing_by_user: Array.isArray(data?.data?.missing_by_user)
           ? data.data.missing_by_user
           : [],
-        missing_videos: Array.isArray(data?.data?.missing_videos)
-          ? data.data.missing_videos
+        missing_by_account: Array.isArray(data?.data?.missing_by_account)
+          ? data.data.missing_by_account
           : [],
       },
     }
