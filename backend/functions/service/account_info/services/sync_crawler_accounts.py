@@ -134,6 +134,17 @@ def process_crawler_accounts():
         total_updated += updated
         print(f"video_crawler_accounts同期完了: {inserted}件挿入, {updated}件更新")
 
+        # 3. insta_crawler_account_listシートからinsta_crawler_accountsテーブルへの同期
+        print("=== insta_crawler_account_list → insta_crawler_accounts 同期開始 ===")
+        inserted, updated = sync_sheet_to_table(
+            service, SPREADSHEET_ID, 
+            'insta_crawler_account_list!B:G', 
+            'insta_crawler_accounts'
+        )
+        total_inserted += inserted
+        total_updated += updated
+        print(f"insta_crawler_accounts同期完了: {inserted}件挿入, {updated}件更新")
+
         return f'Successfully processed all crawler accounts: {total_inserted} inserted, {total_updated} updated', 200
 
     except Exception as e:

@@ -261,10 +261,8 @@ async def get_transcription_usage(
                   AND vt.account_name IS NOT NULL
                   AND vt.account_name != ''
                 GROUP BY vt.account_name, u.name, u.user_number
-                ORDER BY data_count DESC
-                LIMIT :limit
+                ORDER BY vt.account_name, data_count DESC
                 """,
-                {"limit": missing_limit},
             )
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"missing by account query failed: {exc}")
@@ -273,6 +271,34 @@ async def get_transcription_usage(
         if not account_name:
             return None
         return f"https://www.tiktok.com/@{account_name}"
+
+    # アカウント単位でグルーピング
+    account_grouped: dict[str, dict[str, Any]] = {}
+    for row in missing_by_account_rows:
+        account_name = row.get("account_name")
+        if not account_name:
+            continue
+        if account_name not in account_grouped:
+            account_grouped[account_name] = {
+                "account_name": account_name,
+                "account_url": _build_account_url(account_name),
+                "total_count": 0,
+                "users": [],
+            }
+        data_count = int(row.get("data_count") or 0)
+        account_grouped[account_name]["total_count"] += data_count
+        account_grouped[account_name]["users"].append({
+            "user_name": row.get("user_name"),
+            "user_number": row.get("user_number"),
+            "data_count": data_count,
+        })
+
+    # total_countで降順ソートして上位missing_limit件
+    sorted_accounts = sorted(
+        account_grouped.values(),
+        key=lambda x: x["total_count"],
+        reverse=True,
+    )[:missing_limit]
 
     return {
         "success": True,
@@ -293,16 +319,7 @@ async def get_transcription_usage(
                 }
                 for row in missing_rows
             ],
-            "missing_by_account": [
-                {
-                    "account_name": row.get("account_name"),
-                    "user_name": row.get("user_name"),
-                    "user_number": row.get("user_number"),
-                    "data_count": int(row.get("data_count") or 0),
-                    "account_url": _build_account_url(row.get("account_name")),
-                }
-                for row in missing_by_account_rows
-            ],
+            "missing_by_account": sorted_accounts,
         },
         "missing_limit": missing_limit,
     }

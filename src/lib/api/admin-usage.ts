@@ -31,12 +31,17 @@ export type MissingUsageEntry = {
   missing_count: number
 }
 
-export type MissingByAccountEntry = {
-  account_name?: string | null
+export type MissingByAccountUser = {
   user_name?: string | null
   user_number?: number | null
   data_count: number
+}
+
+export type MissingByAccountEntry = {
+  account_name?: string | null
   account_url?: string | null
+  total_count: number
+  users: MissingByAccountUser[]
 }
 
 type ApiResponse<T> = {

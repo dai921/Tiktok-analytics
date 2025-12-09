@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
   Clock,
   ExternalLink,
   Loader2,
@@ -13,7 +15,6 @@ import {
   Users,
 } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -42,6 +43,8 @@ import {
   fetchTranscriptionUsage,
 } from '@/lib/api/admin-usage'
 
+const PAGE_SIZE = 30
+
 const formatDate = (value?: string | null) => {
   if (!value) return '-'
   try {
@@ -67,6 +70,12 @@ export default function AdminUserUsagePage() {
   )
   const [missingOrder, setMissingOrder] = useState<'asc' | 'desc'>('desc')
   const [missingByAccountOrder, setMissingByAccountOrder] = useState<'asc' | 'desc'>('desc')
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set())
+
+  // ページネーション用のstate
+  const [summaryDisplayCount, setSummaryDisplayCount] = useState(PAGE_SIZE)
+  const [sessionsDisplayCount, setSessionsDisplayCount] = useState(PAGE_SIZE)
+  const [accountsDisplayCount, setAccountsDisplayCount] = useState(PAGE_SIZE)
 
   const [sessions, setSessions] = useState<SessionUsage[]>([])
   const [sessionSummary, setSessionSummary] = useState<SessionSummary[]>([])
@@ -107,6 +116,11 @@ export default function AdminUserUsagePage() {
         setUsageByUser(transcriptionRes.data.usage_by_user || [])
         setMissingByUser(transcriptionRes.data.missing_by_user || [])
         setMissingByAccount(transcriptionRes.data.missing_by_account || [])
+
+        // データ更新時にページネーションをリセット
+        setSummaryDisplayCount(PAGE_SIZE)
+        setSessionsDisplayCount(PAGE_SIZE)
+        setAccountsDisplayCount(PAGE_SIZE)
       } catch (error) {
         toast({
           variant: 'destructive',
@@ -133,6 +147,18 @@ export default function AdminUserUsagePage() {
     await loadData()
   }
 
+  const toggleAccountExpand = (accountName: string) => {
+    setExpandedAccounts((prev) => {
+      const next = new Set(prev)
+      if (next.has(accountName)) {
+        next.delete(accountName)
+      } else {
+        next.add(accountName)
+      }
+      return next
+    })
+  }
+
   const sortedUsage = useMemo(() => {
     const sorted = [...usageByUser]
     sorted.sort((a, b) =>
@@ -157,11 +183,16 @@ export default function AdminUserUsagePage() {
     const sorted = [...missingByAccount]
     sorted.sort((a, b) =>
       missingByAccountOrder === 'desc'
-        ? (b.data_count || 0) - (a.data_count || 0)
-        : (a.data_count || 0) - (b.data_count || 0),
+        ? (b.total_count || 0) - (a.total_count || 0)
+        : (a.total_count || 0) - (b.total_count || 0),
     )
     return sorted
   }, [missingByAccount, missingByAccountOrder])
+
+  // 表示用にスライス
+  const displayedSummary = sessionSummary.slice(0, summaryDisplayCount)
+  const displayedSessions = sessions.slice(0, sessionsDisplayCount)
+  const displayedAccounts = sortedMissingByAccount.slice(0, accountsDisplayCount)
 
   if (authLoading) {
     return (
@@ -259,14 +290,14 @@ export default function AdminUserUsagePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sessionSummary.length === 0 && (
+                {displayedSummary.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
                       データがありません。
                     </TableCell>
                   </TableRow>
                 )}
-                {sessionSummary.map((row) => (
+                {displayedSummary.map((row) => (
                   <TableRow key={row.user_id}>
                     <TableCell>
                       <div className="flex flex-col">
@@ -285,6 +316,20 @@ export default function AdminUserUsagePage() {
               </TableBody>
             </Table>
           </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              表示: {displayedSummary.length} / {sessionSummary.length} 件
+            </p>
+            {summaryDisplayCount < sessionSummary.length && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSummaryDisplayCount((prev) => prev + PAGE_SIZE)}
+              >
+                次へ（+{Math.min(PAGE_SIZE, sessionSummary.length - summaryDisplayCount)}件）
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -296,42 +341,55 @@ export default function AdminUserUsagePage() {
             直近の利用状況を確認できます。
           </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ユーザー</TableHead>
-                <TableHead>最終利用日時(JST)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.length === 0 && (
+        <CardContent className="space-y-4">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={2} className="text-center text-sm text-muted-foreground">
-                    データがありません。
-                  </TableCell>
+                  <TableHead>ユーザー</TableHead>
+                  <TableHead>最終利用日時(JST)</TableHead>
                 </TableRow>
-              )}
-              {sessions.map((session, index) => (
-                <TableRow key={`${session.user_id}-${index}`}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">
-                        {session.user_name || '未設定'}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {session.email || 'email未登録'}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>{formatDate(session.last_used_at_jst || session.last_used_at)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <p className="mt-2 text-xs text-muted-foreground">
-            取得済みセッション数: {sessions.length}
-          </p>
+              </TableHeader>
+              <TableBody>
+                {displayedSessions.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={2} className="text-center text-sm text-muted-foreground">
+                      データがありません。
+                    </TableCell>
+                  </TableRow>
+                )}
+                {displayedSessions.map((session, index) => (
+                  <TableRow key={`${session.user_id}-${index}`}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {session.user_name || '未設定'}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {session.email || 'email未登録'}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{formatDate(session.last_used_at_jst || session.last_used_at)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              表示: {displayedSessions.length} / {sessions.length} 件
+            </p>
+            {sessionsDisplayCount < sessions.length && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSessionsDisplayCount((prev) => prev + PAGE_SIZE)}
+              >
+                次へ（+{Math.min(PAGE_SIZE, sessions.length - sessionsDisplayCount)}件）
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -474,14 +532,14 @@ export default function AdminUserUsagePage() {
         </CardContent>
       </Card>
 
-      {/* ツール未登録動画の詳細 - アカウント名単位 */}
+      {/* ツール未登録動画の詳細 - アカウント名単位でアコーディオン */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>ツール未登録動画の詳細</CardTitle>
               <CardDescription>
-                TikTokアカウント単位で未登録データを表示しています（最大300件）
+                アカウント名をクリックすると、ユーザーごとの詳細が表示されます（最大300件）
               </CardDescription>
             </div>
             <Button
@@ -507,7 +565,7 @@ export default function AdminUserUsagePage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {sortedMissingByAccount.length === 0 && (
+          {displayedAccounts.length === 0 && (
             <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
               未登録データはありません。
             </div>
@@ -517,52 +575,106 @@ export default function AdminUserUsagePage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8"></TableHead>
                   <TableHead>アカウント名</TableHead>
-                  <TableHead>ユーザー名</TableHead>
                   <TableHead className="text-right">データ個数</TableHead>
                   <TableHead>アカウントURL</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedMissingByAccount.map((row, index) => (
-                  <TableRow key={`${row.account_name}-${row.user_number}-${index}`}>
-                    <TableCell className="font-medium">
-                      @{row.account_name || 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span>{row.user_name || '未設定'}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {row.user_number ? `No. ${row.user_number}` : ''}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {row.data_count?.toLocaleString() ?? 0}
-                    </TableCell>
-                    <TableCell>
-                      {row.account_url ? (
-                        <a
-                          href={row.account_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                        >
-                          TikTokを見る <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
+                {displayedAccounts.map((account) => {
+                  const accountName = account.account_name || 'N/A'
+                  const isExpanded = expandedAccounts.has(accountName)
+                  return (
+                    <>
+                      <TableRow
+                        key={`account-${accountName}`}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => toggleAccountExpand(accountName)}
+                      >
+                        <TableCell className="w-8">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          @{accountName}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {account.total_count?.toLocaleString() ?? 0}
+                        </TableCell>
+                        <TableCell>
+                          {account.account_url ? (
+                            <a
+                              href={account.account_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              TikTokを見る <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && account.users && account.users.length > 0 && (
+                        <TableRow key={`account-${accountName}-details`}>
+                          <TableCell colSpan={4} className="bg-muted/30 p-0">
+                            <div className="px-8 py-3">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead className="text-xs">ユーザー名</TableHead>
+                                    <TableHead className="text-xs text-right">データ個数</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {account.users.map((user, userIndex) => (
+                                    <TableRow key={`${accountName}-user-${userIndex}`}>
+                                      <TableCell>
+                                        <div className="flex flex-col">
+                                          <span className="text-sm">{user.user_name || '未設定'}</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {user.user_number ? `No. ${user.user_number}` : ''}
+                                          </span>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell className="text-right text-sm font-medium">
+                                        {user.data_count?.toLocaleString() ?? 0}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                    </>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            表示件数: {sortedMissingByAccount.length}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              表示: {displayedAccounts.length} / {sortedMissingByAccount.length} 件
+            </p>
+            {accountsDisplayCount < sortedMissingByAccount.length && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAccountsDisplayCount((prev) => prev + PAGE_SIZE)}
+              >
+                次へ（+{Math.min(PAGE_SIZE, sortedMissingByAccount.length - accountsDisplayCount)}件）
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
