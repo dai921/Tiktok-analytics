@@ -34,6 +34,7 @@ import { GENRE_COLORS, DEFAULT_GENRE_COLOR, getProductColorFromName } from '@/li
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { recordCsvExportLog } from '@/lib/api/csv-export-logs';
 
 interface ProductTrend {
   rank: number;
@@ -642,9 +643,37 @@ export default function ProductPage() {
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
+
+      // CSV出力ログを記録
+      recordCsvExportLog({
+        export_source: 'trends_product',
+        export_params: {
+          date_start: start,
+          date_end: end,
+          metric: metric,
+          selected_genres: selectedGenres,
+        },
+        export_status: 'success',
+        row_count: rows.length,
+        file_size_bytes: blob.size,
+      });
     } catch (error) {
       console.error(error);
       setExportError(error instanceof Error ? error.message : 'CSV出力に失敗しました。');
+
+      // CSV出力失敗ログを記録
+      const selectedRange = range || exportTempDateRange || exportDateRange;
+      recordCsvExportLog({
+        export_source: 'trends_product',
+        export_params: {
+          date_start: selectedRange?.start?.toISOString().split('T')[0],
+          date_end: selectedRange?.end?.toISOString().split('T')[0],
+          metric: metric,
+          selected_genres: selectedGenres,
+        },
+        export_status: 'failed',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      });
     } finally {
       setIsExporting(false);
     }

@@ -23,6 +23,7 @@ import { PresetMenu } from '@/components/dashboard/preset-menu';
 import { getCurrentTabType } from './tab-columns';
 import type { TabType as PresetTabType } from '@/lib/filter_presets_api';
 import { getDbData, getAffiliateData, getCorporateData, getInfluencerData } from '@/lib/api';
+import { recordCsvExportLog } from '@/lib/api/csv-export-logs';
 const MAX_EXPORT_RANGE = 100;
 
 // EXCLUDED_COLUMNS をここで定義
@@ -521,6 +522,36 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
         anchor.click();
         document.body.removeChild(anchor);
         window.URL.revokeObjectURL(url);
+
+        // CSV出力ログを記録
+        recordCsvExportLog({
+          export_source: 'dashboard',
+          tab_type: isPrOnly ? 'affiliate' : isCorporateOnly ? 'corporate' : isInfluencerOnly ? 'influencer' : 'all',
+          export_params: {
+            page_start: start,
+            page_end: end,
+            page_size: pageSize,
+            filters: currentFilters,
+            visible_columns: visibleColumns,
+          },
+          export_status: 'success',
+          row_count: rows.length,
+          file_size_bytes: blob.size,
+        });
+      } catch (error) {
+        // CSV出力失敗ログを記録
+        recordCsvExportLog({
+          export_source: 'dashboard',
+          tab_type: isPrOnly ? 'affiliate' : isCorporateOnly ? 'corporate' : isInfluencerOnly ? 'influencer' : 'all',
+          export_params: {
+            page_start: Number(exportPageStartInput),
+            page_end: Number(exportPageEndInput),
+            page_size: pageSize,
+          },
+          export_status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+        });
+        throw error;
       } finally {
         setIsExporting(false);
       }
@@ -534,7 +565,13 @@ export const DataTable = forwardRef<{ clearAllFilters: () => void }, DataTablePr
       buildExportColumns,
       escapeForCsv,
       normalizeCellValue,
-      fetchPageData
+      fetchPageData,
+      isPrOnly,
+      isCorporateOnly,
+      isInfluencerOnly,
+      pageSize,
+      currentFilters,
+      visibleColumns
     ]);
 
     // 蜿ら・繧定ｨｭ螳・
