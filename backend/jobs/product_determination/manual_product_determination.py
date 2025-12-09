@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 SENSITIVE_STATUS = "skip_sensitive"
 PROCESSOR_NAME = "manual_product_determination"
 TARGET_TABLE = "video_master"
-DEFAULT_BATCH_SIZE = 3000
+DEFAULT_BATCH_SIZE = 1000
 DEFAULT_CURSOR_RESET_INTERVAL = 86400
 
 def _resolve_module_dir() -> Path:
@@ -271,6 +271,7 @@ def _determine_payloads_from_db(
         "  product",
         "FROM video_master",
         "WHERE parent_account_type = %s",
+        "  AND account_type = %s",
         "  AND id > %s",
         "  AND video_id IS NOT NULL",
         "  AND url IS NOT NULL",
@@ -278,7 +279,7 @@ def _determine_payloads_from_db(
         "  AND hashtags <> ''",
         "  AND (status IS NULL OR status <> %s)",
     ]
-    params: List[Any] = ["インフルエンサー", last_cursor_id, SENSITIVE_STATUS]
+    params: List[Any] = ["インフルエンサー", "美容", last_cursor_id, SENSITIVE_STATUS]
 
     if not include_processed:
         query.append("  AND (product IS NULL OR product = '')")

@@ -92,19 +92,13 @@ def validate_env_vars():
     # 必須の環境変数（DB関連の環境変数を削除）
     required_envs = [
         'SPREADSHEET_CATEGORY_ID',
+        'PROJECT_ID',
     ]
-    
-    # 認証に関連する環境変数（どちらか一方があればOK）
-    auth_envs = ['GOOGLE_APPLICATION_CREDENTIALS', 'PROJECT_ID']
-    
+
     missing_envs = [env for env in required_envs if not os.getenv(env)]
     if missing_envs:
         raise ValueError(f"必須の環境変数が設定されていません: {', '.join(missing_envs)}")
-    
-    # 認証関連の環境変数をチェック
-    if not any(os.getenv(env) for env in auth_envs):
-        raise ValueError(f"認証に必要な環境変数が設定されていません。{' または '.join(auth_envs)}のいずれかが必要です")
-    
+
     logger.info("環境変数の検証が完了しました")
 
 def sync_category_spreadsheet():
@@ -140,13 +134,9 @@ def sync_category_spreadsheet():
             logger.info("Secret Managerからサービスアカウント認証情報の取得に成功しました")
         except Exception as auth_error:
             logger.error(f"認証情報の取得に失敗しました: {str(auth_error)}")
-            # フォールバック: 従来の方法を試す
-            if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-                logger.info("フォールバック: GOOGLE_APPLICATION_CREDENTIALSを使用します")
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.getenv('GOOGLE_APPLICATION_CREDENTIALS'), scopes=SCOPES)
-            else:
-                raise Exception(f"サービスアカウント認証情報を取得できません: {str(auth_error)}")
+            raise Exception(
+                f"Secret Manager から認証情報を取得できません。GOOGLE_APPLICATION_CREDENTIALS による鍵ファイルは使用しません。詳細: {str(auth_error)}"
+            )
         
         service = build('sheets', 'v4', credentials=credentials)
 

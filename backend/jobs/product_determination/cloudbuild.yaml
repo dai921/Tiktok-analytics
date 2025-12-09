@@ -1,7 +1,7 @@
 substitutions:
   _REPO: jobs
   _IMAGE_NAME: product-determination
-  _TAG: "251125"
+  _TAG: "2511252"
 
 steps:
   - name: gcr.io/cloud-builders/docker

@@ -18,6 +18,7 @@ import { getAccountTypeColor } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { recordCsvExportLog, TabType } from '@/lib/api/csv-export-logs';
 
 interface HashtagTrend {  
   rank: number;
@@ -338,9 +339,49 @@ export default function HashtagsPage() {
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
+
+      // CSV出力ログを記録
+      const tabTypeMap: Record<VideoType, TabType> = {
+        affiliate: 'affiliate',
+        corporate: 'corporate',
+        influencer: 'influencer',
+      };
+      recordCsvExportLog({
+        export_source: 'overall_hashtags',
+        tab_type: tabTypeMap[activeTab],
+        export_params: {
+          date_start: start,
+          date_end: end,
+          metric: metric,
+          video_type: activeTab,
+        },
+        export_status: 'success',
+        row_count: rows.length,
+        file_size_bytes: blob.size,
+      });
     } catch (error) {
       console.error(error);
       setExportError(error instanceof Error ? error.message : 'CSV出力に失敗しました。');
+
+      // CSV出力失敗ログを記録
+      const selectedRange = range || exportTempDateRange || exportDateRange;
+      const tabTypeMap: Record<VideoType, TabType> = {
+        affiliate: 'affiliate',
+        corporate: 'corporate',
+        influencer: 'influencer',
+      };
+      recordCsvExportLog({
+        export_source: 'overall_hashtags',
+        tab_type: tabTypeMap[activeTab],
+        export_params: {
+          date_start: selectedRange?.start?.toISOString().split('T')[0],
+          date_end: selectedRange?.end?.toISOString().split('T')[0],
+          metric: metric,
+          video_type: activeTab,
+        },
+        export_status: 'failed',
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+      });
     } finally {
       setIsExporting(false);
     }

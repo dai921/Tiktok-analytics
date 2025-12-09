@@ -15,10 +15,9 @@ class UserLogin(BaseModel):
 
 class User(UserBase):
     id: str
-    user_number: int
-    email_verified: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+    user_number: Optional[int] = None  # Optionalに変更（NULLでもOK）
+    created_at: Optional[datetime] = None  # Optionalに変更
+    updated_at: Optional[datetime] = None  # Optionalに変更
     is_admin: bool = False
     is_developer: bool = False
 

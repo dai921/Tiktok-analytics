@@ -37,6 +37,8 @@ from src.dashboard.influencer_videos import router as influencer_videos_router
 from src.filter_presets.router import router as filter_presets_router
 from src.influencer_pr_products.router import router as influencer_pr_products_router
 from src.notifications.router import router as notifications_router
+from src.admin_usage.router import router as admin_usage_router
+from src.csv_export_logs.router import router as csv_export_logs_router
 
 # アプリケーション起動時に実行されるコード
 print("main.py is being loaded")
@@ -55,18 +57,39 @@ app = FastAPI(
 app.middleware("http")(timing_middleware)
 # 環境変数からオリジンを取得してログ出力
 origins_env = os.getenv("ALLOWED_ORIGINS", "")
-logger.info(f"ALLOWED_ORIGINS環境変数の値: '{origins_env}'")
-print(f"ALLOWED_ORIGINS環境変数の値: '{origins_env}'")
+logger.info(f"ALLOWED_ORIGINS env: '{origins_env}'")
+print(f"ALLOWED_ORIGINS env: '{origins_env}'")
 
-# 分割して空の要素を除去
+# Build origin list
 origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
-logger.info(f"設定されたCORSオリジン: {origins}")
-print(f"設定されたCORSオリジン: {origins}")
 
+# Add common local origins when not production (helps local dev avoid CORS)
+dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:3030",
+    "http://localhost:5173",
+    "http://localhost:8080",
+]
+env_name = os.getenv("ENV", "").lower()
+if not origins:
+    origins = dev_origins
+elif env_name != "production":
+    for origin in dev_origins:
+        if origin not in origins:
+            origins.append(origin)
+
+allow_origin_regex = None
+if env_name != "production":
+    # 開発時はワイルドカードで許可（本番では origins のみ）
+    allow_origin_regex = ".*"
+
+logger.info(f"CORS origins: {origins}, allow_origin_regex={allow_origin_regex}")
+print(f"CORS origins: {origins}, allow_origin_regex={allow_origin_regex}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -92,7 +115,8 @@ app.include_router(watchlist_router)
 app.include_router(filter_presets_router)
 app.include_router(influencer_pr_products_router)
 app.include_router(notifications_router)
-
+app.include_router(admin_usage_router)
+app.include_router(csv_export_logs_router)
 # ルーターの登録
 app.include_router(tiktok_router)
 app.include_router(transcription_router)

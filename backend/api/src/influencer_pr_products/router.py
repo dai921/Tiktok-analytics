@@ -15,6 +15,7 @@ router = APIRouter(
 
 class ProductUpdatePayload(BaseModel):
     product_name: Optional[str] = None
+    product_brand: Optional[str] = None
     product_category: Optional[str] = None
     source_url: Optional[str] = None
     is_pr: Optional[bool] = None
@@ -44,6 +45,7 @@ async def get_pending_products(current_user: User = Depends(get_current_user)):
         SELECT
             product_id,
             product_name,
+            product_brand,
             product_category,
             source_url
         FROM influencer_pr_product
@@ -84,6 +86,8 @@ async def update_product(
     updates: Dict[str, Any] = {}
     if payload.product_name is not None:
         updates["product_name"] = _normalize_str(payload.product_name)
+    if payload.product_brand is not None:
+        updates["product_brand"] = _normalize_str(payload.product_brand)
     if payload.product_category is not None:
         updates["product_category"] = _normalize_str(payload.product_category)
     if payload.source_url is not None:
@@ -129,6 +133,7 @@ async def update_product(
         SELECT
             product_id,
             product_name,
+            product_brand,
             product_category,
             source_url,
             is_pr

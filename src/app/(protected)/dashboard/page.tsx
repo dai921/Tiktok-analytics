@@ -37,6 +37,7 @@ import {
 // headers: 未使用のため削除
 
 type TabKey = 'all' | 'affiliate' | 'corporate' | 'influencer'
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
 
 const formatJstDateTime = (value?: string | null) => {
   if (!value) return ''
@@ -113,7 +114,7 @@ const UrlPresetApplier: React.FC<{
 
 const Dashboard = () => {
   const CACHE_DURATION = 5 * 60 * 1000;
-  const { isAdmin, isDeveloper } = useAuth()
+  const { isAdmin } = useAuth()
   const [unreadNotificationCount, setUnreadNotificationCount] = useState<number | null>(null)
   const [isNotificationCountLoading, setIsNotificationCountLoading] = useState(false)
   const [isNotificationOpen, setIsNotificationOpen] = useState(false)
@@ -125,6 +126,12 @@ const Dashboard = () => {
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null)
   const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
   const NOTIFICATION_PAGE_SIZE = 10
+  const buildNotificationImageUrl = useCallback((path?: string | null) => {
+    if (!path) return null
+    if (/^https?:\/\//.test(path)) return path
+    if (!API_BASE_URL) return path
+    return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+  }, [])
 
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<VideoData[]>([])
@@ -184,11 +191,6 @@ const Dashboard = () => {
   });
 
   const refreshNotificationCount = useCallback(async () => {
-    if (!isAdmin) {
-      setUnreadNotificationCount(null)
-      return
-    }
-
     setIsNotificationCountLoading(true)
     try {
       const res = await fetchUnreadNotificationCount()
@@ -205,13 +207,9 @@ const Dashboard = () => {
     } finally {
       setIsNotificationCountLoading(false)
     }
-  }, [isAdmin])
+  }, [])
 
   const loadNotifications = useCallback(async (page: number = 1) => {
-    if (!isAdmin) {
-      setNotifications([])
-      return
-    }
     setIsNotificationListLoading(true)
     try {
       const res = await fetchNotifications({
@@ -234,16 +232,11 @@ const Dashboard = () => {
     } finally {
       setIsNotificationListLoading(false)
     }
-  }, [NOTIFICATION_PAGE_SIZE, isAdmin])
+  }, [NOTIFICATION_PAGE_SIZE])
 
   useEffect(() => {
-    if (!isAdmin) {
-      setUnreadNotificationCount(null)
-      setIsNotificationCountLoading(false)
-      return
-    }
     refreshNotificationCount()
-  }, [isAdmin, refreshNotificationCount])
+  }, [refreshNotificationCount])
 
   // 基本関数群
   const getCurrentTabKey = () => {
@@ -936,8 +929,10 @@ const Dashboard = () => {
 
   const currentTabKey = getCurrentTabKey();
   const currentSearchKeyword = searchKeywordsByTab[currentTabKey] ?? '';
+  const shouldShowNotificationBadge =
+    isNotificationCountLoading || (unreadNotificationCount ?? 0) > 0;
 
-  const adminNotificationButton = isAdmin ? (
+  const notificationButton = (
     <Popover
       open={isNotificationOpen}
       onOpenChange={(open) => {
@@ -955,13 +950,15 @@ const Dashboard = () => {
           aria-label="通知一覧"
         >
           <Bell className="h-5 w-5" />
-          <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
-            {isNotificationCountLoading
-              ? '...'
-              : (unreadNotificationCount ?? 0) > 99
-              ? '99+'
-              : unreadNotificationCount ?? 0}
-          </span>
+          {shouldShowNotificationBadge && (
+            <span className="absolute -top-0.5 -right-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-semibold text-white">
+              {isNotificationCountLoading
+                ? '...'
+                : (unreadNotificationCount ?? 0) > 99
+                ? '99+'
+                : unreadNotificationCount ?? 0}
+            </span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
@@ -1002,10 +999,10 @@ const Dashboard = () => {
                 onClick={() => handleSelectNotification(item)}
               >
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium leading-tight">{item.title}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="text-sm font-medium leading-tight truncate">{item.title}</p>
                     {!item.is_read && (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                      <span className="flex-shrink-0 whitespace-nowrap rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
                         未読
                       </span>
                     )}
@@ -1063,12 +1060,14 @@ const Dashboard = () => {
         </div>
       </PopoverContent>
     </Popover>
-  ) : null
+  )
 
   const handleCloseNotificationDialog = () => {
     setIsNotificationDialogOpen(false)
     setSelectedNotification(null)
   }
+
+  const selectedNotificationImage = buildNotificationImageUrl(selectedNotification?.image_url)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1119,7 +1118,7 @@ const Dashboard = () => {
             influencer: [...(visibleColumnsByTab.influencer ?? [])],
           })}
           presetApplyVisibleColumns={presetApplyVisibleColumns}
-          notificationButton={adminNotificationButton}
+          notificationButton={notificationButton}
           showSearchInput
           searchKeyword={currentSearchKeyword}
           onSearchKeywordChange={handleSearchKeywordChange}
@@ -1192,10 +1191,14 @@ const Dashboard = () => {
               <p className="whitespace-pre-wrap text-sm leading-relaxed">
                 {selectedNotification?.body ?? ''}
               </p>
-              {selectedNotification?.delivered_at && (
-                <p className="text-xs text-muted-foreground">
-                  配信: {formatJstDateTime(selectedNotification.delivered_at) || '-'}
-                </p>
+              {selectedNotificationImage && (
+                <div className="rounded-md border bg-muted/30 p-2">
+                  <img
+                    src={selectedNotificationImage}
+                    alt={selectedNotification?.title || '通知画像'}
+                    className="max-h-64 w-full rounded object-contain"
+                  />
+                </div>
               )}
             </div>
             <DialogFooter>

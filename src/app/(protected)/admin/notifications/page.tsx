@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { ChangeEvent, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Card,
   CardContent,
@@ -26,28 +24,16 @@ import { useAuth } from '@/lib/auth-context'
 const textareaStyles =
   'min-h-[240px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50'
 
-const toDatetimeLocalValue = (value: Date) => {
-  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
-  return local.toISOString().slice(0, 16)
-}
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
-const toIsoStringOrUndefined = (value: string) => {
-  if (!value) return undefined
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
-}
-
-const formatJstDateTime = (value: string) => {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(parsed)
+const formatFileSize = (size: number) => {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)}MB`
+  }
+  if (size >= 1024) {
+    return `${(size / 1024).toFixed(1)}KB`
+  }
+  return `${size}B`
 }
 
 export default function AdminNotificationSettingsPage() {
@@ -55,12 +41,18 @@ export default function AdminNotificationSettingsPage() {
   const { toast } = useToast()
 
   const [body, setBody] = useState('')
-  const [scheduledAt, setScheduledAt] = useState<string>(
-    () => toDatetimeLocalValue(new Date()),
-  )
-  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl)
+      }
+    }
+  }, [imagePreviewUrl])
 
   if (isLoading) {
     return (
@@ -83,31 +75,51 @@ export default function AdminNotificationSettingsPage() {
 
   const resetDraft = () => {
     setBody('')
-    setScheduledAt(toDatetimeLocalValue(new Date()))
-    setScheduleType('now')
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl)
+    }
+    setImagePreviewUrl(null)
+    setImageFile(null)
   }
 
-  const validateScheduledAt = () => {
-    if (scheduleType === 'now') return true
-    const parsed = new Date(scheduledAt)
-    if (Number.isNaN(parsed.getTime())) {
+  const handleSelectImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (!file) return
+
+    if (!file.type?.startsWith('image/')) {
       toast({
         variant: 'destructive',
-        title: '送信日時を入力してください',
-        description: '予約送信の日時を正しく選択してください。',
+        title: '画像ファイルを選択してください',
+        description: 'JPG/PNG/GIFなどの画像ファイルのみ添付できます。',
       })
-      return false
+      return
     }
-    const now = new Date()
-    if (parsed.getTime() <= now.getTime()) {
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
       toast({
         variant: 'destructive',
-        title: '過去の時刻が選択されています',
-        description: '今すぐ送信を選ぶか、現在より後の時刻で予約してください。',
+        title: 'ファイルサイズが大きすぎます',
+        description: '10MB以下の画像を1枚だけアップロードできます。',
       })
-      return false
+      return
     }
-    return true
+
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl)
+    }
+
+    setImageFile(file)
+    setImagePreviewUrl(URL.createObjectURL(file))
+  }
+
+  const handleRemoveImage = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl)
+    }
+    setImagePreviewUrl(null)
+    setImageFile(null)
   }
 
   const handleOpenConfirm = () => {
@@ -120,13 +132,11 @@ export default function AdminNotificationSettingsPage() {
       return
     }
 
-    if (!validateScheduledAt()) return
-
     setIsConfirmOpen(true)
   }
 
   const handleSend = async () => {
-    if (!validateScheduledAt()) return
+    const trimmedBody = body.trim()
 
     setIsSending(true)
     try {
@@ -134,15 +144,13 @@ export default function AdminNotificationSettingsPage() {
       const tokenType = localStorage.getItem('auth_token_type') || 'Bearer'
 
       if (!token) {
-        throw new Error('認証情報がありません。ログインし直してください。')
+        throw new Error('認証情報がありません。ログインしてください。')
       }
 
-      const payload = {
-        body: body.trim(),
-        scheduled_at:
-          scheduleType === 'schedule'
-            ? toIsoStringOrUndefined(scheduledAt)
-            : undefined,
+      const formData = new FormData()
+      formData.append('body', trimmedBody)
+      if (imageFile) {
+        formData.append('image', imageFile)
       }
 
       const response = await fetch(
@@ -150,10 +158,9 @@ export default function AdminNotificationSettingsPage() {
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             Authorization: `${tokenType} ${token}`,
           },
-          body: JSON.stringify(payload),
+          body: formData,
         },
       )
 
@@ -163,13 +170,16 @@ export default function AdminNotificationSettingsPage() {
         const detail =
           data?.detail ||
           data?.message ||
-          '通知の送信に失敗しました。もう一度お試しください。'
-        throw new Error(detail)
+          '通知の送信に失敗しました。時間をおいて再度お試しください。'
+        throw new Error(String(detail))
       }
 
       toast({
         title: '通知を送信しました',
-        description: `${data?.delivery_count ?? 0}件に配信されます。`,
+        description:
+          data?.uploaded_image && imageFile
+            ? `${data?.delivery_count ?? 0}件に画像付きで送信しました。`
+            : `${data?.delivery_count ?? 0}件に送信しました。`,
       })
       resetDraft()
       setIsConfirmOpen(false)
@@ -181,7 +191,7 @@ export default function AdminNotificationSettingsPage() {
         description:
           error instanceof Error
             ? error.message
-            : 'エラーが発生しました。再度お試しください。',
+            : 'エラーが発生しました。時間をおいて再度お試しください。',
       })
     } finally {
       setIsSending(false)
@@ -198,7 +208,9 @@ export default function AdminNotificationSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>通知作成</CardTitle>
-            <CardDescription>本文を確認して送信します。全ユーザーに配信されます。</CardDescription>
+            <CardDescription>
+              本文を入力して送信します。全ユーザーに即時配信されます。
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
@@ -212,44 +224,57 @@ export default function AdminNotificationSettingsPage() {
               />
             </div>
 
-            <div className="space-y-3">
-              <Label>送信タイミング</Label>
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-4">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="scheduleType"
-                    value="now"
-                    checked={scheduleType === 'now'}
-                    onChange={() => setScheduleType('now')}
-                    disabled={isSending}
-                  />
-                  <span>今すぐ送信</span>
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="scheduleType"
-                    value="schedule"
-                    checked={scheduleType === 'schedule'}
-                    onChange={() => setScheduleType('schedule')}
-                    disabled={isSending}
-                  />
-                  <span>日時を指定して送信</span>
-                </label>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">画像を1枚添付（任意）</label>
+                <span className="text-xs text-muted-foreground">10MBまで</span>
               </div>
-              <div className="space-y-2">
-                <Input
-                  id="scheduledAt"
-                  type="datetime-local"
-                  value={scheduledAt}
-                  min={toDatetimeLocalValue(new Date())}
-                  onChange={(event) => setScheduledAt(event.target.value)}
-                  disabled={isSending || scheduleType === 'now'}
-                />
-                <p className="text-xs text-muted-foreground">
-                  予約送信の場合は現在時刻より後を選択してください。過去の日時は指定できません。
-                </p>
+              <div className="rounded-md border border-dashed bg-muted/50 p-3">
+                {imageFile ? (
+                  <div className="flex items-center gap-3">
+                    {imagePreviewUrl ? (
+                      <div className="h-16 w-16 overflow-hidden rounded-md border bg-white">
+                        <img
+                          src={imagePreviewUrl}
+                          alt="画像プレビュー"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{imageFile.name}</p>
+                      <p className="text-xs text-muted-foreground">{formatFileSize(imageFile.size)}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveImage}
+                      disabled={isSending}
+                    >
+                      削除
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      1枚のみアップロードできます。JPG/PNG/GIFなどの画像に対応しています。
+                    </p>
+                    <label
+                      className={`inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm font-medium text-primary transition ${isSending ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-muted'}`}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={handleSelectImage}
+                        disabled={isSending}
+                      />
+                      画像を選択
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -259,7 +284,7 @@ export default function AdminNotificationSettingsPage() {
                 onClick={resetDraft}
                 disabled={isSending}
               >
-                入力をクリア
+                リセット
               </Button>
               <Button onClick={handleOpenConfirm} disabled={isSending}>
                 送信内容を確認
@@ -286,14 +311,26 @@ export default function AdminNotificationSettingsPage() {
               </p>
             </div>
             <div className="space-y-1 rounded-md border bg-muted/50 p-3">
-              <p className="text-xs text-muted-foreground">送信日時</p>
-              <p className="text-sm leading-relaxed">
-                {scheduleType === 'now'
-                  ? '今すぐ送信（即時配送）'
-                  : scheduledAt
-                  ? `${formatJstDateTime(scheduledAt)}（JST）`
-                  : '送信日時未設定'}
-              </p>
+              <p className="text-xs text-muted-foreground">添付画像</p>
+              {imageFile ? (
+                <div className="flex items-center gap-3">
+                  {imagePreviewUrl ? (
+                    <div className="h-14 w-14 overflow-hidden rounded-md border bg-white">
+                      <img
+                        src={imagePreviewUrl}
+                        alt="確認用の画像プレビュー"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ) : null}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{imageFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatFileSize(imageFile.size)}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">画像は添付されません</p>
+              )}
             </div>
           </div>
 

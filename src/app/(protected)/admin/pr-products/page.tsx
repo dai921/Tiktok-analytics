@@ -20,6 +20,7 @@ import {
   approvePrProduct,
   deletePrProduct,
   fetchPendingPrProducts,
+  updatePrProduct,
 } from '@/lib/api/influencer-pr-products'
 import type { InfluencerPrProduct } from '@/types/influencerPrProduct'
 import {
@@ -63,6 +64,7 @@ const AdminPrProductsPage = () => {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftCategory, setDraftCategory] = useState('')
+  const [draftBrand, setDraftBrand] = useState('')
   const [rowLoadingMap, setRowLoadingMap] = useState<Record<number, boolean>>({})
 
   const setRowLoading = useCallback((productId: number, value: boolean) => {
@@ -130,42 +132,88 @@ const AdminPrProductsPage = () => {
       setEditingId(null)
       setDraftName('')
       setDraftCategory('')
+      setDraftBrand('')
       return
     }
 
     setEditingId(product.product_id)
     setDraftName(product.product_name ?? '')
     setDraftCategory(product.product_category ?? '')
+    setDraftBrand(product.product_brand ?? '')
   }
 
-  const handleApprove = async (product: InfluencerPrProduct) => {
+  const handleSaveEdits = async (product: InfluencerPrProduct) => {
     if (rowLoadingMap[product.product_id]) return
+    if (editingId !== product.product_id) return
 
-    const updates: { product_name?: string; product_category?: string } = {}
+    const name = draftName.trim()
+    const brand = draftBrand.trim()
+    const category = draftCategory.trim()
 
-    if (editingId === product.product_id) {
-      const name = draftName.trim()
-      const category = draftCategory.trim()
-
-      if (!name || !category) {
-        toast({
-          variant: 'destructive',
-          title: '入力内容を確認してください',
-          description: '商品名とカテゴリは必須です。',
-        })
-        return
-      }
-
-      updates.product_name = name
-      updates.product_category = category
+    if (!name || !brand || !category) {
+      toast({
+        variant: 'destructive',
+        title: '入力内容を確認してください',
+        description: '商品名・ブランド・カテゴリーは必須です。',
+      })
+      return
     }
 
     setRowLoading(product.product_id, true)
 
     try {
-      const response = await approvePrProduct(product.product_id, updates)
+      const response = await updatePrProduct(product.product_id, {
+        product_name: name,
+        product_brand: brand,
+        product_category: category,
+      })
       if (!response.success) {
-        throw new Error(response.error || 'PR商材の承認に失敗しました。')
+        throw new Error(response.error || '編集の保存に失敗しました。')
+      }
+
+      setProducts((prev) =>
+        prev.map((item) =>
+          item.product_id === product.product_id
+            ? {
+                ...item,
+                product_name: name,
+                product_brand: brand,
+                product_category: category,
+              }
+            : item,
+        ),
+      )
+      toast({
+        title: '編集内容を保存しました',
+        description: '編集した内容をPR商品に反映しました。',
+      })
+      setEditingId(null)
+      setDraftName('')
+      setDraftBrand('')
+      setDraftCategory('')
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : '編集の保存に失敗しました。'
+      toast({
+        variant: 'destructive',
+        title: '編集に失敗しました',
+        description: message,
+      })
+    } finally {
+      setRowLoading(product.product_id, false)
+    }
+  }
+
+const handleApprove = async (product: InfluencerPrProduct) => {
+    if (rowLoadingMap[product.product_id]) return
+    if (editingId === product.product_id) return
+
+    setRowLoading(product.product_id, true)
+
+    try {
+      const response = await approvePrProduct(product.product_id)
+      if (!response.success) {
+        throw new Error(response.error || 'PR未判定の承認に失敗しました。')
       }
 
       setProducts((prev) =>
@@ -173,16 +221,11 @@ const AdminPrProductsPage = () => {
       )
       toast({
         title: '承認しました',
-        description: 'PR商材を判定済みに更新しました。',
+        description: 'PR商品を承認済みに更新しました。',
       })
-      if (editingId === product.product_id) {
-        setEditingId(null)
-        setDraftName('')
-        setDraftCategory('')
-      }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'PR商材の承認に失敗しました。'
+        err instanceof Error ? err.message : 'PR商品の承認に失敗しました。'
       toast({
         variant: 'destructive',
         title: '承認に失敗しました',
@@ -193,16 +236,16 @@ const AdminPrProductsPage = () => {
     }
   }
 
-  const handleDelete = async (product: InfluencerPrProduct) => {
+const handleDelete = async (product: InfluencerPrProduct) => {
     if (rowLoadingMap[product.product_id]) return
-    if (!window.confirm('この商材を削除しますか？')) return
+    if (!window.confirm('この商品を削除しますか？')) return
 
     setRowLoading(product.product_id, true)
 
     try {
       const response = await deletePrProduct(product.product_id)
       if (!response.success) {
-        throw new Error(response.error || 'PR商材の削除に失敗しました。')
+        throw new Error(response.error || 'PR商品の削除に失敗しました。')
       }
 
       setProducts((prev) =>
@@ -210,16 +253,17 @@ const AdminPrProductsPage = () => {
       )
       toast({
         title: '削除しました',
-        description: 'PR商材を削除しました。',
+        description: 'PR商品を削除しました。',
       })
       if (editingId === product.product_id) {
         setEditingId(null)
         setDraftName('')
         setDraftCategory('')
+        setDraftBrand('')
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'PR商材の削除に失敗しました。'
+        err instanceof Error ? err.message : 'PR商品の削除に失敗しました。'
       toast({
         variant: 'destructive',
         title: '削除に失敗しました',
@@ -230,7 +274,7 @@ const AdminPrProductsPage = () => {
     }
   }
 
-  const pendingCountLabel = useMemo(() => {
+const pendingCountLabel = useMemo(() => {
     if (isLoading) return ''
     return `現在${products.length}件の未判定PR商材があります。`
   }, [isLoading, products.length])
@@ -300,10 +344,11 @@ const AdminPrProductsPage = () => {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[30%]">商品名</TableHead>
-                <TableHead className="w-[20%]">カテゴリ</TableHead>
-                <TableHead className="w-[30%]">ソース</TableHead>
-                <TableHead className="w-[20%] text-center">操作</TableHead>
+                <TableHead className="w-[24%]">商品名</TableHead>
+                <TableHead className="w-[20%]">ブランド</TableHead>
+                <TableHead className="w-[20%]">カテゴリー</TableHead>
+                <TableHead className="w-[20%]">ソース</TableHead>
+                <TableHead className="w-[16%] whitespace-nowrap text-center">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -311,10 +356,8 @@ const AdminPrProductsPage = () => {
                 const isEditing = editingId === product.product_id
                 const isRowBusy = !!rowLoadingMap[product.product_id]
                 const embedUrl = deriveEmbedUrl(product.source_url)
-                const approveDisabled =
-                  isRowBusy ||
-                  (isEditing &&
-                    (!draftName.trim() || !draftCategory.trim()))
+                const primaryDisabled =
+                  isRowBusy || (isEditing && (!draftName.trim() || !draftCategory.trim()))
 
                 return (
                   <TableRow key={product.product_id}>
@@ -333,11 +376,22 @@ const AdminPrProductsPage = () => {
                     <TableCell>
                       {isEditing ? (
                         <Input
+                          value={draftBrand}
+                          onChange={(event) => setDraftBrand(event.target.value)}
+                          placeholder="ブランド名を入力"
+                        />
+                      ) : (
+                        product.product_brand || '-'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {isEditing ? (
+                        <Input
                           value={draftCategory}
                           onChange={(event) =>
                             setDraftCategory(event.target.value)
                           }
-                          placeholder="カテゴリを入力"
+                          placeholder="カテゴリーを入力"
                         />
                       ) : (
                         product.product_category || '-'
@@ -355,7 +409,8 @@ const AdminPrProductsPage = () => {
                             <DialogHeader>
                               <DialogTitle>ソースの確認</DialogTitle>
                               <DialogDescription>
-                                商品名：{product.product_name || '不明'} / カテゴリ：
+                                商品名: {product.product_name || '未設定'} / ブランド:{' '}
+                                {product.product_brand || '未設定'} / カテゴリー:{' '}
                                 {product.product_category || '未設定'}
                               </DialogDescription>
                             </DialogHeader>
@@ -380,7 +435,7 @@ const AdminPrProductsPage = () => {
                               )}
                               <div className="space-y-2">
                                 <p className="text-sm font-medium text-muted-foreground">
-                                  本URL
+                                  元URL
                                 </p>
                                 <Link
                                   href={product.source_url}
@@ -393,7 +448,7 @@ const AdminPrProductsPage = () => {
                                 {embedUrl && (
                                   <div className="space-y-1">
                                     <p className="text-sm font-medium text-muted-foreground">
-                                      埋め込みURL
+                                      埋め込み用URL
                                     </p>
                                     <code className="block w-full overflow-x-auto rounded bg-muted px-3 py-2 text-xs">
                                       {embedUrl}
@@ -410,17 +465,19 @@ const AdminPrProductsPage = () => {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap justify-end gap-2">
+                    <TableCell className="whitespace-nowrap">
+                      <div className="flex flex-nowrap items-center justify-end gap-2">
                         <Button
                           size="sm"
-                          onClick={() => handleApprove(product)}
-                          disabled={approveDisabled}
+                          onClick={() =>
+                            isEditing ? handleSaveEdits(product) : handleApprove(product)
+                          }
+                          disabled={primaryDisabled}
                         >
                           {isRowBusy ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           ) : null}
-                          OK
+                          {isEditing ? '編集完了' : 'OK'}
                         </Button>
                         <Button
                           size="sm"

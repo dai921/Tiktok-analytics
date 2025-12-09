@@ -81,163 +81,190 @@ def sync_account_list(request):
         logger.error(f"同期処理エラー: {str(e)}")
         return str(e), 500
 
-def process_account_list():
-    """スプレッドシートからアカウントリストデータをデータベースに同期する処理"""
+def get_sheets_service():
+    """Google Sheets API クライアントを初期化して返す"""
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
     try:
-        print("==== アカウントリスト同期処理開始 ====")
-        
-        # SPREADSHEETの確認
-        SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
-        if not SPREADSHEET_ID:
-            print("環境変数エラー: SPREADSHEET_IDが設定されていません")
-            raise ValueError("Missing required environment variable: SPREADSHEET_ID")
-        print(f"スプレッドシートID: {SPREADSHEET_ID}")
-        
-        # Googleスプレッドシートの設定
-        print("Googleスプレッドシート設定開始")
-        SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+        print("Secret Managerからの認証情報取得開始")
+        secret_client = secretmanager.SecretManagerServiceClient()
+        secret_name = os.getenv('SHEET_CREDENTIALS_SECRET', 'sheet-credentials')
+        project_id = os.getenv('PROJECT_ID')
 
-        # 認証情報の取得処理
-        try:
-            print("Secret Managerからの認証情報取得開始")
-            secret_client = secretmanager.SecretManagerServiceClient()
-            secret_name = os.getenv('SHEET_CREDENTIALS_SECRET', 'sheet-credentials')
-            project_id = os.getenv('PROJECT_ID')
-            
-            print(f"プロジェクトID: {project_id}, シークレット名: {secret_name}")
-            
-            if not project_id:
-                print("警告: PROJECT_ID環境変数が設定されていません")
-                raise ValueError("PROJECT_ID環境変数が設定されていません")
-            
-            secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-            print(f"シークレットパス: {secret_path}")
-            
-            response = secret_client.access_secret_version(name=secret_path)
-            print("シークレット取得成功")
-            service_account_info = json.loads(response.payload.data.decode('UTF-8'))
-            print("認証情報JSONデコード成功")
-            
-            credentials = service_account.Credentials.from_service_account_info(
-                service_account_info, scopes=SCOPES)
-            print("クレデンシャル作成完了")
-            
-        except Exception as auth_error:
-            print(f"認証情報取得エラー: {str(auth_error)}")
-            if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-                print(f"フォールバック: GOOGLE_APPLICATION_CREDENTIALSを使用: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.getenv('GOOGLE_APPLICATION_CREDENTIALS'), scopes=SCOPES)
-                print("フォールバック認証情報作成完了")
-            else:
-                print("両方の認証方法に失敗しました")
-                raise Exception("サービスアカウント認証情報を取得できません")
+        print(f"プロジェクトID: {project_id}, シークレット名: {secret_name}")
 
-        print("Sheetsサービス構築開始")
-        service = build('sheets', 'v4', credentials=credentials)
-        print("Sheetsサービス構築完了")
+        if not project_id:
+            print("警告: PROJECT_ID環境変数が設定されていません")
+            raise ValueError("PROJECT_ID環境変数が設定されていません")
 
-        # スプレッドシートからデータを読み取る（アカウント作業用シート）
-        print("アカウント作業用シートデータ取得開始")
-        range_name = 'アカウント作業用シート!B:N'  # B列からK列までの範囲を取得
-        
+        secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        print(f"シークレットパス: {secret_path}")
+
+        response = secret_client.access_secret_version(name=secret_path)
+        print("シークレット取得完了")
+        service_account_info = json.loads(response.payload.data.decode('UTF-8'))
+        print("認証情報JSONデコード完了")
+
+        credentials = service_account.Credentials.from_service_account_info(
+            service_account_info, scopes=SCOPES)
+        print("クレデンシャル生成完了")
+    except Exception as auth_error:
+        print(f"認証情報取得エラー: {str(auth_error)}")
+        if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+            print(f"フォールバック: GOOGLE_APPLICATION_CREDENTIALSを使用: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
+            credentials = service_account.Credentials.from_service_account_file(
+                os.getenv('GOOGLE_APPLICATION_CREDENTIALS'), scopes=SCOPES)
+            print("フォールバック認証情報生成完了")
+        else:
+            print("他の認証手段に失敗しました")
+            raise Exception("サービスアカウント認証情報を取得できませんでした")
+
+    print("Sheetsサービス初期化開始")
+    service = build('sheets', 'v4', credentials=credentials)
+    print("Sheetsサービス初期化完了")
+    return service
+
+def sync_sheet_data_to_table(service, spreadsheet_id, range_name, table_name, job_label, include_play_count=True):
+    """
+    指定したスプレッドシートのデータを読み込み、DBテーブルへ同期する
+    """
+    try:
+        if not spreadsheet_id:
+            message = f"{job_label}: スプレッドシートIDが設定されていません"
+            print(message)
+            return message, 500
+
+        print(f"{job_label}: スプレッドシートID: {spreadsheet_id}")
         result = service.spreadsheets().values().get(
-            spreadsheetId=SPREADSHEET_ID,
+            spreadsheetId=spreadsheet_id,
             range=range_name
         ).execute()
         values = result.get('values', [])
 
         if not values:
-            print("データが見つかりませんでした")
-            return 'No data found', 200
+            print(f"{job_label}: データが見つかりませんでした")
+            return f'{job_label}: No data found', 200
 
         inserted_count = 0
         updated_count = 0
-        
-        # ヘッダー行をスキップして処理
+
+        update_fields = [
+            "favorite_user_username = %(favorite_user_username)s",
+            "account_type = %(account_type)s",
+            "crawler_account_id = %(crawler_account_id)s",
+            "updated_at = NOW()",
+            "parent_account_type = %(parent_account_type)s"
+        ]
+        if include_play_count:
+            update_fields.append("play_count_crawler_id = %(play_count_crawler_id)s")
+        update_fields.append("delete_flag = %(delete_flag)s")
+
+        insert_columns = [
+            "account_url",
+            "favorite_user_username",
+            "account_type",
+            "crawler_account_id",
+            "created_at",
+            "updated_at",
+            "parent_account_type"
+        ]
+        insert_values = [
+            "%(account_url)s",
+            "%(favorite_user_username)s",
+            "%(account_type)s",
+            "%(crawler_account_id)s",
+            "NOW()",
+            "NOW()",
+            "%(parent_account_type)s"
+        ]
+        if include_play_count:
+            insert_columns.append("play_count_crawler_id")
+            insert_values.append("%(play_count_crawler_id)s")
+        insert_columns.append("delete_flag")
+        insert_values.append("%(delete_flag)s")
+
+        update_query = f'''
+            UPDATE {table_name}
+            SET {", ".join(update_fields)}
+            WHERE account_url = %(account_url)s
+        '''
+        insert_query = f'''
+            INSERT INTO {table_name}
+            ({", ".join(insert_columns)})
+            VALUES ({", ".join(insert_values)})
+        '''
+        check_query = f'''
+            SELECT id FROM {table_name}
+            WHERE account_url = %(account_url)s
+        '''
+
         for row in values[1:]:
             try:
-                # 必要なデータの取得（存在チェック付き）
                 account_url = row[0].strip() if len(row) > 0 and row[0] else None
                 favorite_user_username = row[1].strip() if len(row) > 1 and row[1] else None
                 account_type = row[5].strip() if len(row) > 5 and row[5] else None
                 crawler_account_id = row[9].strip() if len(row) > 9 and row[9] else None
                 delete_flag = row[10].strip() if len(row) > 10 and row[10] else None
                 parent_account_type = row[11].strip() if len(row) > 11 and row[11] else None
-                play_count_crawler_id = row[12].strip() if len(row) > 12 and row[12] else None
+                play_count_crawler_id = row[12].strip() if include_play_count and len(row) > 12 and row[12] else None
 
-                # 必須項目のチェック
                 if not account_url or not favorite_user_username:
-                    print(f"警告: 必須項目が不足しているためスキップします: {row}")
+                    print(f"{job_label}: 必須列が欠けているためスキップ: {row}")
                     continue
 
+                db_params = {
+                    'account_url': account_url,
+                    'favorite_user_username': favorite_user_username,
+                    'account_type': account_type,
+                    'crawler_account_id': crawler_account_id,
+                    'parent_account_type': parent_account_type,
+                    'delete_flag': delete_flag
+                }
+                if include_play_count:
+                    db_params['play_count_crawler_id'] = play_count_crawler_id
 
-                # 既存レコードのチェック
-                check_query = '''
-                    SELECT id FROM account_list
-                    WHERE account_url = %(account_url)s
-                '''
-                check_params = {'account_url': account_url}
-                
-                existing_record = execute_query(check_query, check_params)
+                existing_record = execute_query(check_query, {'account_url': account_url})
 
                 if existing_record:
-                    # 更新
-                    update_query = '''
-                        UPDATE account_list 
-                        SET favorite_user_username = %(favorite_user_username)s,
-                            account_type = %(account_type)s,
-                            crawler_account_id = %(crawler_account_id)s,
-                            updated_at = NOW(),
-                            parent_account_type = %(parent_account_type)s,
-                            play_count_crawler_id = %(play_count_crawler_id)s,
-                            delete_flag = %(delete_flag)s
-                        WHERE account_url = %(account_url)s
-                    '''
-                    update_params = {
-                        'account_url': account_url,
-                        'favorite_user_username': favorite_user_username,
-                        'account_type': account_type,
-                        'crawler_account_id': crawler_account_id,
-                        'parent_account_type': parent_account_type,
-                        'play_count_crawler_id': play_count_crawler_id,
-                        'delete_flag': delete_flag
-                    }
-                    
-                    affected_rows = execute_write_query(update_query, update_params)
+                    affected_rows = execute_write_query(update_query, db_params)
                     if affected_rows > 0:
                         updated_count += 1
                 else:
-                    # 新規挿入
-                    insert_query = '''
-                        INSERT INTO account_list 
-                        (account_url, favorite_user_username, account_type, 
-                         crawler_account_id, created_at, updated_at, parent_account_type, play_count_crawler_id, delete_flag)
-                        VALUES (%(account_url)s, %(favorite_user_username)s, %(account_type)s,
-                                %(crawler_account_id)s,  NOW(), NOW(), %(parent_account_type)s, %(play_count_crawler_id)s, %(delete_flag)s)
-                    '''
-                    insert_params = {
-                        'account_url': account_url,
-                        'favorite_user_username': favorite_user_username,
-                        'account_type': account_type,
-                        'crawler_account_id': crawler_account_id,
-                        'parent_account_type': parent_account_type,
-                        'play_count_crawler_id': play_count_crawler_id,
-                        'delete_flag': delete_flag
-                    }
-                    
-                    affected_rows = execute_write_query(insert_query, insert_params)
+                    affected_rows = execute_write_query(insert_query, db_params)
                     if affected_rows > 0:
                         inserted_count += 1
 
             except Exception as row_error:
-                print(f"行の処理中にエラーが発生: {str(row_error)}")
+                print(f"{job_label}: 行処理中にエラー発生: {str(row_error)}")
                 continue
 
-        return f'Successfully processed account list: {inserted_count} inserted, {updated_count} updated', 200
+        return f'{job_label}: {inserted_count} inserted, {updated_count} updated', 200
 
     except Exception as e:
-        print(f"==== アカウントリスト同期処理致命的エラー: {str(e)} ====")
+        print(f"{job_label}: 同期処理で予期せぬエラー: {str(e)}")
+        import traceback
+        print(f"詳細エラートレース: {traceback.format_exc()}")
+        return str(e), 500
+
+def process_account_list():
+    """スプレッドシートからアカウントリストデータをデータベースに同期する処理"""
+    try:
+        print("==== アカウントリスト同期処理開始 ====")
+
+        service = get_sheets_service()
+
+        result, status = sync_sheet_data_to_table(
+            service=service,
+            spreadsheet_id=os.getenv('SPREADSHEET_ID'),
+            range_name='アカウント一覧用シート!B:N',
+            table_name='account_list',
+            job_label='アカウント一覧用シート',
+            include_play_count=True
+        )
+
+        return result, status
+
+    except Exception as e:
+        print(f"==== アカウントリスト同期処理で例外発生: {str(e)} ====")
         import traceback
         print(f"詳細エラートレース: {traceback.format_exc()}")
         return str(e), 500
